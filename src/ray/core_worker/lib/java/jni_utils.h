@@ -3,8 +3,8 @@
 
 #include <jni.h>
 #include "ray/common/buffer.h"
-#include "ray/common/ray_object.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 
@@ -280,6 +280,12 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   std::shared_ptr<ray::Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
   std::shared_ptr<ray::Buffer> metadata_buffer =
       JavaByteArrayToNativeBuffer(env, java_metadata);
+  if (data_buffer && data_buffer->Size() == 0) {
+    data_buffer = nullptr;
+  }
+  if (metadata_buffer && metadata_buffer->Size() == 0) {
+    metadata_buffer = nullptr;
+  }
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
 }
 

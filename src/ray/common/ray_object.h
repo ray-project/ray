@@ -24,6 +24,11 @@ class RayObject {
   RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
             bool copy_data = false)
       : data_(data), metadata_(metadata), has_data_copy_(copy_data) {
+    RAY_CHECK(!data || data_->Size())
+        << "Zero-length buffers are not allowed when constructing a RayObject.";
+    RAY_CHECK(!metadata || metadata->Size())
+        << "Zero-length buffers are not allowed when constructing a RayObject.";
+
     if (has_data_copy_) {
       // If this object is required to hold a copy of the data,
       // make a copy if the passed in buffers don't already have a copy.
@@ -38,8 +43,7 @@ class RayObject {
       }
     }
 
-    RAY_CHECK((data_ && data_->Size()) || (metadata_ && metadata_->Size()))
-        << "Data and metadata cannot both be empty.";
+    RAY_CHECK(data_ || metadata_) << "Data and metadata cannot both be empty.";
   }
 
   /// Return the data of the ray object.
@@ -56,16 +60,12 @@ class RayObject {
   }
 
   /// Whether this object has data.
-  bool HasData() const { return data_ != nullptr && data_->Size() > 0; }
+  bool HasData() const { return data_ != nullptr; }
 
   /// Whether this object has metadata.
-  bool HasMetadata() const { return metadata_ != nullptr && metadata_->Size() > 0; }
+  bool HasMetadata() const { return metadata_ != nullptr; }
 
  private:
-  // TODO (kfstorm): Currently both a null pointer and a pointer points to a buffer with
-  // zero size means empty data/metadata. We'd better pick one and treat the other as
-  // invalid.
-
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;
   /// Whether this class holds a data copy.
