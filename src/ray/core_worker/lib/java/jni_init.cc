@@ -152,7 +152,7 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_actor_creation_options_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
   java_actor_creation_options_use_direct_call =
-      env->GetFieldID(java_actor_creation_options_class, "isDirectCall", "Z");
+      env->GetFieldID(java_actor_creation_options_class, "useDirectCall", "Z");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
 
