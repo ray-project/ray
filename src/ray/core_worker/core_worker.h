@@ -30,6 +30,8 @@ class CoreWorker {
 
   ~CoreWorker();
 
+  void Disconnect();
+
   /// Type of this worker.
   WorkerType GetWorkerType() const { return worker_type_; }
 
