@@ -102,6 +102,7 @@ class SkOptSearch(SuggestionAlgorithm):
         self._reward_attr = reward_attr
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
+        self._last_seen_score = 0
         super(SkOptSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
@@ -130,8 +131,13 @@ class SkOptSearch(SuggestionAlgorithm):
         as it minimizes on default.
         """
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
+        if early_terminated:
+            self._skopt_opt.tell(skopt_trial_info,
+                                 self._metric_op * self._last_seen_score)
         if result:
-            self._skopt_opt.tell(skopt_trial_info, -result[self._reward_attr])
+            self._skopt_opt.tell(skopt_trial_info,
+                                 self._metric_op * result[self._metric])
+            self._last_seen_score = result[self._metric]
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
