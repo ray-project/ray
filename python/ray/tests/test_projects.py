@@ -21,8 +21,7 @@ else:
     from mock import patch, DEFAULT
 
 TEST_DIR = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "project_files")
+    os.path.dirname(os.path.abspath(__file__)), "project_files")
 
 
 def load_project_description(project_file):
@@ -32,25 +31,22 @@ def load_project_description(project_file):
 
 
 def test_validation():
-    project_dirs = [
-        "docker_project", "requirements_project",
-        "shell_project"
-    ]
+    project_dirs = ["docker_project", "requirements_project", "shell_project"]
     for project_dir in project_dirs:
         project_dir = os.path.join(TEST_DIR, project_dir)
-        project_definition = ray.projects.ProjectDefinition(project_dir)
+        ray.projects.ProjectDefinition(project_dir)
 
     bad_schema_dirs = ["no_project1"]
     for project_dir in bad_schema_dirs:
         project_dir = os.path.join(TEST_DIR, project_dir)
         with pytest.raises(jsonschema.exceptions.ValidationError):
-            project_definition = ray.projects.ProjectDefinition(project_dir)
+            ray.projects.ProjectDefinition(project_dir)
 
     bad_project_dirs = ["no_project2", "noproject3"]
     for project_dir in bad_project_dirs:
         project_dir = os.path.join(TEST_DIR, project_dir)
         with pytest.raises(ValueError):
-            project_definition = ray.projects.ProjectDefinition(project_dir)
+            ray.projects.ProjectDefinition(project_dir)
 
 
 def test_project_root():
@@ -122,7 +118,8 @@ def test_session_start_default_project():
     # requirements.txt.
     assert rsync_call.call_count == 2
     _, kwargs = rsync_call.call_args
-    assert kwargs["source"] == loaded_project.config["environment"]["requirements"]
+    assert kwargs["source"] == loaded_project.config["environment"][
+        "requirements"]
 
     # Part 3/3: Exec Calls
     exec_cluster_call = mock_calls["exec_cluster"]

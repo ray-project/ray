@@ -112,6 +112,7 @@ def find_root(directory):
             os.path.join(directory, os.pardir))
     return None
 
+
 def validate_project_schema(project_config):
     """Validate a project config against the official ray project schema.
 
