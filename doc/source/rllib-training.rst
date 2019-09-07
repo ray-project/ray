@@ -14,7 +14,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0
+    rllib train --run DQN --env CartPole-v0  # add --eager for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -32,12 +32,12 @@ The ``rllib train`` command (same as the ``train.py`` script in the repo) has a 
 
     rllib train --help
     -or-
-    python ray/python/ray/rllib/train.py --help
+    python ray/rllib/train.py --help
 
 The most important options are for choosing the environment
 with ``--env`` (any OpenAI gym environment including ones registered by the user
 can be used) and for choosing the algorithm with ``--run``
-(available options are ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
+(available options are ``SAC``, ``PPO``, ``PG``, ``A2C``, ``A3C``, ``IMPALA``, ``ES``, ``DDPG``, ``DQN``, ``MARWIL``, ``APEX``, and ``APEX_DDPG``).
 
 Evaluating Trained Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -65,7 +65,7 @@ Configuration
 Specifying Parameters
 ~~~~~~~~~~~~~~~~~~~~~
 
-Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/trainer.py>`__. See the
+Each algorithm has specific hyperparameters that can be set with ``--config``, in addition to a number of `common hyperparameters <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__. See the
 `algorithms documentation <rllib-algorithms.html>`__ for more information.
 
 In an example below, we train A2C by specifying 8 workers through the config flag.
@@ -86,7 +86,7 @@ Common Parameters
 
 The following is a list of the common algorithm hyperparameters:
 
-.. literalinclude:: ../../python/ray/rllib/agents/trainer.py
+.. literalinclude:: ../../rllib/agents/trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -95,7 +95,7 @@ Tuned Examples
 ~~~~~~~~~~~~~~
 
 Some good hyperparameters and settings are available in
-`the repository <https://github.com/ray-project/ray/blob/master/python/ray/rllib/tuned_examples>`__
+`the repository <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__
 (some of them are tuned to run on GPUs). If you find better settings or tune
 an algorithm on a different domain, consider submitting a Pull Request!
 
@@ -110,7 +110,7 @@ Python API
 
 The Python API provides the needed flexibility for applying RLlib to new problems. You will need to use this API if you wish to use `custom environments, preprocessors, or models <rllib-models.html>`__ with RLlib.
 
-Here is an example of the basic usage (for a more complete example, see `custom_env.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__):
+Here is an example of the basic usage (for a more complete example, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__):
 
 .. code-block:: python
 
@@ -122,6 +122,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
+    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -156,6 +157,7 @@ All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This 
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
+            "eager": False,
         },
     )
 
@@ -176,15 +178,15 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#training-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_train_fn.py>`__.
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
-For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/policy_evaluator_custom_workflow.py>`__.
+For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
 Accessing Policy State
 ~~~~~~~~~~~~~~~~~~~~~~
-It is common to need to access a trainer's internal state, e.g., to set or get internal weights. In RLlib trainer state is replicated across multiple *policy evaluators* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``trainer.optimizer.foreach_evaluator()`` or ``trainer.optimizer.foreach_evaluator_with_index()``. These functions take a lambda function that is applied with the evaluator as an arg. You can also return values from these functions and those will be returned as a list.
+It is common to need to access a trainer's internal state, e.g., to set or get internal weights. In RLlib trainer state is replicated across multiple *rollout workers* (Ray actors) in the cluster. However, you can easily get and update this state between calls to ``train()`` via ``trainer.workers.foreach_worker()`` or ``trainer.workers.foreach_worker_with_index()``. These functions take a lambda function that is applied with the worker as an arg. You can also return values from these functions and those will be returned as a list.
 
-You can also access just the "master" copy of the trainer state through ``trainer.get_policy()`` or ``trainer.local_evaluator``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``trainer.get_policy().get_weights()``. This is also equivalent to ``trainer.local_evaluator.policy_map["default_policy"].get_weights()``:
+You can also access just the "master" copy of the trainer state through ``trainer.get_policy()`` or ``trainer.workers.local_worker()``, but note that updates here may not be immediately reflected in remote replicas if you have configured ``num_workers > 0``. For example, to access the weights of a local TF policy, you can run ``trainer.get_policy().get_weights()``. This is also equivalent to ``trainer.workers.local_worker().policy_map["default_policy"].get_weights()``:
 
 .. code-block:: python
 
@@ -192,13 +194,29 @@ You can also access just the "master" copy of the trainer state through ``traine
     trainer.get_policy().get_weights()
 
     # Same as above
-    trainer.local_evaluator.policy_map["default_policy"].get_weights()
+    trainer.workers.local_worker().policy_map["default_policy"].get_weights()
 
-    # Get list of weights of each evaluator, including remote replicas
-    trainer.optimizer.foreach_evaluator(lambda ev: ev.get_policy().get_weights())
+    # Get list of weights of each worker, including remote replicas
+    trainer.workers.foreach_worker(lambda ev: ev.get_policy().get_weights())
 
     # Same as above
-    trainer.optimizer.foreach_evaluator_with_index(lambda ev, i: ev.get_policy().get_weights())
+    trainer.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
+
+Accessing Model State
+~~~~~~~~~~~~~~~~~~~~~
+
+Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
+
+.. code-block:: python
+
+    >>> from ray.rllib.agents.dqn import DQNTrainer
+    >>> trainer = DQNTrainer(env="CartPole-v0")
+    >>> trainer.get_policy().model
+    <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
+    >>> trainer.get_policy().model.variables()
+    [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
+
+This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
@@ -231,7 +249,7 @@ Ray actors provide high levels of performance, so in more complex cases they can
 Callbacks and Custom Metrics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
+You can provide callback functions to be called at points during policy evaluation. These functions have access to an info dict containing state for the current `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__. Custom state can be stored for the `episode <https://github.com/ray-project/ray/blob/master/rllib/evaluation/episode.py>`__ in the ``info["episode"].user_data`` dict, and custom scalar metrics reported by saving values to the ``info["episode"].custom_metrics`` dict. These custom metrics will be aggregated and reported as part of training results. The following example (full code `here <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py>`__) logs a custom metric from the environment:
 
 .. code-block:: python
 
@@ -257,23 +275,39 @@ You can provide callback functions to be called at points during policy evaluati
         print("trainer.train() result: {} -> {} episodes".format(
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
+    def on_postprocess_traj(info):
+        episode = info["episode"]
+        batch = info["post_batch"]  # note: you can mutate this
+        print("postprocessed {} steps".format(batch.count))
+
     ray.init()
-    trials = tune.run(
+    analysis = tune.run(
         "PG",
         config={
             "env": "CartPole-v0",
             "callbacks": {
-                "on_episode_start": tune.function(on_episode_start),
-                "on_episode_step": tune.function(on_episode_step),
-                "on_episode_end": tune.function(on_episode_end),
-                "on_train_result": tune.function(on_train_result),
+                "on_episode_start": on_episode_start,
+                "on_episode_step": on_episode_step,
+                "on_episode_end": on_episode_end,
+                "on_train_result": on_train_result,
+                "on_postprocess_traj": on_postprocess_traj,
             },
         },
     )
 
+Visualizing Custom Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+Rewriting Trajectories
+~~~~~~~~~~~~~~~~~~~~~~
+
+Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+ * Backdating rewards to previous time steps (e.g., based on values in ``info``).
+ * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
 Example: Curriculum Learning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -299,7 +333,7 @@ Approach 1: Use the Trainer API and update the environment between calls to ``tr
                 phase = 1
             else:
                 phase = 0
-            trainer.optimizer.foreach_evaluator(
+            trainer.workers.foreach_worker(
                 lambda ev: ev.foreach_env(
                     lambda env: env.set_phase(phase)))
 
@@ -333,7 +367,7 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         else:
             phase = 0
         trainer = info["trainer"]
-        trainer.optimizer.foreach_evaluator(
+        trainer.workers.foreach_worker(
             lambda ev: ev.foreach_env(
                 lambda env: env.set_phase(phase)))
 
@@ -343,7 +377,7 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         config={
             "env": YourEnv,
             "callbacks": {
-                "on_train_result": tune.function(on_train_result),
+                "on_train_result": on_train_result,
             },
         },
     )
@@ -366,6 +400,13 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31401.video000000.mp4
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
+
+TensorFlow Eager
+~~~~~~~~~~~~~~~~
+
+Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it is slower than graph mode.
 
 Episode Traces
 ~~~~~~~~~~~~~~
@@ -407,4 +448,4 @@ In some cases (i.e., when interacting with an externally hosted simulator or pro
 .. autoclass:: ray.rllib.utils.policy_server.PolicyServer
     :members:
 
-For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.
+For a full client / server example that you can run, see the example `client script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__ and also the corresponding `server script <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__, here configured to serve a policy for the toy CartPole-v0 environment.

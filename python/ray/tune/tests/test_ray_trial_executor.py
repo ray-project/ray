@@ -11,7 +11,8 @@ from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, Checkpoint, Resources
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.resources import Resources
 
 
 class RayTrialExecutorTest(unittest.TestCase):

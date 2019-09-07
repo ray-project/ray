@@ -77,6 +77,19 @@ class RayActorError(RayError):
         return "The actor died unexpectedly before finishing this task."
 
 
+class RayletError(RayError):
+    """Indicates that the Raylet client has errored.
+
+    This exception can be thrown when the raylet is killed.
+    """
+
+    def __init__(self, client_exc):
+        self.client_exc = client_exc
+
+    def __str__(self):
+        return "The Raylet died with this message: {}".format(self.client_exc)
+
+
 class UnreconstructableError(RayError):
     """Indicates that an object is lost and cannot be reconstructed.
 
@@ -92,8 +105,14 @@ class UnreconstructableError(RayError):
         self.object_id = object_id
 
     def __str__(self):
-        return ("Object {} is lost (either evicted or explicitly deleted) and "
-                + "cannot be reconstructed.").format(self.object_id.hex())
+        return (
+            "Object {} is lost (either LRU evicted or deleted by user) and "
+            "cannot be reconstructed. Try increasing the object store "
+            "memory available with ray.init(object_store_memory=<bytes>) "
+            "or setting object store limits with "
+            "ray.remote(object_store_memory=<bytes>). See also: {}".format(
+                self.object_id.hex(),
+                "https://ray.readthedocs.io/en/latest/memory-management.html"))
 
 
 RAY_EXCEPTION_TYPES = [

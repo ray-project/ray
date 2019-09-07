@@ -31,13 +31,14 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory)
-ray.init(redis_address=cluster.redis_address)
+ray.init(address=cluster.address)
 
 # Run the workload.
 
 pbt = PopulationBasedTraining(
     time_attr="training_iteration",
-    reward_attr="episode_reward_mean",
+    metric="episode_reward_mean",
+    mode="max",
     perturbation_interval=10,
     hyperparam_mutations={
         "lr": [0.1, 0.01, 0.001, 0.0001],

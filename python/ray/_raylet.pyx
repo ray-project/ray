@@ -24,8 +24,8 @@ from ray.includes.common cimport (
 )
 from ray.includes.libraylet cimport (
     CRayletClient,
-    GCSProfileEventT,
-    GCSProfileTableDataT,
+    GCSProfileEvent,
+    GCSProfileTableData,
     ResourceMappingType,
     WaitResultPair,
 )
@@ -34,8 +34,9 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.task cimport CTaskSpecification
+from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+from ray.exceptions import RayletError
 from ray.utils import decode
 
 cimport cpython
@@ -57,7 +58,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     with gil:
         message = status.message().decode()
-        raise Exception(message)
+        raise RayletError(message)
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
@@ -80,22 +81,22 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
 cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
     result = []
     for i in range(object_ids.size()):
-        result.append(ObjectID(object_ids[i].binary()))
+        result.append(ObjectID(object_ids[i].Binary()))
     return result
 
 
 def compute_put_id(TaskID task_id, int64_t put_index):
-    if put_index < 1 or put_index > kMaxTaskPuts:
+    if put_index < 1 or put_index > <int64_t>CObjectID.MaxObjectIndex():
         raise ValueError("The range of 'put_index' should be [1, %d]"
-                         % kMaxTaskPuts)
-    return ObjectID(ComputePutId(task_id.native(), put_index).binary())
+                         % CObjectID.MaxObjectIndex())
+    return ObjectID(CObjectID.ForPut(task_id.native(), put_index, 0).Binary())
 
 
 def compute_task_id(ObjectID object_id):
-    return TaskID(ComputeTaskId(object_id.native()).binary())
+    return TaskID(object_id.native().TaskId().Binary())
 
 
-cdef c_bool is_simple_value(value, int *num_elements_contained):
+cdef c_bool is_simple_value(value, int64_t *num_elements_contained):
     num_elements_contained[0] += 1
 
     if num_elements_contained[0] >= RayConfig.instance().num_elements_limit():
@@ -169,7 +170,7 @@ def check_simple_value(value):
         True if the value should be send by value, False otherwise.
     """
 
-    cdef int num_elements_contained = 0
+    cdef int64_t num_elements_contained = 0
     return is_simple_value(value, &num_elements_contained)
 
 
@@ -219,31 +220,32 @@ cdef class RayletClient:
     cdef unique_ptr[CRayletClient] client
 
     def __cinit__(self, raylet_socket,
-                  ClientID client_id,
+                  WorkerID worker_id,
                   c_bool is_worker,
-                  DriverID driver_id):
+                  JobID job_id):
         # We know that we are using Python, so just skip the language
         # parameter.
         # TODO(suquark): Should we allow unicode chars in "raylet_socket"?
         self.client.reset(new CRayletClient(
-            raylet_socket.encode("ascii"), client_id.native(), is_worker,
-            driver_id.native(), LANGUAGE_PYTHON))
+            raylet_socket.encode("ascii"), worker_id.native(), is_worker,
+            job_id.native(), LANGUAGE_PYTHON))
 
     def disconnect(self):
         check_status(self.client.get().Disconnect())
 
-    def submit_task(self, Task task_spec):
+    def submit_task(self, TaskSpec task_spec):
+        cdef:
+            CObjectID c_id
         check_status(self.client.get().SubmitTask(
-            task_spec.execution_dependencies.get()[0],
             task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:
-            unique_ptr[CTaskSpecification] task_spec
+            unique_ptr[CTaskSpec] task_spec
 
         with nogil:
             check_status(self.client.get().GetTask(&task_spec))
-        return Task.make(task_spec)
+        return TaskSpec.make(task_spec)
 
     def task_done(self):
         check_status(self.client.get().TaskDone())
@@ -293,9 +295,9 @@ cdef class RayletClient:
             postincrement(iterator)
         return resources_dict
 
-    def push_error(self, DriverID driver_id, error_type, error_message,
+    def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
-        check_status(self.client.get().PushError(driver_id.native(),
+        check_status(self.client.get().PushError(job_id.native(),
                                                  error_type.encode("ascii"),
                                                  error_message.encode("ascii"),
                                                  timestamp))
@@ -303,19 +305,19 @@ cdef class RayletClient:
     def push_profile_events(self, component_type, UniqueID component_id,
                             node_ip_address, profile_data):
         cdef:
-            GCSProfileTableDataT profile_info
-            GCSProfileEventT *profile_event
+            GCSProfileTableData profile_info
+            GCSProfileEvent *profile_event
             c_string event_type
 
         if len(profile_data) == 0:
             return  # Short circuit if there are no profile events.
 
-        profile_info.component_type = component_type.encode("ascii")
-        profile_info.component_id = component_id.binary()
-        profile_info.node_ip_address = node_ip_address.encode("ascii")
+        profile_info.set_component_type(component_type.encode("ascii"))
+        profile_info.set_component_id(component_id.binary())
+        profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
 
         for py_profile_event in profile_data:
-            profile_event = new GCSProfileEventT()
+            profile_event = profile_info.add_profile_events()
             if not isinstance(py_profile_event, dict):
                 raise TypeError(
                     "Incorrect type for a profile event. Expected dict "
@@ -325,28 +327,22 @@ cdef class RayletClient:
             # that will cause segfaults in the node manager.
             for key_string, event_data in py_profile_event.items():
                 if key_string == "event_type":
-                    profile_event.event_type = event_data.encode("ascii")
-                    if profile_event.event_type.length() == 0:
+                    if len(event_data) == 0:
                         raise ValueError(
                             "'event_type' should not be a null string.")
+                    profile_event.set_event_type(event_data.encode("ascii"))
                 elif key_string == "start_time":
-                    profile_event.start_time = float(event_data)
+                    profile_event.set_start_time(float(event_data))
                 elif key_string == "end_time":
-                    profile_event.end_time = float(event_data)
+                    profile_event.set_end_time(float(event_data))
                 elif key_string == "extra_data":
-                    profile_event.extra_data = event_data.encode("ascii")
-                    if profile_event.extra_data.length() == 0:
+                    if len(event_data) == 0:
                         raise ValueError(
                             "'extra_data' should not be a null string.")
+                    profile_event.set_extra_data(event_data.encode("ascii"))
                 else:
                     raise ValueError(
                         "Unknown profile event key '%s'" % key_string)
-            # Note that profile_info.profile_events is a vector of unique
-            # pointers, so profile_event will be deallocated when profile_info
-            # goes out of scope. "emplace_back" of vector has not been
-            # supported by Cython
-            profile_info.profile_events.push_back(
-                unique_ptr[GCSProfileEventT](profile_event))
 
         check_status(self.client.get().PushProfileEvents(profile_info))
 
@@ -362,7 +358,7 @@ cdef class RayletClient:
         with nogil:
             check_status(self.client.get().PrepareActorCheckpoint(
                 c_actor_id, checkpoint_id))
-        return ActorCheckpointID(checkpoint_id.binary())
+        return ActorCheckpointID(checkpoint_id.Binary())
 
     def notify_actor_resumed_from_checkpoint(self, ActorID actor_id,
                                              ActorCheckpointID checkpoint_id):
@@ -370,7 +366,7 @@ cdef class RayletClient:
             actor_id.native(), checkpoint_id.native()))
 
     def set_resource(self, basestring resource_name, double capacity, ClientID client_id):
-        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.from_binary(client_id.binary()))
+        self.client.get().SetResource(resource_name.encode("ascii"), capacity, CClientID.FromBinary(client_id.binary()))
 
     @property
     def language(self):
@@ -378,11 +374,11 @@ cdef class RayletClient:
 
     @property
     def client_id(self):
-        return ClientID(self.client.get().GetClientID().binary())
+        return ClientID(self.client.get().GetWorkerID().Binary())
 
     @property
-    def driver_id(self):
-        return DriverID(self.client.get().GetDriverID().binary())
+    def job_id(self):
+        return JobID(self.client.get().GetJobID().Binary())
 
     @property
     def is_worker(self):

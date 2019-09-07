@@ -50,7 +50,7 @@ if __name__ == "__main__":
         reward_attr="neg_mean_loss",
         max_generation=2 if args.smoke_test else 10,
         population_size=10 if args.smoke_test else 50)
-    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    scheduler = AsyncHyperBandScheduler(metric="neg_mean_loss", mode="max")
     run(michalewicz_function,
         name="my_exp",
         search_alg=algo,

@@ -5,15 +5,6 @@ Since Python 3.5, it is possible to write concurrent code using the ``async/awai
 
 This document describes Ray's support for asyncio, which enables integration with popular async frameworks (e.g., aiohttp, aioredis, etc.) for high performance web and prediction serving.
 
-Starting Ray
-------------
-
-You must initialize Ray first.
-
-Please refer to `Starting Ray`_ for instructions.
-
-.. _`Starting Ray`: http://ray.readthedocs.io/en/latest/tutorial.html#starting-ray
-
 
 Converting Ray objects into asyncio futures
 -------------------------------------------

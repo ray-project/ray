@@ -1,6 +1,8 @@
 package org.ray.api;
 
 import java.util.List;
+
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 
 public interface Checkpointable {
@@ -10,7 +12,7 @@ public interface Checkpointable {
     /**
      * Actor's ID.
      */
-    public final UniqueId actorId;
+    public final ActorId actorId;
     /**
      * Number of tasks executed since last checkpoint.
      */
@@ -20,8 +22,8 @@ public interface Checkpointable {
      */
     public final long timeElapsedMsSinceLastCheckpoint;
 
-    public CheckpointContext(UniqueId actorId, int numTasksSinceLastCheckpoint,
-        long timeElapsedMsSinceLastCheckpoint) {
+    public CheckpointContext(ActorId actorId, int numTasksSinceLastCheckpoint,
+                             long timeElapsedMsSinceLastCheckpoint) {
       this.actorId = actorId;
       this.numTasksSinceLastCheckpoint = numTasksSinceLastCheckpoint;
       this.timeElapsedMsSinceLastCheckpoint = timeElapsedMsSinceLastCheckpoint;
@@ -67,7 +69,7 @@ public interface Checkpointable {
    * @param checkpointId An ID that represents this actor's current state in GCS. You should
    *     save this checkpoint ID together with actor's checkpoint data.
    */
-  void saveCheckpoint(UniqueId actorId, UniqueId checkpointId);
+  void saveCheckpoint(ActorId actorId, UniqueId checkpointId);
 
   /**
    * Load actor's previous checkpoint, and restore actor's state.
@@ -83,7 +85,7 @@ public interface Checkpointable {
    * @return The ID of the checkpoint from which the actor was resumed, or null if the actor should
    *     restart from the beginning.
    */
-  UniqueId loadCheckpoint(UniqueId actorId, List<Checkpoint> availableCheckpoints);
+  UniqueId loadCheckpoint(ActorId actorId, List<Checkpoint> availableCheckpoints);
 
   /**
    * Delete an expired checkpoint;
@@ -95,5 +97,5 @@ public interface Checkpointable {
    * @param actorId ID of the actor.
    * @param checkpointId ID of the checkpoint that has expired.
    */
-  void checkpointExpired(UniqueId actorId, UniqueId checkpointId);
+  void checkpointExpired(ActorId actorId, UniqueId checkpointId);
 }

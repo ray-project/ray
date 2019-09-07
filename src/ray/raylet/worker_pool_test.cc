@@ -1,6 +1,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
 #include "ray/raylet/worker_pool.h"
 
@@ -14,20 +15,37 @@ int MAXIMUM_STARTUP_CONCURRENCY = 5;
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY,
-                   {{Language::PYTHON, {"dummy_py_worker_command"}},
-                    {Language::JAVA, {"dummy_java_worker_command"}}}),
+      : WorkerPoolMock({{Language::PYTHON, {"dummy_py_worker_command"}},
+                        {Language::JAVA, {"dummy_java_worker_command"}}}) {}
+
+  explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
+      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, nullptr,
+                   worker_commands),
         last_worker_pid_(0) {}
+
   ~WorkerPoolMock() {
     // Avoid killing real processes
     states_by_lang_.clear();
   }
 
-  pid_t StartProcess(const std::vector<const char *> &worker_command_args) override {
-    return ++last_worker_pid_;
+  void StartWorkerProcess(const Language &language,
+                          const std::vector<std::string> &dynamic_options = {}) {
+    WorkerPool::StartWorkerProcess(language, dynamic_options);
   }
 
+  pid_t StartProcess(const std::vector<std::string> &worker_command_args) override {
+    last_worker_pid_ += 1;
+    worker_commands_by_pid[last_worker_pid_] = worker_command_args;
+    return last_worker_pid_;
+  }
+
+  void WarnAboutSize() override {}
+
   pid_t LastStartedWorkerProcess() const { return last_worker_pid_; }
+
+  const std::vector<std::string> &GetWorkerCommand(int pid) {
+    return worker_commands_by_pid[pid];
+  }
 
   int NumWorkerProcessesStarting() const {
     int total = 0;
@@ -39,11 +57,17 @@ class WorkerPoolMock : public WorkerPool {
 
  private:
   int last_worker_pid_;
+  // The worker commands by pid.
+  std::unordered_map<int, std::vector<std::string>> worker_commands_by_pid;
 };
 
 class WorkerPoolTest : public ::testing::Test {
  public:
-  WorkerPoolTest() : worker_pool_(), io_service_(), error_message_type_(1) {}
+  WorkerPoolTest()
+      : worker_pool_(),
+        io_service_(),
+        error_message_type_(1),
+        client_call_manager_(io_service_) {}
 
   std::shared_ptr<Worker> CreateWorker(pid_t pid,
                                        const Language &language = Language::PYTHON) {
@@ -58,13 +82,20 @@ class WorkerPoolTest : public ::testing::Test {
     auto client =
         LocalClientConnection::Create(client_handler, message_handler, std::move(socket),
                                       "worker", {}, error_message_type_);
-    return std::shared_ptr<Worker>(new Worker(pid, language, client));
+    return std::shared_ptr<Worker>(new Worker(WorkerID::FromRandom(), pid, language, -1,
+                                              client, client_call_manager_));
+  }
+
+  void SetWorkerCommands(const WorkerCommandMap &worker_commands) {
+    WorkerPoolMock worker_pool(worker_commands);
+    this->worker_pool_ = std::move(worker_pool);
   }
 
  protected:
   WorkerPoolMock worker_pool_;
   boost::asio::io_service io_service_;
   int64_t error_message_type_;
+  rpc::ClientCallManager client_call_manager_;
 
  private:
   void HandleNewClient(LocalClientConnection &){};
@@ -72,12 +103,24 @@ class WorkerPoolTest : public ::testing::Test {
 };
 
 static inline TaskSpecification ExampleTaskSpec(
-    const ActorID actor_id = ActorID::nil(),
-    const Language &language = Language::PYTHON) {
-  std::vector<std::string> function_descriptor(3);
-  return TaskSpecification(DriverID::nil(), TaskID::nil(), 0, ActorID::nil(),
-                           ObjectID::nil(), 0, actor_id, ActorHandleID::nil(), 0, {}, {},
-                           0, {}, {}, language, function_descriptor);
+    const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
+    const ActorID actor_creation_id = ActorID::Nil(),
+    const std::vector<std::string> &dynamic_worker_options = {}) {
+  rpc::TaskSpec message;
+  message.set_language(language);
+  if (!actor_id.IsNil()) {
+    message.set_type(TaskType::ACTOR_TASK);
+    message.mutable_actor_task_spec()->set_actor_id(actor_id.Binary());
+  } else if (!actor_creation_id.IsNil()) {
+    message.set_type(TaskType::ACTOR_CREATION_TASK);
+    message.mutable_actor_creation_task_spec()->set_actor_id(actor_creation_id.Binary());
+    for (const auto &option : dynamic_worker_options) {
+      message.mutable_actor_creation_task_spec()->add_dynamic_worker_options(option);
+    }
+  } else {
+    message.set_type(TaskType::NORMAL_TASK);
+  }
+  return TaskSpecification(std::move(message));
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
@@ -93,7 +136,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), nullptr);
-    worker_pool_.RegisterWorker(worker);
+    RAY_CHECK_OK(worker_pool_.RegisterWorker(worker));
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_.GetRegisteredWorker(worker->Connection()), worker);
   }
@@ -155,7 +198,8 @@ TEST_F(WorkerPoolTest, PopActorWorker) {
   // Assign an actor ID to the worker.
   const auto task_spec = ExampleTaskSpec();
   auto actor = worker_pool_.PopWorker(task_spec);
-  auto actor_id = ActorID::from_random();
+  const auto job_id = JobID::FromInt(1);
+  auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
   actor->AssignActorId(actor_id);
   worker_pool_.PushWorker(actor);
 
@@ -173,10 +217,10 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   auto py_worker = CreateWorker(1234, Language::PYTHON);
   worker_pool_.PushWorker(py_worker);
   // Check that no worker will be popped if the given task is a Java task
-  const auto java_task_spec = ExampleTaskSpec(ActorID::nil(), Language::JAVA);
+  const auto java_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::JAVA);
   ASSERT_EQ(worker_pool_.PopWorker(java_task_spec), nullptr);
   // Check that the worker can be popped if the given task is a Python task
-  const auto py_task_spec = ExampleTaskSpec(ActorID::nil(), Language::PYTHON);
+  const auto py_task_spec = ExampleTaskSpec(ActorID::Nil(), Language::PYTHON);
   ASSERT_NE(worker_pool_.PopWorker(py_task_spec), nullptr);
 
   // Create a Java Worker, and add it to the pool
@@ -184,6 +228,23 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
   worker_pool_.PushWorker(java_worker);
   // Check that the worker will be popped now for Java task
   ASSERT_NE(worker_pool_.PopWorker(java_task_spec), nullptr);
+}
+
+TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
+  const std::vector<std::string> java_worker_command = {
+      "RAY_WORKER_OPTION_0", "dummy_java_worker_command", "RAY_WORKER_OPTION_1"};
+  SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
+                     {Language::JAVA, java_worker_command}});
+
+  const auto job_id = JobID::FromInt(1);
+  TaskSpecification task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::JAVA,
+      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
+  worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
+  const auto real_command =
+      worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
+  ASSERT_EQ(real_command, std::vector<std::string>(
+                              {"test_op_0", "dummy_java_worker_command", "test_op_1"}));
 }
 
 }  // namespace raylet

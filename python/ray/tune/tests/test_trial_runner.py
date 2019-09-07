@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import glob
 import os
+import numpy as np
 import shutil
 import sys
 import tempfile
@@ -22,13 +24,13 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
                              TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
-                             TIME_THIS_ITER_S, TIME_TOTAL_S)
+                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
 from ray.tune.logger import Logger
-from ray.tune.util import pin_in_object_store, get_pinned_object
+from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
-from ray.tune.trial import (Trial, ExportFormat, Resources, resources_to_json,
-                            json_to_resources)
+from ray.tune.trial import Trial, ExportFormat
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.resources import Resources, json_to_resources, resources_to_json
 from ray.tune.suggest import grid_search, BasicVariantGenerator
 from ray.tune.suggest.suggestion import (_MockSuggestionAlgorithm,
                                          SuggestionAlgorithm)
@@ -43,7 +45,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
         ray.shutdown()
@@ -114,6 +116,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         NO_COMPARE_FIELDS = {
             HOSTNAME,
             NODE_IP,
+            TRIAL_ID,
             PID,
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
@@ -315,21 +318,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             }
         })
 
-    def testUploadDirNone(self):
-        def train(config, reporter):
-            reporter(timesteps_total=1)
-
-        [trial] = run_experiments({
-            "foo": {
-                "run": train,
-                "upload_dir": None,
-                "config": {
-                    "a": "b"
-                },
-            }
-        })
-        self.assertFalse(trial.upload_dir)
-
     def testLogdirStartingWithTilde(self):
         local_dir = "~/ray_results/local_dir"
 
@@ -441,6 +429,23 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
+    def testNestedStoppingReturn(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test={"test1": {"test2": i}})
+
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(
+                train, stop={
+                    "test": {
+                        "test1": {
+                            "test2": 6
+                        }
+                    }
+                }).trials
+        [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
+        self.assertEqual(trial.last_result["training_iteration"], 7)
+
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)
@@ -454,6 +459,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
+
+    def testReporterNoUsage(self):
+        def run_task(config, reporter):
+            print("hello")
+
+        experiment = Experiment(run=run_task, name="ray_crash_repro")
+        [trial] = ray.tune.run(experiment).trials
+        print(trial.last_result)
+        self.assertEqual(trial.last_result[DONE], True)
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -511,6 +525,53 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
+
+    def testNestedResults(self):
+        def create_result(i):
+            return {"test": {"1": {"2": {"3": i, "4": False}}}}
+
+        flattened_keys = list(flatten_dict(create_result(0)))
+
+        class _MockScheduler(FIFOScheduler):
+            results = []
+
+            def on_trial_result(self, trial_runner, trial, result):
+                self.results += [result]
+                return TrialScheduler.CONTINUE
+
+            def on_trial_complete(self, trial_runner, trial, result):
+                self.complete_result = result
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(**create_result(i))
+
+        algo = _MockSuggestionAlgorithm()
+        scheduler = _MockScheduler()
+        [trial] = tune.run(
+            train,
+            scheduler=scheduler,
+            search_alg=algo,
+            stop={
+                "test/1/2/3": 20
+            }).trials
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["3"], 20)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["4"], False)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 21)
+        self.assertEqual(len(scheduler.results), 20)
+        self.assertTrue(
+            all(
+                set(result) >= set(flattened_keys)
+                for result in scheduler.results))
+        self.assertTrue(set(scheduler.complete_result) >= set(flattened_keys))
+        self.assertEqual(len(algo.results), 20)
+        self.assertTrue(
+            all(set(result) >= set(flattened_keys) for result in algo.results))
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"1/2/3": 20})
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"test": 1}).trials
 
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
@@ -702,9 +763,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 
 class RunExperimentTest(unittest.TestCase):
-    def setUp(self):
-        ray.init()
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -914,58 +972,204 @@ class RunExperimentTest(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
-                "trial_name_creator": tune.function(
-                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
+                "trial_name_creator":
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id)
             }
         })
         self.assertEquals(
             str(trial), "{}_{}_321".format(trial.trainable_name,
                                            trial.trial_id))
 
-    def testSyncFunction(self):
-        def fail_sync_local():
-            [trial] = run_experiments({
-                "foo": {
-                    "run": "__fake",
+
+class TestSyncFunctionality(unittest.TestCase):
+    def setUp(self):
+        ray.init()
+
+    def tearDown(self):
+        ray.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    def testNoUploadDir(self):
+        """No Upload Dir is given."""
+        with self.assertRaises(AssertionError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_cloud": "echo {source} {target}"
+                }).trials
+
+    @patch("ray.tune.syncer.S3_PREFIX", "test")
+    def testCloudProperString(self):
+        with self.assertRaises(ValueError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_function": "ls {remote_dir}"
-                }
-            })
+                    "sync_to_cloud": "ls {target}"
+                }).trials
 
-        self.assertRaises(AssertionError, fail_sync_local)
-
-        def fail_sync_remote():
-            [trial] = run_experiments({
-                "foo": {
-                    "run": "__fake",
+        with self.assertRaises(ValueError):
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
                     "stop": {
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_function": "ls {local_dir}"
-                }
-            })
+                    "sync_to_cloud": "ls {source}"
+                }).trials
 
-        self.assertRaises(AssertionError, fail_sync_remote)
+        tmpdir = tempfile.mkdtemp()
+        logfile = os.path.join(tmpdir, "test.log")
 
-        def sync_func(local, remote):
-            with open(os.path.join(local, "test.log"), "w") as f:
-                f.write(remote)
-
-        [trial] = run_experiments({
-            "foo": {
-                "run": "__fake",
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            **{
                 "stop": {
                     "training_iteration": 1
                 },
                 "upload_dir": "test",
-                "sync_function": tune.function(sync_func)
-            }
-        })
-        self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
+                "sync_to_cloud": "echo {source} {target} > " + logfile
+            }).trials
+        with open(logfile) as f:
+            lines = f.read()
+            self.assertTrue("test" in lines)
+        shutil.rmtree(tmpdir)
+
+    def testClusterProperString(self):
+        """Tests that invalid commands throw.."""
+        with self.assertRaises(TuneError):
+            # This raises TuneError because logger is init in safe zone.
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "ls {target}"
+                }).trials
+
+        with self.assertRaises(TuneError):
+            # This raises TuneError because logger is init in safe zone.
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "ls {source}"
+                }).trials
+
+        with patch("ray.tune.syncer.CommandSyncer.sync_function"
+                   ) as mock_fn, patch(
+                       "ray.services.get_node_ip_address") as mock_sync:
+            mock_sync.return_value = "0.0.0.0"
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "sync_to_driver": "echo {source} {target}"
+                }).trials
+            self.assertGreater(mock_fn.call_count, 0)
+
+    def testCloudFunctions(self):
+        tmpdir = tempfile.mkdtemp()
+        tmpdir2 = tempfile.mkdtemp()
+        os.mkdir(os.path.join(tmpdir2, "foo"))
+
+        def sync_func(local, remote):
+            for filename in glob.glob(os.path.join(local, "*.json")):
+                shutil.copy(filename, remote)
+
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            local_dir=tmpdir,
+            stop={
+                "training_iteration": 1
+            },
+            upload_dir=tmpdir2,
+            sync_to_cloud=sync_func).trials
+        test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
+        self.assertTrue(test_file_path)
+        shutil.rmtree(tmpdir)
+        shutil.rmtree(tmpdir2)
+
+    def testClusterSyncFunction(self):
+        def sync_func_driver(source, target):
+            assert ":" in source, "Source not a remote path."
+            assert ":" not in target, "Target is supposed to be local."
+            with open(os.path.join(target, "test.log2"), "w") as f:
+                print("writing to", f.name)
+                f.write(source)
+
+        [trial] = tune.run(
+            "__fake",
+            name="foo",
+            max_failures=0,
+            stop={
+                "training_iteration": 1
+            },
+            sync_to_driver=sync_func_driver).trials
+        test_file_path = os.path.join(trial.logdir, "test.log2")
+        self.assertFalse(os.path.exists(test_file_path))
+
+        with patch("ray.services.get_node_ip_address") as mock_sync:
+            mock_sync.return_value = "0.0.0.0"
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                stop={
+                    "training_iteration": 1
+                },
+                sync_to_driver=sync_func_driver).trials
+        test_file_path = os.path.join(trial.logdir, "test.log2")
+        self.assertTrue(os.path.exists(test_file_path))
+        os.remove(test_file_path)
+
+    def testNoSync(self):
+        def sync_func(source, target):
+            pass
+
+        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_sync:
+            [trial] = tune.run(
+                "__fake",
+                name="foo",
+                max_failures=0,
+                **{
+                    "stop": {
+                        "training_iteration": 1
+                    },
+                    "upload_dir": "test",
+                    "sync_to_driver": sync_func,
+                    "sync_to_cloud": sync_func
+                }).trials
+            self.assertEqual(mock_sync.call_count, 0)
 
 
 class VariantGeneratorTest(unittest.TestCase):
@@ -1095,6 +1299,17 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
 
+    def testLogUniform(self):
+        sampler = tune.loguniform(1e-10, 1e-1).func
+        results = [sampler(None) for i in range(1000)]
+        assert abs(np.log(min(results)) / np.log(10) - -10) < 0.1
+        assert abs(np.log(max(results)) / np.log(10) - -1) < 0.1
+
+        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e).func
+        results_e = [sampler_e(None) for i in range(1000)]
+        assert abs(np.log(min(results_e)) - -4) < 0.1
+        assert abs(np.log(max(results_e)) - 1) < 0.1
+
     def test_resolve_dict(self):
         config = {
             "a": {
@@ -1218,7 +1433,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1239,7 +1454,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCustomResources(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1260,7 +1475,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testExtraCustomResources(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1283,7 +1498,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCustomResources2(self):
         ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         resource1 = Resources(cpu=1, gpu=0, extra_custom_resources={"a": 2})
         self.assertTrue(runner.has_resources(resource1))
         resource2 = Resources(cpu=1, gpu=0, custom_resources={"a": 2})
@@ -1295,7 +1510,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFractionalGpus(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=0.5),
         }
@@ -1318,7 +1533,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1347,7 +1562,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testMultiStepRun(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -1377,7 +1592,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testMultiStepRun2(self):
         """Checks that runner.step throws when overstepping."""
         ray.init(num_cpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1411,8 +1626,7 @@ class TrialRunnerTest(unittest.TestCase):
                     executor.start_trial(trial)
                 return TrialScheduler.CONTINUE
 
-        runner = TrialRunner(
-            BasicVariantGenerator(), scheduler=ChangingScheduler())
+        runner = TrialRunner(scheduler=ChangingScheduler())
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1434,7 +1648,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1456,7 +1670,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testThrowOnOverstep(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         runner.step()
         self.assertRaises(TuneError, runner.step)
 
@@ -1532,7 +1746,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        with patch("ray.global_state.cluster_resources") as resource_mock:
+        with patch("ray.cluster_resources") as resource_mock:
             resource_mock.return_value = {"CPU": 1, "GPU": 1}
             runner.step()
             self.assertEqual(trials[0].status, Trial.RUNNING)
@@ -1550,7 +1764,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testFailureRecoveryMaxFailures(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
             "checkpoint_freq": 1,
@@ -1579,7 +1793,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -1610,7 +1824,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testRestoreMetricsAfterCheckpointing(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "resources": Resources(cpu=1, gpu=1),
         }
@@ -1642,7 +1856,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testCheckpointingAtEnd(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1663,7 +1877,7 @@ class TrialRunnerTest(unittest.TestCase):
     def testResultDone(self):
         """Tests that last_result is marked `done` after trial is complete."""
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1682,7 +1896,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testPauseThenResume(self):
         ray.init(num_cpus=1, num_gpus=1)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 2
@@ -1713,7 +1927,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testStepHook(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
 
         def on_step_begin(self):
             self._update_avail_resources()
@@ -1743,7 +1957,7 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testStopTrial(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner(BasicVariantGenerator())
+        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -1953,8 +2167,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         trials = [
             Trial(
                 "__fake",
@@ -1993,7 +2206,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEquals(len(runner.trial_executor.get_checkpoints()), 3)
         self.assertEquals(trials[2].status, Trial.RUNNING)
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for tid in ["trial_terminate", "trial_fail"]:
             original_trial = runner.get_trial(tid)
             restored_trial = runner2.get_trial(tid)
@@ -2013,9 +2226,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=3)
         tmpdir = tempfile.mkdtemp()
 
-        runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
-
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(
             Trial(
                 "__fake",
@@ -2046,7 +2257,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.step()
         runner.step()
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         new_trials = runner2.get_trials()
         self.assertEquals(len(new_trials), 3)
         self.assertTrue(
@@ -2062,21 +2273,18 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial(
             "__fake",
-            config={
-                "callbacks": {
-                    "on_episode_start": tune.function(lambda i: i),
-                }
-            },
+            config={"callbacks": {
+                "on_episode_start": lambda i: i,
+            }},
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
         # force checkpoint
         runner.checkpoint()
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         new_trial = runner2.get_trials()[0]
         self.assertTrue("callbacks" in new_trial.config)
         self.assertTrue("on_episode_start" in new_trial.config["callbacks"])
@@ -2091,8 +2299,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial("__fake", checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
-        runner = TrialRunner(
-            BasicVariantGenerator(), metadata_checkpoint_dir=tmpdir)
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
         runner.add_trial(trial)
         for i in range(5):
             runner.step()
@@ -2100,13 +2307,36 @@ class TrialRunnerTest(unittest.TestCase):
         runner.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 1)
 
-        runner2 = TrialRunner.restore(tmpdir)
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
         for i in range(5):
             runner2.step()
         self.assertEquals(count_checkpoints(tmpdir), 2)
 
         runner2.checkpoint()
         self.assertEquals(count_checkpoints(tmpdir), 2)
+        shutil.rmtree(tmpdir)
+
+    def testUserCheckpoint(self):
+        ray.init(num_cpus=3)
+        tmpdir = tempfile.mkdtemp()
+        runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)
+        runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 2}))
+        trials = runner.get_trials()
+
+        runner.step()
+        self.assertEqual(trials[0].status, Trial.RUNNING)
+        self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
+        runner.step()  # 0
+        self.assertFalse(trials[0].has_checkpoint())
+        runner.step()  # 1
+        self.assertFalse(trials[0].has_checkpoint())
+        runner.step()  # 2
+        self.assertTrue(trials[0].has_checkpoint())
+
+        runner2 = TrialRunner(resume="LOCAL", local_checkpoint_dir=tmpdir)
+        runner2.step()
+        trials2 = runner2.get_trials()
+        self.assertEqual(ray.get(trials2[0].runner.get_info.remote()), 1)
         shutil.rmtree(tmpdir)
 
 

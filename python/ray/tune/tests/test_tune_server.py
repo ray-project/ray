@@ -8,11 +8,9 @@ import subprocess
 import json
 
 import ray
-from ray import tune
 from ray.rllib import _register_all
 from ray.tune.trial import Trial, Resources
 from ray.tune.web_server import TuneClient
-from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial_runner import TrialRunner
 
 
@@ -34,8 +32,7 @@ class TuneServerSuite(unittest.TestCase):
     def basicSetup(self):
         ray.init(num_cpus=4, num_gpus=1)
         port = get_valid_port()
-        self.runner = TrialRunner(
-            BasicVariantGenerator(), launch_web_server=True, server_port=port)
+        self.runner = TrialRunner(launch_web_server=True, server_port=port)
         runner = self.runner
         kwargs = {
             "stopping_criterion": {
@@ -96,11 +93,9 @@ class TuneServerSuite(unittest.TestCase):
             "__fake",
             trial_id="function_trial",
             stopping_criterion={"training_iteration": 3},
-            config={
-                "callbacks": {
-                    "on_episode_start": tune.function(lambda x: None)
-                }
-            })
+            config={"callbacks": {
+                "on_episode_start": lambda x: None
+            }})
         runner.add_trial(test_trial)
 
         for i in range(3):

@@ -51,7 +51,7 @@ def format_error_message(exception_message, task_exception=False):
     return "\n".join(lines)
 
 
-def push_error_to_driver(worker, error_type, message, driver_id=None):
+def push_error_to_driver(worker, error_type, message, job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Args:
@@ -59,19 +59,19 @@ def push_error_to_driver(worker, error_type, message, driver_id=None):
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
-    worker.raylet_client.push_error(driver_id, error_type, message,
-                                    time.time())
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
+    worker.raylet_client.push_error(job_id, error_type, message, time.time())
 
 
 def push_error_to_driver_through_redis(redis_client,
                                        error_type,
                                        message,
-                                       driver_id=None):
+                                       job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -84,19 +84,20 @@ def push_error_to_driver_through_redis(redis_client,
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
-        driver_id: The ID of the driver to push the error message to. If this
+        job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
     """
-    if driver_id is None:
-        driver_id = ray.DriverID.nil()
+    if job_id is None:
+        job_id = ray.JobID.nil()
+    assert isinstance(job_id, ray.JobID)
     # Do everything in Python and through the Python Redis client instead
     # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(driver_id, error_type,
+    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
                                                        message, time.time())
-    redis_client.execute_command("RAY.TABLE_APPEND",
-                                 ray.gcs_utils.TablePrefix.ERROR_INFO,
-                                 ray.gcs_utils.TablePubsub.ERROR_INFO,
-                                 driver_id.binary(), error_data)
+    redis_client.execute_command(
+        "RAY.TABLE_APPEND", ray.gcs_utils.TablePrefix.Value("ERROR_INFO"),
+        ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB"), job_id.binary(),
+        error_data)
 
 
 def is_cython(obj):
@@ -216,6 +217,10 @@ def binary_to_object_id(binary_object_id):
     return ray.ObjectID(binary_object_id)
 
 
+def binary_to_task_id(binary_task_id):
+    return ray.TaskID(binary_task_id)
+
+
 def binary_to_hex(identifier):
     hex_identifier = binascii.hexlify(identifier)
     if sys.version_info >= (3, 0):
@@ -225,6 +230,20 @@ def binary_to_hex(identifier):
 
 def hex_to_binary(hex_identifier):
     return binascii.unhexlify(hex_identifier)
+
+
+# TODO(qwang): Remove these hepler functions
+# once we separate `WorkerID` from `UniqueID`.
+def compute_job_id_from_driver(driver_id):
+    assert isinstance(driver_id, ray.WorkerID)
+    return ray.JobID(driver_id.binary()[0:ray.JobID.size()])
+
+
+def compute_driver_id_from_job(job_id):
+    assert isinstance(job_id, ray.JobID)
+    rest_length = ray_constants.ID_SIZE - job_id.size()
+    driver_id_str = job_id.binary() + (rest_length * b"\xff")
+    return ray.WorkerID(driver_id_str)
 
 
 def get_cuda_visible_devices():
@@ -254,9 +273,11 @@ def set_cuda_visible_devices(gpu_ids):
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
 
 
-def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
-                                      default_resources, runtime_num_cpus,
-                                      runtime_num_gpus, runtime_resources):
+def resources_from_resource_arguments(
+        default_num_cpus, default_num_gpus, default_memory,
+        default_object_store_memory, default_resources, runtime_num_cpus,
+        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
+        runtime_resources):
     """Determine a task's resource requirements.
 
     Args:
@@ -264,12 +285,19 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
             or actor method.
         default_num_gpus: The default number of GPUs required by this function
             or actor method.
+        default_memory: The default heap memory required by this function
+            or actor method.
+        default_object_store_memory: The default object store memory required
+            by this function or actor method.
         default_resources: The default custom resources required by this
             function or actor method.
         runtime_num_cpus: The number of CPUs requested when the task was
             invoked.
         runtime_num_gpus: The number of GPUs requested when the task was
             invoked.
+        runtime_memory: The heap memory requested when the task was invoked.
+        runtime_object_store_memory: The object store memory requested when
+            the task was invoked.
         runtime_resources: The custom resources requested when the task was
             invoked.
 
@@ -286,6 +314,9 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
     if "CPU" in resources or "GPU" in resources:
         raise ValueError("The resources dictionary must not "
                          "contain the key 'CPU' or 'GPU'")
+    elif "memory" in resources or "object_store_memory" in resources:
+        raise ValueError("The resources dictionary must not "
+                         "contain the key 'memory' or 'object_store_memory'")
 
     assert default_num_cpus is not None
     resources["CPU"] = (default_num_cpus
@@ -295,6 +326,16 @@ def resources_from_resource_arguments(default_num_cpus, default_num_gpus,
         resources["GPU"] = runtime_num_gpus
     elif default_num_gpus is not None:
         resources["GPU"] = default_num_gpus
+
+    memory = default_memory or runtime_memory
+    object_store_memory = (default_object_store_memory
+                           or runtime_object_store_memory)
+    if memory is not None:
+        resources["memory"] = ray_constants.to_memory_units(
+            memory, round_up=True)
+    if object_store_memory is not None:
+        resources["object_store_memory"] = ray_constants.to_memory_units(
+            object_store_memory, round_up=True)
 
     return resources
 
@@ -395,6 +436,41 @@ def get_system_memory():
         return memory_in_bytes
 
 
+def estimate_available_memory():
+    """Return the currently available amount of system memory in bytes.
+
+    Returns:
+        The total amount of available memory in bytes. It may be an
+        overestimate if psutil is not installed.
+    """
+
+    # check cgroup memory first
+    try:
+        with open("/sys/fs/cgroup/memory/memory.usage_in_bytes", "rb") as f:
+            cgroup_memory_usage = int(f.read())
+    except IOError:
+        cgroup_memory_usage = None
+
+    if cgroup_memory_usage is not None:
+        return get_system_memory() - cgroup_memory_usage
+
+    # Use psutil if it is available.
+    try:
+        import psutil
+        return psutil.virtual_memory().available
+    except ImportError:
+        pass
+
+    # Handle Linux.
+    if sys.platform == "linux" or sys.platform == "linux2":
+        bytes_in_kilobyte = 1024
+        return (
+            vmstat("total memory") - vmstat("used memory")) * bytes_in_kilobyte
+
+    # Give up
+    return get_system_memory()
+
+
 def get_shared_memory_bytes():
     """Get the size of the shared memory file system.
 
@@ -439,7 +515,7 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
         worker,
         ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
         warning_message,
-        driver_id=worker.task_driver_id)
+        job_id=worker.current_job_id)
 
 
 class _ThreadSafeProxy(object):
@@ -538,3 +614,34 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)
+
+
+def try_to_symlink(symlink_path, target_path):
+    """Attempt to create a symlink.
+
+    If the symlink path exists and isn't a symlink, the symlink will not be
+    created. If a symlink exists in the path, it will be attempted to be
+    removed and replaced.
+
+    Args:
+        symlink_path: The path at which to create the symlink.
+        target_path: The path the symlink should point to.
+    """
+    symlink_path = os.path.expanduser(symlink_path)
+    target_path = os.path.expanduser(target_path)
+
+    if os.path.exists(symlink_path):
+        if os.path.islink(symlink_path):
+            # Try to remove existing symlink.
+            try:
+                os.remove(symlink_path)
+            except OSError:
+                return
+        else:
+            # There's an existing non-symlink file, don't overwrite it.
+            return
+
+    try:
+        os.symlink(target_path, symlink_path)
+    except OSError:
+        return

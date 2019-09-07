@@ -33,4 +33,5 @@ public class HelloWorldTest extends BaseTest {
     String helloWorld = Ray.call(HelloWorldTest::merge, hello, world).get();
     Assert.assertEquals("hello,world!", helloWorld);
   }
+
 }

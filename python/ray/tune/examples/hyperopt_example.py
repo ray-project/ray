@@ -20,8 +20,7 @@ def easy_objective(config, reporter):
     for i in range(config["iterations"]):
         reporter(
             timesteps_total=i,
-            neg_mean_loss=-(config["height"] - 14)**2 +
-            abs(config["width"] - 3))
+            mean_loss=(config["height"] - 14)**2 - abs(config["width"] - 3))
         time.sleep(0.02)
 
 
@@ -66,7 +65,8 @@ if __name__ == "__main__":
     algo = HyperOptSearch(
         space,
         max_concurrent=4,
-        reward_attr="neg_mean_loss",
+        metric="mean_loss",
+        mode="min",
         points_to_evaluate=current_best_params)
-    scheduler = AsyncHyperBandScheduler(reward_attr="neg_mean_loss")
+    scheduler = AsyncHyperBandScheduler(metric="mean_loss", mode="min")
     run(easy_objective, search_alg=algo, scheduler=scheduler, **config)

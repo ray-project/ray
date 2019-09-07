@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+message ForwardTaskRequest {
+  // The ID of the task to be forwarded.
+  bytes task_id = 1;
+  // The tasks in the uncommitted lineage of the forwarded task. This
+  // should include task_id.
+  repeated Task uncommitted_tasks = 2;
+}
+
+message ForwardTaskReply {
+}
+
+// Service for inter-node-manager communication.
+service NodeManagerService {
+  // Forward a task and its uncommitted lineage to the remote node manager.
+  rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
+}

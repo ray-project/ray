@@ -5,6 +5,8 @@ from __future__ import print_function
 import numpy as np
 import copy
 import logging
+from functools import partial
+import pickle
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
     hyperopt_logger.setLevel(logging.WARNING)
@@ -15,6 +17,8 @@ except ImportError:
 from ray.tune.error import TuneError
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
+logger = logging.getLogger(__name__)
+
 
 class HyperOptSearch(SuggestionAlgorithm):
     """A wrapper around HyperOpt to provide trial suggestions.
@@ -22,7 +26,9 @@ class HyperOptSearch(SuggestionAlgorithm):
     Requires HyperOpt to be installed from source.
     Uses the Tree-structured Parzen Estimators algorithm, although can be
     trivially extended to support any algorithm HyperOpt uses. Externally
-    added trials will not be tracked by HyperOpt.
+    added trials will not be tracked by HyperOpt. Trials of the current run
+    can be saved using save method, trials of a previous run can be loaded
+    using restore method, thus enabling a warm start feature.
 
     Parameters:
         space (dict): HyperOpt configuration. Parameters will be sampled
@@ -30,8 +36,9 @@ class HyperOptSearch(SuggestionAlgorithm):
             parameters generated in the variant generation process.
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want hyperopt to run first to help the TPE algorithm
@@ -39,6 +46,13 @@ class HyperOptSearch(SuggestionAlgorithm):
             a list of dict of hyperopt-named variables.
             Choice variables should be indicated by their index in the
             list (see example)
+        n_initial_points (int): number of random evaluations of the
+            objective function before starting to aproximate it with
+            tree parzen estimators. Defaults to 20.
+        random_state_seed (int, array_like, None): seed for reproducible
+            results. Defaults to None.
+        gamma (float in range (0,1)): parameter governing the tree parzen
+            estimators suggestion algorithm. Defaults to 0.25.
 
     Example:
         >>> space = {
@@ -52,22 +66,48 @@ class HyperOptSearch(SuggestionAlgorithm):
         >>>     'activation': 0, # The index of "relu"
         >>> }]
         >>> algo = HyperOptSearch(
-        >>>     space, max_concurrent=4, reward_attr="neg_mean_loss",
+        >>>     space, max_concurrent=4, metric="mean_loss", mode="min",
         >>>     points_to_evaluate=current_best_params)
     """
 
     def __init__(self,
                  space,
                  max_concurrent=10,
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  points_to_evaluate=None,
+                 n_initial_points=20,
+                 random_state_seed=None,
+                 gamma=0.25,
                  **kwargs):
         assert hpo is not None, "HyperOpt must be installed!"
         from hyperopt.fmin import generate_trials_to_calculate
         assert type(max_concurrent) is int and max_concurrent > 0
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+
         self._max_concurrent = max_concurrent
-        self._reward_attr = reward_attr
-        self.algo = hpo.tpe.suggest
+        self._metric = metric
+        # hyperopt internally minimizes, so "max" => -1
+        if mode == "max":
+            self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
+        if n_initial_points is None:
+            self.algo = hpo.tpe.suggest
+        else:
+            self.algo = partial(
+                hpo.tpe.suggest, n_startup_jobs=n_initial_points)
+        if gamma is not None:
+            self.algo = partial(self.algo, gamma=gamma)
         self.domain = hpo.Domain(lambda spc: spc, space)
         if points_to_evaluate is None:
             self._hpopt_trials = hpo.Trials()
@@ -79,7 +119,10 @@ class HyperOptSearch(SuggestionAlgorithm):
             self._hpopt_trials.refresh()
             self._points_to_evaluate = len(points_to_evaluate)
         self._live_trial_mapping = {}
-        self.rstate = np.random.RandomState()
+        if random_state_seed is None:
+            self.rstate = np.random.RandomState()
+        else:
+            self.rstate = np.random.RandomState(random_state_seed)
 
         super(HyperOptSearch, self).__init__(**kwargs)
 
@@ -151,7 +194,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         del self._live_trial_mapping[trial_id]
 
     def _to_hyperopt_result(self, result):
-        return {"loss": -result[self._reward_attr], "status": "ok"}
+        return {"loss": self._metric_op * result[self._metric], "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id):
         if trial_id not in self._live_trial_mapping:
@@ -163,3 +206,14 @@ class HyperOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = (self._hpopt_trials, self.rstate.get_state())
+        with open(checkpoint_dir, "wb") as output:
+            pickle.dump(trials_object, output)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as input:
+            trials_object = pickle.load(input)
+        self._hpopt_trials = trials_object[0]
+        self.rstate.set_state(trials_object[1])

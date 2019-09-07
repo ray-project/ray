@@ -1,12 +1,13 @@
 package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
+import java.util.Arrays;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.TaskId;
 import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.util.UniqueIdUtil;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -24,8 +25,9 @@ public class PlasmaFreeTest extends BaseTest {
     Assert.assertEquals("hello", helloString);
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, false);
 
-    final boolean result = TestUtils.waitForCondition(() -> !((AbstractRayRuntime) Ray.internal())
-        .getObjectStoreProxy().get(helloId.getId(), 0).exists, 50);
+    final boolean result = TestUtils.waitForCondition(() ->
+        ((AbstractRayRuntime) Ray.internal()).getObjectStore()
+            .getRaw(ImmutableList.of(helloId.getId()), 0).get(0) == null, 50);
     Assert.assertTrue(result);
   }
 
@@ -36,9 +38,10 @@ public class PlasmaFreeTest extends BaseTest {
     Assert.assertEquals("hello", helloId.get());
     Ray.internal().free(ImmutableList.of(helloId.getId()), true, true);
 
+    TaskId taskId = TaskId.fromBytes(Arrays.copyOf(helloId.getId().getBytes(), TaskId.LENGTH));
     final boolean result = TestUtils.waitForCondition(
-        () ->  !(((AbstractRayRuntime)Ray.internal()).getGcsClient())
-          .rayletTaskExistsInGcs(UniqueIdUtil.computeTaskId(helloId.getId())), 50);
+        () -> !(((AbstractRayRuntime) Ray.internal()).getGcsClient())
+            .rayletTaskExistsInGcs(taskId), 50);
     Assert.assertTrue(result);
   }
 

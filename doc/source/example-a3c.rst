@@ -9,7 +9,7 @@ View the `code for this example`_.
 
 .. _`A3C`: https://arxiv.org/abs/1602.01783
 .. _`Universe Starter Agent`: https://github.com/openai/universe-starter-agent
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/python/ray/rllib/agents/a3c
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/rllib/agents/a3c
 
 .. note::
 
@@ -127,7 +127,7 @@ global model parameters. The main training script looks like the following.
       obs = 0
 
       # Start simulations on actors
-      agents = [Runner(env_name, i) for i in range(num_workers)]
+      agents = [Runner.remote(env_name, i) for i in range(num_workers)]
 
       # Start gradient calculation tasks on each actor
       parameters = policy.get_weights()

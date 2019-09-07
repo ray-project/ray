@@ -3,7 +3,6 @@ package org.ray.api.test;
 import static org.ray.runtime.util.SystemUtil.pid;
 
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Checkpointable;
@@ -12,6 +11,7 @@ import org.ray.api.RayActor;
 import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.exception.RayActorException;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.testng.Assert;
@@ -47,7 +47,8 @@ public class ActorReconstructionTest extends BaseTest {
   @Test
   public void testActorReconstruction() throws InterruptedException, IOException {
     TestUtils.skipTestUnderSingleProcess();
-    ActorCreationOptions options = new ActorCreationOptions(new HashMap<>(), 1);
+    ActorCreationOptions options =
+        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<Counter> actor = Ray.createActor(Counter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {
@@ -106,13 +107,13 @@ public class ActorReconstructionTest extends BaseTest {
     }
 
     @Override
-    public void saveCheckpoint(UniqueId actorId, UniqueId checkpointId) {
+    public void saveCheckpoint(ActorId actorId, UniqueId checkpointId) {
       // In practice, user should save the checkpoint id and data to a persistent store.
       // But for simplicity, we don't do that in this unit test.
     }
 
     @Override
-    public UniqueId loadCheckpoint(UniqueId actorId, List<Checkpoint> availableCheckpoints) {
+    public UniqueId loadCheckpoint(ActorId actorId, List<Checkpoint> availableCheckpoints) {
       // Restore previous value and return checkpoint id.
       this.value = 3;
       this.resumedFromCheckpoint = true;
@@ -120,15 +121,15 @@ public class ActorReconstructionTest extends BaseTest {
     }
 
     @Override
-    public void checkpointExpired(UniqueId actorId, UniqueId checkpointId) {
+    public void checkpointExpired(ActorId actorId, UniqueId checkpointId) {
     }
   }
 
   @Test
   public void testActorCheckpointing() throws IOException, InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
-
-    ActorCreationOptions options = new ActorCreationOptions(new HashMap<>(), 1);
+    ActorCreationOptions options =
+        new ActorCreationOptions.Builder().setMaxReconstructions(1).createActorCreationOptions();
     RayActor<CheckpointableCounter> actor = Ray.createActor(CheckpointableCounter::new, options);
     // Call increase 3 times.
     for (int i = 0; i < 3; i++) {

@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
 import logging
+from functools import wraps
 
 from ray.function_manager import FunctionDescriptor
 import ray.signature
@@ -29,6 +29,8 @@ class RemoteFunction(object):
             remote function.
         _num_gpus: The default number of GPUs to use for invocations of this
             remote function.
+        _memory: The heap memory request for this task.
+        _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
         _num_return_vals: The default number of return values for invocations
@@ -43,10 +45,16 @@ class RemoteFunction(object):
             return the resulting ObjectIDs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
+        _last_export_session_and_job: A pair of the last exported session
+            and job to help us to know whether this function was exported.
+            This is an imperfect mechanism used to determine if we need to
+            export the remote function again. It is imperfect in the sense that
+            the actor class definition could be exported multiple times by
+            different workers.
     """
 
-    def __init__(self, function, num_cpus, num_gpus, resources,
-                 num_return_vals, max_calls):
+    def __init__(self, function, num_cpus, num_gpus, memory,
+                 object_store_memory, resources, num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
         self._function_name = (
@@ -54,6 +62,11 @@ class RemoteFunction(object):
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
                           if num_cpus is None else num_cpus)
         self._num_gpus = num_gpus
+        self._memory = memory
+        if object_store_memory is not None:
+            raise NotImplementedError(
+                "setting object_store_memory is not implemented for tasks")
+        self._object_store_memory = None
         self._resources = resources
         self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
                                  num_return_vals is None else num_return_vals)
@@ -65,21 +78,18 @@ class RemoteFunction(object):
         ray.signature.check_signature_supported(self._function)
         self._function_signature = ray.signature.extract_signature(
             self._function)
+        self._last_export_session_and_job = None
+        # Override task.remote's signature and docstring
+        @wraps(function)
+        def _remote_proxy(*args, **kwargs):
+            return self._remote(args=args, kwargs=kwargs)
 
-        # Export the function.
-        worker = ray.worker.get_global_worker()
-        # In which session this function was exported last time.
-        self._last_export_session = worker._session_index
-        worker.function_actor_manager.export(self)
+        self.remote = _remote_proxy
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
                         "of running '{}()', try '{}.remote()'.".format(
                             self._function_name, self._function_name))
-
-    def remote(self, *args, **kwargs):
-        """This runs immediately when a remote function is called."""
-        return self._remote(args=args, kwargs=kwargs)
 
     def _submit(self,
                 args=None,
@@ -104,15 +114,18 @@ class RemoteFunction(object):
                 num_return_vals=None,
                 num_cpus=None,
                 num_gpus=None,
+                memory=None,
+                object_store_memory=None,
                 resources=None):
         """An experimental alternate way to submit remote functions."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if self._last_export_session < worker._session_index:
-            # If this function was exported in a previous session, we need to
-            # export this function again, because current GCS doesn't have it.
-            self._last_export_session = worker._session_index
+        if self._last_export_session_and_job != worker.current_session_and_job:
+            # If this function was not exported in this session and job,
+            # we need to export this function again, because current GCS
+            # doesn't have it.
+            self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
@@ -122,25 +135,25 @@ class RemoteFunction(object):
             num_return_vals = self._num_return_vals
 
         resources = ray.utils.resources_from_resource_arguments(
-            self._num_cpus, self._num_gpus, self._resources, num_cpus,
-            num_gpus, resources)
+            self._num_cpus, self._num_gpus, self._memory,
+            self._object_store_memory, self._resources, num_cpus, num_gpus,
+            memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
             args = ray.signature.extend_args(self._function_signature, args,
                                              kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
-                # In LOCAL_MODE, remote calls simply execute the function.
-                # We copy the arguments to prevent the function call from
-                # mutating them and to match the usual behavior of
-                # immutable remote objects.
-                result = self._function(*copy.deepcopy(args))
-                return result
-            object_ids = worker.submit_task(
-                self._function_descriptor,
-                args,
-                num_return_vals=num_return_vals,
-                resources=resources)
+                object_ids = worker.local_mode_manager.execute(
+                    self._function, self._function_descriptor, args,
+                    num_return_vals)
+            else:
+                object_ids = worker.submit_task(
+                    self._function_descriptor,
+                    args,
+                    num_return_vals=num_return_vals,
+                    resources=resources)
+
             if len(object_ids) == 1:
                 return object_ids[0]
             elif len(object_ids) > 1:

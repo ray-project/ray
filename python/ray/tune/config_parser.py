@@ -10,8 +10,8 @@ import os
 from six import string_types
 
 from ray.tune import TuneError
-from ray.tune.result import DEFAULT_RESULTS_DIR
-from ray.tune.trial import Trial, json_to_resources
+from ray.tune.trial import Trial
+from ray.tune.resources import json_to_resources
 from ray.tune.logger import _SafeFallbackEncoder
 
 
@@ -65,33 +65,6 @@ def make_parser(parser_creator=None, **kwargs):
         default=1,
         type=int,
         help="Number of times to repeat each trial.")
-    parser.add_argument(
-        "--local-dir",
-        default=DEFAULT_RESULTS_DIR,
-        type=str,
-        help="Local dir to save training results to. Defaults to '{}'.".format(
-            DEFAULT_RESULTS_DIR))
-    parser.add_argument(
-        "--upload-dir",
-        default="",
-        type=str,
-        help="Optional URI to sync training results to (e.g. s3://bucket).")
-    parser.add_argument(
-        "--trial-name-creator",
-        default=None,
-        help="Optional creator function for the trial string, used in "
-        "generating a trial directory.")
-    parser.add_argument(
-        "--sync-function",
-        default=None,
-        help="Function for syncing the local_dir to upload_dir. If string, "
-        "then it must be a string template for syncer to run and needs to "
-        "include replacement fields '{local_dir}' and '{remote_dir}'.")
-    parser.add_argument(
-        "--loggers",
-        default=None,
-        help="List of logger creators to be used with each Trial. "
-        "Defaults to ray.tune.logger.DEFAULT_LOGGERS.")
     parser.add_argument(
         "--checkpoint-freq",
         default=0,
@@ -187,7 +160,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         A trial object with corresponding parameters to the specification.
     """
     try:
-        args = parser.parse_args(to_argv(spec))
+        args, _ = parser.parse_known_args(to_argv(spec))
     except SystemExit:
         raise TuneError("Error parsing args, see above message", spec)
     if "resources_per_trial" in spec:
@@ -199,7 +172,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         trainable_name=spec["run"],
         # json.load leads to str -> unicode in py2.7
         config=spec.get("config", {}),
-        local_dir=os.path.join(args.local_dir, output_path),
+        local_dir=os.path.join(spec["local_dir"], output_path),
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         checkpoint_freq=args.checkpoint_freq,
@@ -209,10 +182,9 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         export_formats=spec.get("export_formats", []),
         # str(None) doesn't create None
         restore_path=spec.get("restore"),
-        upload_dir=args.upload_dir,
         trial_name_creator=spec.get("trial_name_creator"),
         loggers=spec.get("loggers"),
         # str(None) doesn't create None
-        sync_function=spec.get("sync_function"),
+        sync_to_driver_fn=spec.get("sync_to_driver"),
         max_failures=args.max_failures,
         **trial_kwargs)

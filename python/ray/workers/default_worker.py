@@ -102,7 +102,7 @@ if __name__ == "__main__":
             ray.worker.global_worker,
             "worker_crash",
             traceback_str,
-            driver_id=None)
+            job_id=None)
         # TODO(rkn): Note that if the worker was in the middle of executing
         # a task, then any worker or driver that is blocking in a get call
         # and waiting for the output of that task will hang. We need to

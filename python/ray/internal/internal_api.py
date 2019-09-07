@@ -30,9 +30,6 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     """
     worker = ray.worker.get_global_worker()
 
-    if ray.worker._mode() == ray.worker.LOCAL_MODE:
-        return
-
     if isinstance(object_ids, ray.ObjectID):
         object_ids = [object_ids]
 
@@ -45,6 +42,10 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Attempting to call `free` on the value {}, "
                             "which is not an ray.ObjectID.".format(object_id))
+
+    if ray.worker._mode() == ray.worker.LOCAL_MODE:
+        worker.local_mode_manager.free(object_ids)
+        return
 
     worker.check_connected()
     with profiling.profile("ray.free"):

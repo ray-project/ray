@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/raylet/raylet.h"
 
@@ -56,8 +56,9 @@ class TestObjectManagerBase : public ::testing::Test {
     std::string store_sock_2 = StartStore("2");
 
     // start first server
-    gcs_client_1 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+    gcs::GcsClientOptions client_options("127.0.0.1", 6379, /*password*/ "", true);
+    gcs_client_1 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
     ObjectManagerConfig om_config_1;
     om_config_1.store_socket_name = store_sock_1;
     om_config_1.push_timeout_ms = 10000;
@@ -66,8 +67,8 @@ class TestObjectManagerBase : public ::testing::Test {
         GetNodeManagerConfig("raylet_1", store_sock_1), om_config_1, gcs_client_1));
 
     // start second server
-    gcs_client_2 = std::shared_ptr<gcs::AsyncGcsClient>(
-        new gcs::AsyncGcsClient("127.0.0.1", 6379, /*is_test_client=*/true));
+    gcs_client_2 =
+        std::shared_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(client_options));
     ObjectManagerConfig om_config_2;
     om_config_2.store_socket_name = store_sock_2;
     om_config_2.push_timeout_ms = 10000;
@@ -99,22 +100,22 @@ class TestObjectManagerBase : public ::testing::Test {
   }
 
   ObjectID WriteDataToClient(plasma::PlasmaClient &client, int64_t data_size) {
-    ObjectID object_id = ObjectID::from_random();
+    ObjectID object_id = ObjectID::FromRandom();
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
     std::shared_ptr<Buffer> data;
-    RAY_ARROW_CHECK_OK(client.Create(object_id.to_plasma_id(), data_size, metadata,
-                                     metadata_size, &data));
-    RAY_ARROW_CHECK_OK(client.Seal(object_id.to_plasma_id()));
+    RAY_ARROW_CHECK_OK(
+        client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
+    RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
     return object_id;
   }
 
  protected:
   std::thread p;
   boost::asio::io_service main_service;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_1;
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_2;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_1;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_2;
   std::unique_ptr<ray::raylet::Raylet> server1;
   std::unique_ptr<ray::raylet::Raylet> server2;
 
@@ -136,16 +137,17 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void WaitConnections() {
     client_id_1 = gcs_client_1->client_table().GetLocalClientId();
     client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback([this](
-        gcs::AsyncGcsClient *client, const ClientID &id, const ClientTableDataT &data) {
-      ClientID parsed_id = ClientID::from_binary(data.client_id);
-      if (parsed_id == client_id_1 || parsed_id == client_id_2) {
-        num_connected_clients += 1;
-      }
-      if (num_connected_clients == 2) {
-        StartTests();
-      }
-    });
+    gcs_client_1->client_table().RegisterClientAddedCallback(
+        [this](gcs::RedisGcsClient *client, const ClientID &id,
+               const rpc::GcsNodeInfo &data) {
+          ClientID parsed_id = ClientID::FromBinary(data.node_id);
+          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 2) {
+            StartTests();
+          }
+        });
   }
 
   void StartTests() {
@@ -158,7 +160,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     ray::Status status = ray::Status::OK();
     status = server1->object_manager_.SubscribeObjAdded(
         [this](const object_manager::protocol::ObjectInfoT &object_info) {
-          v1.push_back(ObjectID::from_binary(object_info.object_id));
+          v1.push_back(ObjectID::FromBinary(object_info.object_id));
           if (v1.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
           }
@@ -166,7 +168,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_CHECK_OK(status);
     status = server2->object_manager_.SubscribeObjAdded(
         [this](const object_manager::protocol::ObjectInfoT &object_info) {
-          v2.push_back(ObjectID::from_binary(object_info.object_id));
+          v2.push_back(ObjectID::FromBinary(object_info.object_id));
           if (v2.size() == num_expected_objects && v1.size() == v2.size()) {
             TestPushComplete();
           }
@@ -206,17 +208,17 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    ClientTableDataT data;
+    rpc::GcsNodeInfo data;
     gcs_client_2->client_table().GetClient(client_id_1, data);
-    RAY_LOG(INFO) << (ClientID::from_binary(data.client_id).is_nil());
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data.client_id);
-    RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port;
-    ClientTableDataT data2;
+    RAY_LOG(INFO) << (ClientID::FromBinary(data.node_id()).IsNil());
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data.node_id());
+    RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address();
+    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port();
+    rpc::GcsNodeInfo data2;
     gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::from_binary(data2.client_id);
-    RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address;
-    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port;
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2.node_id());
+    RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address();
+    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port();
   }
 };
 

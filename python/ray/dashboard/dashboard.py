@@ -133,7 +133,7 @@ class Dashboard(object):
             try:
                 with open(
                         Path("~/ray_bootstrap_config.yaml").expanduser()) as f:
-                    cfg = yaml.load(f)
+                    cfg = yaml.safe_load(f)
             except Exception:
                 return await json_response(error="No config")
 
@@ -272,7 +272,7 @@ class NodeStats(threading.Thread):
 
         for x in p.listen():
             try:
-                D = json.loads(x["data"])
+                D = json.loads(ray.utils.decode(x["data"]))
                 with self._node_stats_lock:
                     self._node_stats[D["hostname"]] = D
             except Exception:

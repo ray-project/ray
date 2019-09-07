@@ -2,12 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
 try:
     import nevergrad as ng
 except ImportError:
     ng = None
 
 from ray.tune.suggest.suggestion import SuggestionAlgorithm
+
+logger = logging.getLogger(__name__)
 
 
 class NevergradSearch(SuggestionAlgorithm):
@@ -28,15 +31,16 @@ class NevergradSearch(SuggestionAlgorithm):
             (see nevergrad v0.2.0+).
         max_concurrent (int): Number of maximum concurrent trials. Defaults
             to 10.
-        reward_attr (str): The training result objective value attribute.
-            This refers to an increasing value.
+        metric (str): The training result objective value attribute.
+        mode (str): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
 
     Example:
         >>> from nevergrad.optimization import optimizerlib
         >>> instrumentation = 1
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
         >>> algo = NevergradSearch(optimizer, ["lr"], max_concurrent=4,
-        >>>                        reward_attr="neg_mean_loss")
+        >>>                        metric="mean_loss", mode="min")
 
     Note:
         In nevergrad v0.2.0+, optimizers can be instrumented.
@@ -49,7 +53,7 @@ class NevergradSearch(SuggestionAlgorithm):
         >>> instrumentation = inst.Instrumentation(lr=lr)
         >>> optimizer = optimizerlib.OnePlusOne(instrumentation, budget=100)
         >>> algo = NevergradSearch(optimizer, None, max_concurrent=4,
-        >>>                        reward_attr="neg_mean_loss")
+        >>>                        metric="mean_loss", mode="min")
 
     """
 
@@ -57,13 +61,30 @@ class NevergradSearch(SuggestionAlgorithm):
                  optimizer,
                  parameter_names,
                  max_concurrent=10,
-                 reward_attr="episode_reward_mean",
+                 reward_attr=None,
+                 metric="episode_reward_mean",
+                 mode="max",
                  **kwargs):
         assert ng is not None, "Nevergrad must be installed!"
         assert type(max_concurrent) is int and max_concurrent > 0
+        assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
+
+        if reward_attr is not None:
+            mode = "max"
+            metric = reward_attr
+            logger.warning(
+                "`reward_attr` is deprecated and will be removed in a future "
+                "version of Tune. "
+                "Setting `metric={}` and `mode=max`.".format(reward_attr))
+
         self._max_concurrent = max_concurrent
         self._parameters = parameter_names
-        self._reward_attr = reward_attr
+        self._metric = metric
+        # nevergrad.tell internally minimizes, so "max" => -1
+        if mode == "max":
+            self._metric_op = -1.
+        elif mode == "min":
+            self._metric_op = 1.
         self._nevergrad_opt = optimizer
         self._live_trial_mapping = {}
         super(NevergradSearch, self).__init__(**kwargs)
@@ -119,7 +140,8 @@ class NevergradSearch(SuggestionAlgorithm):
         """
         ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._nevergrad_opt.tell(ng_trial_info, -result[self._reward_attr])
+            self._nevergrad_opt.tell(ng_trial_info,
+                                     self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

@@ -2,23 +2,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
 import ray.cloudpickle as cloudpickle
 import copy
 from datetime import datetime
 import logging
-import json
+import uuid
 import time
 import tempfile
 import os
-from numbers import Number
-
-# For compatibility under py2 to consider unicode as str
-from six import string_types
-
 import ray
 from ray.tune import TuneError
-from ray.tune.log_sync import validate_sync_function
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -27,149 +20,16 @@ import ray.tune.registry
 from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
                              TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
                              EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
-from ray.utils import _random_string, binary_to_hex, hex_to_binary
+from ray.utils import binary_to_hex, hex_to_binary
+from ray.tune.resources import Resources, json_to_resources, resources_to_json
 
 DEBUG_PRINT_INTERVAL = 5
-MAX_LEN_IDENTIFIER = 130
+MAX_LEN_IDENTIFIER = int(os.environ.get("MAX_LEN_IDENTIFIER", 130))
 logger = logging.getLogger(__name__)
 
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-class Resources(
-        namedtuple("Resources", [
-            "cpu", "gpu", "extra_cpu", "extra_gpu", "custom_resources",
-            "extra_custom_resources"
-        ])):
-    """Ray resources required to schedule a trial.
-
-    Attributes:
-        cpu (float): Number of CPUs to allocate to the trial.
-        gpu (float): Number of GPUs to allocate to the trial.
-        extra_cpu (float): Extra CPUs to reserve in case the trial needs to
-            launch additional Ray actors that use CPUs.
-        extra_gpu (float): Extra GPUs to reserve in case the trial needs to
-            launch additional Ray actors that use GPUs.
-        custom_resources (dict): Mapping of resource to quantity to allocate
-            to the trial.
-        extra_custom_resources (dict): Extra custom resources to reserve in
-            case the trial needs to launch additional Ray actors that use
-            any of these custom resources.
-
-    """
-
-    __slots__ = ()
-
-    def __new__(cls,
-                cpu,
-                gpu,
-                extra_cpu=0,
-                extra_gpu=0,
-                custom_resources=None,
-                extra_custom_resources=None):
-        custom_resources = custom_resources or {}
-        extra_custom_resources = extra_custom_resources or {}
-        leftovers = set(custom_resources) ^ set(extra_custom_resources)
-
-        for value in leftovers:
-            custom_resources.setdefault(value, 0)
-            extra_custom_resources.setdefault(value, 0)
-
-        all_values = [cpu, gpu, extra_cpu, extra_gpu]
-        all_values += list(custom_resources.values())
-        all_values += list(extra_custom_resources.values())
-        assert len(custom_resources) == len(extra_custom_resources)
-        for entry in all_values:
-            assert isinstance(entry, Number), "Improper resource value."
-        return super(Resources,
-                     cls).__new__(cls, cpu, gpu, extra_cpu, extra_gpu,
-                                  custom_resources, extra_custom_resources)
-
-    def summary_string(self):
-        summary = "{} CPUs, {} GPUs".format(self.cpu + self.extra_cpu,
-                                            self.gpu + self.extra_gpu)
-        custom_summary = ", ".join([
-            "{} {}".format(self.get_res_total(res), res)
-            for res in self.custom_resources
-        ])
-        if custom_summary:
-            summary += " ({})".format(custom_summary)
-        return summary
-
-    def cpu_total(self):
-        return self.cpu + self.extra_cpu
-
-    def gpu_total(self):
-        return self.gpu + self.extra_gpu
-
-    def get_res_total(self, key):
-        return self.custom_resources.get(
-            key, 0) + self.extra_custom_resources.get(key, 0)
-
-    def get(self, key):
-        return self.custom_resources.get(key, 0)
-
-    def is_nonnegative(self):
-        all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
-        all_values += list(self.custom_resources.values())
-        all_values += list(self.extra_custom_resources.values())
-        return all(v >= 0 for v in all_values)
-
-    @classmethod
-    def subtract(cls, original, to_remove):
-        cpu = original.cpu - to_remove.cpu
-        gpu = original.gpu - to_remove.gpu
-        extra_cpu = original.extra_cpu - to_remove.extra_cpu
-        extra_gpu = original.extra_gpu - to_remove.extra_gpu
-        all_resources = set(original.custom_resources).union(
-            set(to_remove.custom_resources))
-        new_custom_res = {
-            k: original.custom_resources.get(k, 0) -
-            to_remove.custom_resources.get(k, 0)
-            for k in all_resources
-        }
-        extra_custom_res = {
-            k: original.extra_custom_resources.get(k, 0) -
-            to_remove.extra_custom_resources.get(k, 0)
-            for k in all_resources
-        }
-        return Resources(cpu, gpu, extra_cpu, extra_gpu, new_custom_res,
-                         extra_custom_res)
-
-
-def json_to_resources(data):
-    if data is None or data == "null":
-        return None
-    if isinstance(data, string_types):
-        data = json.loads(data)
-    for k in data:
-        if k in ["driver_cpu_limit", "driver_gpu_limit"]:
-            raise TuneError(
-                "The field `{}` is no longer supported. Use `extra_cpu` "
-                "or `extra_gpu` instead.".format(k))
-        if k not in Resources._fields:
-            raise ValueError(
-                "Unknown resource field {}, must be one of {}".format(
-                    k, Resources._fields))
-    return Resources(
-        data.get("cpu", 1), data.get("gpu", 0), data.get("extra_cpu", 0),
-        data.get("extra_gpu", 0), data.get("custom_resources"),
-        data.get("extra_custom_resources"))
-
-
-def resources_to_json(resources):
-    if resources is None:
-        return None
-    return {
-        "cpu": resources.cpu,
-        "gpu": resources.gpu,
-        "extra_cpu": resources.extra_cpu,
-        "extra_gpu": resources.extra_gpu,
-        "custom_resources": resources.custom_resources.copy(),
-        "extra_custom_resources": resources.extra_custom_resources.copy()
-    }
 
 
 def has_trainable(trainable_name):
@@ -248,6 +108,7 @@ class Trial(object):
                  config=None,
                  trial_id=None,
                  local_dir=DEFAULT_RESULTS_DIR,
+                 evaluated_params=None,
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
@@ -257,10 +118,9 @@ class Trial(object):
                  checkpoint_score_attr="",
                  export_formats=None,
                  restore_path=None,
-                 upload_dir=None,
                  trial_name_creator=None,
                  loggers=None,
-                 sync_function=None,
+                 sync_to_driver_fn=None,
                  max_failures=0):
         """Initialize a new trial.
 
@@ -271,17 +131,30 @@ class Trial(object):
         Trial._registration_check(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
+        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
-        self.local_dir = os.path.expanduser(local_dir)
+        self.local_dir = local_dir  # This remains unexpanded for syncing.
+
+        #: Parameters that Tune varies across searches.
+        self.evaluated_params = evaluated_params or []
         self.experiment_tag = experiment_tag
-        self.resources = (
-            resources
-            or self._get_trainable_cls().default_resource_request(self.config))
+        trainable_cls = self._get_trainable_cls()
+        if trainable_cls and hasattr(trainable_cls,
+                                     "default_resource_request"):
+            default_resources = trainable_cls.default_resource_request(
+                self.config)
+            if default_resources:
+                if resources:
+                    raise ValueError(
+                        "Resources for {} have been automatically set to {} "
+                        "by its `default_resource_request()` method. Please "
+                        "clear the `resources_per_trial` option.".format(
+                            trainable_cls, default_resources))
+                resources = default_resources
+        self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
-        self.upload_dir = upload_dir
         self.loggers = loggers
-        self.sync_function = sync_function
-        validate_sync_function(sync_function)
+        self.sync_to_driver_fn = sync_to_driver_fn
         self.verbose = True
         self.max_failures = max_failures
 
@@ -308,8 +181,8 @@ class Trial(object):
         self.runner = None
         self.result_logger = None
         self.last_debug = 0
-        self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.error_file = None
+        self.error_msg = None
         self.num_failures = 0
         self.custom_trial_name = None
 
@@ -322,7 +195,7 @@ class Trial(object):
         self._nonjson_fields = [
             "_checkpoint",
             "loggers",
-            "sync_function",
+            "sync_to_driver_fn",
             "results",
             "best_result",
             "param_config",
@@ -341,28 +214,31 @@ class Trial(object):
 
     @classmethod
     def generate_id(cls):
-        return binary_to_hex(_random_string())[:8]
+        return str(uuid.uuid1().hex)[:8]
+
+    @classmethod
+    def create_logdir(cls, identifier, local_dir):
+        local_dir = os.path.expanduser(local_dir)
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
+        return tempfile.mkdtemp(
+            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            dir=local_dir)
 
     def init_logger(self):
         """Init logger."""
 
         if not self.result_logger:
-            if not os.path.exists(self.local_dir):
-                os.makedirs(self.local_dir)
             if not self.logdir:
-                self.logdir = tempfile.mkdtemp(
-                    prefix="{}_{}".format(
-                        str(self)[:MAX_LEN_IDENTIFIER], date_str()),
-                    dir=self.local_dir)
+                self.logdir = Trial.create_logdir(str(self), self.local_dir)
             elif not os.path.exists(self.logdir):
                 os.makedirs(self.logdir)
 
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
-                upload_uri=self.upload_dir,
                 loggers=self.loggers,
-                sync_function=self.sync_function)
+                sync_function=self.sync_to_driver_fn)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -399,6 +275,7 @@ class Trial(object):
             with open(error_file, "w") as f:
                 f.write(error_msg)
             self.error_file = error_file
+            self.error_msg = error_msg
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
@@ -411,9 +288,12 @@ class Trial(object):
                 raise TuneError(
                     "Stopping criteria {} not provided in result {}.".format(
                         criteria, result))
-            if result[criteria] >= stop_value:
+            elif isinstance(criteria, dict):
+                raise ValueError(
+                    "Stopping criteria is now flattened by default. "
+                    "Use forward slashes to nest values `key1/key2/key3`.")
+            elif result[criteria] >= stop_value:
                 return True
-
         return False
 
     def should_checkpoint(self):
@@ -447,7 +327,7 @@ class Trial(object):
                     location_string(
                         self.last_result.get(HOSTNAME),
                         self.last_result.get(PID))), "{} s".format(
-                            int(self.last_result.get(TIME_TOTAL_S)))
+                            int(self.last_result.get(TIME_TOTAL_S, 0)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:
@@ -495,8 +375,7 @@ class Trial(object):
                      or self.max_failures < 0))
 
     def update_last_result(self, result, terminate=False):
-        if terminate:
-            result.update(done=True)
+        result.update(trial_id=self.trial_id, done=terminate)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
@@ -537,6 +416,10 @@ class Trial(object):
 
     def is_finished(self):
         return self.status in [Trial.TERMINATED, Trial.ERROR]
+
+    @property
+    def node_ip(self):
+        return self.last_result.get("node_ip")
 
     def __repr__(self):
         return str(self)

@@ -4,12 +4,16 @@
 #include <memory>
 #include <unordered_set>
 
-#include "ray/gcs/client.h"
-#include "ray/id.h"
+#include "ray/common/id.h"
+#include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
 
 namespace raylet {
+
+using rpc::GcsNodeInfo;
+using rpc::HeartbeatBatchTableData;
+using rpc::HeartbeatTableData;
 
 class Monitor {
  public:
@@ -35,11 +39,11 @@ class Monitor {
   /// \param client_id The client ID of the Raylet that sent the heartbeat.
   /// \param heartbeat_data The heartbeat sent by the client.
   void HandleHeartbeat(const ClientID &client_id,
-                       const HeartbeatTableDataT &heartbeat_data);
+                       const HeartbeatTableData &heartbeat_data);
 
  private:
   /// A client to the GCS, through which heartbeats are received.
-  gcs::AsyncGcsClient gcs_client_;
+  gcs::RedisGcsClient gcs_client_;
   /// The number of heartbeats that can be missed before a client is removed.
   int64_t num_heartbeats_timeout_;
   /// A timer that ticks every heartbeat_timeout_ms_ milliseconds.
@@ -50,7 +54,7 @@ class Monitor {
   /// The Raylets that have been marked as dead in the client table.
   std::unordered_set<ClientID> dead_clients_;
   /// A buffer containing heartbeats received from node managers in the last tick.
-  std::unordered_map<ClientID, HeartbeatTableDataT> heartbeat_buffer_;
+  std::unordered_map<ClientID, HeartbeatTableData> heartbeat_buffer_;
 };
 
 }  // namespace raylet

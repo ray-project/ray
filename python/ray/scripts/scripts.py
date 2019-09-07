@@ -12,10 +12,11 @@ import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
-    attach_cluster, exec_cluster, create_or_update_cluster, rsync,
-    teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
+    attach_cluster, exec_cluster, create_or_update_cluster, monitor_cluster,
+    rsync, teardown_cluster, get_head_node_ip, kill_node, get_worker_node_ips)
 import ray.ray_constants as ray_constants
 import ray.utils
+from ray.projects.scripts import project_cli, session_cli
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,8 @@ def cli(logging_level, logging_format):
     type=str,
     help="the address to use for connecting to Redis")
 @click.option(
+    "--address", required=False, type=str, help="same as --redis-address")
+@click.option(
     "--redis-port",
     required=False,
     type=str,
@@ -111,6 +114,12 @@ def cli(logging_level, logging_format):
     required=False,
     type=int,
     help="the port to use for starting the node manager")
+@click.option(
+    "--memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to make available to workers. "
+    "By default, this is set to the available memory on the node.")
 @click.option(
     "--object-store-memory",
     required=False,
@@ -215,12 +224,12 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
-def start(node_ip_address, redis_address, redis_port, num_redis_shards,
-          redis_max_clients, redis_password, redis_shard_ports,
-          object_manager_port, node_manager_port, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, include_webui,
-          block, plasma_directory, huge_pages, autoscaling_config,
-          no_redirect_worker_output, no_redirect_output,
+def start(node_ip_address, redis_address, address, redis_port,
+          num_redis_shards, redis_max_clients, redis_password,
+          redis_shard_ports, object_manager_port, node_manager_port, memory,
+          object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
+          head, include_webui, block, plasma_directory, huge_pages,
+          autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, internal_config):
     # Convert hostnames to numerical IP address.
@@ -228,6 +237,13 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         node_ip_address = services.address_to_ip(node_ip_address)
     if redis_address is not None:
         redis_address = services.address_to_ip(redis_address)
+    if address:
+        if redis_address:
+            raise ValueError(
+                "You should specify address instead of redis_address.")
+        if address == "auto":
+            address = services.find_redis_address_or_die()
+        redis_address = address
 
     try:
         resources = json.loads(resources)
@@ -243,6 +259,7 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
+        memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
         redirect_worker_output=redirect_worker_output,
@@ -375,43 +392,58 @@ def start(node_ip_address, redis_address, redis_port, num_redis_shards,
     if block:
         import time
         while True:
-            time.sleep(30)
+            time.sleep(1)
+            deceased = node.dead_processes()
+            if len(deceased) > 0:
+                logger.error("Ray processes died unexpectedly:")
+                for process_type, process in deceased:
+                    logger.error("\t{} died with exit code {}".format(
+                        process_type, process.returncode))
+                logger.error("Killing remaining processes and exiting...")
+                node.kill_all_processes(check_alive=False, allow_graceful=True)
+                sys.exit(1)
 
 
 @cli.command()
 def stop():
+    # Note that raylet needs to exit before object store, otherwise
+    # it cannot exit gracefully.
     processes_to_kill = [
-        "plasma_store_server",
-        "raylet",
-        "raylet_monitor",
-        "monitor.py",
-        "redis-server",
-        "default_worker.py",  # Python worker.
-        " ray_",  # Python worker.
-        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
-        "log_monitor.py",
-        "reporter.py",
-        "dashboard.py",
+        # The first element is the substring to filter.
+        # The second element, if True, is to filter ps results by command name
+        # (only the first 15 charactors of the executable name);
+        # if False, is to filter ps results by command with all its arguments.
+        # See STANDARD FORMAT SPECIFIERS section of
+        # http://man7.org/linux/man-pages/man1/ps.1.html
+        # about comm and args. This can help avoid killing non-ray processes.
+        ["raylet", True],
+        ["plasma_store", True],
+        ["raylet_monitor", True],
+        ["monitor.py", False],
+        ["redis-server", True],
+        ["default_worker.py", False],  # Python worker.
+        [" ray_", True],  # Python worker.
+        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["log_monitor.py", False],
+        ["reporter.py", False],
+        ["dashboard.py", False],
     ]
 
     for process in processes_to_kill:
-        command = ("kill $(ps aux | grep '" + process + "' | grep -v grep | " +
-                   "awk '{ print $2 }') 2> /dev/null")
+        filter = process[0]
+        if process[1]:
+            format = "pid,comm"
+            # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
+            # comm only prints the first 15 characters of the executable name.
+            if len(filter) > 15:
+                raise ValueError("The filter string should not be more than" +
+                                 " 15 characters. Actual length: " +
+                                 str(len(filter)) + ". Filter: " + filter)
+        else:
+            format = "pid,args"
+        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
+                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
         subprocess.call([command], shell=True)
-
-    # Find the PID of the jupyter process and kill it.
-    try:
-        from notebook.notebookapp import list_running_servers
-        pids = [
-            str(server["pid"]) for server in list_running_servers()
-            if "/tmp/ray" in server["notebook_dir"]
-        ]
-        subprocess.call(
-            ["kill -9 {} 2> /dev/null".format(" ".join(pids))], shell=True)
-    except ImportError:
-        pass
-    except Exception:
-        logger.exception("Error shutting down jupyter")
 
 
 @cli.command()
@@ -493,15 +525,40 @@ def teardown(cluster_config_file, yes, workers_only, cluster_name):
     default=False,
     help="Don't ask for confirmation.")
 @click.option(
+    "--hard",
+    is_flag=True,
+    default=False,
+    help="Terminates the node via node provider (defaults to a 'soft kill'"
+    " which terminates Ray but does not actually delete the instances).")
+@click.option(
     "--cluster-name",
     "-n",
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def kill_random_node(cluster_config_file, yes, cluster_name):
+def kill_random_node(cluster_config_file, yes, hard, cluster_name):
     """Kills a random Ray node. For testing purposes only."""
     click.echo("Killed node with IP " +
-               kill_node(cluster_config_file, yes, cluster_name))
+               kill_node(cluster_config_file, yes, hard, cluster_name))
+
+
+@cli.command()
+@click.argument("cluster_config_file", required=True, type=str)
+@click.option(
+    "--lines",
+    required=False,
+    default=100,
+    type=int,
+    help="Number of lines to tail.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def monitor(cluster_config_file, lines, cluster_name):
+    """Runs `tail -n [lines] -f /tmp/ray/session_*/logs/monitor*` on head."""
+    monitor_cluster(cluster_config_file, lines, cluster_name)
 
 
 @cli.command()
@@ -527,8 +584,8 @@ def attach(cluster_config_file, start, tmux, cluster_name, new):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -541,8 +598,8 @@ def rsync_down(cluster_config_file, source, target, cluster_name):
 
 @cli.command()
 @click.argument("cluster_config_file", required=True, type=str)
-@click.argument("source", required=True, type=str)
-@click.argument("target", required=True, type=str)
+@click.argument("source", required=False, type=str)
+@click.argument("target", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -553,7 +610,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     rsync(cluster_config_file, source, target, cluster_name, down=False)
 
 
-@cli.command()
+@cli.command(context_settings={"ignore_unknown_options": True})
 @click.argument("cluster_config_file", required=True, type=str)
 @click.option(
     "--docker",
@@ -586,14 +643,17 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
 @click.option(
     "--port-forward", required=False, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
-@click.argument("script_args", required=False, type=str, nargs=-1)
+@click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
-           cluster_name, port_forward, script, script_args):
+           cluster_name, port_forward, script, args):
     """Uploads and runs a script on the specified cluster.
 
     The script is automatically synced to the following location:
 
         os.path.join("~", os.path.basename(script))
+
+    Example:
+        >>> ray submit [CLUSTER.YAML] experiment.py --args="--smoke-test"
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
@@ -604,7 +664,10 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     target = os.path.join("~", os.path.basename(script))
     rsync(cluster_config_file, script, target, cluster_name, down=False)
 
-    cmd = " ".join(["python", target] + list(script_args))
+    command_parts = ["python", target]
+    if args is not None:
+        command_parts += [args]
+    cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
                  cluster_name, port_forward)
 
@@ -707,38 +770,12 @@ done
     help="Override the redis address to connect to.")
 def timeline(redis_address):
     if not redis_address:
-        import psutil
-        pids = psutil.pids()
-        redis_addresses = set()
-        for pid in pids:
-            try:
-                proc = psutil.Process(pid)
-                for arglist in proc.cmdline():
-                    for arg in arglist.split(" "):
-                        if arg.startswith("--redis-address="):
-                            addr = arg.split("=")[1]
-                            redis_addresses.add(addr)
-            except psutil.AccessDenied:
-                pass
-            except psutil.NoSuchProcess:
-                pass
-        if len(redis_addresses) > 1:
-            logger.info(
-                "Found multiple active Ray instances: {}. ".format(
-                    redis_addresses) +
-                "Please specify the one to connect to with --redis-address.")
-            sys.exit(1)
-        elif not redis_addresses:
-            logger.info(
-                "Could not find any running Ray instance. "
-                "Please specify the one to connect to with --redis-address.")
-            sys.exit(1)
-        redis_address = redis_addresses.pop()
+        redis_address = services.find_redis_address_or_die()
     logger.info("Connecting to Ray instance at {}.".format(redis_address))
     ray.init(redis_address=redis_address)
     time = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
     filename = "/tmp/ray-timeline-{}.json".format(time)
-    ray.global_state.chrome_tracing_dump(filename=filename)
+    ray.timeline(filename=filename)
     size = os.path.getsize(filename)
     logger.info("Trace file written to {} ({} bytes).".format(filename, size))
     logger.info(
@@ -760,6 +797,8 @@ cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
 cli.add_command(stack)
 cli.add_command(timeline)
+cli.add_command(project_cli)
+cli.add_command(session_cli)
 
 
 def main():

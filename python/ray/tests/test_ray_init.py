@@ -28,8 +28,8 @@ class TestRedisPassword(object):
             return 1
 
         info = ray.init(redis_password=password)
-        redis_address = info["redis_address"]
-        redis_ip, redis_port = redis_address.split(":")
+        address = info["redis_address"]
+        redis_ip, redis_port = address.split(":")
 
         # Check that we can run a task
         object_id = f.remote()
@@ -38,7 +38,7 @@ class TestRedisPassword(object):
         # Check that Redis connections require a password
         redis_client = redis.StrictRedis(
             host=redis_ip, port=redis_port, password=None)
-        with pytest.raises(redis.ResponseError):
+        with pytest.raises(redis.exceptions.AuthenticationError):
             redis_client.ping()
 
         # Check that we can connect to Redis using the provided password

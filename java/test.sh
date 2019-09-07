@@ -38,5 +38,5 @@ popd
 
 pushd $ROOT_DIR
 echo "Testing maven install."
-mvn clean install -Dmaven.test.skip
+mvn clean install -DskipTests
 popd
