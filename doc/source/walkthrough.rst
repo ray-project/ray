@@ -222,7 +222,7 @@ When the object store gets full, objects will be evicted to make room for new ob
 This happens in approximate LRU (least recently used) order. To avoid objects from
 being evicted, you can call ``ray.get`` and store their values instead. Numpy array
 objects cannot be evicted while they are mapped in any Python process. You can also
-configure `memory limits <memory-management>`__ to control object store usage by
+configure `memory limits <memory-management.html>`__ to control object store usage by
 actors.
 
 .. note::

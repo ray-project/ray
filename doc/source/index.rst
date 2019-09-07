@@ -192,7 +192,7 @@ Getting Involved
    walkthrough.rst
    actors.rst
    using-ray-with-gpus.rst
-   object-store.rst
+   serialization.rst
    memory-management.rst
    configure.rst
    troubleshooting.rst
