@@ -39,7 +39,7 @@ class RayServeMixin:
         >>> # Use ray.remote decorator and RayServeMixin
         >>> # to make MyClass servable.
         >>> @ray.remote
-            class RayServeActor(MyClass, RayServeMixin):
+            class RayServeActor(RayServeMixin, MyClass):
                 pass
     """
     _ray_serve_self_handle = None
@@ -61,12 +61,15 @@ class RayServeMixin:
                 self._ray_serve_consumer_name))
         work_item = ray.get(ray.ObjectID(work_token))
 
-        # TODO(simon): handle variadic arguments
+        # TODO(simon):
+        # __call__ should be able to take multiple *args and **kwargs.
         result = wrap_to_ray_error(self.__call__, work_item.request_body)
         result_oid = work_item.result_oid
         ray.worker.global_worker.put_object(result_oid, result)
 
-        # tail recursively schedule itself
+        # The worker finished one unit of work.
+        # It will now tail recursively schedule the main_loop again.
+
         # TODO(simon): remove tail recursion, ask router to callback instead
         self._ray_serve_self_handle._ray_serve_main_loop.remote(my_handle)
 
@@ -80,6 +83,10 @@ class TaskRunnerBackend(TaskRunner, RayServeMixin):
     >>> @ray.remote
         class TaskRunnerActor(TaskRunnerBackend):
             pass
+
+    Note:
+    This class is not used in the actual ray serve system. It exists
+    for documentation purpose.
     """
 
     pass

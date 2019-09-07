@@ -69,9 +69,10 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
     if inspect.isfunction(func_or_class):
         runner = TaskRunnerActor.remote(func_or_class)
     elif inspect.isclass(func_or_class):
-
+        # Python inheritance order is right-to-left. We put RayServeMixin
+        # on the left to make sure its methods are not overriden.
         @ray.remote
-        class CustomActor(func_or_class, RayServeMixin):
+        class CustomActor(RayServeMixin, func_or_class):
             pass
 
         runner = CustomActor.remote(*actor_init_args)

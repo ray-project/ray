@@ -28,12 +28,12 @@ class WorkIntent:
 
 
 class CentralizedQueues:
-    """A "router" that routes request to available workers.
+    """A router that routes request to available workers.
 
-    It aceepts requests from `.produce` method and queues the request data.
-    It also accepts work intention from workers via the `.consume` method.
-    The traffic policy is used to match requests with their corresponding
-    workers.
+    Router aceepts each request from the `produce` method and enqueues it.
+    It also accepts worker request to work (called work_intention in code)
+    from workers via the `consume` method. The traffic policy is used to
+    match requests with their corresponding workers.
 
     Behavior:
         >>> # psuedo-code
@@ -49,16 +49,17 @@ class CentralizedQueues:
         # work ObjectID, and the worker processs the request and store the
         # result into result ObjectID
 
-    Traffic policy *splits* the traffic among different consumers. It behaves
-    in a probablistic fashion:
+    Traffic policy splits the traffic among different consumers
+    probabilistically:
 
-    1. When all backends are ready to receive traffic, we will randomly choose
-       a backend based on the weights assigned by traffic policy dictionary.
+    1. When all backends are ready to receive traffic, we will randomly
+       choose a backend based on the weights assigned by the traffic policy
+       dictionary.
 
     2. When more than 1 but not all backends are ready, we will normalize the
        weights of the ready backends to 1 and choose a backend via sampling.
 
-    3. When there is only 1 backend ready, we will directly use that backend.
+    3. When there is only 1 backend ready, we will only use that backend.
     """
 
     def __init__(self):
@@ -95,7 +96,7 @@ class CentralizedQueues:
         self.flush()
 
     def flush(self):
-        """In the default case, flush is calls ._flush.
+        """In the default case, flush calls ._flush.
 
         When this class is a Ray actor, .flush can be scheduled as a remote
         method invocation.
@@ -114,20 +115,21 @@ class CentralizedQueues:
             ready_backends = self._get_available_backends(service)
 
             while len(queue) and len(ready_backends):
-                # fast track, only one backend available
+                # Fast path, only one backend available.
                 if len(ready_backends) == 1:
                     backend = ready_backends[0]
                     request, work = (queue.popleft(),
                                      self.workers[backend].popleft())
                     ray.worker.global_worker.put_object(work.work_oid, request)
 
-                # roll a dice among the rest
+                # We have more than one backend available.
+                # We will roll a dice among the multiple backends.
                 else:
                     backend_weights = np.array([
                         self.traffic[service][backend_name]
                         for backend_name in ready_backends
                     ])
-                    # normalize the weights to 1
+                    # Normalize the weights to 1.
                     backend_weights /= backend_weights.sum()
                     chosen_backend = np.random.choice(
                         ready_backends, p=backend_weights).squeeze()

@@ -10,8 +10,8 @@ class NamespacedKVStore(ABC):
     """Abstract base class for a namespaced key-value store.
 
     The idea is that multiple key-value stores can be created while sharing
-    the same database connection. The keys of each instance are namespaced
-    to avoid key collision.
+    the same storage system. The keys of each instance are namespaced to avoid
+    key collision.
 
     Example:
 
@@ -30,7 +30,7 @@ class NamespacedKVStore(ABC):
         raise NotImplementedError()
 
     def get(self, key):
-        """Retrieve the value given key
+        """Retrieve the value for the given key.
 
         Args:
             key (str)
@@ -38,7 +38,7 @@ class NamespacedKVStore(ABC):
         raise NotImplementedError()
 
     def put(self, key, value):
-        """Store the correponding entry key -> value.
+        """Serialize the value and store it under the given key.
 
         Args:
             key (str)
@@ -48,7 +48,7 @@ class NamespacedKVStore(ABC):
         raise NotImplementedError()
 
     def as_dict(self):
-        """Return the entire namespace as python dictionary.
+        """Return the entire namespace as a dictionary.
 
         Returns:
             data (dict): key value pairs in current namespace
@@ -77,7 +77,7 @@ class InMemoryKVStore(NamespacedKVStore):
 
 
 class RayInternalKVStore(NamespacedKVStore):
-    """A NamespacedKVStore implementation using ray's `internal_kv`"""
+    """A NamespacedKVStore implementation using ray's `internal_kv`."""
 
     def __init__(self, namespace):
         assert ray_kv._internal_kv_initialized()
@@ -89,7 +89,7 @@ class RayInternalKVStore(NamespacedKVStore):
         return "{ns}-{key}".format(ns=self.namespace, key=key)
 
     def _remove_format_key(self, formatted_key):
-        return formatted_key.replace(self.namespace + "-", "")
+        return formatted_key.replace(self.namespace + "-", "", 1)
 
     def _serialize(self, obj):
         return json.dumps(obj)
@@ -129,26 +129,24 @@ class RayInternalKVStore(NamespacedKVStore):
 
 
 class KVStoreProxy:
-    _KV_CLASS = InMemoryKVStore
-
-    def __init__(self):
-        self.routing_table = self._KV_CLASS(namespace="routes")
+    def __init__(self, kv_class=InMemoryKVStore):
+        self.routing_table = kv_class(namespace="routes")
         self.request_count = 0
 
     def register_service(self, route: str, service: str):
         """Create an entry in the routing table
 
         Args:
-            route: http path name. Must begin with /
+            route: http path name. Must begin with '/'.
             service: service name. This is the name http actor will push
                 the request to.
         """
-        logger.debug("[KV] Registering route %s to service %s", route, service)
+        logger.debug("[KV] Registering route {} to service {}.".format(
+            route, service))
         self.routing_table.put(route, service)
 
     def list_service(self):
-        """Returns the routing table
-        """
+        """Returns the routing table."""
         self.request_count += 1
         table = self.routing_table.as_dict()
         return table
@@ -171,4 +169,5 @@ class KVStoreProxy:
 
 @ray.remote
 class KVStoreProxyActor(KVStoreProxy):
-    _KV_CLASS = RayInternalKVStore
+    def __init__(self, kv_class=RayInternalKVStore):
+        super().__init__(kv_class=kv_class)
