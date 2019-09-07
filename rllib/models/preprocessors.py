@@ -29,8 +29,12 @@ class Preprocessor(object):
     def __init__(self, obs_space, options=None):
         legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
-        self._options = options or {}
-        self.shape = self._init_shape(obs_space, options)
+        if not options:
+            from ray.rllib.models.catalog import MODEL_DEFAULTS
+            self._options = MODEL_DEFAULTS.copy()
+        else:
+            self._options = options
+        self.shape = self._init_shape(obs_space, self._options)
         self._size = int(np.product(self.shape))
         self._i = 0
 
