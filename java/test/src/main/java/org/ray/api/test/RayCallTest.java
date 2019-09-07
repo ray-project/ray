@@ -6,9 +6,9 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.Ray;
+import org.ray.api.TestUtils;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ObjectId;
-import org.ray.runtime.AbstractRayRuntime;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -80,7 +80,7 @@ public class RayCallTest extends BaseTest {
   @RayRemote
   private static void testNoReturn(ObjectId objectId) {
     // Put an object in object store to inform driver that this function is executing.
-    ((AbstractRayRuntime) Ray.internal()).getObjectStore().put(1, objectId);
+    TestUtils.getRuntime().getObjectStore().put(1, objectId);
   }
 
   /**
