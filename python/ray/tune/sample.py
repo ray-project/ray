@@ -33,7 +33,12 @@ def function(func):
 
 
 def uniform(*args, **kwargs):
-    """A wrapper around np.random.uniform."""
+    """Wraps tune.sample_from around ``np.random.uniform``.
+
+    ``tune.uniform(1, 10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.uniform(1, 10))``
+
+    """
     return sample_from(lambda _: np.random.uniform(*args, **kwargs))
 
 
@@ -44,7 +49,7 @@ def loguniform(min_bound, max_bound, base=10):
         min_bound (float): Lower boundary of the output interval (1e-4)
         max_bound (float): Upper boundary of the output interval (1e-2)
         base (float): Base of the log. Defaults to 10.
-        """
+    """
     logmin = np.log(min_bound) / np.log(base)
     logmax = np.log(max_bound) / np.log(base)
 
@@ -55,15 +60,30 @@ def loguniform(min_bound, max_bound, base=10):
 
 
 def choice(*args, **kwargs):
-    """A wrapper around np.random.choice."""
+    """Wraps tune.sample_from around ``np.random.choice``.
+
+    ``tune.choice(10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.choice(10))``
+
+    """
     return sample_from(lambda _: np.random.choice(*args, **kwargs))
 
 
 def randint(*args, **kwargs):
-    """A wrapper around np.random.randint."""
+    """Wraps tune.sample_from around ``np.random.randint``.
+
+    ``tune.randint(10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.randint(10))``
+
+    """
     return sample_from(lambda _: np.random.randint(*args, **kwargs))
 
 
 def randn(*args, **kwargs):
-    """A wrapper around np.random.randn."""
+    """Wraps tune.sample_from around ``np.random.randn``.
+
+    ``tune.randn(10)`` is equivalent to
+    ``tune.sample_from(lambda _: np.random.randn(10))``
+
+    """
     return sample_from(lambda _: np.random.randn(*args, **kwargs))

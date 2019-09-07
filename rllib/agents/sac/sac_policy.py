@@ -10,15 +10,13 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
-from ray.rllib.agents.ddpg.ddpg_policy import ComputeTDErrorMixin, \
-    TargetNetworkMixin
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils import try_import_tf, try_import_tfp
-from ray.rllib.utils.tf_ops import minimize_and_clip
+from ray.rllib.utils.tf_ops import minimize_and_clip, make_tf_callable
 
 tf = try_import_tf()
 tfp = try_import_tfp()
@@ -285,6 +283,55 @@ class ActorCriticOptimizerMixin(object):
             learning_rate=config["optimization"]["critic_learning_rate"])
         self._alpha_optimizer = tf.train.AdamOptimizer(
             learning_rate=config["optimization"]["entropy_learning_rate"])
+
+
+class ComputeTDErrorMixin(object):
+    def __init__(self):
+        @make_tf_callable(self.get_session(), dynamic_shape=True)
+        def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
+                             importance_weights):
+            if not self.loss_initialized():
+                return tf.zeros_like(rew_t)
+
+            # Do forward pass on loss to update td error attribute
+            actor_critic_loss(
+                self, self.model, None, {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_t),
+                    SampleBatch.ACTIONS: tf.convert_to_tensor(act_t),
+                    SampleBatch.REWARDS: tf.convert_to_tensor(rew_t),
+                    SampleBatch.NEXT_OBS: tf.convert_to_tensor(obs_tp1),
+                    SampleBatch.DONES: tf.convert_to_tensor(done_mask),
+                    PRIO_WEIGHTS: tf.convert_to_tensor(importance_weights),
+                })
+
+            return self.td_error
+
+        self.compute_td_error = compute_td_error
+
+
+class TargetNetworkMixin(object):
+    def __init__(self, config):
+        @make_tf_callable(self.get_session())
+        def update_target_fn(tau):
+            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+            update_target_expr = []
+            model_vars = self.model.trainable_variables()
+            target_model_vars = self.target_model.trainable_variables()
+            assert len(model_vars) == len(target_model_vars), \
+                (model_vars, target_model_vars)
+            for var, var_target in zip(model_vars, target_model_vars):
+                update_target_expr.append(
+                    var_target.assign(tau * var + (1.0 - tau) * var_target))
+                logger.debug("Update target op {}".format(var_target))
+            return tf.group(*update_target_expr)
+
+        # Hard initial update
+        self._do_update = update_target_fn
+        self.update_target(tau=1.0)
+
+    # support both hard and soft sync
+    def update_target(self, tau=None):
+        self._do_update(np.float32(tau or self.config.get("tau")))
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):

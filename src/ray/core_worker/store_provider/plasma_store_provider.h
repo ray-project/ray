@@ -29,9 +29,9 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
 
   /// See `CoreWorkerStoreProvider::Wait` for semantics.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+  Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
-              std::vector<bool> *results) override;
+              std::unordered_set<ObjectID> *ready) override;
 
   /// See `CoreWorkerStoreProvider::Delete` for semantics.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,

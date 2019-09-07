@@ -1,5 +1,5 @@
-How-to: Using Ray with GPUs
-===========================
+GPU Support
+===========
 
 GPUs are critical for many machine learning applications. Ray enables remote
 functions and actors to specify their GPU requirements in the ``ray.remote``
@@ -8,22 +8,9 @@ decorator.
 Starting Ray with GPUs
 ----------------------
 
-In order for remote functions and actors to use GPUs, Ray must know how many
-GPUs are available. If you are starting Ray on a single machine, you can specify
-the number of GPUs as follows.
-
-.. code-block:: python
-
-  ray.init(num_gpus=4)
-
-If you don't pass in the ``num_gpus`` argument, Ray will automatically detect the number of GPUs available.
-
-If you are starting Ray with the ``ray start`` command, you can indicate the
-number of GPUs on the machine with the ``--num-gpus`` argument.
-
-.. code-block:: bash
-
-  ray start --head --num-gpus=4
+Ray will automatically detect the number of GPUs available on a machine.
+If you need to, you can override this by specifying ``ray.init(num_gpus=N)`` or
+``ray start --num-gpus=N``.
 
 **Note:** There is nothing preventing you from passing in a larger value of
 ``num_gpus`` than the true number of GPUs on the machine. In this case, Ray will
