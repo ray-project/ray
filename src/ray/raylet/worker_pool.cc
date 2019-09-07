@@ -40,17 +40,13 @@ namespace ray {
 namespace raylet {
 
 /// A constructor that initializes a worker pool with
-/// (num_worker_processes * num_workers_per_process) workers for each language.
-WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
-                       int maximum_startup_concurrency,
+/// (num_worker_processes * states_by_lang_[language].num_workers_per_process) workers for
+/// each language.
+WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
                        std::shared_ptr<gcs::RedisGcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
-    : num_workers_per_process_(num_workers_per_process),
-      multiple_for_warning_(std::max(num_worker_processes, maximum_startup_concurrency)),
-      maximum_startup_concurrency_(maximum_startup_concurrency),
-      last_warning_multiple_(0),
+    : maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)) {
-  RAY_CHECK(num_workers_per_process > 0) << "num_workers_per_process must be positive.";
   RAY_CHECK(maximum_startup_concurrency > 0);
   // Ignore SIGCHLD signals. If we don't do this, then worker processes will
   // become zombies instead of dying gracefully.
@@ -58,6 +54,25 @@ WorkerPool::WorkerPool(int num_worker_processes, int num_workers_per_process,
   for (const auto &entry : worker_commands) {
     // Initialize the pool state for this language.
     auto &state = states_by_lang_[entry.first];
+    switch (entry.first) {
+    case Language::PYTHON:
+      state.num_workers_per_process =
+          RayConfig::instance().num_workers_per_process_python();
+      break;
+    case Language::JAVA:
+      state.num_workers_per_process =
+          RayConfig::instance().num_workers_per_process_java();
+      break;
+    default:
+      RAY_LOG(FATAL) << "The number of workers per process for "
+                     << Language_Name(entry.first) << " worker is not set.";
+    }
+    RAY_CHECK(state.num_workers_per_process > 0)
+        << "Number of workers per process of language " << Language_Name(entry.first)
+        << " must be positive.";
+    state.multiple_for_warning =
+        std::max(num_worker_processes, maximum_startup_concurrency) *
+        state.num_workers_per_process;
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
@@ -119,9 +134,17 @@ int WorkerPool::StartWorkerProcess(const Language &language,
                  << state.idle_actor.size() << " actor workers, and " << state.idle.size()
                  << " non-actor workers";
 
+  int workers_to_start;
+  if (dynamic_options.empty()) {
+    workers_to_start = state.num_workers_per_process;
+  } else {
+    workers_to_start = 1;
+  }
+
   // Extract pointers from the worker command to pass into execvp.
   std::vector<std::string> worker_command_args;
   size_t dynamic_option_index = 0;
+  bool num_workers_arg_replaced = false;
   for (auto const &token : state.worker_command) {
     const auto option_placeholder =
         kWorkerDynamicOptionPlaceholderPrefix + std::to_string(dynamic_option_index);
@@ -135,9 +158,22 @@ int WorkerPool::StartWorkerProcess(const Language &language,
         ++dynamic_option_index;
       }
     } else {
-      worker_command_args.push_back(token);
+      size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
+      if (num_workers_index != std::string::npos) {
+        std::string arg = token;
+        worker_command_args.push_back(arg.replace(num_workers_index,
+                                                  strlen(kWorkerNumWorkersPlaceholder),
+                                                  std::to_string(workers_to_start)));
+        num_workers_arg_replaced = true;
+      } else {
+        worker_command_args.push_back(token);
+      }
     }
   }
+  RAY_CHECK(num_workers_arg_replaced || state.num_workers_per_process == 1)
+      << "Expect to start " << state.num_workers_per_process << " workers per "
+      << Language_Name(language) << " worker process. But the "
+      << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
 
   pid_t pid = StartProcess(worker_command_args);
   if (pid < 0) {
@@ -145,9 +181,9 @@ int WorkerPool::StartWorkerProcess(const Language &language,
     RAY_LOG(FATAL) << "Failed to fork worker process: " << strerror(errno);
   } else if (pid > 0) {
     // Parent process case.
-    RAY_LOG(DEBUG) << "Started worker process with pid " << pid;
-    state.starting_worker_processes.emplace(
-        std::make_pair(pid, num_workers_per_process_));
+    RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start
+                   << " worker(s) with pid " << pid;
+    state.starting_worker_processes.emplace(pid, workers_to_start);
     return pid;
   }
   return -1;
@@ -355,27 +391,30 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
 }
 
 void WorkerPool::WarnAboutSize() {
-  int64_t num_workers_started_or_registered = 0;
   for (const auto &entry : states_by_lang_) {
+    auto state = entry.second;
+    int64_t num_workers_started_or_registered = 0;
     num_workers_started_or_registered +=
-        static_cast<int64_t>(entry.second.registered_workers.size());
-    num_workers_started_or_registered +=
-        static_cast<int64_t>(entry.second.starting_worker_processes.size());
-  }
-  int64_t multiple = num_workers_started_or_registered / multiple_for_warning_;
-  std::stringstream warning_message;
-  if (multiple >= 3 && multiple > last_warning_multiple_) {
-    // Push an error message to the user if the worker pool tells us that it is
-    // getting too big.
-    last_warning_multiple_ = multiple;
-    warning_message << "WARNING: " << num_workers_started_or_registered
-                    << " workers have been started. This could be a result of using "
-                    << "a large number of actors, or it could be a consequence of "
-                    << "using nested tasks "
-                    << "(see https://github.com/ray-project/ray/issues/3644) for "
-                    << "some a discussion of workarounds.";
-    RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
-        JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+        static_cast<int64_t>(state.registered_workers.size());
+    for (const auto &starting_process : state.starting_worker_processes) {
+      num_workers_started_or_registered += starting_process.second;
+    }
+    int64_t multiple = num_workers_started_or_registered / state.multiple_for_warning;
+    std::stringstream warning_message;
+    if (multiple >= 3 && multiple > state.last_warning_multiple) {
+      // Push an error message to the user if the worker pool tells us that it is
+      // getting too big.
+      state.last_warning_multiple = multiple;
+      warning_message << "WARNING: " << num_workers_started_or_registered << " "
+                      << Language_Name(entry.first)
+                      << " workers have been started. This could be a result of using "
+                      << "a large number of actors, or it could be a consequence of "
+                      << "using nested tasks "
+                      << "(see https://github.com/ray-project/ray/issues/3644) for "
+                      << "some a discussion of workarounds.";
+      RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
+          JobID::Nil(), "worker_pool_large", warning_message.str(), current_time_ms()));
+    }
   }
 }
 
@@ -390,8 +429,10 @@ std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
   for (const auto &entry : states_by_lang_) {
-    result << "\n- num workers: " << entry.second.registered_workers.size();
-    result << "\n- num drivers: " << entry.second.registered_drivers.size();
+    result << "\n- num " << Language_Name(entry.first)
+           << " workers: " << entry.second.registered_workers.size();
+    result << "\n- num " << Language_Name(entry.first)
+           << " drivers: " << entry.second.registered_drivers.size();
   }
   return result.str();
 }

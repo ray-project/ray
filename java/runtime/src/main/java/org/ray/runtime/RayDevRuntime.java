@@ -11,14 +11,10 @@ import org.ray.runtime.task.TaskExecutor;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
-  public RayDevRuntime(RayConfig rayConfig) {
-    super(rayConfig);
-  }
-
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
-  @Override
-  public void start() {
+  public RayDevRuntime(RayConfig rayConfig) {
+    super(rayConfig);
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
