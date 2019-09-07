@@ -91,12 +91,12 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// DEFAULT_IS_DIRECT_CALL field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_default_is_direct_call;
+/// DEFAULT_USE_DIRECT_CALL field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_default_use_direct_call;
 /// maxReconstructions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_reconstructions;
-/// isDirectCall field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_is_direct_call;
+/// useDirectCall field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_use_direct_call;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 

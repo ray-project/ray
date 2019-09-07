@@ -65,7 +65,7 @@ public class ActorReconstructionTest extends BaseTest {
 
     // Try calling increase on this actor again and check the value is now 4.
     int value = Ray.call(Counter::increase, actor).get();
-    Assert.assertEquals(value, options.isDirectCall ? 1 : 4);
+    Assert.assertEquals(value, options.useDirectCall ? 1 : 4);
 
     Assert.assertTrue(Ray.call(Counter::wasCurrentActorReconstructed, actor).get());
 

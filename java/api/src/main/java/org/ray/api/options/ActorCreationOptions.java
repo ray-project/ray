@@ -10,20 +10,20 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public static final int NO_RECONSTRUCTION = 0;
   public static final int INFINITE_RECONSTRUCTIONS = (int) Math.pow(2, 30);
-  public static final boolean DEFAULT_IS_DIRECT_CALL = "1"
-      .equals(System.getenv("ACTOR_CREATION_OPTIONS_DEFAULT_IS_DIRECT_CALL"));
+  public static final boolean DEFAULT_USE_DIRECT_CALL = "1"
+      .equals(System.getenv("ACTOR_CREATION_OPTIONS_DEFAULT_USE_DIRECT_CALL"));
 
   public final int maxReconstructions;
 
-  public final boolean isDirectCall;
+  public final boolean useDirectCall;
 
   public final String jvmOptions;
 
   private ActorCreationOptions(Map<String, Double> resources, int maxReconstructions,
-      boolean isDirectCall, String jvmOptions) {
+      boolean useDirectCall, String jvmOptions) {
     super(resources);
     this.maxReconstructions = maxReconstructions;
-    this.isDirectCall = isDirectCall;
+    this.useDirectCall = useDirectCall;
     this.jvmOptions = jvmOptions;
   }
 
@@ -34,7 +34,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     private Map<String, Double> resources = new HashMap<>();
     private int maxReconstructions = NO_RECONSTRUCTION;
-    private boolean isDirectCall = DEFAULT_IS_DIRECT_CALL;
+    private boolean useDirectCall = DEFAULT_USE_DIRECT_CALL;
     private String jvmOptions = "";
 
     public Builder setResources(Map<String, Double> resources) {
@@ -49,8 +49,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     // Since direct call is not fully supported yet, users are not allowed to set the option to true.
     // TODO (kfstorm): uncomment when direct call is ready.
-//    public Builder setIsDirectCall(boolean isDirectCall) {
-//      this.isDirectCall = isDirectCall;
+//    public Builder setUseDirectCall(boolean useDirectCall) {
+//      this.useDirectCall = useDirectCall;
 //      return this;
 //    }
 
@@ -60,7 +60,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     public ActorCreationOptions createActorCreationOptions() {
-      return new ActorCreationOptions(resources, maxReconstructions, isDirectCall, jvmOptions);
+      return new ActorCreationOptions(resources, maxReconstructions, useDirectCall, jvmOptions);
     }
   }
 

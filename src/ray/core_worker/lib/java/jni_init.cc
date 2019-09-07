@@ -49,9 +49,9 @@ jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_default_is_direct_call;
+jfieldID java_actor_creation_options_default_use_direct_call;
 jfieldID java_actor_creation_options_max_reconstructions;
-jfieldID java_actor_creation_options_is_direct_call;
+jfieldID java_actor_creation_options_use_direct_call;
 jfieldID java_actor_creation_options_jvm_options;
 
 jclass java_gcs_client_options_class;
@@ -147,11 +147,11 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_default_is_direct_call = env->GetStaticFieldID(
-      java_actor_creation_options_class, "DEFAULT_IS_DIRECT_CALL", "Z");
+  java_actor_creation_options_default_use_direct_call = env->GetStaticFieldID(
+      java_actor_creation_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
   java_actor_creation_options_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
-  java_actor_creation_options_is_direct_call =
+  java_actor_creation_options_use_direct_call =
       env->GetFieldID(java_actor_creation_options_class, "isDirectCall", "Z");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
