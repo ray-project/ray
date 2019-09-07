@@ -76,6 +76,7 @@ class Resources(
         for entry in all_values:
             assert isinstance(entry, Number), ("Improper resource value.",
                                                entry)
+        all_values = [round(entry, 2) for entry in all_values]
         return super(Resources, cls).__new__(
             cls, cpu, gpu, memory, object_store_memory, extra_cpu, extra_gpu,
             extra_memory, extra_object_store_memory, custom_resources,
