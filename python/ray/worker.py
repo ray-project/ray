@@ -1031,7 +1031,6 @@ class Worker(object):
             job_id, function_descriptor) == execution_info.max_calls)
         if reached_max_executions:
             self.core_worker.disconnect()
-            self.raylet_client.disconnect()
             sys.exit(0)
 
     def _get_next_task_from_raylet(self):
@@ -2074,6 +2073,9 @@ def disconnect():
     if hasattr(worker, "raylet_client"):
         del worker.raylet_client
     if hasattr(worker, "core_worker"):
+        # Intentionally disconnect the core worker from the raylet so the
+        # raylet won't push an error message to the driver.
+        worker.core_worker.disconnect()
         del worker.core_worker
 
 
