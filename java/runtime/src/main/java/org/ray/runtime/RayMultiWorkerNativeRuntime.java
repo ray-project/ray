@@ -87,7 +87,6 @@ public class RayMultiWorkerNativeRuntime implements RayRuntime {
     }
     for (int i = 0; i < numWorkers; i++) {
       try {
-        runtimes[i].shutdown();
         threads[i].join();
       } catch (InterruptedException e) {
         throw new RuntimeException(e);

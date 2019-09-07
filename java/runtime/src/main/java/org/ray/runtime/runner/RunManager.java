@@ -321,12 +321,12 @@ public class RunManager {
     }
 
     // Number of workers per Java worker process
-    cmd.add("-Dray.raylet.config.num_workers_per_process_java=RAY_WORKER_PLACEHOLDER_NUM_WORKERS");
+    cmd.add("-Dray.raylet.config.num_workers_per_process_java=RAY_WORKER_NUM_WORKERS_PLACEHOLDER");
 
     cmd.addAll(rayConfig.jvmParameters);
 
     // jvm options
-    cmd.add("RAY_WORKER_PLACEHOLDER_DYNAMIC_OPTION_0");
+    cmd.add("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0");
 
     // Main class
     cmd.add(WORKER_CLASS);

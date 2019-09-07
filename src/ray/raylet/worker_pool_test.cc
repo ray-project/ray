@@ -17,10 +17,10 @@ class WorkerPoolMock : public WorkerPool {
   WorkerPoolMock()
       : WorkerPoolMock(
             {{Language::PYTHON,
-              {"dummy_py_worker_command", "--foo=RAY_WORKER_PLACEHOLDER_NUM_WORKERS"}},
+              {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
              {Language::JAVA,
               {"dummy_java_worker_command",
-               "--foo=RAY_WORKER_PLACEHOLDER_NUM_WORKERS"}}}) {}
+               "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
 
   explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
       : WorkerPool(0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
@@ -261,9 +261,9 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 
 TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const std::vector<std::string> java_worker_command = {
-      "RAY_WORKER_PLACEHOLDER_DYNAMIC_OPTION_0", "dummy_java_worker_command",
-      "--foo=RAY_WORKER_PLACEHOLDER_NUM_WORKERS",
-      "RAY_WORKER_PLACEHOLDER_DYNAMIC_OPTION_1"};
+      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0", "dummy_java_worker_command",
+      "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER",
+      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1"};
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 

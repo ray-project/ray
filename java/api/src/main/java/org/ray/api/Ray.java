@@ -119,7 +119,8 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Wrap a {@link Runnable} with necessary context capture.
+   * If users want to use Ray API in there own threads, they should wrap their {@link Runnable}
+   * objects with this method.
    *
    * @param runnable The runnable to wrap.
    * @return The wrapped runnable.
@@ -129,7 +130,8 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Wrap a {@link Callable} with necessary context capture.
+   * If users want to use Ray API in there own threads, they should wrap their {@link Callable}
+   * objects with this method.
    *
    * @param callable The callable to wrap.
    * @return The wrapped callable.
