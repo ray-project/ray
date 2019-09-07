@@ -62,6 +62,8 @@ public class RayConfig {
    */
   public final int numberExecThreadsForDevRuntime;
 
+  public final int numWorkersPerProcess;
+
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(redisAddress != null,
@@ -170,6 +172,8 @@ public class RayConfig {
 
     // Number of threads that execute tasks.
     numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
+
+    numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
 
     // Validate config.
     validate();
