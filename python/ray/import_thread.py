@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import redis
 import threading
 import traceback
 
@@ -10,6 +11,10 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray import profiling
 from ray import utils
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ImportThread(object):
@@ -80,6 +85,8 @@ class ImportThread(object):
                     num_imported += 1
                     key = self.redis_client.lindex("Exports", i)
                     self._process_key(key)
+        except (OSError, redis.exceptions.ConnectionError) as e:
+            logger.error("ImportThread: {}".format(e))
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()
@@ -114,13 +121,13 @@ class ImportThread(object):
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (driver_id, serialized_function,
+        (job_id, serialized_function,
          run_on_other_drivers) = self.redis_client.hmget(
-             key, ["driver_id", "function", "run_on_other_drivers"])
+             key, ["job_id", "function", "run_on_other_drivers"])
 
         if (utils.decode(run_on_other_drivers) == "False"
                 and self.worker.mode == ray.SCRIPT_MODE
-                and driver_id != self.worker.task_driver_id.binary()):
+                and job_id != self.worker.current_job_id.binary()):
             return
 
         try:
@@ -140,4 +147,4 @@ class ImportThread(object):
                 self.worker,
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
-                driver_id=ray.DriverID(driver_id))
+                job_id=ray.JobID(job_id))

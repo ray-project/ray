@@ -3,7 +3,7 @@ from libcpp.string cimport string as c_string
 from libcpp.unordered_map cimport unordered_map
 
 
-cdef extern from "ray/ray_config.h" nogil:
+cdef extern from "ray/common/ray_config.h" nogil:
     cdef cppclass RayConfig "RayConfig":
         @staticmethod
         RayConfig &instance()

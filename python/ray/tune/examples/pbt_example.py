@@ -96,7 +96,8 @@ if __name__ == "__main__":
 
     pbt = PopulationBasedTraining(
         time_attr="training_iteration",
-        reward_attr="mean_accuracy",
+        metric="mean_accuracy",
+        mode="max",
         perturbation_interval=20,
         hyperparam_mutations={
             # distribution for resampling

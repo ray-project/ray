@@ -29,7 +29,7 @@ class MockExporter : public opencensus::stats::StatsExporter::Handler {
       ASSERT_EQ(opencensus::stats::ViewData::Type::kDouble, view_data.type());
 
       for (const auto row : view_data.double_data()) {
-        for (int i = 0; i < descriptor.columns().size(); ++i) {
+        for (size_t i = 0; i < descriptor.columns().size(); ++i) {
           if (descriptor.columns()[i].name() == "NodeAddress") {
             ASSERT_EQ("Localhost", row.first[i]);
           }

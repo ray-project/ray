@@ -5,7 +5,7 @@
 #include <boost/bind.hpp>
 #include <boost/function.hpp>
 
-#include "ray/status.h"
+#include "ray/common/status.h"
 
 #include "ray/common/common_protocol.h"
 #include "ray/object_manager/object_store_notification_manager.h"
@@ -42,6 +42,11 @@ void ObjectStoreNotificationManager::NotificationWait() {
 void ObjectStoreNotificationManager::ProcessStoreLength(
     const boost::system::error_code &error) {
   notification_.resize(length_);
+  if (error) {
+    RAY_LOG(FATAL)
+        << "Problem communicating with the object store from raylet, check logs or "
+        << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
+  }
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
       boost::bind(&ObjectStoreNotificationManager::ProcessStoreNotification, this,
@@ -50,7 +55,7 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
 
 void ObjectStoreNotificationManager::ProcessStoreNotification(
     const boost::system::error_code &error) {
-  if (error.value() != boost::system::errc::success) {
+  if (error) {
     RAY_LOG(FATAL)
         << "Problem communicating with the object store from raylet, check logs or "
         << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
@@ -58,7 +63,8 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
 
   const auto &object_info =
       flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
-  const auto &object_id = from_flatbuf<ObjectID>(*object_info->object_id());
+  const ObjectID object_id =
+      ObjectID::FromPlasmaIdBinary(object_info->object_id()->str());
   if (object_info->is_deletion()) {
     ProcessStoreRemove(object_id);
   } else {

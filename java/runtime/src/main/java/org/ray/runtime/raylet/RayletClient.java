@@ -1,34 +1,16 @@
 package org.ray.runtime.raylet;
 
-import java.util.List;
-import org.ray.api.RayObject;
-import org.ray.api.WaitResult;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
-import org.ray.runtime.task.TaskSpec;
 
 /**
  * Client to the Raylet backend.
  */
 public interface RayletClient {
 
-  void submitTask(TaskSpec task);
+  UniqueId prepareCheckpoint(ActorId actorId);
 
-  TaskSpec getTask();
+  void notifyActorResumedFromCheckpoint(ActorId actorId, UniqueId checkpointId);
 
-  void fetchOrReconstruct(List<UniqueId> objectIds, boolean fetchOnly, UniqueId currentTaskId);
-
-  void notifyUnblocked(UniqueId currentTaskId);
-
-  UniqueId generateTaskId(UniqueId driverId, UniqueId parentTaskId, int taskIndex);
-
-  <T> WaitResult<T> wait(List<RayObject<T>> waitFor, int numReturns, int
-      timeoutMs, UniqueId currentTaskId);
-
-  void freePlasmaObjects(List<UniqueId> objectIds, boolean localOnly, boolean deleteCreatingTasks);
-
-  UniqueId prepareCheckpoint(UniqueId actorId);
-
-  void notifyActorResumedFromCheckpoint(UniqueId actorId, UniqueId checkpointId);
-
-  void destroy();
+  void setResource(String resourceName, double capacity, UniqueId nodeId);
 }

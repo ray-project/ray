@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
+import org.ray.api.TestUtils;
 import org.ray.api.WaitResult;
 import org.ray.api.annotation.RayRemote;
 import org.testng.Assert;
@@ -28,6 +29,9 @@ public class WaitTest extends BaseTest {
   }
 
   private static void testWait() {
+    // Call a task in advance to warm up the cluster to avoid being too slow to start workers.
+    TestUtils.warmUpCluster();
+
     RayObject<String> obj1 = Ray.call(WaitTest::hi);
     RayObject<String> obj2 = Ray.call(WaitTest::delayedHi);
 
@@ -71,4 +75,5 @@ public class WaitTest extends BaseTest {
       Assert.assertTrue(true);
     }
   }
+
 }

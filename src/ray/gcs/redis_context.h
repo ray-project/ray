@@ -3,13 +3,21 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
-#include "ray/id.h"
-#include "ray/status.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/util/logging.h"
 
-#include "ray/gcs/format/gcs_generated.h"
+#include "ray/gcs/redis_async_context.h"
+#include "ray/protobuf/gcs.pb.h"
+
+extern "C" {
+#include "ray/thirdparty/hiredis/adapters/ae.h"
+#include "ray/thirdparty/hiredis/async.h"
+#include "ray/thirdparty/hiredis/hiredis.h"
+}
 
 struct redisContext;
 struct redisAsyncContext;
@@ -18,9 +26,48 @@ struct aeEventLoop;
 namespace ray {
 
 namespace gcs {
+
+using rpc::TablePrefix;
+using rpc::TablePubsub;
+
+/// A simple reply wrapper for redis reply.
+class CallbackReply {
+ public:
+  explicit CallbackReply(redisReply *redis_reply);
+
+  /// Whether this reply is `nil` type reply.
+  bool IsNil() const;
+
+  /// Read this reply data as an integer.
+  int64_t ReadAsInteger() const;
+
+  /// Read this reply data as a string.
+  ///
+  /// Note that this will return an empty string if
+  /// the type of this reply is `nil` or `status`.
+  std::string ReadAsString() const;
+
+  /// Read this reply data as a status.
+  Status ReadAsStatus() const;
+
+  /// Read this reply data as a pub-sub data.
+  std::string ReadAsPubsubData() const;
+
+  /// Read this reply data as a string array.
+  ///
+  /// \param array Since the return-value may be large,
+  /// make it as an output parameter.
+  void ReadAsStringArray(std::vector<std::string> *array) const;
+
+ private:
+  redisReply *redis_reply_;
+};
+
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
-using RedisCallback = std::function<void(const std::string &)>;
+using RedisCallback = std::function<void(const CallbackReply &)>;
+
+void GlobalRedisCallback(void *c, void *r, void *privdata);
 
 class RedisCallbackManager {
  public:
@@ -56,18 +103,20 @@ class RedisCallbackManager {
 
   ~RedisCallbackManager() {}
 
+  std::mutex mutex_;
+
   int64_t num_callbacks_ = 0;
   std::unordered_map<int64_t, CallbackItem> callback_items_;
 };
 
 class RedisContext {
  public:
-  RedisContext()
-      : context_(nullptr), async_context_(nullptr), subscribe_context_(nullptr) {}
+  RedisContext() : context_(nullptr) {}
+
   ~RedisContext();
+
   Status Connect(const std::string &address, int port, bool sharding,
                  const std::string &password);
-  Status AttachToEventLoop(aeEventLoop *loop);
 
   /// Run an operation on some table key.
   ///
@@ -83,8 +132,9 @@ class RedisContext {
   /// at which the data must be appended. For all other commands, set to
   /// -1 for unused. If set, then data must be provided.
   /// \return Status.
-  Status RunAsync(const std::string &command, const UniqueID &id, const uint8_t *data,
-                  int64_t length, const TablePrefix prefix,
+  template <typename ID>
+  Status RunAsync(const std::string &command, const ID &id, const void *data,
+                  size_t length, const TablePrefix prefix,
                   const TablePubsub pubsub_channel, RedisCallback redisCallback,
                   int log_length = -1);
 
@@ -103,15 +153,60 @@ class RedisContext {
   /// \return Status.
   Status SubscribeAsync(const ClientID &client_id, const TablePubsub pubsub_channel,
                         const RedisCallback &redisCallback, int64_t *out_callback_index);
-  redisContext *sync_context() { return context_; }
-  redisAsyncContext *async_context() { return async_context_; }
-  redisAsyncContext *subscribe_context() { return subscribe_context_; };
+
+  redisContext *sync_context() {
+    RAY_CHECK(context_);
+    return context_;
+  }
+
+  RedisAsyncContext &async_context() {
+    RAY_CHECK(redis_async_context_);
+    return *redis_async_context_;
+  }
+
+  RedisAsyncContext &subscribe_context() {
+    RAY_CHECK(async_redis_subscribe_context_);
+    return *async_redis_subscribe_context_;
+  }
 
  private:
   redisContext *context_;
-  redisAsyncContext *async_context_;
-  redisAsyncContext *subscribe_context_;
+  std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
 };
+
+template <typename ID>
+Status RedisContext::RunAsync(const std::string &command, const ID &id, const void *data,
+                              size_t length, const TablePrefix prefix,
+                              const TablePubsub pubsub_channel,
+                              RedisCallback redisCallback, int log_length) {
+  RAY_CHECK(redis_async_context_);
+  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
+  Status status = Status::OK();
+  if (length > 0) {
+    if (log_length >= 0) {
+      std::string redis_command = command + " %d %d %b %b %d";
+      status = redis_async_context_->RedisAsyncCommand(
+          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+          pubsub_channel, id.Data(), id.Size(), data, length, log_length);
+    } else {
+      std::string redis_command = command + " %d %d %b %b";
+      status = redis_async_context_->RedisAsyncCommand(
+          reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+          reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+          pubsub_channel, id.Data(), id.Size(), data, length);
+    }
+  } else {
+    RAY_CHECK(log_length == -1);
+    std::string redis_command = command + " %d %d %b";
+    status = redis_async_context_->RedisAsyncCommand(
+        reinterpret_cast<redisCallbackFn *>(&GlobalRedisCallback),
+        reinterpret_cast<void *>(callback_index), redis_command.c_str(), prefix,
+        pubsub_channel, id.Data(), id.Size());
+  }
+  return status;
+}
 
 }  // namespace gcs
 

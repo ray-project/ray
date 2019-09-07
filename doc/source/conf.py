@@ -14,6 +14,7 @@
 
 import sys
 import os
+import urllib
 import shlex
 
 # These lines added to enable Sphinx to work without installing Ray.
@@ -23,24 +24,12 @@ MOCK_MODULES = [
     "gym.spaces",
     "ray._raylet",
     "ray.core.generated",
-    "ray.core.generated.ActorCheckpointIdData",
-    "ray.core.generated.ClientTableData",
-    "ray.core.generated.DriverTableData",
-    "ray.core.generated.EntryType",
-    "ray.core.generated.ErrorTableData",
-    "ray.core.generated.ErrorType",
-    "ray.core.generated.GcsTableEntry",
-    "ray.core.generated.HeartbeatBatchTableData",
-    "ray.core.generated.HeartbeatTableData",
-    "ray.core.generated.Language",
-    "ray.core.generated.ObjectTableData",
-    "ray.core.generated.ProfileTableData",
-    "ray.core.generated.TablePrefix",
-    "ray.core.generated.TablePubsub",
+    "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task",
     "scipy",
     "scipy.signal",
     "scipy.stats",
+    "tensorflow_probability",
     "tensorflow",
     "tensorflow.contrib",
     "tensorflow.contrib.all_reduce",
@@ -53,6 +42,10 @@ MOCK_MODULES = [
     "tensorflow.python",
     "tensorflow.python.client",
     "tensorflow.python.util",
+    "torch",
+    "torch.distributed",
+    "torch.nn",
+    "torch.utils.data",
 ]
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
@@ -78,6 +71,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx_click.ext',
+    'sphinx-jsonschema',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -337,4 +331,28 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = 'bysource'
 
-# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
+# Taken from https://github.com/edx/edx-documentation
+FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}&labels=docs&body={body}"
+
+
+def feedback_form_url(project, page):
+    """Create a URL for feedback on a particular page in a project."""
+    return FEEDBACK_FORM_FMT.format(
+        title=urllib.parse.quote(
+            "[docs] Issue on `{page}.rst`".format(page=page)),
+        body=urllib.parse.quote(
+            "# Documentation Problem/Question/Comment\n"
+            "<!-- Describe your issue/question/comment below. -->\n"
+            "<!-- If there are typos or errors in the docs, feel free to create a pull-request. -->\n"
+            "\n\n\n\n"
+            "(Created directly from the docs)\n"))
+
+
+def update_context(app, pagename, templatename, context, doctree):
+    """Update the page rendering context to include ``feedback_form_url``."""
+    context['feedback_form_url'] = feedback_form_url(app.config.project,
+                                                     pagename)
+
+
+def setup(app):
+    app.connect('html-page-context', update_context)

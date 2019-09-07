@@ -7,8 +7,8 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/id.h"
 #include "ray/gcs/tables.h"
-#include "ray/id.h"
 #include "ray/util/util.h"
 
 #include "ray/object_manager/object_directory.h"
@@ -16,6 +16,8 @@
 namespace ray {
 
 namespace raylet {
+
+using rpc::TaskReconstructionData;
 
 class ReconstructionPolicyInterface {
  public:
@@ -40,7 +42,7 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// lease notifications from.
   ReconstructionPolicy(
       boost::asio::io_service &io_service,
-      std::function<void(const TaskID &)> reconstruction_handler,
+      std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler,
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
@@ -125,12 +127,13 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
 
   /// Handle the response for an attempt at adding an entry to the task
   /// reconstruction log.
-  void HandleReconstructionLogAppend(const TaskID &task_id, bool success);
+  void HandleReconstructionLogAppend(const TaskID &task_id, const ObjectID &object_id,
+                                     bool success);
 
   /// The event loop.
   boost::asio::io_service &io_service_;
   /// The handler to call for tasks that require reconstruction.
-  const std::function<void(const TaskID &)> reconstruction_handler_;
+  const std::function<void(const TaskID &, const ObjectID &)> reconstruction_handler_;
   /// The initial timeout within which a task lease notification must be
   /// received. Otherwise, reconstruction will be triggered.
   const int64_t initial_reconstruction_timeout_ms_;

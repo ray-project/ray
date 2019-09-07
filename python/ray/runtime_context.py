@@ -20,7 +20,7 @@ class RuntimeContext(object):
                 a task, return the driver ID of the associated driver.
         """
         assert self.worker is not None
-        return self.worker.task_driver_id
+        return self.worker.current_job_id
 
 
 _runtime_context = None

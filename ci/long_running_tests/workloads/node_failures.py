@@ -31,7 +31,7 @@ for i in range(num_nodes):
         resources={str(i): 2},
         object_store_memory=object_store_memory,
         redis_max_memory=redis_max_memory)
-ray.init(redis_address=cluster.redis_address)
+ray.init(address=cluster.address)
 
 # Run the workload.
 
@@ -49,7 +49,7 @@ while True:
     for _ in range(100):
         previous_ids = [f.remote(previous_id) for previous_id in previous_ids]
 
-    ray.wait(previous_ids, num_returns=len(previous_ids))
+    ray.get(previous_ids)
 
     for _ in range(100):
         previous_ids = [f.remote(previous_id) for previous_id in previous_ids]

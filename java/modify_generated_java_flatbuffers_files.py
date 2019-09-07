@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import os
 import sys
-
 """
 This script is used for modifying the generated java flatbuffer
 files for the reason: The package declaration in Java is different
@@ -21,18 +20,17 @@ RAY_HOME: The root directory of Ray project.
 PACKAGE_DECLARATION = "package org.ray.runtime.generated;"
 
 
-def add_new_line(file, line_num, text):
+def add_package(file):
     with open(file, "r") as file_handler:
         lines = file_handler.readlines()
-        if (line_num <= 0) or (line_num > len(lines) + 1):
-            return False
 
-    lines.insert(line_num - 1, text + os.linesep)
+    if "FlatBuffers" not in lines[0]:
+        return
+
+    lines.insert(1, PACKAGE_DECLARATION + os.linesep)
     with open(file, "w") as file_handler:
         for line in lines:
             file_handler.write(line)
-
-    return True
 
 
 def add_package_declarations(generated_root_path):
@@ -41,15 +39,11 @@ def add_package_declarations(generated_root_path):
         if not file_name.endswith(".java"):
             continue
         full_name = os.path.join(generated_root_path, file_name)
-        success = add_new_line(full_name, 2, PACKAGE_DECLARATION)
-        if not success:
-            raise RuntimeError("Failed to add package declarations, "
-                               "file name is %s" % full_name)
+        add_package(full_name)
 
 
 if __name__ == "__main__":
     ray_home = sys.argv[1]
     root_path = os.path.join(
-        ray_home,
-        "java/runtime/src/main/java/org/ray/runtime/generated")
+        ray_home, "java/runtime/src/main/java/org/ray/runtime/generated")
     add_package_declarations(root_path)

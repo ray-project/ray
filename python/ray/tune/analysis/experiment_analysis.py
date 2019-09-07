@@ -2,73 +2,186 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import copy
-import glob
 import json
 import logging
 import os
-import pandas as pd
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 from ray.tune.error import TuneError
-from ray.tune.util import flatten_dict
+from ray.tune.result import EXPR_PROGRESS_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX
 
 logger = logging.getLogger(__name__)
 
-UNNEST_KEYS = ("config", "last_result")
 
+class Analysis(object):
+    """Analyze all results from a directory of experiments."""
 
-def unnest_checkpoints(checkpoints):
-    checkpoint_dicts = []
-    for g in checkpoints:
-        checkpoint = copy.deepcopy(g)
-        for key in UNNEST_KEYS:
-            if key not in checkpoint:
-                continue
+    def __init__(self, experiment_dir):
+        experiment_dir = os.path.expanduser(experiment_dir)
+        if not os.path.isdir(experiment_dir):
+            raise ValueError(
+                "{} is not a valid directory.".format(experiment_dir))
+        self._experiment_dir = experiment_dir
+        self._configs = {}
+        self._trial_dataframes = {}
+
+        if not pd:
+            logger.warning(
+                "pandas not installed. Run `pip install pandas` for "
+                "Analysis utilities.")
+        else:
+            self.fetch_trial_dataframes()
+
+    def dataframe(self, metric=None, mode=None):
+        """Returns a pandas.DataFrame object constructed from the trials.
+
+        Args:
+            metric (str): Key for trial info to order on.
+                If None, uses last result.
+            mode (str): One of [min, max].
+
+        """
+        rows = self._retrieve_rows(metric=metric, mode=mode)
+        all_configs = self.get_all_configs(prefix=True)
+        for path, config in all_configs.items():
+            if path in rows:
+                rows[path].update(config)
+                rows[path].update(logdir=path)
+        return pd.DataFrame(list(rows.values()))
+
+    def get_best_config(self, metric, mode="max"):
+        """Retrieve the best config corresponding to the trial.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+
+        """
+        rows = self._retrieve_rows(metric=metric, mode=mode)
+        all_configs = self.get_all_configs()
+        compare_op = max if mode == "max" else min
+        best_path = compare_op(rows, key=lambda k: rows[k][metric])
+        return all_configs[best_path]
+
+    def get_best_logdir(self, metric, mode="max"):
+        """Retrieve the logdir corresponding to the best trial.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+
+        """
+        df = self.dataframe(metric=metric, mode=mode)
+        if mode == "max":
+            return df.iloc[df[metric].idxmax()].logdir
+        elif mode == "min":
+            return df.iloc[df[metric].idxmin()].logdir
+
+    def fetch_trial_dataframes(self):
+        fail_count = 0
+        for path in self._get_trial_paths():
             try:
-                unnest_dict = flatten_dict(checkpoint.pop(key))
-                checkpoint.update(unnest_dict)
+                self.trial_dataframes[path] = pd.read_csv(
+                    os.path.join(path, EXPR_PROGRESS_FILE))
             except Exception:
-                logger.debug("Failed to flatten dict.")
-        checkpoint = flatten_dict(checkpoint)
-        checkpoint_dicts.append(checkpoint)
-    return checkpoint_dicts
+                fail_count += 1
+
+        if fail_count:
+            logger.debug(
+                "Couldn't read results from {} paths".format(fail_count))
+        return self.trial_dataframes
+
+    def get_all_configs(self, prefix=False):
+        """Returns a list of all configurations.
+
+        Parameters:
+            prefix (bool): If True, flattens the config dict
+                and prepends `config/`.
+        """
+        fail_count = 0
+        for path in self._get_trial_paths():
+            try:
+                with open(os.path.join(path, EXPR_PARAM_FILE)) as f:
+                    config = json.load(f)
+                    if prefix:
+                        for k in list(config):
+                            config[CONFIG_PREFIX + k] = config.pop(k)
+                    self._configs[path] = config
+            except Exception:
+                fail_count += 1
+
+        if fail_count:
+            logger.warning(
+                "Couldn't read config from {} paths".format(fail_count))
+        return self._configs
+
+    def _retrieve_rows(self, metric=None, mode=None):
+        assert mode is None or mode in ["max", "min"]
+        rows = {}
+        for path, df in self.trial_dataframes.items():
+            if mode == "max":
+                idx = df[metric].idxmax()
+            elif mode == "min":
+                idx = df[metric].idxmin()
+            else:
+                idx = -1
+            rows[path] = df.iloc[idx].to_dict()
+
+        return rows
+
+    def _get_trial_paths(self):
+        _trial_paths = []
+        for trial_path, _, files in os.walk(self._experiment_dir):
+            if EXPR_PROGRESS_FILE in files:
+                _trial_paths += [trial_path]
+
+        if not _trial_paths:
+            raise TuneError("No trials found in {}.".format(
+                self._experiment_dir))
+        return _trial_paths
+
+    @property
+    def trial_dataframes(self):
+        """List of all dataframes of the trials."""
+        return self._trial_dataframes
 
 
-class ExperimentAnalysis(object):
+class ExperimentAnalysis(Analysis):
     """Analyze results from a Tune experiment.
 
     Parameters:
-        experiment_path (str): Path to where experiment is located.
-            Corresponds to Experiment.local_dir/Experiment.name
+        experiment_checkpoint_path (str): Path to a json file
+            representing an experiment state. Corresponds to
+            Experiment.local_dir/Experiment.name/experiment_state.json
 
     Example:
         >>> tune.run(my_trainable, name="my_exp", local_dir="~/tune_results")
         >>> analysis = ExperimentAnalysis(
-        >>>     experiment_path="~/tune_results/my_exp")
+        >>>     experiment_checkpoint_path="~/tune_results/my_exp/state.json")
     """
 
-    def __init__(self, experiment_path):
-        experiment_path = os.path.expanduser(experiment_path)
-        if not os.path.isdir(experiment_path):
-            raise TuneError(
-                "{} is not a valid directory.".format(experiment_path))
-        experiment_state_paths = glob.glob(
-            os.path.join(experiment_path, "experiment_state*.json"))
-        if not experiment_state_paths:
-            raise TuneError("No experiment state found!")
-        experiment_filename = max(
-            list(experiment_state_paths))  # if more than one, pick latest
-        with open(os.path.join(experiment_path, experiment_filename)) as f:
-            self._experiment_state = json.load(f)
+    def __init__(self, experiment_checkpoint_path, trials=None):
+        """Initializer.
 
-        if "checkpoints" not in self._experiment_state:
+        Args:
+            experiment_path (str): Path to where experiment is located.
+            trials (list|None): List of trials that can be accessed via
+                `analysis.trials`.
+        """
+        with open(experiment_checkpoint_path) as f:
+            _experiment_state = json.load(f)
+            self._experiment_state = _experiment_state
+
+        if "checkpoints" not in _experiment_state:
             raise TuneError("Experiment state invalid; no checkpoints found.")
-        self._checkpoints = self._experiment_state["checkpoints"]
-        self._scrubbed_checkpoints = unnest_checkpoints(self._checkpoints)
-
-    def dataframe(self):
-        """Returns a pandas.DataFrame object constructed from the trials."""
-        return pd.DataFrame(self._scrubbed_checkpoints)
+        self._checkpoints = _experiment_state["checkpoints"]
+        self.trials = trials
+        super(ExperimentAnalysis, self).__init__(
+            os.path.dirname(experiment_checkpoint_path))
 
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
@@ -78,31 +191,17 @@ class ExperimentAnalysis(object):
         """Returns a dictionary of the TrialRunner data."""
         return self._experiment_state.get("runner_data")
 
-    def trial_dataframe(self, trial_id):
-        """Returns a pandas.DataFrame constructed from one trial."""
-        for checkpoint in self._checkpoints:
-            if checkpoint["trial_id"] == trial_id:
-                logdir = checkpoint["logdir"]
-                progress = max(glob.glob(os.path.join(logdir, "progress.csv")))
-                return pd.read_csv(progress)
-        raise ValueError("Trial id {} not found".format(trial_id))
-
-    def get_best_trainable(self, metric, trainable_cls):
-        """Returns the best Trainable based on the experiment metric."""
-        return trainable_cls(config=self.get_best_config(metric))
-
-    def get_best_config(self, metric):
-        """Retrieve the best config from the best trial."""
-        return self._get_best_trial(metric)["config"]
-
-    def _get_best_trial(self, metric):
-        """Retrieve the best trial based on the experiment metric."""
-        return max(
-            self._checkpoints, key=lambda d: d["last_result"].get(metric, 0))
-
-    def _get_sorted_trials(self, metric):
-        """Retrive trials in sorted order based on the experiment metric."""
-        return sorted(
-            self._checkpoints,
-            key=lambda d: d["last_result"].get(metric, 0),
-            reverse=True)
+    def _get_trial_paths(self):
+        """Overwrites Analysis to only have trials of one experiment."""
+        if self.trials:
+            _trial_paths = [t.logdir for t in self.trials]
+        else:
+            logger.warning("No `self.trials`. Drawing logdirs from checkpoint "
+                           "file. This may result in some information that is "
+                           "out of sync, as checkpointing is periodic.")
+            _trial_paths = [
+                checkpoint["logdir"] for checkpoint in self._checkpoints
+            ]
+        if not _trial_paths:
+            raise TuneError("No trials found.")
+        return _trial_paths

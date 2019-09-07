@@ -7,7 +7,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.TestUtils;
-import org.ray.api.id.UniqueId;
+import org.ray.api.id.ObjectId;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -23,7 +23,7 @@ public class StressTest extends BaseTest {
     for (int numIterations : ImmutableList.of(1, 10, 100, 1000)) {
       int numTasks = 1000 / numIterations;
       for (int i = 0; i < numIterations; i++) {
-        List<UniqueId> resultIds = new ArrayList<>();
+        List<ObjectId> resultIds = new ArrayList<>();
         for (int j = 0; j < numTasks; j++) {
           resultIds.add(Ray.call(StressTest::echo, 1).getId());
         }
@@ -60,7 +60,7 @@ public class StressTest extends BaseTest {
     }
 
     public int ping(int n) {
-      List<UniqueId> objectIds = new ArrayList<>();
+      List<ObjectId> objectIds = new ArrayList<>();
       for (int i = 0; i < n; i++) {
         objectIds.add(Ray.call(Actor::ping, actor).getId());
       }
@@ -76,7 +76,7 @@ public class StressTest extends BaseTest {
   public void testSubmittingManyTasksToOneActor() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<Actor> actor = Ray.createActor(Actor::new);
-    List<UniqueId> objectIds = new ArrayList<>();
+    List<ObjectId> objectIds = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
       RayActor<Worker> worker = Ray.createActor(Worker::new, actor);
       objectIds.add(Ray.call(Worker::ping, worker, 100).getId());

@@ -17,10 +17,10 @@ Then you can run the example as follows.
 
 .. code-block:: bash
 
-  python ray/examples/rl_pong/driver.py --batch-size=10
+  python ray/doc/examples/rl_pong/driver.py --batch-size=10
 
 To run the example on a cluster, simply pass in the flag
-``--redis-address=<redis-address>``.
+``--address=<address>``.
 
 At the moment, on a large machine with 64 physical cores, computing an update
 with a batch of size 1 takes about 1 second, a batch of size 10 takes about 2.5
@@ -32,7 +32,7 @@ an issue`_.
 
 .. _`code`: https://gist.github.com/karpathy/a4166c7fe253700972fcbc77e4ea32c5
 .. _`blog post`: http://karpathy.github.io/2016/05/31/rl/
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/rl_pong
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/rl_pong
 .. _`submitting an issue`: https://github.com/ray-project/ray/issues
 
 **Note** that these times depend on how long the rollouts take, which in turn

@@ -11,17 +11,17 @@ dependencies.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/parameter_server
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/parameter_server
 
 The examples can be run as follows.
 
 .. code-block:: bash
 
   # Run the asynchronous parameter server.
-  python ray/examples/parameter_server/async_parameter_server.py --num-workers=4
+  python ray/doc/examples/parameter_server/async_parameter_server.py --num-workers=4
 
   # Run the synchronous parameter server.
-  python ray/examples/parameter_server/sync_parameter_server.py --num-workers=4
+  python ray/doc/examples/parameter_server/sync_parameter_server.py --num-workers=4
 
 Note that this examples uses distributed actor handles, which are still
 considered experimental.

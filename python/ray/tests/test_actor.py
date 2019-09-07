@@ -8,9 +8,14 @@ import random
 import numpy as np
 import os
 import pytest
+try:
+    import pytest_timeout
+except ImportError:
+    pytest_timeout = None
 import signal
 import sys
 import time
+from pyarrow import plasma
 
 import ray
 import ray.ray_constants as ray_constants
@@ -19,6 +24,7 @@ import ray.tests.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (
     relevant_errors,
+    wait_for_condition,
     wait_for_errors,
 )
 
@@ -356,6 +362,33 @@ def test_actor_class_name(ray_start_regular):
     assert actor_class_info[b"module"] == b"ray.tests.test_actor"
 
 
+def test_actor_inheritance(ray_start_regular):
+    class NonActorBase(object):
+        def __init__(self):
+            pass
+
+    # Test that an actor class can inherit from a non-actor class.
+    @ray.remote
+    class ActorBase(NonActorBase):
+        def __init__(self):
+            pass
+
+    # Test that you can't instantiate an actor class directly.
+    with pytest.raises(
+            Exception, match="Actors cannot be instantiated directly."):
+        ActorBase()
+
+    # Test that you can't inherit from an actor class.
+    with pytest.raises(
+            TypeError,
+            match="Inheriting from actor classes is not "
+            "currently supported."):
+
+        class Derived(ActorBase):
+            def __init__(self):
+                pass
+
+
 def test_multiple_return_values(ray_start_regular):
     @ray.remote
     class Foo(object):
@@ -438,7 +471,8 @@ def test_actor_deletion(ray_start_regular):
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1)
+    ray.init(
+        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     # When an actor that uses a GPU exits, make sure that the GPU resources
     # are released.
@@ -506,7 +540,11 @@ def test_resource_assignment(shutdown_only):
     """Test to make sure that we assign resource to actors at instantiation."""
     # This test will create 16 actors. Declaring this many CPUs initially will
     # speed up the test because the workers will be started ahead of time.
-    ray.init(num_cpus=16, num_gpus=1, resources={"Custom": 1})
+    ray.init(
+        num_cpus=16,
+        num_gpus=1,
+        resources={"Custom": 1},
+        object_store_memory=int(150 * 1024 * 1024))
 
     class Actor(object):
         def __init__(self):
@@ -842,7 +880,7 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
     assert actor_id not in resulting_ids
 
 
-def test_actors_on_nodes_with_no_cpus(ray_start_regular):
+def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     @ray.remote
     class Foo(object):
         def method(self):
@@ -858,7 +896,7 @@ def test_actor_load_balancing(ray_start_cluster):
     num_nodes = 3
     for i in range(num_nodes):
         cluster.add_node(num_cpus=1)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     class Actor1(object):
@@ -896,6 +934,30 @@ def test_actor_load_balancing(ray_start_cluster):
 
 
 @pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
+@pytest.mark.timeout(20)
+def test_actor_lifetime_load_balancing(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    num_nodes = 3
+    for i in range(num_nodes):
+        cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def ping(self):
+            return
+
+    actors = [Actor.remote() for _ in range(num_nodes)]
+    ray.get([actor.ping.remote() for actor in actors])
+
+
+@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
 def test_actor_gpus(ray_start_cluster):
@@ -905,7 +967,7 @@ def test_actor_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -944,7 +1006,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=10 * num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=2)
     class Actor1(object):
@@ -1014,7 +1076,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     cluster.add_node(num_cpus=10, num_gpus=0)
     cluster.add_node(num_cpus=10, num_gpus=5)
     cluster.add_node(num_cpus=10, num_gpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -1058,7 +1120,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             _internal_config=json.dumps({
                 "num_heartbeats_timeout": 1000
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote
     def create_actors(i, n):
@@ -1133,7 +1195,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     def check_intervals_non_overlapping(list_of_intervals):
         for i in range(len(list_of_intervals)):
@@ -1262,7 +1324,8 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
-    ray.init(num_cpus=10, num_gpus=10)
+    ray.init(
+        num_cpus=10, num_gpus=10, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -1296,7 +1359,8 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
 
 
 def test_blocking_actor_task(shutdown_only):
-    ray.init(num_cpus=1, num_gpus=1)
+    ray.init(
+        num_cpus=1, num_gpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote(num_gpus=1)
     def f():
@@ -1706,7 +1770,7 @@ def test_nondeterministic_reconstruction_concurrent_forks(
 
 @pytest.fixture
 def setup_queue_actor():
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, object_store_memory=int(150 * 1024 * 1024))
 
     @ray.remote
     class Queue(object):
@@ -1989,7 +2053,7 @@ def test_lifetime_and_transient_resources(ray_start_regular):
     actor2s = [Actor2.remote() for _ in range(2)]
     results = [a.method.remote() for a in actor2s]
     ready_ids, remaining_ids = ray.wait(
-        results, num_returns=len(results), timeout=1.0)
+        results, num_returns=len(results), timeout=5.0)
     assert len(ready_ids) == 1
 
 
@@ -1997,7 +2061,7 @@ def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
     cluster.add_node(num_cpus=2, resources={"CustomResource2": 2})
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):
@@ -2071,7 +2135,7 @@ def test_creating_more_actors_than_resources(shutdown_only):
 
 
 @pytest.mark.parametrize(
-    "ray_start_object_store_memory", [10**8], indirect=True)
+    "ray_start_object_store_memory", [150 * 1024 * 1024], indirect=True)
 def test_actor_eviction(ray_start_object_store_memory):
     object_store_memory = ray_start_object_store_memory
 
@@ -2156,6 +2220,39 @@ def test_actor_reconstruction(ray_start_regular):
     # Check that the actor won't be reconstructed.
     with pytest.raises(ray.exceptions.RayActorError):
         ray.get(actor.increase.remote())
+
+
+def test_actor_reconstruction_without_task(ray_start_regular):
+    """Test a dead actor can be reconstructed without sending task to it."""
+
+    def object_exists(obj_id):
+        """Check wether an object exists in plasma store."""
+        plasma_client = ray.worker.global_worker.plasma_client
+        plasma_id = plasma.ObjectID(obj_id.binary())
+        return plasma_client.get(
+            plasma_id, timeout_ms=0) != plasma.ObjectNotAvailable
+
+    @ray.remote(max_reconstructions=1)
+    class ReconstructableActor(object):
+        def __init__(self, obj_ids):
+            for obj_id in obj_ids:
+                # Every time the actor gets constructed,
+                # put a new object in plasma store.
+                if not object_exists(obj_id):
+                    ray.worker.global_worker.put_object(obj_id, 1)
+                    break
+
+        def get_pid(self):
+            return os.getpid()
+
+    obj_ids = [ray.ObjectID.from_random() for _ in range(2)]
+    actor = ReconstructableActor.remote(obj_ids)
+    # Kill the actor.
+    pid = ray.get(actor.get_pid.remote())
+    os.kill(pid, signal.SIGKILL)
+    # Wait until the actor is reconstructed.
+    assert wait_for_condition(
+        lambda: object_exists(obj_ids[1]), timeout_ms=5000)
 
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
@@ -2439,7 +2536,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.
@@ -2483,7 +2580,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
     # Check that checkpointing errors were pushed to the driver.
-    errors = ray.error_info()
+    errors = ray.errors()
     assert len(errors) > 0
     for error in errors:
         # An error for the actor process dying may also get pushed.
@@ -2608,3 +2705,82 @@ def test_decorated_method(ray_start_regular):
     assert isinstance(object_id, ray.ObjectID)
     assert extra == {"kwarg": 3}
     assert ray.get(object_id) == 7  # 2 * 3 + 1
+
+
+@pytest.mark.skipif(
+    pytest_timeout is None,
+    reason="Timeout package not installed; skipping test that may hang.")
+@pytest.mark.timeout(20)
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }], indirect=True)
+def test_ray_wait_dead_actor(ray_start_cluster):
+    """Tests that methods completed by dead actors are returned as ready"""
+    cluster = ray_start_cluster
+
+    @ray.remote(num_cpus=1)
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def local_plasma(self):
+            return ray.worker.global_worker.plasma_client.store_socket_name
+
+        def ping(self):
+            time.sleep(1)
+
+    # Create some actors and wait for them to initialize.
+    num_nodes = len(cluster.list_all_nodes())
+    actors = [Actor.remote() for _ in range(num_nodes)]
+    ray.get([actor.ping.remote() for actor in actors])
+
+    # Ping the actors and make sure the tasks complete.
+    ping_ids = [actor.ping.remote() for actor in actors]
+    ray.get(ping_ids)
+    # Evict the result from the node that we're about to kill.
+    remote_node = cluster.list_all_nodes()[-1]
+    remote_ping_id = None
+    for i, actor in enumerate(actors):
+        if ray.get(actor.local_plasma.remote()
+                   ) == remote_node.plasma_store_socket_name:
+            remote_ping_id = ping_ids[i]
+    ray.internal.free([remote_ping_id], local_only=True)
+    cluster.remove_node(remote_node)
+
+    # Repeatedly call ray.wait until the exception for the dead actor is
+    # received.
+    unready = ping_ids[:]
+    while unready:
+        _, unready = ray.wait(unready, timeout=0)
+        time.sleep(1)
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(ping_ids)
+
+    # Evict the result from the dead node.
+    ray.internal.free([remote_ping_id], local_only=True)
+    # Create an actor on the local node that will call ray.wait in a loop.
+    head_node_resource = "HEAD_NODE"
+    ray.experimental.set_resource(head_node_resource, 1)
+
+    @ray.remote(num_cpus=0, resources={head_node_resource: 1})
+    class ParentActor(object):
+        def __init__(self, ping_ids):
+            self.unready = ping_ids
+
+        def wait(self):
+            _, self.unready = ray.wait(self.unready, timeout=0)
+            return len(self.unready) == 0
+
+        def ping(self):
+            return
+
+    # Repeatedly call ray.wait through the local actor until the exception for
+    # the dead actor is received.
+    parent_actor = ParentActor.remote(ping_ids)
+    ray.get(parent_actor.ping.remote())
+    failure_detected = False
+    while not failure_detected:
+        failure_detected = ray.get(parent_actor.wait.remote())

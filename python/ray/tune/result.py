@@ -9,8 +9,14 @@ import os
 # (Optional/Auto-filled) training is terminated. Filled only if not provided.
 DONE = "done"
 
+# (Optional) Enum for user controlled checkpoint
+SHOULD_CHECKPOINT = "should_checkpoint"
+
 # (Auto-filled) The hostname of the machine hosting the training process.
 HOSTNAME = "hostname"
+
+# (Auto-filled) The auto-assigned id of the trial.
+TRIAL_ID = "trial_id"
 
 # (Auto-filled) The node ip of the machine hosting the training process.
 NODE_IP = "node_ip"
@@ -68,10 +74,16 @@ JOB_META_FILE = "job_status.json"
 EXPR_META_FILE = "trial_status.json"
 
 # File that stores parameters of the trial.
-EXPR_PARARM_FILE = "params.json"
+EXPR_PARAM_FILE = "params.json"
+
+# Pickle File that stores parameters of the trial.
+EXPR_PARAM_PICKLE_FILE = "params.pkl"
 
 # File that stores the progress of the trial.
 EXPR_PROGRESS_FILE = "progress.csv"
 
 # File that stores results of the trial.
 EXPR_RESULT_FILE = "result.json"
+
+# Config prefix when using Analysis.
+CONFIG_PREFIX = "config/"
