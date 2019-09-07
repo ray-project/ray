@@ -57,7 +57,7 @@ const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }
 
-size_t TaskSpecification::ArgDataLength(size_t arg_index) const {
+size_t TaskSpecification::ArgDataSize(size_t arg_index) const {
   return message_->args(arg_index).data().size();
 }
 
@@ -65,7 +65,7 @@ const uint8_t *TaskSpecification::ArgMetadata(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).metadata().data());
 }
 
-size_t TaskSpecification::ArgMetadataLength(size_t arg_index) const {
+size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 

@@ -59,9 +59,9 @@ class TaskArg {
   TaskArg(const std::shared_ptr<ObjectID> id, const std::shared_ptr<RayObject> value)
       : id_(id), value_(value) {}
 
-  /// Id of the argument, if passed by reference, otherwise nullptr.
+  /// Id of the argument if passed by reference, otherwise nullptr.
   const std::shared_ptr<ObjectID> id_;
-  /// Value of the argument, if passed by value, otherwise nullptr.
+  /// Value of the argument if passed by value, otherwise nullptr.
   const std::shared_ptr<RayObject> value_;
 };
 

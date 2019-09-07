@@ -55,9 +55,9 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         CObjectID ArgId(uint64_t arg_index, uint64_t id_index) const
         CObjectID ReturnId(uint64_t return_index) const
         const uint8_t *ArgData(uint64_t arg_index) const
-        size_t ArgDataLength(uint64_t arg_index) const
+        size_t ArgDataSize(uint64_t arg_index) const
         const uint8_t *ArgMetadata(uint64_t arg_index) const
-        size_t ArgMetadataLength(uint64_t arg_index) const
+        size_t ArgMetadataSize(uint64_t arg_index) const
         double GetRequiredResource(const c_string &resource_name) const
         const ResourceSet GetRequiredResources() const
         const ResourceSet GetRequiredPlacementResources() const

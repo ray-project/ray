@@ -183,8 +183,8 @@ cdef class TaskSpec:
                     arg_list.append(
                         ObjectID(task_spec.ArgId(i, 0).Binary()))
                 else:
-                    data = (task_spec.ArgData(i)[:task_spec.ArgDataLength(i)])
-                    metadata = (task_spec.ArgMetadata(i)[:task_spec.ArgMetadataLength(i)])
+                    data = (task_spec.ArgData(i)[:task_spec.ArgDataSize(i)])
+                    metadata = (task_spec.ArgMetadata(i)[:task_spec.ArgMetadataSize(i)])
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
                     else:

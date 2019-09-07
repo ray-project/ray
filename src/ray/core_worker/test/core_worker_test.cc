@@ -31,10 +31,6 @@ std::string mock_worker_executable;
 
 ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
-inline TaskArg PassByValueWithBuffer(const std::shared_ptr<Buffer> &buffer) {
-  return TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr));
-}
-
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -64,7 +60,7 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
 
   RayFunction func{ray::Language::PYTHON, {"actor creation task"}};
   std::vector<TaskArg> args;
-  args.emplace_back(PassByValueWithBuffer(buffer));
+  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources, {}};
 
@@ -237,7 +233,8 @@ void CoreWorkerTest::TestNormalTask(
       RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer2, nullptr), &object_id));
 
       std::vector<TaskArg> args;
-      args.emplace_back(PassByValueWithBuffer(buffer1));
+      args.emplace_back(
+          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
       RayFunction func{ray::Language::PYTHON, {}};
@@ -278,8 +275,10 @@ void CoreWorkerTest::TestActorTask(
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(PassByValueWithBuffer(buffer1));
-      args.emplace_back(PassByValueWithBuffer(buffer2));
+      args.emplace_back(
+          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+      args.emplace_back(
+          TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
@@ -320,7 +319,8 @@ void CoreWorkerTest::TestActorTask(
     // Create arguments with PassByRef and PassByValue.
     std::vector<TaskArg> args;
     args.emplace_back(TaskArg::PassByReference(object_id));
-    args.emplace_back(PassByValueWithBuffer(buffer2));
+    args.emplace_back(
+        TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
@@ -385,7 +385,8 @@ void CoreWorkerTest::TestActorReconstruction(
 
       // Create arguments with PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(PassByValueWithBuffer(buffer1));
+      args.emplace_back(
+          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
@@ -430,7 +431,8 @@ void CoreWorkerTest::TestActorFailure(
 
       // Create arguments with PassByRef and PassByValue.
       std::vector<TaskArg> args;
-      args.emplace_back(PassByValueWithBuffer(buffer1));
+      args.emplace_back(
+          TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
@@ -624,7 +626,7 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   ASSERT_EQ(by_ref.GetReference(), id);
   // Test by-value argument.
   auto buffer = GenerateRandomBuffer();
-  TaskArg by_value = PassByValueWithBuffer(buffer);
+  TaskArg by_value = TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr));
   ASSERT_FALSE(by_value.IsPassedByReference());
   auto data = by_value.GetValue().GetData();
   ASSERT_TRUE(data != nullptr);
@@ -639,7 +641,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction function{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
-  args.emplace_back(PassByValueWithBuffer(buffer));
+  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
@@ -700,7 +702,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
   RayFunction func{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
-  args.emplace_back(PassByValueWithBuffer(buffer));
+  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
@@ -716,7 +718,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   for (int i = 0; i < num_tasks; i++) {
     // Create arguments with PassByValue.
     std::vector<TaskArg> args;
-    args.emplace_back(PassByValueWithBuffer(buffer));
+    args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;

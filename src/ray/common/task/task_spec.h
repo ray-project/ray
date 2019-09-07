@@ -72,11 +72,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   const uint8_t *ArgData(size_t arg_index) const;
 
-  size_t ArgDataLength(size_t arg_index) const;
+  size_t ArgDataSize(size_t arg_index) const;
 
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
-  size_t ArgMetadataLength(size_t arg_index) const;
+  size_t ArgMetadataSize(size_t arg_index) const;
 
   /// Return the resources that are to be acquired during the execution of this
   /// task.

@@ -6,11 +6,17 @@
 
 namespace ray {
 
-/// Binary representation of a ray object. It houlds buffer pointers of data and metadata.
-/// A ray object may have both data and metadata, or only one of them.
+/// Binary representation of a ray object, consisting of buffer pointers to data and
+/// metadata. A ray object may have both data and metadata, or only one of them.
 class RayObject {
  public:
   /// Create a ray object instance.
+  ///
+  /// Set `copy_data` to `false` is fine for most cases - for example when putting
+  /// an object into store with a temporary RayObject, and we don't want to do an extra
+  /// copy. But in some cases we do want to always hold a valid data - for example, memory
+  /// store uses RayObject to represent objects, in this case we actually want the object
+  /// data to remain valid after user puts it into store.
   ///
   /// \param[in] data Data of the ray object.
   /// \param[in] metadata Metadata of the ray object.
@@ -33,7 +39,7 @@ class RayObject {
     }
 
     RAY_CHECK((data_ && data_->Size()) || (metadata_ && metadata_->Size()))
-        << "Data and metadata cannot both empty.";
+        << "Data and metadata cannot both be empty.";
   }
 
   /// Return the data of the ray object.
