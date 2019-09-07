@@ -47,10 +47,6 @@ if __name__ == "__main__":
     input_file = str(args.input_file)
 
     ray.init()
-    ray.register_custom_serializer(Record, use_dict=True)
-    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
-    ray.register_custom_serializer(OpType, use_pickle=True)
-    ray.register_custom_serializer(PStrategy, use_pickle=True)
 
     # A Ray streaming environment with the default configuration
     env = Environment()

@@ -143,7 +143,6 @@ def test_max_throughput(rounds,
 
 if __name__ == "__main__":
     ray.init()
-    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
 
     args = parser.parse_args()
 
