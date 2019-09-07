@@ -2073,9 +2073,6 @@ def disconnect():
     if hasattr(worker, "raylet_client"):
         del worker.raylet_client
     if hasattr(worker, "core_worker"):
-        # Intentionally disconnect the core worker from the raylet so the
-        # raylet won't push an error message to the driver.
-        worker.core_worker.disconnect()
         del worker.core_worker
 
 
