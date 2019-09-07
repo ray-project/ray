@@ -281,7 +281,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
     Non-trainable params: 0
     _____________________________________________________________________
 
-**Example: Querying a policy's action distribution**
+**Example: Getting Q value from a DQN model**
 
 .. code-block:: python
 
