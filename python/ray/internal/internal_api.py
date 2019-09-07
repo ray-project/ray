@@ -17,13 +17,31 @@ def pin_object_data(obj_id):
     also download the object to the current node (this overhead is unavoidable
     for now without a distributed ref counting solution).
 
+    Examples:
+        >>> x_id = f.remote()
+        >>> x_id = pin_object_id(x_id)  # x pinned, cannot be evicted
+        >>> del x_id  # x can be evicted again
+
     Note that ray will automatically do this for objects created with
     ray.put() already, unless you ray.put with weakref=True.
     """
 
+    ray.get(obj_id)
     obj_id.set_buffer_ref(
         ray.worker.global_worker.plasma_client.get_buffers(
             [pyarrow.plasma.ObjectID(obj_id.binary())]))
+
+
+def unpin_object_data(obj_id):
+    """Unpin an object pinned by pin_object_id.
+
+    Examples:
+        >>> x_id = f.remote()
+        >>> pin_object_id(x_id)
+        >>> unpin_object_id(x_id)  # as if the pin didn't happen
+    """
+
+    obj_id.set_buffer_ref(None)
 
 
 def free(object_ids, local_only=False, delete_creating_tasks=False):
@@ -38,6 +56,11 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
     successful or not. This function is an instruction to object store. If
     the some of the objects are in use, object stores will delete them later
     when the ref count is down to 0.
+
+    Examples:
+        >>> x_id = f.remote()
+        >>> ray.get(x_id)  # wait for x to be created first
+        >>> free([x_id])  # unpin & delete x globally
 
     Args:
         object_ids (List[ObjectID]): List of object IDs to delete.
@@ -60,6 +83,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         if not isinstance(object_id, ray.ObjectID):
             raise TypeError("Attempting to call `free` on the value {}, "
                             "which is not an ray.ObjectID.".format(object_id))
+        unpin_object_data(object_id)
 
     if ray.worker._mode() == ray.worker.LOCAL_MODE:
         worker.local_mode_manager.free(object_ids)
