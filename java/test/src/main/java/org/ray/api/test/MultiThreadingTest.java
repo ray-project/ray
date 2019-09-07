@@ -54,19 +54,22 @@ public class MultiThreadingTest extends BaseTest {
     }
 
     @RayRemote
-    public ActorId getCurrentActorId() {
-      final ActorId[] result = new ActorId[1];
-      Thread thread = new Thread(() -> {
-        result[0] = Ray.getRuntimeContext().getCurrentActorId();
-      });
+    public ActorId getCurrentActorId() throws Exception {
+      final Object[] result = new Object[1];
+      Thread thread = new Thread(Ray.wrapRunnable(() -> {
+        try {
+          result[0] = Ray.getRuntimeContext().getCurrentActorId();
+        } catch (Exception e) {
+          result[0] = e;
+        }
+      }));
       thread.start();
-      try {
-        thread.join();
-      } catch (InterruptedException e) {
-        throw new RuntimeException(e);
+      thread.join();
+      if (result[0] instanceof Exception) {
+        throw (Exception) result[0];
       }
       Assert.assertEquals(result[0], actorId);
-      return result[0];
+      return (ActorId) result[0];
     }
   }
 
@@ -147,13 +150,13 @@ public class MultiThreadingTest extends BaseTest {
     try {
       List<Future<String>> futures = new ArrayList<>();
       for (int i = 0; i < NUM_THREADS; i++) {
-        Callable<String> task = () -> {
+        Callable<String> task = Ray.wrapCallable(() -> {
           for (int j = 0; j < numRepeats; j++) {
             TimeUnit.MILLISECONDS.sleep(1);
             testCase.run();
           }
           return "ok";
-        };
+        });
         futures.add(service.submit(task));
       }
       for (Future<String> future : futures) {

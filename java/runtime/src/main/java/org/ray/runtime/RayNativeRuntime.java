@@ -2,9 +2,12 @@ package org.ray.runtime;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
+import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.io.FileUtils;
 import org.ray.api.id.JobId;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.NativeWorkerContext;
@@ -46,15 +49,20 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       }
       LOGGER.debug("Native libraries loaded.");
     }
-    nativeSetup(RayConfig.create().logDir);
+
+    RayConfig globalRayConfig = RayConfig.create();
+    resetLibraryPath(globalRayConfig);
+
+    try {
+      FileUtils.forceMkdir(new File(globalRayConfig.logDir));
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to create the log directory.", e);
+    }
+    nativeSetup(globalRayConfig.logDir);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
-  public RayNativeRuntime(RayConfig rayConfig) {
-    super(rayConfig);
-  }
-
-  protected void resetLibraryPath() {
+  private static void resetLibraryPath(RayConfig rayConfig) {
     if (rayConfig.libraryPath.isEmpty()) {
       return;
     }
@@ -81,10 +89,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
   }
 
-  @Override
-  public void start() {
+  public RayNativeRuntime(RayConfig rayConfig) {
+    super(rayConfig);
+
     // Reset library path at runtime.
-    resetLibraryPath();
+    resetLibraryPath(rayConfig);
 
     if (rayConfig.getRedisAddress() == null) {
       manager = new RunManager(rayConfig);
