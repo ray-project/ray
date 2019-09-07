@@ -13,6 +13,10 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
+CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
+  RAY_IGNORE_EXPR(store_client_.Disconnect());
+}
+
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
   std::unique_lock<std::mutex> guard(store_client_mutex_);

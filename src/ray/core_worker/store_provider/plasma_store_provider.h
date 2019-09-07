@@ -22,6 +22,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
+  ~CoreWorkerPlasmaStoreProvider();
+
   Status SetClientOptions(std::string name, int64_t limit_bytes);
 
   Status Put(const RayObject &object, const ObjectID &object_id) override;
