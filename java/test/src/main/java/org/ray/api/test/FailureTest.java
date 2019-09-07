@@ -20,16 +20,16 @@ public class FailureTest extends BaseTest {
 
   private static final String EXCEPTION_MESSAGE = "Oops";
 
-  static int badFunc() {
+  public static int badFunc() {
     throw new RuntimeException(EXCEPTION_MESSAGE);
   }
 
-  static int badFunc2() {
+  public static int badFunc2() {
     System.exit(-1);
     return 0;
   }
 
-  static int slowFunc() {
+  public static int slowFunc() {
     try {
       Thread.sleep(10000);
     } catch (InterruptedException e) {

@@ -86,6 +86,7 @@ public class StressTest extends BaseTest {
     }
   }
 
+  @Test
   public void testPuttingAndGettingManyObjects() {
     TestUtils.skipTestUnderSingleProcess();
     Integer objectToPut = 1;
