@@ -2076,7 +2076,6 @@ def disconnect():
     if hasattr(worker, "raylet_client"):
         del worker.raylet_client
     if hasattr(worker, "core_worker"):
-        worker.core_worker.disconnect()
         del worker.core_worker
 
 

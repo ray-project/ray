@@ -862,9 +862,10 @@ def exit_actor():
     """
     worker = ray.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
-        # Disconnect the worker from the raylet. The point of
+        # Disconnect the core worker from the raylet. The point of
         # this is so that when the worker kills itself below, the
         # raylet won't push an error message to the driver.
+        worker.core_worker.disconnect()
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()
