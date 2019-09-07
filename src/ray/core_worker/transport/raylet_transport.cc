@@ -31,7 +31,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (task_spec.IsActorTask() && worker_context_.IsDirectCallActor()) {
+  if (task_spec.IsActorTask() && worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
     return;

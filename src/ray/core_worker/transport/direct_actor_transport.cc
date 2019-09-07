@@ -247,7 +247,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         nullptr);
     return;
   }
-  if (task_spec.IsActorTask() && !worker_context_.IsDirectCallActor()) {
+  if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;

@@ -80,7 +80,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
-    is_direct_call_actor_ = task_spec.IsDirectCall();
+    current_actor_use_direct_call_ = task_spec.IsDirectCall();
   }
   if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
@@ -92,7 +92,9 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 
 const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
 
-bool WorkerContext::IsDirectCallActor() const { return is_direct_call_actor_; }
+bool WorkerContext::CurrentActorUseDirectCall() const {
+  return current_actor_use_direct_call_;
+}
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {

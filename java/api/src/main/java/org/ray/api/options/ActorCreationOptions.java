@@ -10,6 +10,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   public static final int NO_RECONSTRUCTION = 0;
   public static final int INFINITE_RECONSTRUCTIONS = (int) Math.pow(2, 30);
+  // DO NOT set this environment variable. It's only used for test purposes.
+  // Please use `setUseDirectCall` instead.
   public static final boolean DEFAULT_USE_DIRECT_CALL = "1"
       .equals(System.getenv("ACTOR_CREATION_OPTIONS_DEFAULT_USE_DIRECT_CALL"));
 
@@ -47,7 +49,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
-    // Since direct call is not fully supported yet, users are not allowed to set the option to true.
+    // Since direct call is not fully supported yet (see issue #5559),
+    // users are not allowed to set the option to true.
     // TODO (kfstorm): uncomment when direct call is ready.
 //    public Builder setUseDirectCall(boolean useDirectCall) {
 //      this.useDirectCall = useDirectCall;
