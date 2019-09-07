@@ -22,13 +22,12 @@ class ProjectDefinition:
             ValueError: This exception is raised if there are other errors in
                 the project definition (e.g. files not existing).
         """
-        self.root = find_root(current_dir)
-        if self.root is None:
+        root = find_root(current_dir)
+        if root is None:
             raise ValueError("No project root found")
-        if not self.root.endswith("/"):
-            # This is so that rsync will copy the project directory to the
-            # correct target.
-            self.root += "/"
+        # Add an empty pathname to the end so that rsync will copy the project
+        # directory to the correct target.
+        self.root = os.path.join(root, "")
 
         # Parse the project YAML.
         project_file = os.path.join(self.root, ".rayproject", "project.yaml")
@@ -40,18 +39,14 @@ class ProjectDefinition:
         check_project_config(self.root, self.config)
 
     def cluster_yaml(self):
-        """Return the project's cluster configuration filename.
-        """
+        """Return the project's cluster configuration filename."""
         return self.config["cluster"]
 
     def working_directory(self):
-        """Return the project's working directory on a cluster session.
-        """
-        directory = os.path.join("~", self.config["name"])
-        if not directory.endswith("/"):
-            # This is so that rsync will copy the project directory to the
-            # correct target.
-            directory += "/"
+        """Return the project's working directory on a cluster session."""
+        # Add an empty pathname to the end so that rsync will copy the project
+        # directory to the correct target.
+        directory = os.path.join("~", self.config["name"], "")
         return directory
 
     def get_command_to_run(self, command=None, args=tuple()):
