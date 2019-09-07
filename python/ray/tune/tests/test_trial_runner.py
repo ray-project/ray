@@ -1535,7 +1535,7 @@ class TrialRunnerTest(unittest.TestCase):
         resource = Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
         small_resource = Resources(cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
         for i in range(3):
-            resource = resource.subtract(small_resource)
+            resource = Resources.subtract(resource, small_resource)
         self.assertTrue(resource.is_nonnegative())
 
     def testResourceScheduler(self):
