@@ -1181,12 +1181,15 @@ def build_java_worker_command(
     command += "-Dray.home={} ".format(RAY_HOME)
     command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
 
+    command += ("-Dray.raylet.config.num_workers_per_process_java=" +
+                "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
+
     if java_worker_options:
         # Put `java_worker_options` in the last, so it can overwrite the
         # above options.
         command += java_worker_options + " "
 
-    command += "RAY_WORKER_OPTION_0 "
+    command += "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command

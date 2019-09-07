@@ -5,7 +5,9 @@ import java.util.List;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.id.ObjectId;
+import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
 
@@ -33,7 +35,11 @@ public class ArgumentsBuilder {
       } else {
         value = ObjectSerializer.serialize(arg);
         if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
-          id = ((AbstractRayRuntime) Ray.internal()).getObjectStore()
+          RayRuntime runtime = Ray.internal();
+          if (runtime instanceof RayMultiWorkerNativeRuntime) {
+            runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
+          }
+          id = ((AbstractRayRuntime) runtime).getObjectStore()
               .putRaw(value);
           value = null;
         }

@@ -2,7 +2,7 @@ package org.ray.api.test;
 
 import org.ray.api.Ray;
 import org.ray.api.RayPyActor;
-import org.ray.runtime.AbstractRayRuntime;
+import org.ray.api.TestUtils;
 import org.ray.runtime.context.WorkerContext;
 import org.ray.runtime.object.NativeRayObject;
 import org.ray.runtime.object.ObjectSerializer;
@@ -14,7 +14,7 @@ public class RaySerializerTest extends BaseMultiLanguageTest {
   @Test
   public void testSerializePyActor() {
     RayPyActor pyActor = Ray.createPyActor("test", "RaySerializerTest");
-    WorkerContext workerContext = ((AbstractRayRuntime) Ray.internal()).getWorkerContext();
+    WorkerContext workerContext = TestUtils.getRuntime().getWorkerContext();
     NativeRayObject nativeRayObject = ObjectSerializer.serialize(pyActor);
     RayPyActor result = (RayPyActor) ObjectSerializer
         .deserialize(nativeRayObject, null, workerContext.getCurrentClassLoader());

@@ -15,13 +15,20 @@ int MAXIMUM_STARTUP_CONCURRENCY = 5;
 class WorkerPoolMock : public WorkerPool {
  public:
   WorkerPoolMock()
-      : WorkerPoolMock({{Language::PYTHON, {"dummy_py_worker_command"}},
-                        {Language::JAVA, {"dummy_java_worker_command"}}}) {}
+      : WorkerPoolMock(
+            {{Language::PYTHON,
+              {"dummy_py_worker_command", "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}},
+             {Language::JAVA,
+              {"dummy_java_worker_command",
+               "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER"}}}) {}
 
   explicit WorkerPoolMock(const WorkerCommandMap &worker_commands)
-      : WorkerPool(0, NUM_WORKERS_PER_PROCESS, MAXIMUM_STARTUP_CONCURRENCY, nullptr,
-                   worker_commands),
-        last_worker_pid_(0) {}
+      : WorkerPool(0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+        last_worker_pid_(0) {
+    for (auto &entry : states_by_lang_) {
+      entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
+    }
+  }
 
   ~WorkerPoolMock() {
     // Avoid killing real processes
@@ -150,16 +157,38 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 }
 
 TEST_F(WorkerPoolTest, StartupWorkerCount) {
-  int desired_initial_worker_count_per_language = 20;
-  for (int i = 0; i < desired_initial_worker_count_per_language; i++) {
-    worker_pool_.StartWorkerProcess(Language::PYTHON);
-    worker_pool_.StartWorkerProcess(Language::JAVA);
+  std::string num_workers_arg =
+      std::string("--foo=") + std::to_string(NUM_WORKERS_PER_PROCESS);
+  std::vector<Language> languages = {Language::PYTHON, Language::JAVA};
+  std::vector<std::vector<std::string>> worker_commands = {
+      {{"dummy_py_worker_command", num_workers_arg},
+       {"dummy_java_worker_command", num_workers_arg}}};
+  int desired_initial_worker_process_count_per_language = MAXIMUM_STARTUP_CONCURRENCY + 1;
+  int expected_worker_process_count = MAXIMUM_STARTUP_CONCURRENCY * languages.size();
+  pid_t last_started_worker_process = 0;
+  for (int i = 0; i < desired_initial_worker_process_count_per_language; i++) {
+    for (size_t j = 0; j < languages.size(); j++) {
+      worker_pool_.StartWorkerProcess(languages[j]);
+      ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <=
+                  expected_worker_process_count);
+      if (last_started_worker_process != worker_pool_.LastStartedWorkerProcess()) {
+        last_started_worker_process = worker_pool_.LastStartedWorkerProcess();
+        const auto &real_command =
+            worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
+        ASSERT_EQ(real_command, worker_commands[j]);
+      } else {
+        ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() ==
+                    expected_worker_process_count);
+        ASSERT_TRUE(static_cast<int>(i * languages.size() + j) >=
+                    expected_worker_process_count);
+      }
+    }
   }
-  // Check that number of starting worker processes equals to
-  // maximum_startup_concurrency_ * 2. (because we started both python and java workers)
-  ASSERT_EQ(
-      worker_pool_.NumWorkerProcessesStarting(),
-      /* Provided in constructor of WorkerPoolMock */ MAXIMUM_STARTUP_CONCURRENCY * 2);
+  // Check number of starting worker processes
+  ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), expected_worker_process_count);
+  ASSERT_TRUE(worker_pool_.NumWorkerProcessesStarting() <
+              static_cast<int>(desired_initial_worker_process_count_per_language *
+                               languages.size()));
 }
 
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
@@ -232,7 +261,9 @@ TEST_F(WorkerPoolTest, PopWorkersOfMultipleLanguages) {
 
 TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   const std::vector<std::string> java_worker_command = {
-      "RAY_WORKER_OPTION_0", "dummy_java_worker_command", "RAY_WORKER_OPTION_1"};
+      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0", "dummy_java_worker_command",
+      "--foo=RAY_WORKER_NUM_WORKERS_PLACEHOLDER",
+      "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1"};
   SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                      {Language::JAVA, java_worker_command}});
 
@@ -243,8 +274,9 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
-  ASSERT_EQ(real_command, std::vector<std::string>(
-                              {"test_op_0", "dummy_java_worker_command", "test_op_1"}));
+  ASSERT_EQ(real_command,
+            std::vector<std::string>(
+                {"test_op_0", "dummy_java_worker_command", "--foo=1", "test_op_1"}));
 }
 
 }  // namespace raylet

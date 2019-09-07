@@ -1,6 +1,7 @@
 package org.ray.api.runtime;
 
 import java.util.List;
+import java.util.concurrent.Callable;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -141,4 +142,18 @@ public interface RayRuntime {
    */
   RayPyActor createPyActor(String moduleName, String className, Object[] args,
       ActorCreationOptions options);
+
+  /**
+   * Wrap a {@link Runnable} with necessary context capture.
+   * @param runnable The runnable to wrap.
+   * @return The wrapped runnable.
+   */
+  Runnable wrapRunnable(Runnable runnable);
+
+  /**
+   * Wrap a {@link Callable} with necessary context capture.
+   * @param callable The callable to wrap.
+   * @return The wrapped callable.
+   */
+  Callable wrapCallable(Callable callable);
 }

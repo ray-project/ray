@@ -39,7 +39,6 @@ class TestObjectManagerBase : public ::testing::Test {
     node_manager_config.resource_config =
         ray::raylet::ResourceSet(std::move(static_resource_conf));
     node_manager_config.num_initial_workers = 0;
-    node_manager_config.num_workers_per_process = 1;
     // Use a default worker that can execute empty tasks with dependencies.
     std::vector<std::string> py_worker_command;
     py_worker_command.push_back("python");

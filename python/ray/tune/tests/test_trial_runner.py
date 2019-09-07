@@ -1531,6 +1531,14 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[2].status, Trial.PENDING)
         self.assertEqual(trials[3].status, Trial.PENDING)
 
+    def testResourceNumericalError(self):
+        resource = Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
+        small_resource = Resources(
+            cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
+        for i in range(3):
+            resource = Resources.subtract(resource, small_resource)
+        self.assertTrue(resource.is_nonnegative())
+
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
         runner = TrialRunner()
