@@ -90,6 +90,7 @@ class RNNSpyModel(Model):
         # This behavior is no longer the case, so we manually refresh
         # the variable.
         RNNSpyModel.capture_index = 0
+
         def spy(sequences, state_in, state_out, seq_lens):
             if len(sequences) == 1:
                 return 0  # don't capture inference inputs
