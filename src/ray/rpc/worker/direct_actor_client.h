@@ -50,6 +50,7 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
+  /// See direct_actor.proto for a description of the ordering protocol.
   void SendRequests() {
     std::lock_guard<std::mutex> lock(mutex_);
     auto this_ptr = this->shared_from_this();
@@ -80,6 +81,10 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
             SendRequests();
             callback(status, reply);
           });
+    }
+
+    if (!send_queue_.empty()) {
+      RAY_LOG(DEBUG) << "client send queue size " << send_queue_.size();
     }
   }
 

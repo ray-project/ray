@@ -120,11 +120,14 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 };
 
 /// Used to ensure serial order of task execution per actor handle.
+/// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request) {
     if (client_processed_up_to >= next_seq_no_) {
+      RAY_LOG(DEBUG) << "client skipping requests " << next_seq_no_ << " to "
+                     << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }
     pending_tasks_[seq_no] = make_pair(accept_request, reject_request);
@@ -142,6 +145,10 @@ class SchedulingQueue {
       head->second.first();  // accept_request
       pending_tasks_.erase(head);
       next_seq_no_++;
+    }
+    if (!pending_tasks_.empty()) {
+      RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
+                     << pending_tasks_.size();
     }
   }
 
@@ -179,6 +186,7 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// Queue of pending requests per actor handle.
+  /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<ActorHandleID, SchedulingQueue> scheduling_queue_;
 };
 
