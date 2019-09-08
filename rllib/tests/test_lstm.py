@@ -84,7 +84,11 @@ class RNNSpyModel(Model):
     capture_index = 0
 
     def _build_layers_v2(self, input_dict, num_outputs, options):
-        # This is needed as cloudpickle will reference the same class.
+        # Previously, a new class object was created during
+        # deserialization and this `capture_index`
+        # variable would be refreshed between class instantiations.
+        # This behavior is no longer the case, so we manually refresh
+        # the variable.
         RNNSpyModel.capture_index = 0
         def spy(sequences, state_in, state_out, seq_lens):
             if len(sequences) == 1:
