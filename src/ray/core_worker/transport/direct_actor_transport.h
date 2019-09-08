@@ -2,7 +2,9 @@
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
 #include <list>
+#include <utility>
 
+#include "ray/common/id.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -117,6 +119,40 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   friend class CoreWorkerTest;
 };
 
+/// Used to ensure serial order of task execution per actor handle.
+class SchedulingQueue {
+ public:
+  void Add(int64_t seq_no, int64_t client_processed_up_to,
+           std::function<void()> accept_request, std::function<void()> reject_request) {
+    if (client_processed_up_to >= next_seq_no_) {
+      next_seq_no_ = client_processed_up_to + 1;
+    }
+    pending_tasks_[seq_no] = make_pair(accept_request, reject_request);
+
+    // Reject any stale requests that the client doesn't need any more.
+    while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
+      auto head = pending_tasks_.begin();
+      head->second.second();  // reject_request
+      pending_tasks_.erase(head);
+    }
+
+    // Process as many in-order requests as we can.
+    while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_) {
+      auto head = pending_tasks_.begin();
+      head->second.first();  // accept_request
+      pending_tasks_.erase(head);
+      next_seq_no_++;
+    }
+  }
+
+ private:
+  /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
+  std::map<int64_t, std::pair<std::function<void()>, std::function<void()>>>
+      pending_tasks_;
+  /// The next sequence number we are waiting for to arrive.
+  int64_t next_seq_no_ = 0;
+};
+
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                                           public rpc::DirectActorHandler {
  public:
@@ -142,6 +178,8 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// Queue of pending requests per actor handle.
+  std::unordered_map<ActorHandleID, SchedulingQueue> scheduling_queue_;
 };
 
 }  // namespace ray

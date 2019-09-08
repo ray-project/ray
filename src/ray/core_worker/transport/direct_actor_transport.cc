@@ -207,33 +207,41 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
-  auto num_returns = task_spec.NumReturns();
-  RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
-  RAY_CHECK(num_returns > 0);
-  // Decrease to account for the dummy object id.
-  num_returns--;
+  auto &handle_queue = scheduling_queue_[task_spec.ActorHandleId()];
+  handle_queue.Add(
+      request.sequence_number(), request.client_processed_up_to(),
+      [this, reply, send_reply_callback, task_spec]() {
+        auto num_returns = task_spec.NumReturns();
+        RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
+        RAY_CHECK(num_returns > 0);
+        // Decrease to account for the dummy object id.
+        num_returns--;
 
-  std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, &results);
-  RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
+        std::vector<std::shared_ptr<RayObject>> results;
+        auto status = task_handler_(task_spec, &results);
+        RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
-  for (size_t i = 0; i < results.size(); i++) {
-    auto return_object = (*reply).add_return_objects();
-    ObjectID id = ObjectID::ForTaskReturn(
-        task_spec.TaskId(), /*index=*/i + 1,
-        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
-    return_object->set_object_id(id.Binary());
-    const auto &result = results[i];
-    if (result->GetData() != nullptr) {
-      return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-    }
-    if (result->GetMetadata() != nullptr) {
-      return_object->set_metadata(result->GetMetadata()->Data(),
-                                  result->GetMetadata()->Size());
-    }
-  }
+        for (size_t i = 0; i < results.size(); i++) {
+          auto return_object = (*reply).add_return_objects();
+          ObjectID id = ObjectID::ForTaskReturn(
+              task_spec.TaskId(), /*index=*/i + 1,
+              /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
+          return_object->set_object_id(id.Binary());
+          const auto &result = results[i];
+          if (result->GetData() != nullptr) {
+            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+          }
+          if (result->GetMetadata() != nullptr) {
+            return_object->set_metadata(result->GetMetadata()->Data(),
+                                        result->GetMetadata()->Size());
+          }
+        }
 
-  send_reply_callback(status, nullptr, nullptr);
+        send_reply_callback(status, nullptr, nullptr);
+      },
+      [this, send_reply_callback]() {
+        send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
+      });
 }
 
 }  // namespace ray
