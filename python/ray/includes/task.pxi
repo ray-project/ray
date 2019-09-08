@@ -12,6 +12,7 @@ from ray.includes.task cimport (
     TaskSpecBuilder,
     TaskTableData,
 )
+from ray.ray_constants import RAW_BUFFER_METADATA
 from ray.utils import decode
 
 
@@ -68,10 +69,12 @@ cdef class TaskSpec:
         for arg in arguments:
             if isinstance(arg, ObjectID):
                 builder.AddByRefArg((<ObjectID>arg).native())
+            elif isinstance(arg, bytes):
+                builder.AddByValueArg(arg, RAW_BUFFER_METADATA)
             else:
                 pickled_str = pickle.dumps(
                     arg, protocol=pickle.HIGHEST_PROTOCOL)
-                builder.AddByValueArg(pickled_str)
+                builder.AddByValueArg(pickled_str, b'')
 
         if not actor_creation_id.is_nil():
             # Actor creation task.
@@ -180,9 +183,12 @@ cdef class TaskSpec:
                     arg_list.append(
                         ObjectID(task_spec.ArgId(i, 0).Binary()))
                 else:
-                    serialized_str = (
-                        task_spec.ArgVal(i)[:task_spec.ArgValLength(i)])
-                    obj = pickle.loads(serialized_str)
+                    data = (task_spec.ArgData(i)[:task_spec.ArgDataSize(i)])
+                    metadata = (task_spec.ArgMetadata(i)[:task_spec.ArgMetadataSize(i)])
+                    if metadata == RAW_BUFFER_METADATA:
+                        obj = data
+                    else:
+                        obj = pickle.loads(data)
                     arg_list.append(obj)
         elif lang == <int32_t>LANGUAGE_JAVA:
             arg_list = num_args * ["<java-argument>"]

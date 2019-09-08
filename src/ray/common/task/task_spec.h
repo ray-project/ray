@@ -70,9 +70,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ReturnId(size_t return_index) const;
 
-  const uint8_t *ArgVal(size_t arg_index) const;
+  const uint8_t *ArgData(size_t arg_index) const;
 
-  size_t ArgValLength(size_t arg_index) const;
+  size_t ArgDataSize(size_t arg_index) const;
+
+  const uint8_t *ArgMetadata(size_t arg_index) const;
+
+  size_t ArgMetadataSize(size_t arg_index) const;
 
   /// Return the resources that are to be acquired during the execution of this
   /// task.

@@ -69,9 +69,15 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   for (size_t i = 0; i < plasma_results.size(); i++) {
     if (plasma_results[i].data != nullptr || plasma_results[i].metadata != nullptr) {
       const auto &object_id = batch_ids[i];
-      const auto result_object = std::make_shared<RayObject>(
-          std::make_shared<PlasmaBuffer>(plasma_results[i].data),
-          std::make_shared<PlasmaBuffer>(plasma_results[i].metadata));
+      std::shared_ptr<PlasmaBuffer> data = nullptr;
+      std::shared_ptr<PlasmaBuffer> metadata = nullptr;
+      if (plasma_results[i].data && plasma_results[i].data->size()) {
+        data = std::make_shared<PlasmaBuffer>(plasma_results[i].data);
+      }
+      if (plasma_results[i].metadata && plasma_results[i].metadata->size()) {
+        metadata = std::make_shared<PlasmaBuffer>(plasma_results[i].metadata);
+      }
+      const auto result_object = std::make_shared<RayObject>(data, metadata);
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (IsException(*result_object)) {
@@ -174,6 +180,9 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
 
 bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
   // TODO (kfstorm): metadata should be structured.
+  if (!object.HasMetadata()) {
+    return false;
+  }
   const std::string metadata(reinterpret_cast<const char *>(object.GetMetadata()->Data()),
                              object.GetMetadata()->Size());
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();

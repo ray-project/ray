@@ -224,10 +224,10 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
     return_object->set_object_id(id.Binary());
     const auto &result = results[i];
-    if (result->GetData() != nullptr) {
+    if (result->HasData()) {
       return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
     }
-    if (result->GetMetadata() != nullptr) {
+    if (result->HasMetadata()) {
       return_object->set_metadata(result->GetMetadata()->Data(),
                                   result->GetMetadata()->Size());
     }
