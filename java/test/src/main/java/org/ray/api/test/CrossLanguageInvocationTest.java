@@ -48,9 +48,7 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
 
   @Test(groups = {"directCall"})
   public void testCallingPythonActor() {
-    // Direct actor call only allows passing arguments as values.
-    // However, bytes arguments are passed from Java to Python as references.
-    // TODO (kfstorm): This should be supported once passing by value with metadata is allowed.
+    // Python worker doesn't support direct call yet.
     TestUtils.skipTestIfDirectActorCallEnabled();
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());

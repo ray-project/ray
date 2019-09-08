@@ -36,12 +36,6 @@ public class ArgumentsBuilder {
               "Passing RayObject to a direct call actor is not supported.");
         }
         id = ((RayObject) arg).getId();
-      } else if (arg instanceof byte[]) {
-        // TODO (kfstorm): This could be supported once we supported passing by value with metadata.
-        if (isDirectCall) {
-          throw new IllegalArgumentException(
-              "Passing raw bytes to a direct call actor is not supported.");
-        }
       } else {
         value = ObjectSerializer.serialize(arg);
         if (!isDirectCall && value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
