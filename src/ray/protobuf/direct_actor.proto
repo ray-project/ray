@@ -16,6 +16,10 @@ message ReturnObject {
 message PushTaskRequest {
   // The task to be pushed.
   TaskSpec task_spec = 1;
+  // The sequence number of the task for this client.
+  int64 sequence_number = 2;
+  // The max sequence number the client has processed responses for.
+  int64 client_processed_up_to = 3;
 }
 
 message PushTaskReply {

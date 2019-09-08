@@ -51,8 +51,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushTask(rpc::DirectActorClient &client, const rpc::PushTaskRequest &request,
-                const TaskID &task_id, int num_returns);
+  void PushTask(rpc::DirectActorClient &client,
+                std::unique_ptr<rpc::PushTaskRequest> request, const TaskID &task_id,
+                int num_returns);
 
   /// Treat a task as failed.
   ///
@@ -104,7 +105,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::unique_ptr<rpc::DirectActorClient>> rpc_clients_;
+  std::unordered_map<ActorID, std::shared_ptr<rpc::DirectActorClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
   std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>

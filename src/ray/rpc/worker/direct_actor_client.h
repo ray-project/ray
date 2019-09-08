@@ -1,12 +1,15 @@
 #ifndef RAY_RPC_DIRECT_ACTOR_CLIENT_H
 #define RAY_RPC_DIRECT_ACTOR_CLIENT_H
 
+#include <deque>
+#include <mutex>
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
+#include "ray/rpc/worker/task_size.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
@@ -15,7 +18,7 @@ namespace ray {
 namespace rpc {
 
 /// Client used for communicating with a direct actor server.
-class DirectActorClient {
+class DirectActorClient : public std::enable_shared_from_this<DirectActorClient> {
  public:
   /// Constructor.
   ///
@@ -35,21 +38,73 @@ class DirectActorClient {
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  ray::Status PushTask(const PushTaskRequest &request,
+  ray::Status PushTask(std::unique_ptr<PushTaskRequest> request,
                        const ClientCallback<PushTaskReply> &callback) {
-    auto call = client_call_manager_
-                    .CreateCall<DirectActorService, PushTaskRequest, PushTaskReply>(
-                        *stub_, &DirectActorService::Stub::PrepareAsyncPushTask, request,
-                        callback);
-    return call->GetStatus();
+    request->set_sequence_number(next_seq_no_++);
+    send_queue_.push_back(std::make_pair(std::move(request), callback));
+    SendRequests();
+    return ray::Status::OK();
+  }
+
+  /// Send as many pending tasks as possible. This method is thread-safe.
+  ///
+  /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
+  /// sent at once. This prevents the server scheduling queue from being overwhelmed.
+  void SendRequests() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto this_ptr = this->shared_from_this();
+
+    while (!send_queue_.empty() && rpc_bytes_in_flight_ < kMaxBytesInFlight) {
+      auto pair = std::move(*send_queue_.begin());
+      send_queue_.pop_front();
+
+      auto request = std::move(pair.first);
+      auto callback = pair.second;
+      int64_t task_size = RequestSizeInBytes(*request);
+      int64_t seq_no = request->sequence_number();
+      request->set_client_processed_up_to(max_finished_seq_no_);
+      rpc_bytes_in_flight_ += task_size;
+
+      client_call_manager_.CreateCall<DirectActorService, PushTaskRequest, PushTaskReply>(
+          *stub_, &DirectActorService::Stub::PrepareAsyncPushTask, *request,
+          [this, this_ptr, seq_no, task_size, callback](Status status,
+                                                        const rpc::PushTaskReply &reply) {
+            {
+              std::lock_guard<std::mutex> lock(mutex_);
+              if (seq_no > max_finished_seq_no_) {
+                max_finished_seq_no_ = seq_no;
+              }
+              rpc_bytes_in_flight_ -= task_size;
+              RAY_CHECK(rpc_bytes_in_flight_ >= 0);
+            }
+            SendRequests();
+            callback(status, reply);
+          });
+    }
   }
 
  private:
+  /// Protects against unsafe concurrent access from the callback thread.
+  std::mutex mutex_;
+
   /// The gRPC-generated stub.
   std::unique_ptr<DirectActorService::Stub> stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
+
+  /// Queue of requests to send.
+  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
+      send_queue_;
+
+  /// The next sequence number to assign to a task for this server.
+  int64_t next_seq_no_ = 0;
+
+  /// The number of bytes currently in flight.
+  int64_t rpc_bytes_in_flight_ = 0;
+
+  /// The max sequence number we have processed responses for.
+  int64_t max_finished_seq_no_ = -1;
 };
 
 }  // namespace rpc

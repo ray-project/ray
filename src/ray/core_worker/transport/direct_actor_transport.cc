@@ -62,7 +62,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    PushTask(*client, *request, task_id, num_returns);
+    PushTask(*client, std::move(request), task_id, num_returns);
     return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
@@ -124,19 +124,19 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   auto &client = rpc_clients_[actor_id];
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
-    const auto &request = *requests.front();
-    PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
-             request.task_spec().num_returns());
+    auto request = std::move(requests.front());
+    PushTask(*client, std::move(request),
+             TaskID::FromBinary(request->task_spec().task_id()),
+             request->task_spec().num_returns());
     requests.pop_front();
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
-                                                  const rpc::PushTaskRequest &request,
-                                                  const TaskID &task_id,
-                                                  int num_returns) {
+void CoreWorkerDirectActorTaskSubmitter::PushTask(
+    rpc::DirectActorClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    const TaskID &task_id, int num_returns) {
   auto status = client.PushTask(
-      request,
+      std::move(request),
       [this, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
