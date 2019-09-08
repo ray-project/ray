@@ -1,6 +1,8 @@
 #ifndef RAY_COMMON_TASK_TASK_UTIL_H
 #define RAY_COMMON_TASK_TASK_UTIL_H
 
+#include "ray/common/buffer.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/protobuf/common.pb.h"
 
@@ -56,19 +58,29 @@ class TaskSpecBuilder {
   /// Add a by-value argument to the task.
   ///
   /// \param data String object that contains the data.
+  /// \param metadata String object that contains the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::string &data) {
-    message_->add_args()->set_data(data);
+  TaskSpecBuilder &AddByValueArg(const std::string &data, const std::string &metadata) {
+    auto arg = message_->add_args();
+    arg->set_data(data);
+    arg->set_metadata(metadata);
     return *this;
   }
 
   /// Add a by-value argument to the task.
   ///
-  /// \param data Pointer to the data.
-  /// \param size Size of the data.
+  /// \param value the RayObject instance that contains the data and the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const void *data, size_t size) {
-    message_->add_args()->set_data(data, size);
+  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
+    auto arg = message_->add_args();
+    if (value.HasData()) {
+      const auto &data = value.GetData();
+      arg->set_data(data->Data(), data->Size());
+    }
+    if (value.HasMetadata()) {
+      const auto &metadata = value.GetMetadata();
+      arg->set_metadata(metadata->Data(), metadata->Size());
+    }
     return *this;
   }
 

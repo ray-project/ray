@@ -34,10 +34,11 @@ inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
           return ray::TaskArg::PassByReference(
               JavaByteArrayToId<ray::ObjectID>(env, java_id_bytes));
         }
-        auto java_data =
-            static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_data));
-        RAY_CHECK(java_data) << "Both id and data of FunctionArg are null.";
-        return ray::TaskArg::PassByValue(JavaByteArrayToNativeBuffer(env, java_data));
+        auto java_value =
+            static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
+        RAY_CHECK(java_value) << "Both id and value of FunctionArg are null.";
+        auto value = JavaNativeRayObjectToNativeRayObject(env, java_value);
+        return ray::TaskArg::PassByValue(value);
       });
   return task_args;
 }

@@ -8,56 +8,6 @@
 
 namespace ray {
 
-/// Binary representation of a ray object.
-class RayObject {
- public:
-  /// Create a ray object instance.
-  ///
-  /// \param[in] data Data of the ray object.
-  /// \param[in] metadata Metadata of the ray object.
-  /// \param[in] copy_data Whether this class should hold a copy of data.
-  RayObject(const std::shared_ptr<Buffer> &data, const std::shared_ptr<Buffer> &metadata,
-            bool copy_data = false)
-      : data_(data), metadata_(metadata), has_data_copy_(copy_data) {
-    if (has_data_copy_) {
-      // If this object is required to hold a copy of the data,
-      // make a copy if the passed in buffers don't already have a copy.
-      if (data_ && !data_->OwnsData()) {
-        data_ = std::make_shared<LocalMemoryBuffer>(data_->Data(), data_->Size(), true);
-      }
-
-      if (metadata_ && !metadata_->OwnsData()) {
-        metadata_ = std::make_shared<LocalMemoryBuffer>(metadata_->Data(),
-                                                        metadata_->Size(), true);
-      }
-    }
-  }
-
-  /// Return the data of the ray object.
-  const std::shared_ptr<Buffer> &GetData() const { return data_; };
-
-  /// Return the metadata of the ray object.
-  const std::shared_ptr<Buffer> &GetMetadata() const { return metadata_; };
-
-  uint64_t GetSize() const {
-    uint64_t size = 0;
-    size += (data_ != nullptr) ? data_->Size() : 0;
-    size += (metadata_ != nullptr) ? metadata_->Size() : 0;
-    return size;
-  }
-
-  /// Whether this object has metadata.
-  bool HasMetadata() const { return metadata_ != nullptr && metadata_->Size() > 0; }
-
- private:
-  /// Data of the ray object.
-  std::shared_ptr<Buffer> data_;
-  /// Metadata of the ray object.
-  std::shared_ptr<Buffer> metadata_;
-  /// Whether this class holds a data copy.
-  bool has_data_copy_;
-};
-
 /// Provider interface for store access. Store provider should inherit from this class and
 /// provide implementions for the methods. The actual store provider may use a plasma
 /// store or local memory store in worker process, or possibly other types of storage.

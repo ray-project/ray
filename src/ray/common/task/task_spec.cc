@@ -53,12 +53,20 @@ ObjectID TaskSpecification::ArgId(size_t arg_index, size_t id_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ids(id_index));
 }
 
-const uint8_t *TaskSpecification::ArgVal(size_t arg_index) const {
+const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }
 
-size_t TaskSpecification::ArgValLength(size_t arg_index) const {
+size_t TaskSpecification::ArgDataSize(size_t arg_index) const {
   return message_->args(arg_index).data().size();
+}
+
+const uint8_t *TaskSpecification::ArgMetadata(size_t arg_index) const {
+  return reinterpret_cast<const uint8_t *>(message_->args(arg_index).metadata().data());
+}
+
+size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
+  return message_->args(arg_index).metadata().size();
 }
 
 const ResourceSet TaskSpecification::GetRequiredResources() const {

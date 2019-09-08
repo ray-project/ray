@@ -209,12 +209,68 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 .. code-block:: python
 
+    # Get a reference to the model through the policy
     >>> from ray.rllib.agents.dqn import DQNTrainer
     >>> trainer = DQNTrainer(env="CartPole-v0")
-    >>> trainer.get_policy().model
+    >>> model = trainer.get_policy().model
     <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
-    >>> trainer.get_policy().model.variables()
+
+    # List of all model variables
+    >>> model.variables()
     [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
+
+    # Run a forward pass to get logits, can run with policy.get_session()
+    >>> model.from_batch({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+    (<tf.Tensor 'model_3/fc_out/Tanh:0' shape=(1, 256) dtype=float32>, [])
+
+    # Access the base Keras models (all default models have a base)
+    >>> model.base_model.summary()
+    Model: "model"
+    _______________________________________________________________________
+    Layer (type)                Output Shape    Param #  Connected to      
+    =======================================================================
+    observations (InputLayer)   [(None, 4)]     0                          
+    _______________________________________________________________________
+    fc_1 (Dense)                (None, 256)     1280     observations[0][0]
+    _______________________________________________________________________
+    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]        
+    _______________________________________________________________________
+    value_out (Dense)           (None, 1)       257      fc_1[0][0]        
+    =======================================================================
+    Total params: 67,329
+    Trainable params: 67,329
+    Non-trainable params: 0
+    ______________________________________________________________________________
+
+    # Access the Q value model (specific to DQN)
+    >>> model.q_value_head.summary()
+    Model: "model_1"
+    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    model_out (InputLayer)       [(None, 256)]             0         
+    _________________________________________________________________
+    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306     
+    =================================================================
+    Total params: 66,306
+    Trainable params: 66,306
+    Non-trainable params: 0
+    _________________________________________________________________
+
+    # Access the state value model (specific to DQN)
+    >>> model.state_value_head.summary()
+    Model: "model_2"
+    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    model_out (InputLayer)       [(None, 256)]             0         
+    _________________________________________________________________
+    lambda_1 (Lambda)            (None, 1)                 66049     
+    =================================================================
+    Total params: 66,049
+    Trainable params: 66,049
+    Non-trainable params: 0
+    _________________________________________________________________
 
 This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
@@ -306,11 +362,12 @@ Rewriting Trajectories
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+
  * Backdating rewards to previous time steps (e.g., based on values in ``info``).
  * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
 
-Example: Curriculum Learning
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Curriculum Learning
+~~~~~~~~~~~~~~~~~~~
 
 Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
 
@@ -401,8 +458,8 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
 
-TensorFlow Eager
-~~~~~~~~~~~~~~~~
+Eager Mode
+~~~~~~~~~~
 
 Policies built with ``build_tf_policy`` can be also run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
 

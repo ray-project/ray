@@ -43,6 +43,17 @@ class TFModelV2(ModelV2):
             name,
             framework="tf")
         self.var_list = []
+        if tf.executing_eagerly():
+            self.graph = None
+        else:
+            self.graph = tf.get_default_graph()
+
+    def context(self):
+        """Returns a contextmanager for the current TF graph."""
+        if self.graph:
+            return self.graph.as_default()
+        else:
+            return ModelV2.context(self)
 
     def forward(self, input_dict, state, seq_lens):
         """Call the model with the given input tensors and state.
