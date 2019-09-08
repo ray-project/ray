@@ -12,7 +12,7 @@ import random
 import numpy as np
 
 import ray
-from ray.tune import Trainable, run, Experiment, sample_from
+from ray.tune import Trainable, run, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 
 
@@ -62,14 +62,12 @@ if __name__ == "__main__":
         mode="max",
         max_t=100)
 
-    exp = Experiment(
+    run(MyTrainableClass,
         name="hyperband_test",
-        run=MyTrainableClass,
         num_samples=20,
         stop={"training_iteration": 1 if args.smoke_test else 99999},
         config={
             "width": sample_from(lambda spec: 10 + int(90 * random.random())),
             "height": sample_from(lambda spec: int(100 * random.random()))
-        })
-
-    run(exp, scheduler=hyperband)
+        },
+        scheduler=hyperband)
