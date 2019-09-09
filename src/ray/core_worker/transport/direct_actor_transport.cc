@@ -21,12 +21,11 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     : io_service_(io_service),
       gcs_client_(gcs_client),
       client_call_manager_(io_service),
-      store_provider_(std::move(store_provider)) {
-  RAY_CHECK_OK(SubscribeActorUpdates());
-}
+      store_provider_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
+  RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   if (HasByReferenceArgs(task_spec)) {
     return Status::Invalid("direct actor call only supports by-value arguments");
   }
@@ -41,6 +40,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
+
+  if (subscribed_actors_.find(actor_id) == subscribed_actors_.end()) {
+    RAY_CHECK_OK(SubscribeActorUpdates(actor_id));
+    subscribed_actors_.insert(actor_id);
+  }
+
   auto iter = actor_states_.find(actor_id);
   if (iter == actor_states_.end() ||
       iter->second.state_ == ActorTableData::RECONSTRUCTING) {
@@ -51,6 +56,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // to have a timeout to mark it as invalid if it doesn't show up in the
     // specified time.
     pending_requests_[actor_id].emplace_back(std::move(request));
+    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
@@ -62,17 +68,19 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    PushTask(*client, *request, task_id, num_returns);
+    PushTask(*client, *request, actor_id, task_id, num_returns);
     return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
-    return Status::IOError("Actor is dead.");
+    // Return OK here so that we can get the error from store with get operation.
+    return Status::OK();
   }
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
+Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates(
+    const ActorID &actor_id) {
   // Register a callback to handle actor notifications.
   auto actor_notification_callback = [this](const ActorID &actor_id,
                                             const ActorTableData &actor_data) {
@@ -92,6 +100,19 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
     } else {
       // Remove rpc client if it's dead or being reconstructed.
       rpc_clients_.erase(actor_id);
+
+      // For tasks that have been sent and are waiting for replies, treat them
+      // as failed when the destination actor is dead or reconstructing.
+      auto iter = waiting_reply_tasks_.find(actor_id);
+      if (iter != waiting_reply_tasks_.end()) {
+        for (const auto &entry : iter->second) {
+          const auto &task_id = entry.first;
+          const auto num_returns = entry.second;
+          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
+        }
+        waiting_reply_tasks_.erase(actor_id);
+      }
+
       // If this actor is permanently dead and there are pending requests, treat
       // the pending tasks as failed.
       if (actor_data.state() == ActorTableData::DEAD &&
@@ -111,7 +132,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
                   << ", port: " << actor_data.port();
   };
 
-  return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
+  return gcs_client_.Actors().AsyncSubscribe(actor_id, actor_notification_callback,
+                                             nullptr);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
@@ -125,7 +147,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
     const auto &request = *requests.front();
-    PushTask(*client, request, TaskID::FromBinary(request.task_spec().task_id()),
+    PushTask(*client, request, actor_id,
+             TaskID::FromBinary(request.task_spec().task_id()),
              request.task_spec().num_returns());
     requests.pop_front();
   }
@@ -133,11 +156,18 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
 
 void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
                                                   const rpc::PushTaskRequest &request,
+                                                  const ActorID &actor_id,
                                                   const TaskID &task_id,
                                                   int num_returns) {
-  auto status = client.PushTask(
-      request,
-      [this, task_id, num_returns](Status status, const rpc::PushTaskReply &reply) {
+  RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
+  waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
+  auto status =
+      client.PushTask(request, [this, actor_id, task_id, num_returns](
+                                   Status status, const rpc::PushTaskReply &reply) {
+        {
+          std::unique_lock<std::mutex> guard(mutex_);
+          waiting_reply_tasks_[actor_id].erase(task_id);
+        }
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
@@ -170,6 +200,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client
 
 void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type) {
+  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
+                 << ", error_type: " << ErrorType_Name(error_type);
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(
         task_id, /*index=*/i + 1,
@@ -181,16 +213,24 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
   }
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
+bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) {
   std::unique_lock<std::mutex> guard(mutex_);
+
+  if (subscribed_actors_.find(actor_id) == subscribed_actors_.end()) {
+    RAY_CHECK_OK(SubscribeActorUpdates(actor_id));
+    subscribed_actors_.insert(actor_id);
+  }
+
   auto iter = actor_states_.find(actor_id);
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : object_interface_(object_interface),
+    WorkerContext &worker_context, CoreWorkerObjectInterface &object_interface,
+    boost::asio::io_service &io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler)
+    : worker_context_(worker_context),
+      object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
   server.RegisterService(task_service_);
@@ -200,10 +240,16 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const TaskSpecification task_spec(request.task_spec());
+  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
   if (HasByReferenceArgs(task_spec)) {
     send_reply_callback(
         Status::Invalid("direct actor call only supports by value arguments"), nullptr,
         nullptr);
+    return;
+  }
+  if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
+    send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
+                        nullptr, nullptr);
     return;
   }
 

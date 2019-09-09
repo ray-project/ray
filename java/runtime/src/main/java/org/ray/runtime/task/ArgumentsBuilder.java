@@ -25,16 +25,20 @@ public class ArgumentsBuilder {
   /**
    * Convert real function arguments to task spec arguments.
    */
-  public static List<FunctionArg> wrap(Object[] args) {
+  public static List<FunctionArg> wrap(Object[] args, boolean isDirectCall) {
     List<FunctionArg> ret = new ArrayList<>();
     for (Object arg : args) {
       ObjectId id = null;
       NativeRayObject value = null;
       if (arg instanceof RayObject) {
+        if (isDirectCall) {
+          throw new IllegalArgumentException(
+              "Passing RayObject to a direct call actor is not supported.");
+        }
         id = ((RayObject) arg).getId();
       } else {
         value = ObjectSerializer.serialize(arg);
-        if (value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
+        if (!isDirectCall && value.data.length > LARGEST_SIZE_PASS_BY_VALUE) {
           RayRuntime runtime = Ray.internal();
           if (runtime instanceof RayMultiWorkerNativeRuntime) {
             runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();

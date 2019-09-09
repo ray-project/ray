@@ -1225,13 +1225,19 @@ void NodeManager::ProcessPrepareActorCheckpointRequest(
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker && worker->GetActorId() == actor_id);
 
-  // Find the task that is running on this actor.
-  const auto task_id = worker->GetAssignedTaskId();
-  const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
-  // Generate checkpoint id and data.
   ActorCheckpointID checkpoint_id = ActorCheckpointID::FromRandom();
-  auto checkpoint_data =
-      actor_entry->second.GenerateCheckpointData(actor_entry->first, task);
+  std::shared_ptr<ActorCheckpointData> checkpoint_data;
+  if (actor_entry->second.GetTableData().is_direct_call()) {
+    checkpoint_data =
+        actor_entry->second.GenerateCheckpointData(actor_entry->first, nullptr);
+  } else {
+    // Find the task that is running on this actor.
+    const auto task_id = worker->GetAssignedTaskId();
+    const Task &task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
+    // Generate checkpoint data.
+    checkpoint_data =
+        actor_entry->second.GenerateCheckpointData(actor_entry->first, &task);
+  }
 
   // Write checkpoint data to GCS.
   RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Add(
@@ -1914,6 +1920,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
+    actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.

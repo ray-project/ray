@@ -90,7 +90,8 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id, uint64_t max_reconstructions = 0,
-      const std::vector<std::string> &dynamic_worker_options = {}) {
+      const std::vector<std::string> &dynamic_worker_options = {},
+      bool is_direct_call = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -98,6 +99,7 @@ class TaskSpecBuilder {
     for (const auto &option : dynamic_worker_options) {
       actor_creation_spec->add_dynamic_worker_options(option);
     }
+    actor_creation_spec->set_is_direct_call(is_direct_call);
     return *this;
   }
 
