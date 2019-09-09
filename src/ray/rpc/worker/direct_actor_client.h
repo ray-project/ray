@@ -2,6 +2,7 @@
 #define RAY_RPC_DIRECT_ACTOR_CLIENT_H
 
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -25,13 +26,12 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   /// \param[in] address Address of the direct actor server.
   /// \param[in] port Port of the direct actor server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  DirectActorClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = DirectActorService::NewStub(channel);
-  };
+  static std::shared_ptr<DirectActorClient> make(const std::string &address,
+                                                 const int port,
+                                                 ClientCallManager &client_call_manager) {
+    auto instance = new DirectActorClient(address, port, client_call_manager);
+    return std::shared_ptr<DirectActorClient>(instance);
+  }
 
   /// Push a task.
   ///
@@ -89,6 +89,19 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   }
 
  private:
+  /// Constructor.
+  ///
+  /// \param[in] address Address of the direct actor server.
+  /// \param[in] port Port of the direct actor server.
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  DirectActorClient(const std::string &address, const int port,
+                    ClientCallManager &client_call_manager)
+      : client_call_manager_(client_call_manager) {
+    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
+        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
+    stub_ = DirectActorService::NewStub(channel);
+  };
+
   /// Protects against unsafe concurrent access from the callback thread.
   std::mutex mutex_;
 
