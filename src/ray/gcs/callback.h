@@ -29,15 +29,10 @@ using MultiItemCallback =
     std::function<void(Status status, const std::vector<Data> &result)>;
 
 /// This callback is used to receive notifications of the subscribed items in the GCS.
-/// \param result The notification message.
-template <typename Data>
-using SubscribeCallback = std::function<void(const Data &result)>;
-
-/// This callback is used to receive notifications of the subscribed items in the GCS.
 /// \param id The id of the item.
 /// \param result The notification message.
 template <typename ID, typename Data>
-using SubscribePairCallback = std::function<void(const ID &id, const Data &result)>;
+using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
 
 }  // namespace gcs
 

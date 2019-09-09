@@ -45,7 +45,7 @@ class JobStateAccessor {
   /// or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribeAll(const SubscribeCallback<std::vector<JobTableData>> &subscribe,
+  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
                            const StatusCallback &done);
 
  private:
@@ -60,8 +60,7 @@ class JobStateAccessor {
 
   RedisGcsClient &client_impl_;
 
-  typedef SubscriptionExecutor<JobID, std::vector<JobTableData>, JobTable>
-      JobSubscriptionExecutor;
+  typedef SubscriptionExecutor<JobID, JobTableData, JobTable> JobSubscriptionExecutor;
   JobSubscriptionExecutor job_sub_executor_;
 };
 

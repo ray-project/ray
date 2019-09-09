@@ -225,8 +225,9 @@ ray::Status NodeManager::RegisterGcs() {
       /*done_callback=*/nullptr));
 
   // Subscribe to job updates.
-  const auto job_subscribe_handler = [this](const std::vector<JobTableData> &job_data) {
-    HandleJobTableUpdate(job_data);
+  const auto job_subscribe_handler = [this](const JobID &job_id,
+                                            const JobTableData &job_data) {
+    HandleJobTableUpdate(job_id, job_data);
   };
   RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncSubscribeAll(job_sub_handler, nullptr));
 
@@ -259,36 +260,33 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   });
 }
 
-void NodeManager::HandleJobTableUpdate(const std::vector<JobTableData> &job_data) {
-  for (const auto &entry : job_data) {
-    RAY_LOG(DEBUG) << "HandleJobTableUpdate " << JobID::FromBinary(entry.job_id()) << " "
-                   << entry.is_dead();
-    if (entry.is_dead()) {
-      auto job_id = JobID::FromBinary(entry.job_id());
-      auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
+void NodeManager::HandleJobTableUpdate(const JobID &job_id,
+                                       const JobTableData &job_data) {
+  RAY_LOG(DEBUG) << "HandleJobTableUpdate " << job_id << " " << job_data.is_dead();
+  if (job_data.is_dead()) {
+    auto workers = worker_pool_.GetWorkersRunningTasksForJob(job_id);
 
-      // Kill all the workers. The actual cleanup for these workers is done
-      // later when we receive the DisconnectClient message from them.
-      for (const auto &worker : workers) {
-        // Clean up any open ray.wait calls that the worker made.
-        task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
-        // Mark the worker as dead so further messages from it are ignored
-        // (except DisconnectClient).
-        worker->MarkDead();
-        // Then kill the worker process.
-        KillWorker(worker);
-      }
-
-      // Remove all tasks for this job from the scheduling queues, mark
-      // the results for these tasks as not required, cancel any attempts
-      // at reconstruction. Note that at this time the workers are likely
-      // alive because of the delay in killing workers.
-      auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
-      task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
-      // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
-      // call it last.
-      local_queues_.RemoveTasks(tasks_to_remove);
+    // Kill all the workers. The actual cleanup for these workers is done
+    // later when we receive the DisconnectClient message from them.
+    for (const auto &worker : workers) {
+      // Clean up any open ray.wait calls that the worker made.
+      task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+      // Mark the worker as dead so further messages from it are ignored
+      // (except DisconnectClient).
+      worker->MarkDead();
+      // Then kill the worker process.
+      KillWorker(worker);
     }
+
+    // Remove all tasks for this job from the scheduling queues, mark
+    // the results for these tasks as not required, cancel any attempts
+    // at reconstruction. Note that at this time the workers are likely
+    // alive because of the delay in killing workers.
+    auto tasks_to_remove = local_queues_.GetTaskIdsForJob(job_id);
+    task_dependency_manager_.RemoveTasksAndRelatedObjects(tasks_to_remove);
+    // NOTE(swang): SchedulingQueue::RemoveTasks modifies its argument so we must
+    // call it last.
+    local_queues_.RemoveTasks(tasks_to_remove);
   }
 }
 

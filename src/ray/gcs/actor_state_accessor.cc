@@ -91,38 +91,17 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
 }
 
 Status ActorStateAccessor::AsyncSubscribe(
-    const SubscribePairCallback<ActorID, ActorTableData> &subscribe,
+    const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
-  return DoAsyncSubscribe(ActorID::Nil(), subscribe, done);
+  RAY_CHECK(subscribe != nullptr);
+  return actor_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 Status ActorStateAccessor::AsyncSubscribe(
-    const ActorID &actor_id,
-    const SubscribePairCallback<ActorID, ActorTableData> &subscribe,
-    const StatusCallback &done) {
-  return DoAsyncSubscribe(actor_id, subscribe, done);
-}
-
-Status ActorStateAccessor::DoAsyncSubscribe(
-    const ActorID &actor_id,
-    const SubscribePairCallback<ActorID, ActorTableData> &subscribe,
+    const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const ActorID &actor_id,
-                                  const std::vector<ActorTableData> &data) {
-    if (!data.empty()) {
-      // We only need the last entry, because it represents the latest state of
-      // this actor.
-      subscribe(actor_id, data.back());
-    }
-  };
-
-  if (actor_id.IsNil()) {
-    // If the actor_id is Nil should subscribe to all actors.
-    return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), on_subscribe, done);
-  } else {
-    return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, on_subscribe, done);
-  }
+  return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
 }
 
 Status ActorStateAccessor::AsyncUnsubscribe(const ActorID &actor_id,

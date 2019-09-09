@@ -375,9 +375,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handles updates to job table.
   ///
+  /// \param job_id ID of the job that has been updated.
   /// \param job_data Data associated with a job table event.
   /// \return Void.
-  void HandleJobTableUpdate(const std::vector<JobTableData> &job_data);
+  void HandleJobTableUpdate(const JobID &job_id, const JobTableData &job_data);
 
   /// Check if certain invariants associated with the task dependency manager
   /// and the local queues are satisfied. This is only used for debugging

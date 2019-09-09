@@ -9,20 +9,17 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>
-      ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable> ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
     actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
 
-    subscribe_ = [this](const ActorID &id, const std::vector<ActorTableData> &data) {
-      if (!data.empty()) {
-        const auto it = id_to_data_.find(id);
-        ASSERT_TRUE(it != id_to_data_.end());
-        --sub_pending_count_;
-      }
+    subscribe_ = [this](const ActorID &id, const ActorTableData &data) {
+      const auto it = id_to_data_.find(id);
+      ASSERT_TRUE(it != id_to_data_.end());
+      --sub_pending_count_;
     };
 
     sub_done_ = [this](Status status) {
@@ -80,7 +77,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   std::atomic<int> do_sub_pending_count_{0};
   std::atomic<int> do_unsub_pending_count_{0};
 
-  SubscribePairCallback<ActorID, std::vector<ActorTableData>> subscribe_{nullptr};
+  SubscribeCallback<ActorID, ActorTableData> subscribe_{nullptr};
   StatusCallback sub_done_{nullptr};
   StatusCallback unsub_done_{nullptr};
 };
@@ -88,12 +85,12 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
 TEST_F(SubscriptionExecutorTest, SubscribeAllTest) {
   ++do_sub_pending_count_;
   Status status =
-      actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
+      actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   ASSERT_TRUE(status.ok());
   sub_pending_count_ = id_to_data_.size();
   AsyncRegisterActorToGcs();
-  status = actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
+  status = actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.IsInvalid());
   WaitPendingDone(sub_pending_count_, wait_pending_timeout_);
 }
@@ -133,7 +130,7 @@ TEST_F(SubscriptionExecutorTest, SubscribeOneWithClientIDTest) {
 TEST_F(SubscriptionExecutorTest, SubscribeAllAndSubscribeOneTest) {
   ++do_sub_pending_count_;
   Status status =
-      actor_sub_executor_->AsyncSubscribe(ClientID::Nil(), subscribe_, sub_done_);
+      actor_sub_executor_->AsyncSubscribeAll(ClientID::Nil(), subscribe_, sub_done_);
   ASSERT_TRUE(status.ok());
   WaitPendingDone(do_sub_pending_count_, wait_pending_timeout_);
   for (const auto &item : id_to_data_) {

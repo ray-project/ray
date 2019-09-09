@@ -5,8 +5,8 @@ namespace ray {
 namespace gcs {
 
 template <typename ID, typename Data, typename Table>
-Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
-    const ClientID &client_id, const SubscribePairCallback<ID, Data> &subscribe,
+Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
+    const ClientID &client_id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
   // TODO(micafan) Optimize the lock when necessary.
   // Consider avoiding locking in single-threaded processes.
@@ -26,11 +26,16 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     return Status::OK();
   }
 
-  auto on_subscribe = [this](RedisGcsClient *client, const ID &id, const Data &result) {
+  auto on_subscribe = [this](RedisGcsClient *client, const ID &id,
+                             const std::vector<Data> &result) {
+    if (result.empty()) {
+      return;
+    }
+
     RAY_LOG(DEBUG) << "Subscribe received update of id " << id;
 
-    SubscribePairCallback<ID, Data> sub_one_callback = nullptr;
-    SubscribePairCallback<ID, Data> sub_all_callback = nullptr;
+    SubscribeCallback<ID, Data> sub_one_callback = nullptr;
+    SubscribeCallback<ID, Data> sub_all_callback = nullptr;
     {
       std::lock_guard<std::mutex> lock(mutex_);
       const auto it = id_to_callback_map_.find(id);
@@ -40,11 +45,11 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
       sub_all_callback = subscribe_all_callback_;
     }
     if (sub_one_callback != nullptr) {
-      sub_one_callback(id, result);
+      sub_one_callback(id, result.back());
     }
     if (sub_all_callback != nullptr) {
       RAY_CHECK(sub_one_callback == nullptr);
-      sub_all_callback(id, result);
+      sub_all_callback(id, result.back());
     }
   };
 
@@ -65,9 +70,9 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
-    const ClientID &client_id, const ID &id,
-    const SubscribePairCallback<ID, Data> &subscribe, const StatusCallback &done) {
-  Status status = AsyncSubscribe(client_id, nullptr, nullptr);
+    const ClientID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
+    const StatusCallback &done) {
+  Status status = AsyncSubscribeAll(client_id, nullptr, nullptr);
   if (!status.ok()) {
     return status;
   }
@@ -127,8 +132,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
   return table_.CancelNotifications(JobID::Nil(), id, client_id, on_done);
 }
 
-template class SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>;
-template class SubscriptionExecutor<JobID, std::vector<JobTableData>, JobTable>;
+template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
+template class SubscriptionExecutor<JobID, JobTableData, JobTable>;
 
 }  // namespace gcs
 

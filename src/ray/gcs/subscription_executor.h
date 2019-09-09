@@ -31,9 +31,9 @@ class SubscriptionExecutor {
   /// is registered or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const ClientID &client_id,
-                        const SubscribePairCallback<ID, Data> &subscribe,
-                        const StatusCallback &done);
+  Status AsyncSubscribeAll(const ClientID &client_id,
+                           const SubscribeCallback<ID, Data> &subscribe,
+                           const StatusCallback &done);
 
   /// Subscribe to operations of an element.
   /// Repeated subscription to an element will return a failure.
@@ -47,7 +47,7 @@ class SubscriptionExecutor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   Status AsyncSubscribe(const ClientID &client_id, const ID &id,
-                        const SubscribePairCallback<ID, Data> &subscribe,
+                        const SubscribeCallback<ID, Data> &subscribe,
                         const StatusCallback &done);
 
   /// Cancel subscription to an element.
@@ -71,10 +71,10 @@ class SubscriptionExecutor {
   bool registered_{false};
 
   /// Subscribe Callback of all elements.
-  SubscribePairCallback<ID, Data> subscribe_all_callback_{nullptr};
+  SubscribeCallback<ID, Data> subscribe_all_callback_{nullptr};
 
   /// A mapping from element ID to subscription callback.
-  typedef std::unordered_map<ID, SubscribePairCallback<ID, Data>> IDToCallbackMap;
+  typedef std::unordered_map<ID, SubscribeCallback<ID, Data>> IDToCallbackMap;
   IDToCallbackMap id_to_callback_map_;
 };
 

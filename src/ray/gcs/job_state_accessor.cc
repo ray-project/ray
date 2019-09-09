@@ -32,14 +32,9 @@ Status JobStateAccessor::DoAsyncRegisterOrUpdate(
 }
 
 Status JobStateAccessor::AsyncSubscribeAll(
-    const SubscribeCallback<std::vector<JobTableData>> &subscribe,
-    const StatusCallback &done) {
+    const SubscribeCallback<JobID, JobTableData> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  auto on_subscribe = [subscribe](const JobID &job_id,
-                                  const std::vector<JobTableData> &data) {
-    subscribe(data);
-  };
-  return job_sub_executor_.AsyncSubscribe(ClientID::Nil(), on_subscribe, done);
+  return job_sub_executor_.AsyncSubscribeAll(ClientID::Nil(), subscribe, done);
 }
 
 }  // namespace gcs
