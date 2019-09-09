@@ -82,6 +82,7 @@ cdef class TaskSpec:
                 actor_creation_id.native(),
                 max_actor_reconstructions,
                 [],
+                False,
             )
         elif not actor_id.is_nil():
             # Actor task.

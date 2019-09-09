@@ -45,7 +45,7 @@ public abstract class BaseMultiLanguageTest {
     }
   }
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
       LOGGER.info("Skip Multi-language tests because environment variable "
@@ -100,7 +100,7 @@ public abstract class BaseMultiLanguageTest {
     return ImmutableMap.of();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void tearDown() {
     // Disconnect to the cluster.
     Ray.shutdown();

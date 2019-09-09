@@ -2,11 +2,11 @@ package org.ray.api.test;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.TestUtils;
+import org.ray.api.TestUtils.LargeObject;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ObjectId;
 import org.testng.Assert;
@@ -65,11 +65,6 @@ public class RayCallTest extends BaseTest {
   @RayRemote
   private static Map<String, Integer> testMap(Map<String, Integer> val) {
     return val;
-  }
-
-  public static class LargeObject implements Serializable {
-
-    private byte[] data = new byte[1024 * 1024];
   }
 
   @RayRemote

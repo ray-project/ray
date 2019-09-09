@@ -13,11 +13,11 @@ import org.ray.api.exception.RayException;
 import org.ray.api.function.RayFunc;
 import org.ray.api.function.RayFuncVoid;
 import org.ray.api.id.ObjectId;
-import org.ray.api.id.UniqueId;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.CallOptions;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtimecontext.RuntimeContext;
+import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.context.RuntimeContextImpl;
 import org.ray.runtime.context.WorkerContext;
@@ -28,7 +28,6 @@ import org.ray.runtime.gcs.GcsClient;
 import org.ray.runtime.generated.Common.Language;
 import org.ray.runtime.object.ObjectStore;
 import org.ray.runtime.object.RayObjectImpl;
-import org.ray.runtime.raylet.RayletClient;
 import org.ray.runtime.task.ArgumentsBuilder;
 import org.ray.runtime.task.FunctionArg;
 import org.ray.runtime.task.TaskExecutor;
@@ -51,7 +50,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   protected ObjectStore objectStore;
   protected TaskSubmitter taskSubmitter;
-  protected RayletClient rayletClient;
   protected WorkerContext workerContext;
 
   public AbstractRayRuntime(RayConfig rayConfig) {
@@ -83,15 +81,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   @Override
   public void free(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
     objectStore.delete(objectIds, localOnly, deleteCreatingTasks);
-  }
-
-  @Override
-  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
-    Preconditions.checkArgument(Double.compare(capacity, 0) >= 0);
-    if (nodeId == null) {
-      nodeId = UniqueId.NIL;
-    }
-    rayletClient.setResource(resourceName, capacity, nodeId);
   }
 
   @Override
@@ -176,7 +165,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, int numReturns, CallOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, /*isDirectCall*/false);
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -189,7 +178,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayObject callActorFunction(RayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, isDirectCall(rayActor));
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -202,12 +191,19 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args, /*isDirectCall*/false);
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
     RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
+  }
+
+  private boolean isDirectCall(RayActor rayActor) {
+    if (rayActor instanceof NativeRayActor) {
+      return ((NativeRayActor) rayActor).isDirectCallActor();
+    }
+    return false;
   }
 
   public WorkerContext getWorkerContext() {
@@ -216,10 +212,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   public ObjectStore getObjectStore() {
     return objectStore;
-  }
-
-  public RayletClient getRayletClient() {
-    return rayletClient;
   }
 
   public FunctionManager getFunctionManager() {
