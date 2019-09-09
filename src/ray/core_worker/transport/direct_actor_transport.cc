@@ -1,4 +1,3 @@
-
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/common/task/task.h"
 
@@ -190,7 +189,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : object_interface_(object_interface),
+    : io_service_(io_service),
+      object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
   server.RegisterService(task_service_);
@@ -207,8 +207,14 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
-  auto &handle_queue = scheduling_queue_[task_spec.ActorHandleId()];
-  handle_queue.Add(
+  auto it = scheduling_queue_.find(task_spec.ActorHandleId());
+  if (it == scheduling_queue_.end()) {
+    auto result = scheduling_queue_.emplace(
+        task_spec.ActorHandleId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(io_service_)));
+    it = result.first;
+  }
+  it->second->Add(
       request.sequence_number(), request.client_processed_up_to(),
       [this, reply, send_reply_callback, task_spec]() {
         auto num_returns = task_spec.NumReturns();

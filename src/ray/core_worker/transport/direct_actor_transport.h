@@ -13,6 +13,9 @@
 
 namespace ray {
 
+/// The max time to wait for out-of-order tasks.
+const int kMaxReorderWaitSeconds = 30;
+
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
@@ -124,6 +127,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
+  SchedulingQueue(boost::asio::io_service &io_service) : wait_timer_(io_service) {}
+
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request) {
     if (client_processed_up_to >= next_seq_no_) {
@@ -147,9 +152,24 @@ class SchedulingQueue {
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
+
+    // Set a timeout on the queued tasks to avoid an infinite wait on failure
+    wait_timer_.expires_from_now(boost::posix_time::seconds(kMaxReorderWaitSeconds));
     if (!pending_tasks_.empty()) {
       RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
                      << pending_tasks_.size();
+      wait_timer_.async_wait([this](const boost::system::error_code &error) {
+        if (error == boost::asio::error::operation_aborted) {
+          return;  // time deadline was adjusted
+        }
+        RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
+                       << ", cancelling all queued tasks";
+        while (!pending_tasks_.empty()) {
+          auto head = pending_tasks_.begin();
+          head->second.second();  // reject_request
+          pending_tasks_.erase(head);
+        }
+      });
     }
   }
 
@@ -159,6 +179,8 @@ class SchedulingQueue {
       pending_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
+  /// Timer for waiting on dependencies.
+  boost::asio::deadline_timer wait_timer_;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
@@ -180,6 +202,8 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                       rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  /// The IO event loop.
+  boost::asio::io_service &io_service_;
   // Object interface.
   CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.
@@ -188,7 +212,7 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   TaskHandler task_handler_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<ActorHandleID, SchedulingQueue> scheduling_queue_;
+  std::unordered_map<ActorHandleID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
 };
 
 }  // namespace ray
