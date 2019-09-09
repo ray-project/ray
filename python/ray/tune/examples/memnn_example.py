@@ -14,6 +14,7 @@ from keras.utils.data_utils import get_file
 from keras.preprocessing.sequence import pad_sequences
 from functools import reduce
 from ray.tune.integration.keras import TuneReporterCallback
+import argparse
 import tarfile
 import numpy as np
 import re
@@ -75,7 +76,7 @@ def get_stories(f, only_supporting=False, max_length=None):
     return data
 
 
-def vectorize_stories(data):
+def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
     inputs, queries, answers = [], [], []
     for story, query, answer in data:
         inputs.append([word_idx[w] for w in story])
@@ -86,7 +87,6 @@ def vectorize_stories(data):
             np.array(answers))
 
 def train_babi_memnn(config, reporter):
-    set_keras_threads(config["threads"])
     batch_size = 32
     epochs = 120
 
@@ -114,7 +114,6 @@ def train_babi_memnn(config, reporter):
     challenge_type = 'single_supporting_fact_10k'
     challenge = challenges[challenge_type]
 
-    print('Extracting stories for the challenge:', challenge_type)
     with tarfile.open(path) as tar:
         train_stories = get_stories(tar.extractfile(challenge.format('train')))
         test_stories = get_stories(tar.extractfile(challenge.format('test')))
@@ -130,8 +129,8 @@ def train_babi_memnn(config, reporter):
     query_maxlen = max(map(len, (x for _, x, _ in train_stories + test_stories)))
 
     word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-    inputs_train, queries_train, answers_train = vectorize_stories(train_stories)
-    inputs_test, queries_test, answers_test = vectorize_stories(test_stories)
+    inputs_train, queries_train, answers_train = vectorize_stories(word_idx, story_maxlen, query_maxlen, train_stories)
+    inputs_test, queries_test, answers_test = vectorize_stories(word_idx, story_maxlen, query_maxlen, test_stories)
 
     # placeholders
     input_sequence = Input((story_maxlen,))
@@ -142,7 +141,7 @@ def train_babi_memnn(config, reporter):
     input_encoder_m = Sequential()
     input_encoder_m.add(Embedding(input_dim=vocab_size,
                                 output_dim=64))
-    input_encoder_m.add(Dropout(0.3))
+    input_encoder_m.add(Dropout(config.get("dropout", 0.3)))
     # output: (samples, story_maxlen, embedding_dim)
 
     # embed the input into a sequence of vectors of size query_maxlen
@@ -157,7 +156,7 @@ def train_babi_memnn(config, reporter):
     question_encoder.add(Embedding(input_dim=vocab_size,
                                 output_dim=64,
                                 input_length=query_maxlen))
-    question_encoder.add(Dropout(0.3))
+    question_encoder.add(Dropout(config.get("dropout", 0.3)))
     # output: (samples, query_maxlen, embedding_dim)
 
     # encode input sequence and questions (which are indices)
@@ -200,3 +199,37 @@ def train_babi_memnn(config, reporter):
             epochs=epochs,
             validation_data=([inputs_test, queries_test], answers_test),
             callbacks=[TuneReporterCallback(reporter)])
+
+if __name__ == '__main__':
+    import ray
+    from ray.tune import Trainable, run
+    from ray.tune.schedulers import PopulationBasedTraining
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
+    ray.init()
+
+    pbt = PopulationBasedTraining(
+        time_attr="training_iteration",
+        metric="mean_accuracy",
+        mode="max",
+        perturbation_interval=20,
+        hyperparam_mutations={
+            "dropout": lambda _: np.random.uniform(0, 1)
+        })
+    
+    run(train_babi_memnn,
+        name="pbt_babi_memnn",
+        scheduler=pbt,
+        stop={
+            "mean_accuracy": 0.98,
+            "training_iteration": 300
+        },
+        num_samples=10,
+        **{
+            "config": {
+                "dropout": 0.3
+            },
+        })
