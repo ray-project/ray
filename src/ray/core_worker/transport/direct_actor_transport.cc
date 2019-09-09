@@ -124,9 +124,9 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
     auto request = std::move(requests.front());
-    PushTask(*client, std::move(request),
-             TaskID::FromBinary(request->task_spec().task_id()),
-             request->task_spec().num_returns());
+    auto num_returns = request->task_spec().num_returns();
+    auto task_id = TaskID::FromBinary(request->task_spec().task_id());
+    PushTask(*client, std::move(request), task_id, num_returns);
     requests.pop_front();
   }
 }

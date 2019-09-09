@@ -127,7 +127,9 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
-  SchedulingQueue(boost::asio::io_service &io_service) : wait_timer_(io_service) {}
+  SchedulingQueue(boost::asio::io_service &io_service,
+                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
+      : wait_timer_(io_service), reorder_wait_seconds_(reorder_wait_seconds) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request) {
@@ -138,7 +140,7 @@ class SchedulingQueue {
     }
     pending_tasks_[seq_no] = make_pair(accept_request, reject_request);
 
-    // Reject any stale requests that the client doesn't need any more.
+    // Reject any stale requests that the client doesn't need any longer.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_tasks_.begin();
       head->second.second();  // reject_request
@@ -153,8 +155,8 @@ class SchedulingQueue {
       next_seq_no_++;
     }
 
-    // Set a timeout on the queued tasks to avoid an infinite wait on failure
-    wait_timer_.expires_from_now(boost::posix_time::seconds(kMaxReorderWaitSeconds));
+    // Set a timeout on the queued tasks to avoid an infinite wait on failure.
+    wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
     if (!pending_tasks_.empty()) {
       RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
                      << pending_tasks_.size();
@@ -162,18 +164,26 @@ class SchedulingQueue {
         if (error == boost::asio::error::operation_aborted) {
           return;  // time deadline was adjusted
         }
-        RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
-                       << ", cancelling all queued tasks";
-        while (!pending_tasks_.empty()) {
-          auto head = pending_tasks_.begin();
-          head->second.second();  // reject_request
-          pending_tasks_.erase(head);
-        }
+        OnDependencyWaitTimeout();
       });
     }
   }
 
  private:
+  /// Called when we time out waiting for a task dependency to show up.
+  void OnDependencyWaitTimeout() {
+    RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
+                   << ", cancelling all queued tasks";
+    while (!pending_tasks_.empty()) {
+      auto head = pending_tasks_.begin();
+      head->second.second();  // reject_request
+      pending_tasks_.erase(head);
+      next_seq_no_ = std::max(next_seq_no_, head->first + 1);
+    }
+  }
+
+  /// Max time in seconds to wait for dependencies to show up.
+  const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
   std::map<int64_t, std::pair<std::function<void()>, std::function<void()>>>
       pending_tasks_;
@@ -181,6 +191,8 @@ class SchedulingQueue {
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies.
   boost::asio::deadline_timer wait_timer_;
+
+  friend class SchedulingQueueTest;
 };
 
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
