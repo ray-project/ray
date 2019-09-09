@@ -13,6 +13,7 @@ from keras.layers import LSTM
 from keras.utils.data_utils import get_file
 from keras.preprocessing.sequence import pad_sequences
 from functools import reduce
+from ray.tune import Trainable
 from ray.tune.integration.keras import TuneReporterCallback
 import argparse
 import tarfile
@@ -86,119 +87,149 @@ def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
             pad_sequences(queries, maxlen=query_maxlen),
             np.array(answers))
 
-def train_babi_memnn(config, reporter):
-    batch_size = 32
-    epochs = 120
+class MemNNModel(Trainable):
+    def _read_data(self):
+        # Get the file
+        try:
+            path = get_file('babi-tasks-v1-2.tar.gz',
+                            origin='https://s3.amazonaws.com/text-datasets/'
+                                'babi_tasks_1-20_v1-2.tar.gz')
+        except:
+            print('Error downloading dataset, please download it manually:\n'
+                '$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2'
+                '.tar.gz\n'
+                '$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz')
+            raise
 
-    # Get the file
-    try:
-        path = get_file('babi-tasks-v1-2.tar.gz',
-                        origin='https://s3.amazonaws.com/text-datasets/'
-                            'babi_tasks_1-20_v1-2.tar.gz')
-    except:
-        print('Error downloading dataset, please download it manually:\n'
-            '$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2'
-            '.tar.gz\n'
-            '$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz')
-        raise
+        # Choose challenge
+        challenges = {
+            # QA1 with 10,000 samples
+            'single_supporting_fact_10k': 'tasks_1-20_v1-2/en-10k/qa1_'
+                                        'single-supporting-fact_{}.txt',
+            # QA2 with 10,000 samples
+            'two_supporting_facts_10k': 'tasks_1-20_v1-2/en-10k/qa2_'
+                                        'two-supporting-facts_{}.txt',
+        }
+        challenge_type = 'single_supporting_fact_10k'
+        challenge = challenges[challenge_type]
 
-    # Choose challenge
-    challenges = {
-        # QA1 with 10,000 samples
-        'single_supporting_fact_10k': 'tasks_1-20_v1-2/en-10k/qa1_'
-                                    'single-supporting-fact_{}.txt',
-        # QA2 with 10,000 samples
-        'two_supporting_facts_10k': 'tasks_1-20_v1-2/en-10k/qa2_'
-                                    'two-supporting-facts_{}.txt',
-    }
-    challenge_type = 'single_supporting_fact_10k'
-    challenge = challenges[challenge_type]
+        with tarfile.open(path) as tar:
+            train_stories = get_stories(tar.extractfile(challenge.format('train')))
+            test_stories = get_stories(tar.extractfile(challenge.format('test')))
 
-    with tarfile.open(path) as tar:
-        train_stories = get_stories(tar.extractfile(challenge.format('train')))
-        test_stories = get_stories(tar.extractfile(challenge.format('test')))
+        return train_stories, test_stories
+    
+    def _build_model(self, input_shape):
+        vocab = set()
+        for story, q, answer in self.train_stories + self.test_stories:
+            vocab |= set(story + q + [answer])
+        vocab = sorted(vocab)
 
-    vocab = set()
-    for story, q, answer in train_stories + test_stories:
-        vocab |= set(story + q + [answer])
-    vocab = sorted(vocab)
+        # Reserve 0 for masking via pad_sequences
+        vocab_size = len(vocab) + 1
+        story_maxlen = max(map(len, (x for x, _, _ in self.train_stories + self.test_stories)))
+        query_maxlen = max(map(len, (x for _, x, _ in self.train_stories + self.test_stories)))
 
-    # Reserve 0 for masking via pad_sequences
-    vocab_size = len(vocab) + 1
-    story_maxlen = max(map(len, (x for x, _, _ in train_stories + test_stories)))
-    query_maxlen = max(map(len, (x for _, x, _ in train_stories + test_stories)))
+        word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+        inputs_train, queries_train, answers_train = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.train_stories)
+        inputs_test, queries_test, answers_test = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.test_stories)
 
-    word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-    inputs_train, queries_train, answers_train = vectorize_stories(word_idx, story_maxlen, query_maxlen, train_stories)
-    inputs_test, queries_test, answers_test = vectorize_stories(word_idx, story_maxlen, query_maxlen, test_stories)
+        # placeholders
+        input_sequence = Input((story_maxlen,))
+        question = Input((query_maxlen,))
 
-    # placeholders
-    input_sequence = Input((story_maxlen,))
-    question = Input((query_maxlen,))
+        # encoders
+        # embed the input sequence into a sequence of vectors
+        input_encoder_m = Sequential()
+        input_encoder_m.add(Embedding(input_dim=vocab_size,
+                                    output_dim=64))
+        input_encoder_m.add(Dropout(self.config.get("dropout", 0.3)))
+        # output: (samples, story_maxlen, embedding_dim)
 
-    # encoders
-    # embed the input sequence into a sequence of vectors
-    input_encoder_m = Sequential()
-    input_encoder_m.add(Embedding(input_dim=vocab_size,
-                                output_dim=64))
-    input_encoder_m.add(Dropout(config.get("dropout", 0.3)))
-    # output: (samples, story_maxlen, embedding_dim)
+        # embed the input into a sequence of vectors of size query_maxlen
+        input_encoder_c = Sequential()
+        input_encoder_c.add(Embedding(input_dim=vocab_size,
+                                    output_dim=query_maxlen))
+        input_encoder_c.add(Dropout(0.3))
+        # output: (samples, story_maxlen, query_maxlen)
 
-    # embed the input into a sequence of vectors of size query_maxlen
-    input_encoder_c = Sequential()
-    input_encoder_c.add(Embedding(input_dim=vocab_size,
-                                output_dim=query_maxlen))
-    input_encoder_c.add(Dropout(0.3))
-    # output: (samples, story_maxlen, query_maxlen)
+        # embed the question into a sequence of vectors
+        question_encoder = Sequential()
+        question_encoder.add(Embedding(input_dim=vocab_size,
+                                    output_dim=64,
+                                    input_length=query_maxlen))
+        question_encoder.add(Dropout(self.config.get("dropout", 0.3)))
+        # output: (samples, query_maxlen, embedding_dim)
 
-    # embed the question into a sequence of vectors
-    question_encoder = Sequential()
-    question_encoder.add(Embedding(input_dim=vocab_size,
-                                output_dim=64,
-                                input_length=query_maxlen))
-    question_encoder.add(Dropout(config.get("dropout", 0.3)))
-    # output: (samples, query_maxlen, embedding_dim)
+        # encode input sequence and questions (which are indices)
+        # to sequences of dense vectors
+        input_encoded_m = input_encoder_m(input_sequence)
+        input_encoded_c = input_encoder_c(input_sequence)
+        question_encoded = question_encoder(question)
 
-    # encode input sequence and questions (which are indices)
-    # to sequences of dense vectors
-    input_encoded_m = input_encoder_m(input_sequence)
-    input_encoded_c = input_encoder_c(input_sequence)
-    question_encoded = question_encoder(question)
+        # compute a 'match' between the first input vector sequence
+        # and the question vector sequence
+        # shape: `(samples, story_maxlen, query_maxlen)`
+        match = dot([input_encoded_m, question_encoded], axes=(2, 2))
+        match = Activation('softmax')(match)
 
-    # compute a 'match' between the first input vector sequence
-    # and the question vector sequence
-    # shape: `(samples, story_maxlen, query_maxlen)`
-    match = dot([input_encoded_m, question_encoded], axes=(2, 2))
-    match = Activation('softmax')(match)
+        # add the match matrix with the second input vector sequence
+        response = add([match, input_encoded_c])  # (samples, story_maxlen, query_maxlen)
+        response = Permute((2, 1))(response)  # (samples, query_maxlen, story_maxlen)
 
-    # add the match matrix with the second input vector sequence
-    response = add([match, input_encoded_c])  # (samples, story_maxlen, query_maxlen)
-    response = Permute((2, 1))(response)  # (samples, query_maxlen, story_maxlen)
+        # concatenate the match matrix with the question vector sequence
+        answer = concatenate([response, question_encoded])
 
-    # concatenate the match matrix with the question vector sequence
-    answer = concatenate([response, question_encoded])
+        # the original paper uses a matrix multiplication for this reduction step.
+        # we choose to use a RNN instead.
+        answer = LSTM(32)(answer)  # (samples, 32)
 
-    # the original paper uses a matrix multiplication for this reduction step.
-    # we choose to use a RNN instead.
-    answer = LSTM(32)(answer)  # (samples, 32)
+        # one regularization layer -- more would probably be needed.
+        answer = Dropout(0.3)(answer)
+        answer = Dense(vocab_size)(answer)  # (samples, vocab_size)
+        # we output a probability distribution over the vocabulary
+        answer = Activation('softmax')(answer)
 
-    # one regularization layer -- more would probably be needed.
-    answer = Dropout(0.3)(answer)
-    answer = Dense(vocab_size)(answer)  # (samples, vocab_size)
-    # we output a probability distribution over the vocabulary
-    answer = Activation('softmax')(answer)
+        # build the final model
+        model = Model([input_sequence, question], answer)
+        return model
+    
+    def _setup(self, config):
+        self.train_stories, self.test_stories = self._read_data()
+        model = self._build_model(None) # Shape not used
+        model.compile(optimizer='rmsprop', loss='sparse_categorical_crossentropy',
+                    metrics=['accuracy'])
+        self.model = model
 
-    # build the final model
-    model = Model([input_sequence, question], answer)
-    model.compile(optimizer='rmsprop', loss='sparse_categorical_crossentropy',
-                metrics=['accuracy'])
+    def _train(config, reporter):
+        batch_size = 32
+        epochs = 120
 
-    # train
-    model.fit([inputs_train, queries_train], answers_train,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_data=([inputs_test, queries_test], answers_test),
-            callbacks=[TuneReporterCallback(reporter)])
+        # train
+        self.model.fit([inputs_train, queries_train], answers_train,
+                batch_size=batch_size,
+                epochs=epochs,
+                validation_data=None,
+                callbacks=[TuneReporterCallback(reporter)])
+        _, accuracy = self.model.evaluate([inputs_test, queries_test], answers_test)
+        return {'mean_accuracy': accuracy}
+    
+    def _save(self, checkpoint_dir):
+        file_path = checkpoint_dir + "/model"
+        self.model.save(file_path)
+        return file_path
+
+    def _restore(self, path):
+        # See https://stackoverflow.com/a/42763323
+        del self.model
+        self.model = load_model(path)
+
+    def _stop(self):
+        # If need, save your model when exit.
+        # saved_path = self.model.save(self.logdir)
+        # print("save model at: ", saved_path)
+        pass
+
 
 if __name__ == '__main__':
     import ray
@@ -220,12 +251,12 @@ if __name__ == '__main__':
             "dropout": lambda _: np.random.uniform(0, 1)
         })
     
-    run(train_babi_memnn,
+    run(MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
         stop={
             "mean_accuracy": 0.98,
-            "training_iteration": 300
+            "training_iteration": 10000
         },
         num_samples=10,
         **{
