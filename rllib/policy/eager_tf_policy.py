@@ -78,9 +78,9 @@ def build_eager_tf_policy(name,
                 if not make_model:
                     raise ValueError(
                         "make_model is required if action_sampler_fn is given")
-                self._dist_class = None
+                self.dist_class = None
             else:
-                self._dist_class, logit_dim = ModelCatalog.get_action_dist(
+                self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                     action_space, self.config["model"])
 
             if make_model:
@@ -176,8 +176,8 @@ def build_eager_tf_policy(name,
                 model_out, state_out = self.model(
                     self._input_dict, state_batches, self._seq_lens)
 
-            if self._dist_class:
-                action_dist = self._dist_class(model_out, self.model)
+            if self.dist_class:
+                action_dist = self.dist_class(model_out, self.model)
                 action = action_dist.sample().numpy()
                 logp = action_dist.sampled_action_logp()
             else:
@@ -252,7 +252,7 @@ def build_eager_tf_policy(name,
                 self._state_in = []
                 model_out, _ = self.model(samples, self._state_in,
                                           self._seq_lens)
-                loss = loss_fn(self, self.model, self._dist_class, samples)
+                loss = loss_fn(self, self.model, self.dist_class, samples)
 
             variables = self.model.trainable_variables()
 
@@ -369,7 +369,7 @@ def build_eager_tf_policy(name,
                 for k, v in postprocessed_batch.items()
             }
 
-            loss_fn(self, self.model, self._dist_class, postprocessed_batch)
+            loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
 
