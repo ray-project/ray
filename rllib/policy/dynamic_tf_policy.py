@@ -31,6 +31,13 @@ class DynamicTFPolicy(TFPolicy):
         placeholders.
 
     Initialization defines the static graph.
+
+    Attributes:
+        observation_space (gym.Space): observation space of the policy.
+        action_space (gym.Space): action space of the policy.
+        config (dict): config of the policy
+        model (TorchModel): TF model instance
+        dist_class (type): TF action distribution class
     """
 
     def __init__(self,
@@ -78,10 +85,6 @@ class DynamicTFPolicy(TFPolicy):
                 the divisibility requirement for sample batches
             obs_include_prev_action_reward (bool): whether to include the
                 previous action and reward in the model input
-
-        Attributes:
-            config: config of the policy
-            model: model instance, if any
         """
         self.config = config
         self._loss_fn = loss_fn
@@ -122,9 +125,9 @@ class DynamicTFPolicy(TFPolicy):
             if not make_model:
                 raise ValueError(
                     "make_model is required if action_sampler_fn is given")
-            self._dist_class = None
+            self.dist_class = None
         else:
-            self._dist_class, logit_dim = ModelCatalog.get_action_dist(
+            self.dist_class, logit_dim = ModelCatalog.get_action_dist(
                 action_space, self.config["model"])
 
         if existing_model:
@@ -161,7 +164,7 @@ class DynamicTFPolicy(TFPolicy):
                 self, self.model, self._input_dict, obs_space, action_space,
                 config)
         else:
-            action_dist = self._dist_class(model_out, self.model)
+            action_dist = self.dist_class(model_out, self.model)
             action_sampler = action_dist.sample()
             action_logp = action_dist.sampled_action_logp()
 
@@ -346,7 +349,7 @@ class DynamicTFPolicy(TFPolicy):
         self._sess.run(tf.global_variables_initializer())
 
     def _do_loss_init(self, train_batch):
-        loss = self._loss_fn(self, self.model, self._dist_class, train_batch)
+        loss = self._loss_fn(self, self.model, self.dist_class, train_batch)
         if self._stats_fn:
             self._stats_fetches.update(self._stats_fn(self, train_batch))
         # override the update ops to be those of the model
