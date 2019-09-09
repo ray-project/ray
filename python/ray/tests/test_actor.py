@@ -1787,6 +1787,8 @@ def setup_queue_actor():
 
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
+    # Make sure queue actor is initialized.
+    ray.get(queue.read.remote())
 
     @ray.remote
     def fork(queue, key, item):
