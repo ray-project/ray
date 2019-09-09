@@ -45,8 +45,8 @@ class JobStateAccessor {
   /// or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const SubscribeCallback<std::vector<JobTableData>> &subscribe,
-                        const StatusCallback &done);
+  Status AsyncSubscribeAll(const SubscribeCallback<std::vector<JobTableData>> &subscribe,
+                           const StatusCallback &done);
 
  private:
   /// Register or update job information to GCS asynchronously.

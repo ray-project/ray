@@ -31,7 +31,7 @@ Status JobStateAccessor::DoAsyncRegisterOrUpdate(
   return job_table.Append(job_id, job_id, data_ptr, on_done);
 }
 
-Status JobStateAccessor::AsyncSubscribe(
+Status JobStateAccessor::AsyncSubscribeAll(
     const SubscribeCallback<std::vector<JobTableData>> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);

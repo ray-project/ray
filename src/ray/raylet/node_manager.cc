@@ -225,10 +225,10 @@ ray::Status NodeManager::RegisterGcs() {
       /*done_callback=*/nullptr));
 
   // Subscribe to job updates.
-  const auto job_sub_handler = [this](const std::vector<JobTableData> &job_data) {
+  const auto job_subscribe_handler = [this](const std::vector<JobTableData> &job_data) {
     HandleJobTableUpdate(job_data);
   };
-  RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncSubscribe(job_sub_handler, nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->Jobs().AsyncSubscribeAll(job_sub_handler, nullptr));
 
   // Start sending heartbeats to the GCS.
   last_heartbeat_at_ms_ = current_time_ms();
@@ -846,10 +846,10 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     status = worker_pool_.RegisterDriver(std::move(worker));
     if (status.ok()) {
       local_queues_.AddDriverTaskId(driver_task_id);
-      auto job_info_ptr =
+      auto job_data_ptr =
           CreateJobTableData(job_id, /*is_dead*/ false, std::time(nullptr),
                              initial_config_.node_manager_address, message->worker_pid());
-      RAY_CHECK_OK(gcs_client_->Jobs().AsyncRegister(job_info_ptr, nullptr));
+      RAY_CHECK_OK(gcs_client_->Jobs().AsyncRegister(job_data_ptr, nullptr));
     }
   }
 }
@@ -1024,10 +1024,10 @@ void NodeManager::ProcessDisconnectClientMessage(
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
     RAY_CHECK(!job_id.IsNil());
-    auto job_info_ptr =
+    auto job_data_ptr =
         CreateJobTableData(job_id, /*is_dead*/ true, std::time(nullptr),
                            initial_config_.node_manager_address, worker->Pid());
-    RAY_CHECK_OK(gcs_client_->Jobs().AsyncUpdate(job_info_ptr, nullptr));
+    RAY_CHECK_OK(gcs_client_->Jobs().AsyncUpdate(job_data_ptr, nullptr));
     const auto driver_id = ComputeDriverIdFromJob(job_id);
     local_queues_.RemoveDriverTaskId(TaskID::ComputeDriverTaskId(driver_id));
     worker_pool_.DisconnectDriver(worker);
