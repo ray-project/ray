@@ -16,6 +16,7 @@ TEST(SchedulingQueueTest, TestInOrder) {
   queue.Add(1, -1, fn_ok, fn_rej);
   queue.Add(2, -1, fn_ok, fn_rej);
   queue.Add(3, -1, fn_ok, fn_rej);
+  io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
 }
@@ -31,7 +32,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   queue.Add(0, -1, fn_ok, fn_rej);
   queue.Add(3, -1, fn_ok, fn_rej);
   queue.Add(1, -1, fn_ok, fn_rej);
-  queue.Add(100, -1, fn_ok, fn_rej);
+  io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
 }
@@ -67,6 +68,7 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   queue.Add(2, 2, fn_ok, fn_rej);
   queue.Add(3, 2, fn_ok, fn_rej);
   queue.Add(1, 2, fn_ok, fn_rej);
+  io_service.run();
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
 }
