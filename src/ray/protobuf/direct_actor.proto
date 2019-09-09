@@ -22,11 +22,9 @@ message PushTaskRequest {
   // out-of-order request messages to arrive as necessary.
   int64 sequence_number = 2;
   // The max sequence number the client has processed responses for. This
-  // is used to handle faults. The server will cancel and skip any
-  // any PushTaskRequests with seqno <= this value. This means if a client
-  // fails to send a request for whatever reason, it just needs to bump
-  // client_processed_up_to be greater than that request's seqno to avoid
-  // the server waiting forever for that missing message.
+  // is a performance optimization that allows the client to tell the server
+  // to cancel any PushTaskRequests with seqno <= this value, rather than
+  // waiting for the server to time out waiting for missing messages.
   int64 client_processed_up_to = 3;
 }
 
