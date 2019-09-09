@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+from tabulate import tabulate
 import time
 import traceback
 import types
@@ -17,7 +18,8 @@ import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+                             SHOULD_CHECKPOINT, DEFAULT_RESULT_KEYS,
+                             DEFAULT_EXPERIMENT_INFO_KEYS)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -447,6 +449,40 @@ class TrialRunner(object):
                     messages.append(" - {}:\t{}".format(
                         t, t.progress_string()))
 
+        return "\n".join(messages) + "\n"
+
+    def debug_string_v2(self, parameters=None, metrics=None, max_trials=100):
+        messages = self._debug_messages()
+        trials = self.get_trials()
+        states = collections.defaultdict(set)
+        for t in trials:
+            states[t.status].add(t)
+
+        if len(trials) < 1:
+            return "\n".join(messages) + "\n"
+
+        num_trials_per_state = {
+            state: len(state_trials)
+            for state, state_trials in states.items()
+        }
+        messages.append("Number of trials: {} ({})"
+                        "".format(len(trials), num_trials_per_state))
+
+        trial_table = []
+        parameters = list(parameters or trials[0].evaluated_params)
+        metrics = list(metrics or DEFAULT_RESULT_KEYS)
+        keys = ["Trial Name", "Status"] + parameters + metrics
+        for trial in trials:
+            result = flatten_dict(trial.last_result)
+            trial_info = [str(trial), trial.status]
+            trial_info += [result.get(parameter) for parameter in parameters]
+            trial_info += [result.get(metric) for metric in metrics]
+            trial_table.append(trial_info)
+
+        messages += [
+            tabulate(
+                trial_table, headers=keys, tablefmt="psql", showindex="never")
+        ]
         return "\n".join(messages) + "\n"
 
     def _debug_messages(self):

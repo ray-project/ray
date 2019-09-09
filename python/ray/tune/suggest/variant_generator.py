@@ -39,10 +39,13 @@ def generate_variants(unresolved_spec):
 
         "activation": {"grid_search": ["relu", "tanh"]}
         "cpu": {"eval": "spec.config.num_workers"}
+
+    Yields:
+        (Dict of resolved_vars, Trial specification)
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
-        yield format_vars(resolved_vars), spec
+        yield resolved_vars, spec
 
 
 def grid_search(values):
@@ -78,9 +81,9 @@ def resolve_nested_dict(nested_dict):
     return res
 
 
-def format_vars(resolved_vars):
+def format_vars(resolved_vars_dict):
     out = []
-    for path, value in sorted(resolved_vars.items()):
+    for path, value in sorted(resolved_vars_dict.items()):
         if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []
