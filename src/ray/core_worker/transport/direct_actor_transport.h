@@ -104,6 +104,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   std::unordered_map<ActorID, ActorStateData> actor_states_;
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
+  /// We use shared_ptr to enable shared_from_this for pending client callbacks.
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.

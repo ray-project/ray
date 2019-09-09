@@ -54,8 +54,10 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         int ArgIdCount(uint64_t arg_index) const
         CObjectID ArgId(uint64_t arg_index, uint64_t id_index) const
         CObjectID ReturnId(uint64_t return_index) const
-        const uint8_t *ArgVal(uint64_t arg_index) const
-        size_t ArgValLength(uint64_t arg_index) const
+        const uint8_t *ArgData(uint64_t arg_index) const
+        size_t ArgDataSize(uint64_t arg_index) const
+        const uint8_t *ArgMetadata(uint64_t arg_index) const
+        size_t ArgMetadataSize(uint64_t arg_index) const
         double GetRequiredResource(const c_string &resource_name) const
         const ResourceSet GetRequiredResources() const
         const ResourceSet GetRequiredPlacementResources() const
@@ -86,7 +88,7 @@ cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
 
         TaskSpecBuilder &AddByRefArg(const CObjectID &arg_id)
 
-        TaskSpecBuilder &AddByValueArg(const c_string &data)
+        TaskSpecBuilder &AddByValueArg(const c_string &data, const c_string &metadata)
 
         TaskSpecBuilder &SetActorCreationTaskSpec(
             const CActorID &actor_id, uint64_t max_reconstructions,

@@ -43,7 +43,7 @@ jmethodID java_language_get_number;
 
 jclass java_function_arg_class;
 jfieldID java_function_arg_id;
-jfieldID java_function_arg_data;
+jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
@@ -137,7 +137,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_function_arg_class = LoadClass(env, "org/ray/runtime/task/FunctionArg");
   java_function_arg_id =
       env->GetFieldID(java_function_arg_class, "id", "Lorg/ray/api/id/ObjectId;");
-  java_function_arg_data = env->GetFieldID(java_function_arg_class, "data", "[B");
+  java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
+                                            "Lorg/ray/runtime/object/NativeRayObject;");
 
   java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =

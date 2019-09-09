@@ -89,10 +89,17 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<RayObject>(
-          std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgVal(i)),
-                                              task.ArgValLength(i)),
-          nullptr);
+      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
+      if (task.ArgDataSize(i)) {
+        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
+                                                   task.ArgDataSize(i));
+      }
+      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
+      if (task.ArgMetadataSize(i)) {
+        metadata = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+      }
+      (*args)[i] = std::make_shared<RayObject>(data, metadata);
     }
   }
 

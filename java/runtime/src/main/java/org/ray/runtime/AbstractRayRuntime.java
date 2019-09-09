@@ -4,6 +4,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -58,11 +59,6 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     functionManager = new FunctionManager(rayConfig.jobResourcePath);
     runtimeContext = new RuntimeContextImpl(this);
   }
-
-  /**
-   * Start runtime.
-   */
-  public abstract void start() throws Exception;
 
   @Override
   public abstract void shutdown();
@@ -168,10 +164,19 @@ public abstract class AbstractRayRuntime implements RayRuntime {
     return (RayPyActor) createActorImpl(functionDescriptor, args, options);
   }
 
+  @Override
+  public Runnable wrapRunnable(Runnable runnable) {
+    return runnable;
+  }
+
+  @Override
+  public Callable wrapCallable(Callable callable) {
+    return callable;
+  }
+
   private RayObject callNormalFunction(FunctionDescriptor functionDescriptor,
       Object[] args, int numReturns, CallOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
     List<ObjectId> returnIds = taskSubmitter.submitTask(functionDescriptor,
         functionArgs, numReturns, options);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -184,8 +189,7 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayObject callActorFunction(RayActor rayActor,
       FunctionDescriptor functionDescriptor, Object[] args, int numReturns) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
     List<ObjectId> returnIds = taskSubmitter.submitActorTask(rayActor,
         functionDescriptor, functionArgs, numReturns, null);
     Preconditions.checkState(returnIds.size() == numReturns && returnIds.size() <= 1);
@@ -198,14 +202,11 @@ public abstract class AbstractRayRuntime implements RayRuntime {
 
   private RayActor createActorImpl(FunctionDescriptor functionDescriptor,
       Object[] args, ActorCreationOptions options) {
-    List<FunctionArg> functionArgs = ArgumentsBuilder
-        .wrap(args, functionDescriptor.getLanguage() != Language.JAVA);
+    List<FunctionArg> functionArgs = ArgumentsBuilder.wrap(args);
     if (functionDescriptor.getLanguage() != Language.JAVA && options != null) {
       Preconditions.checkState(Strings.isNullOrEmpty(options.jvmOptions));
     }
-    RayActor actor = taskSubmitter
-        .createActor(functionDescriptor, functionArgs,
-            options);
+    RayActor actor = taskSubmitter.createActor(functionDescriptor, functionArgs, options);
     return actor;
   }
 
