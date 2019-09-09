@@ -74,7 +74,6 @@ class RayServeMixin:
         self._ray_serve_self_handle._ray_serve_main_loop.remote(my_handle)
 
 
-# The TaskRunnerBackend class exists for documentation purpose
 class TaskRunnerBackend(TaskRunner, RayServeMixin):
     """A simple function serving backend
 
