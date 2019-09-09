@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-
+@Test(groups = {"directCall"})
 public class MultiThreadingTest extends BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MultiThreadingTest.class);
@@ -30,7 +30,7 @@ public class MultiThreadingTest extends BaseTest {
   private static final int NUM_THREADS = 20;
 
   @RayRemote
-  public static Integer echo(int num) {
+  static Integer echo(int num) {
     return num;
   }
 
@@ -73,7 +73,7 @@ public class MultiThreadingTest extends BaseTest {
     }
   }
 
-  public static String testMultiThreading() {
+  static String testMultiThreading() {
     Random random = new Random();
     // Test calling normal functions.
     runTestCaseInMultipleThreads(() -> {
@@ -123,12 +123,10 @@ public class MultiThreadingTest extends BaseTest {
     return "ok";
   }
 
-  @Test
   public void testInDriver() {
     testMultiThreading();
   }
 
-  @Test
   public void testInWorker() {
     // Single-process mode doesn't have real workers.
     TestUtils.skipTestUnderSingleProcess();
@@ -136,7 +134,6 @@ public class MultiThreadingTest extends BaseTest {
     Assert.assertEquals("ok", obj.get());
   }
 
-  @Test
   public void testGetCurrentActorId() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<ActorIdTester> actorIdTester = Ray.createActor(ActorIdTester::new);

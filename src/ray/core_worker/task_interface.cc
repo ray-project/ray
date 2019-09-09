@@ -173,7 +173,8 @@ Status CoreWorkerTaskInterface::CreateActor(
                       actor_creation_options.resources, actor_creation_options.resources,
                       TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
-                                   actor_creation_options.dynamic_worker_options);
+                                   actor_creation_options.dynamic_worker_options,
+                                   actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
       actor_id, ActorHandleID::Nil(), function.language,

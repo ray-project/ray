@@ -2,6 +2,7 @@
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
 #include <list>
+#include <set>
 #include <utility>
 
 #include "ray/common/id.h"
@@ -44,8 +45,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
-  /// Subscribe to all actor updates.
-  Status SubscribeActorUpdates();
+  /// Subscribe to updates of an actor.
+  Status SubscribeActorUpdates(const ActorID &actor_id);
 
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
@@ -53,12 +54,13 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] client The RPC client to send tasks to an actor.
   /// \param[in] request The request to send.
+  /// \param[in] actor_id Actor ID.
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
   void PushTask(rpc::DirectActorClient &client,
-                std::unique_ptr<rpc::PushTaskRequest> request, const TaskID &task_id,
-                int num_returns);
+                std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
+                const TaskID &task_id, int num_returns);
 
   /// Treat a task as failed.
   ///
@@ -84,7 +86,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id) const;
+  bool IsActorAlive(const ActorID &actor_id);
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
@@ -98,12 +100,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
 
-  /// Map from actor id to actor state. This currently includes all actors in the system.
-  ///
-  /// TODO(zhijunfu): this map currently keeps track of all the actors in the system,
-  /// like `actor_registry_` in raylet. Later after new GCS client interface supports
-  /// subscribing updates for a specific actor, this will be updated to only include
-  /// entries for actors that the transport submits tasks to.
+  /// Map from actor id to actor state. This only includes actors that we send tasks to.
   std::unordered_map<ActorID, ActorStateData> actor_states_;
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
@@ -116,6 +113,12 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Map from actor id to the actor's pending requests.
   std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_;
+
+  /// Map from actor id to the tasks that are waiting for reply.
+  std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
+
+  /// The set of actors which are subscribed for further updates.
+  std::unordered_set<ActorID> subscribed_actors_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
@@ -198,7 +201,8 @@ class SchedulingQueue {
 class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                                           public rpc::DirectActorHandler {
  public:
-  CoreWorkerDirectActorTaskReceiver(CoreWorkerObjectInterface &object_interface,
+  CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
+                                    CoreWorkerObjectInterface &object_interface,
                                     boost::asio::io_service &io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
@@ -214,6 +218,8 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
                       rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  // Worker context.
+  WorkerContext &worker_context_;
   /// The IO event loop.
   boost::asio::io_service &io_service_;
   // Object interface.

@@ -95,12 +95,12 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
       if (task.getType() == TaskType.ACTOR_TASK) {
         taskExecutor = actorTaskExecutors.get(getActorId(task));
       } else if (task.getType() == TaskType.ACTOR_CREATION_TASK) {
-        taskExecutor = new TaskExecutor(runtime);
+        taskExecutor = new LocalModeTaskExecutor(runtime);
         actorTaskExecutors.put(getActorId(task), taskExecutor);
       } else if (idleTaskExecutors.size() > 0) {
         taskExecutor = idleTaskExecutors.pop();
       } else {
-        taskExecutor = new TaskExecutor(runtime);
+        taskExecutor = new LocalModeTaskExecutor(runtime);
       }
     }
     currentTaskExecutor.set(taskExecutor);

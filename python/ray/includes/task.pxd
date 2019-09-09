@@ -92,7 +92,8 @@ cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
 
         TaskSpecBuilder &SetActorCreationTaskSpec(
             const CActorID &actor_id, uint64_t max_reconstructions,
-            const c_vector[c_string] &dynamic_worker_options)
+            const c_vector[c_string] &dynamic_worker_options,
+            c_bool is_direct_call)
 
         TaskSpecBuilder &SetActorTaskSpec(
             const CActorID &actor_id, const CActorHandleID &actor_handle_id,
