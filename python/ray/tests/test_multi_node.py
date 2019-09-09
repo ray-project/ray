@@ -343,6 +343,7 @@ def test_calling_start_ray_head():
     kill_process_by_name("raylet")
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
     blocked.wait()
+    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
@@ -354,6 +355,7 @@ def test_calling_start_ray_head():
     blocked.terminate()
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
     blocked.wait()
+    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
 @pytest.mark.parametrize(

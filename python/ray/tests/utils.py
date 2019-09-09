@@ -57,9 +57,9 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
     _, alive = psutil.wait_procs(children, timeout=timeout)
     if len(alive) > 0:
-        print([_.pid for _ in alive])
-        raise Exception("Timed out while waiting for process children to exit "
-                        "({} left alive).".format(len(alive)))
+        raise Exception("Timed out while waiting for process children to exit."
+                        " Children still alive: {}.".format(
+                            [p.name() for p in alive]))
 
 
 def kill_process_by_name(name, SIGKILL=False):
