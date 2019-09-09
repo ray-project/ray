@@ -35,7 +35,8 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
 
   Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
              const TaskID &task_id,
-             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) override;
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             bool *got_exception) override;
 
   Status Contains(const ObjectID &object_id, bool *has_object) override;
 
@@ -70,12 +71,6 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
       int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
       std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
-
-  /// Whether the buffer represents an exception object.
-  ///
-  /// \param[in] object Object data.
-  /// \return Whether it represents an exception object.
-  static bool IsException(const RayObject &object);
 
   /// Print a warning if we've attempted too many times, but some objects are still
   /// unavailable. Only the keys in the 'remaining' map are used.

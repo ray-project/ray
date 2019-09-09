@@ -58,6 +58,12 @@ class RayObject {
   bool has_data_copy_;
 };
 
+/// Whether the object represents an exception.
+///
+/// \param[in] object Object data.
+/// \return Whether it represents an exception object.
+bool IsException(const std::shared_ptr<RayObject> &object);
+
 /// Provider interface for store access. Store provider should inherit from this class and
 /// provide implementions for the methods. The actual store provider may use a plasma
 /// store or local memory store in worker process, or possibly other types of storage.
@@ -109,11 +115,13 @@ class CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results Map of objects to write results into. Get will only add to this
   /// map, not clear or remove from it, so the caller can pass in a non-empty map.
+  /// \param[out] got_exception Whether any of the fetched results were an exception.
   /// \return Status.
   virtual Status Get(
       const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
       const TaskID &task_id,
-      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) = 0;
+      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+      bool *got_exception) = 0;
 
   /// Return whether or not the object store contains the given object.
   ///

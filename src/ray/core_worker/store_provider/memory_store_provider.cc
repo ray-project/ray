@@ -49,7 +49,8 @@ Status CoreWorkerMemoryStoreProvider::Seal(const ObjectID &object_id) {
 Status CoreWorkerMemoryStoreProvider::Get(
     const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
     const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_RETURN_NOT_OK(
@@ -58,6 +59,8 @@ Status CoreWorkerMemoryStoreProvider::Get(
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
       (*results)[id_vector[i]] = result_objects[i];
+      if (IsException(result_objects[i])) {
+      }
     }
   }
   return Status::OK();

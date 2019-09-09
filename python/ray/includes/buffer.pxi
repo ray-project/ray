@@ -24,7 +24,7 @@ cdef class Buffer:
     cdef make(const shared_ptr[CBuffer]& buffer):
         cdef Buffer self = Buffer.__new__(Buffer)
         self.buffer = buffer
-        self.shape = <int64_t>self.size
+        self.shape = <Py_ssize_t>self.size
         self.strides = <Py_ssize_t>(1)
         return self
 

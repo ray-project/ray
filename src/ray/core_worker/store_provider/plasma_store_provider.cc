@@ -105,7 +105,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
           std::make_shared<PlasmaBuffer>(plasma_results[i].metadata));
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
-      if (IsException(*result_object)) {
+      if (IsException(result_object)) {
         *got_exception = true;
       }
     }
@@ -117,9 +117,9 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
     const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
-  bool got_exception = false;
   std::vector<ObjectID> batch_ids;
   std::unordered_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
@@ -133,11 +133,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
                                                  /*fetch_only=*/true, task_id, results,
-                                                 &got_exception));
+                                                 got_exception));
   }
 
   // If all objects were fetched already, return.
-  if (remaining.empty() || got_exception) {
+  if (remaining.empty() || *got_exception) {
     return Status::OK();
   }
 
@@ -167,8 +167,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
                                                  /*fetch_only=*/false, task_id, results,
-                                                 &got_exception));
-    should_break = should_break || got_exception;
+                                                 got_exception));
+    should_break = should_break || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
       unsuccessful_attempts++;
@@ -183,6 +183,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
+  std::unique_lock<std::mutex> guard(store_client_mutex_);
   RAY_ARROW_RETURN_NOT_OK(store_client_.Contains(object_id.ToPlasmaId(), has_object));
   return Status::OK();
 }
@@ -212,20 +213,6 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
   std::unique_lock<std::mutex> guard(store_client_mutex_);
   return store_client_.DebugString();
-}
-
-bool CoreWorkerPlasmaStoreProvider::IsException(const RayObject &object) {
-  // TODO (kfstorm): metadata should be structured.
-  const std::string metadata(reinterpret_cast<const char *>(object.GetMetadata()->Data()),
-                             object.GetMetadata()->Size());
-  const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
-  for (int i = 0; i < error_type_descriptor->value_count(); i++) {
-    const auto error_type_number = error_type_descriptor->value(i)->number();
-    if (metadata == std::to_string(error_type_number)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
