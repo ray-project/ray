@@ -11,12 +11,11 @@ import logging
 import ray
 
 from ray.tune import Trainable
-from ray.tune.resources import Resources
+from ray.tune.trial import Resources
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
-from ray.experimental.sgd.pytorch import pytorch_utils
-from ray.experimental.sgd import utils
+from sgd.pytorch import utils
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,11 @@ class PyTorchTrainer(object):
     def __init__(self,
                  model_creator,
                  data_creator,
-                 optimizer_creator=pytorch_utils.sgd_mse_optimizer,
+                 optimizer_creator,
+                 loss_creator,
+                 train_function=None,
+                 validation_function=None,
+                 initialization_hook=None,
                  config=None,
                  num_replicas=1,
                  use_gpu=False,
@@ -79,8 +82,16 @@ class PyTorchTrainer(object):
                 num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    loss_creator,
+                    train_function=train_function,
+                    validation_function=validation_function,
+                    initialization_hook=initialization_hook,
+                    config=self.config,
+                    batch_size=batch_size)
             ]
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
@@ -92,7 +103,7 @@ class PyTorchTrainer(object):
             batch_size_per_replica = batch_size // num_replicas
             if batch_size % num_replicas > 0:
                 new_batch_size = batch_size_per_replica * num_replicas
-                logger.warning(
+                logger.warn(
                     ("Changing batch size from {old_batch_size} to "
                      "{new_batch_size} to evenly distribute batches across "
                      "{num_replicas} replicas.").format(
@@ -101,8 +112,17 @@ class PyTorchTrainer(object):
                          num_replicas=num_replicas))
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size_per_replica, backend)
+                Runner.remote(
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    loss_creator,
+                    backend=backend,
+                    train_function=train_function,
+                    validation_function=validation_function,
+                    initialization_hook=initialization_hook,
+                    config=self.config,
+                    batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
             # Compute URL for initializing distributed PyTorch
@@ -185,9 +205,7 @@ class PyTorchTrainable(Trainable):
             optimizer_creator=config["optimizer_creator"],
             config=config,
             num_replicas=config["num_replicas"],
-            use_gpu=config["use_gpu"],
-            batch_size=config["batch_size"],
-            backend=config["backend"])
+            use_gpu=config["use_gpu"])
 
     def _train(self):
 
@@ -196,6 +214,7 @@ class PyTorchTrainable(Trainable):
 
         train_stats.update(validation_stats)
 
+        # output {"mean_loss": test_loss, "mean_accuracy": accuracy}
         return train_stats
 
     def _save(self, checkpoint_dir):

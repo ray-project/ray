@@ -19,6 +19,10 @@ class DistributedPyTorchRunner(PyTorchRunner):
                  model_creator,
                  data_creator,
                  optimizer_creator,
+                 loss_creator,
+                 train_function=None,
+                 validation_function=None,
+                 initialization_hook=None,
                  config=None,
                  batch_size=16,
                  backend="gloo"):
@@ -33,9 +37,16 @@ class DistributedPyTorchRunner(PyTorchRunner):
             batch_size (int): batch size used by one replica for an update.
             backend (string):  see pytorch_trainer.py.
         """
-
         super(DistributedPyTorchRunner, self).__init__(
-            model_creator, data_creator, optimizer_creator, config, batch_size)
+            model_creator,
+            data_creator,
+            optimizer_creator,
+            loss_creator,
+            train_function=train_function,
+            validation_function=validation_function,
+            initialization_hook=initialization_hook,
+            config=config,
+            batch_size=batch_size)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -50,7 +61,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
             logger.debug(
@@ -73,9 +83,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)
 
-        logger.debug("Creating optimizer")
-        self.criterion, self.optimizer = self.optimizer_creator(
-            self.model, self.config)
+        logger.debug("Creating optimizer.")
+        self.optimizer = self.optimizer_creator(self.model, self.config)
+        self.criterion = self.loss_creator(**self.config.get("loss_kwargs", {}))
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
@@ -89,8 +99,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.training_set,
             batch_size=self.batch_size,
             shuffle=(self.train_sampler is None),
-            num_workers=2,
-            pin_memory=False,
+            num_workers=8,
+            pin_memory=True,
             sampler=self.train_sampler)
 
         self.validation_sampler = (
@@ -100,8 +110,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.validation_set,
             batch_size=self.batch_size,
             shuffle=(self.validation_sampler is None),
-            num_workers=2,
-            pin_memory=False,
+            num_workers=4,
+            pin_memory=True,
             sampler=self.validation_sampler)
 
     def step(self):
@@ -114,7 +124,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
         """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
-            "model": self.model.module.state_dict(),
+            "model": self.model.module.cpu().state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "stats": self.stats()
         }
