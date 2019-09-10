@@ -52,7 +52,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   /// \param[out] results Map of objects to write results into. This method will only
   /// add to this map, not clear or remove from it, so the caller can pass in a non-empty
   /// map.
-  /// \param[out] got_exception Whether any of the fetched objects contained an
+  /// \param[out] got_exception Set to true if any of the fetched objects contained an
   /// exception.
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
@@ -60,12 +60,6 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
       int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
       std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
-
-  /// Whether the buffer represents an exception object.
-  ///
-  /// \param[in] object Object data.
-  /// \return Whether it represents an exception object.
-  static bool IsException(const RayObject &object);
 
   /// Print a warning if we've attempted too many times, but some objects are still
   /// unavailable.
