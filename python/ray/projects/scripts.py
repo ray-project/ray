@@ -168,8 +168,9 @@ class SessionRunner(object):
             self.command_to_run = command
         else:
             try:
-                self.command_to_run = self.project_definition.get_command_to_run(
-                    command=command, args=args)
+                self.command_to_run = (
+                    self.project_definition.get_command_to_run(
+                        command=command, args=args))
             except ValueError as e:
                 raise click.ClickException(e)
 
@@ -179,9 +180,7 @@ class SessionRunner(object):
                        or "dockerimage" in project_environment)
         if need_docker:
             raise click.ClickException(
-                "Docker support in session is currently not implemented. "
-                "Please file an feature request at"
-                "https://github.com/ray-project/ray/issues")
+                "Docker support in session is currently not implemented.")
 
     def create_cluster(self):
         """Create a cluster that will run the session."""
@@ -218,7 +217,7 @@ class SessionRunner(object):
                     time.time()))
 
             rsync(
-                self.project_definition.cluster_yaml,
+                self.project_definition.cluster_yaml(),
                 source=requirements_txt,
                 target=remote_requirements_txt,
                 override_cluster_name=None,
