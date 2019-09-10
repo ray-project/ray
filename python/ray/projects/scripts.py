@@ -214,7 +214,8 @@ class SessionRunner(object):
 
             # Create a temporary requirements_txt in the head node.
             remote_requirements_txt = (
-                "/tmp/" + "ray_project_requirements_txt_{}".format(time.time()))
+                "/tmp/" + "ray_project_requirements_txt_{}".format(
+                    time.time()))
 
             rsync(
                 self.project_definition.cluster_yaml,
@@ -229,7 +230,6 @@ class SessionRunner(object):
         if "shell" in project_environment:
             for cmd in project_environment["shell"]:
                 self.execute_command(cmd)
-
 
     def execute_command(self, cmd):
         """Execute a shell command in the session.
