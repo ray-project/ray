@@ -127,7 +127,8 @@ def build_eager_tf_policy(name,
                                    episode=None):
             assert tf.executing_eagerly()
             if postprocess_fn:
-                return postprocess_fn(self, samples)
+                return postprocess_fn(self, samples, other_agent_batches,
+                                      episode)
             else:
                 return samples
 
@@ -223,6 +224,12 @@ def build_eager_tf_policy(name,
 
         def get_session(self):
             return None  # None implies eager
+
+        def get_placeholder(self, ph):
+            raise ValueError(
+                "get_placeholder() is not allowed in eager mode. Try using "
+                "rllib.utils.tf_ops.make_tf_callable() to write "
+                "functions that work in both graph and eager mode.")
 
         def loss_initialized(self):
             return self._loss_initialized
