@@ -518,10 +518,12 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Get().
+  bool got_exception = false;
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
   std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
-  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results));
+  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results, &got_exception));
 
+  ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     const auto &expected = buffers[i];
@@ -542,7 +544,8 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results));
+  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception));
+  ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
