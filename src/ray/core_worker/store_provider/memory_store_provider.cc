@@ -60,6 +60,7 @@ Status CoreWorkerMemoryStoreProvider::Get(
     if (result_objects[i] != nullptr) {
       (*results)[id_vector[i]] = result_objects[i];
       if (IsException(result_objects[i])) {
+        *got_exception = true;
       }
     }
   }

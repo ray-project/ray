@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import argparse
 import click
 import jsonschema
 import logging
@@ -59,10 +58,10 @@ def project_cli():
     "--verbose", help="If set, print the validated file", is_flag=True)
 def validate(verbose):
     try:
-        project = ray.projects.load_project(os.getcwd())
+        project = ray.projects.ProjectDefinition(os.getcwd())
         print("Project files validated!", file=sys.stderr)
         if verbose:
-            print(project)
+            print(project.config)
     except (jsonschema.exceptions.ValidationError, ValueError) as e:
         print("Validation failed for the following reason", file=sys.stderr)
         raise click.ClickException(e)
@@ -139,7 +138,7 @@ def session_cli():
 def load_project_or_throw():
     # Validate the project file
     try:
-        return ray.projects.load_project(os.getcwd())
+        return ray.projects.ProjectDefinition(os.getcwd())
     except (jsonschema.exceptions.ValidationError, ValueError):
         raise click.ClickException(
             "Project file validation failed. Please run "
@@ -150,7 +149,7 @@ def load_project_or_throw():
 def attach():
     project_definition = load_project_or_throw()
     attach_cluster(
-        project_definition["cluster"],
+        project_definition.cluster_yaml(),
         start=False,
         use_tmux=False,
         override_cluster_name=None,
@@ -162,7 +161,7 @@ def attach():
 def stop():
     project_definition = load_project_or_throw()
     teardown_cluster(
-        project_definition["cluster"],
+        project_definition.cluster_yaml(),
         yes=True,
         workers_only=False,
         override_cluster_name=None)
@@ -184,14 +183,15 @@ def start(command, args, shell):
 
     if shell:
         command_to_run = command
-    elif command:
-        command_to_run = _get_command_to_run(command, project_definition, args)
     else:
-        command_to_run = _get_command_to_run("default", project_definition,
-                                             args)
+        try:
+            command_to_run = project_definition.get_command_to_run(
+                command=command, args=args)
+        except ValueError as e:
+            raise click.ClickException(e)
 
     # Check for features we don't support right now
-    project_environment = project_definition["environment"]
+    project_environment = project_definition.config["environment"]
     need_docker = ("dockerfile" in project_environment
                    or "dockerimage" in project_environment)
     if need_docker:
@@ -200,12 +200,9 @@ def start(command, args, shell):
             "Please file an feature request at"
             "https://github.com/ray-project/ray/issues")
 
-    cluster_yaml = project_definition["cluster"]
-    working_directory = project_definition["name"]
-
     logger.info("[1/4] Creating cluster")
     create_or_update_cluster(
-        config_file=cluster_yaml,
+        config_file=project_definition.cluster_yaml(),
         override_min_workers=None,
         override_max_workers=None,
         no_restart=False,
@@ -215,26 +212,26 @@ def start(command, args, shell):
     )
 
     logger.info("[2/4] Syncing the project")
-    project_root = ray.projects.find_root(os.getcwd())
-    # This is so that rsync syncs directly to the target directory, instead of
-    # nesting inside the target directory.
-    if not project_root.endswith("/"):
-        project_root += "/"
     rsync(
-        cluster_yaml,
-        source=project_root,
-        target="~/{}/".format(working_directory),
+        project_definition.cluster_yaml(),
+        source=project_definition.root,
+        target=project_definition.working_directory(),
         override_cluster_name=None,
         down=False,
     )
 
     logger.info("[3/4] Setting up environment")
     _setup_environment(
-        cluster_yaml, project_definition["environment"], cwd=working_directory)
+        project_definition.cluster_yaml(),
+        project_environment,
+        cwd=project_definition.working_directory())
 
     logger.info("[4/4] Running command")
     logger.debug("Running {}".format(command))
-    session_exec_cluster(cluster_yaml, command_to_run, cwd=working_directory)
+    session_exec_cluster(
+        project_definition.cluster_yaml(),
+        command_to_run,
+        cwd=project_definition.working_directory())
 
 
 def session_exec_cluster(cluster_yaml, cmd, cwd=None):
@@ -277,32 +274,3 @@ def _setup_environment(cluster_yaml, project_environment, cwd):
     if "shell" in project_environment:
         for cmd in project_environment["shell"]:
             session_exec_cluster(cluster_yaml, cmd, cwd=cwd)
-
-
-def _get_command_to_run(command, project_definition, args):
-    command_to_run = None
-    params = None
-
-    for command_definition in project_definition["commands"]:
-        if command_definition["name"] == command:
-            command_to_run = command_definition["command"]
-            params = command_definition.get("params", [])
-    if not command_to_run:
-        raise click.ClickException(
-            "Cannot find the command '" + command +
-            "' in commmands section of the project file.")
-
-    # Build argument parser dynamically to parse parameter arguments.
-    parser = argparse.ArgumentParser(prog=command)
-    for param in params:
-        parser.add_argument(
-            "--" + param["name"],
-            required=True,
-            help=param.get("help"),
-            choices=param.get("choices"))
-
-    result = parser.parse_args(list(args))
-    for key, val in result.__dict__.items():
-        command_to_run = command_to_run.replace("{{" + key + "}}", val)
-
-    return command_to_run

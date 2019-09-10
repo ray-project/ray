@@ -1,5 +1,5 @@
-How-to: Using Actors
-====================
+Using Actors
+============
 
 An actor is essentially a stateful worker (or a service). When a new actor is
 instantiated, a new worker is created, and methods of the actor are scheduled on

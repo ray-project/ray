@@ -43,13 +43,15 @@ jmethodID java_language_get_number;
 
 jclass java_function_arg_class;
 jfieldID java_function_arg_id;
-jfieldID java_function_arg_data;
+jfieldID java_function_arg_value;
 
 jclass java_base_task_options_class;
 jfieldID java_base_task_options_resources;
 
 jclass java_actor_creation_options_class;
+jfieldID java_actor_creation_options_default_use_direct_call;
 jfieldID java_actor_creation_options_max_reconstructions;
+jfieldID java_actor_creation_options_use_direct_call;
 jfieldID java_actor_creation_options_jvm_options;
 
 jclass java_gcs_client_options_class;
@@ -137,7 +139,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_function_arg_class = LoadClass(env, "org/ray/runtime/task/FunctionArg");
   java_function_arg_id =
       env->GetFieldID(java_function_arg_class, "id", "Lorg/ray/api/id/ObjectId;");
-  java_function_arg_data = env->GetFieldID(java_function_arg_class, "data", "[B");
+  java_function_arg_value = env->GetFieldID(java_function_arg_class, "value",
+                                            "Lorg/ray/runtime/object/NativeRayObject;");
 
   java_base_task_options_class = LoadClass(env, "org/ray/api/options/BaseTaskOptions");
   java_base_task_options_resources =
@@ -145,8 +148,12 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "org/ray/api/options/ActorCreationOptions");
+  java_actor_creation_options_default_use_direct_call = env->GetStaticFieldID(
+      java_actor_creation_options_class, "DEFAULT_USE_DIRECT_CALL", "Z");
   java_actor_creation_options_max_reconstructions =
       env->GetFieldID(java_actor_creation_options_class, "maxReconstructions", "I");
+  java_actor_creation_options_use_direct_call =
+      env->GetFieldID(java_actor_creation_options_class, "useDirectCall", "Z");
   java_actor_creation_options_jvm_options = env->GetFieldID(
       java_actor_creation_options_class, "jvmOptions", "Ljava/lang/String;");
 

@@ -1,4 +1,4 @@
-name: testproject2
+name: testmissingcluster
 
 environment:
   shell: "one command"

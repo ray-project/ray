@@ -98,16 +98,19 @@ void ActorRegistration::AddHandle(const ActorHandleID &handle_id,
 int ActorRegistration::NumHandles() const { return frontier_.size(); }
 
 std::shared_ptr<ActorCheckpointData> ActorRegistration::GenerateCheckpointData(
-    const ActorID &actor_id, const Task &task) {
-  const auto actor_handle_id = task.GetTaskSpecification().ActorHandleId();
-  const auto dummy_object = task.GetTaskSpecification().ActorDummyObject();
-  // Make a copy of the actor registration, and extend its frontier to include
-  // the most recent task.
-  // Note(hchen): this is needed because this method is called before
-  // `FinishAssignedTask`, which will be called when the worker tries to fetch
-  // the next task.
+    const ActorID &actor_id, const Task *task) {
+  // Make a copy of the actor registration
   ActorRegistration copy = *this;
-  copy.ExtendFrontier(actor_handle_id, dummy_object);
+  if (task) {
+    const auto actor_handle_id = task->GetTaskSpecification().ActorHandleId();
+    const auto dummy_object = task->GetTaskSpecification().ActorDummyObject();
+    // Extend its frontier to include the most recent task.
+    // NOTE(hchen): For non-direct-call actors, this is needed because this method is
+    // called before `FinishAssignedTask`, which will be called when the worker tries to
+    // fetch the next task. For direct-call actors, checkpoint data doesn't contain
+    // frontier info, so we don't need to do `ExtendFrontier` here.
+    copy.ExtendFrontier(actor_handle_id, dummy_object);
+  }
 
   // Use actor's current state to generate checkpoint data.
   auto checkpoint_data = std::make_shared<ActorCheckpointData>();
