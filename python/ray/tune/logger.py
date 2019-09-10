@@ -181,14 +181,14 @@ class TF2Logger(Logger):
 
                 tmp = result.copy()
                 if not self._hp_logged:
-                    if 'hparams' in tmp:
-                        hp.hparams(tmp['hparams'], trial_id=tmp.get('exp_id'))
+                    if "hparams" in tmp:
+                        hp.hparams(tmp["hparams"], trial_id=tmp.get("exp_id"))
                         self._hp_logged = True
-                        del tmp['hparams']
+                        del tmp["hparams"]
 
                 for k in [
                         "config", "pid", "timestamp", TIME_TOTAL_S,
-                        TRAINING_ITERATION, 'exp_id'
+                        TRAINING_ITERATION, "exp_id"
                 ]:
                     if k in tmp:
                         del tmp[k]  # not useful to log these
