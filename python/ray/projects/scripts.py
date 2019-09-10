@@ -167,19 +167,7 @@ def stop():
         override_cluster_name=None)
 
 
-@session_cli.command(
-    context_settings=dict(ignore_unknown_options=True, ),
-    help="Start a session based on current project config")
-@click.argument("command", required=False)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@click.option(
-    "--shell",
-    help=(
-        "If set, run the command as a raw shell command instead of looking up "
-        "the command in the project config"),
-    is_flag=True)
-@click.pass_context
-def start(ctx, command, args, shell):
+def run_start_session(args, num_steps):
     project_definition = load_project_or_throw()
 
     # Check for features we don't support right now
@@ -192,7 +180,7 @@ def start(ctx, command, args, shell):
             "Please file an feature request at"
             "https://github.com/ray-project/ray/issues")
 
-    logger.info("[1/4] Creating cluster")
+    logger.info("[1/{}] Creating cluster".format(num_steps))
     create_or_update_cluster(
         config_file=project_definition.cluster_yaml(),
         override_min_workers=None,
@@ -203,7 +191,7 @@ def start(ctx, command, args, shell):
         override_cluster_name=None,
     )
 
-    logger.info("[2/4] Syncing the project")
+    logger.info("[2/{}] Syncing the project".format(num_steps))
     rsync(
         project_definition.cluster_yaml(),
         source=project_definition.root,
@@ -212,28 +200,14 @@ def start(ctx, command, args, shell):
         down=False,
     )
 
-    logger.info("[3/4] Setting up environment")
+    logger.info("[3/{}] Setting up environment".format(num_steps))
     _setup_environment(
         project_definition.cluster_yaml(),
         project_environment,
         cwd=project_definition.working_directory())
 
-    logger.info("[4/4] Running command")
-    ctx.forward(execute)
 
-
-@session_cli.command(
-    context_settings=dict(ignore_unknown_options=True, ),
-    help="Execute a command in a session")
-@click.argument("command", required=False)
-@click.argument("args", nargs=-1, type=click.UNPROCESSED)
-@click.option(
-    "--shell",
-    help=(
-        "If set, run the command as a raw shell command instead of looking up "
-        "the command in the project config"),
-    is_flag=True)
-def execute(command, args, shell):
+def run_execute_session(command, args, shell):
     project_definition = load_project_or_throw()
 
     if shell:
@@ -251,6 +225,41 @@ def execute(command, args, shell):
         project_definition.cluster_yaml(),
         command_to_run,
         cwd=project_definition.working_directory())
+
+@session_cli.command(
+    name="start",
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Start a session based on current project config")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--shell",
+    help=(
+        "If set, run the command as a raw shell command instead of looking up "
+        "the command in the project config"),
+    is_flag=True)
+def session_start(command, args, shell):
+    if shell or command:
+        run_session_start(args, num_steps=4)
+        logger.info("[4/4] Running command")
+        run_session_execute(command, args, shell)
+    else:
+        run_session_start(args, num_steps=3)
+
+
+@session_cli.command(
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Execute a command in a session")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--shell",
+    help=(
+        "If set, run the command as a raw shell command instead of looking up "
+        "the command in the project config"),
+    is_flag=True)
+def execute(command, args, shell):
+    run_session_execute(command, args, shell)
 
 
 def session_exec_cluster(cluster_yaml, cmd, cwd=None):
