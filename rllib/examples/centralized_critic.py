@@ -171,10 +171,6 @@ def setup_mixins(policy, obs_space, action_space, config):
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
-#    # hack: put in a noop VF so some of the inherited PPO code runs
-#    policy.value_function = tf.zeros()
-
-
 def central_vf_stats(policy, train_batch, grads):
     # Report the explained variance of the central value function.
     return {
