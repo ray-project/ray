@@ -1787,9 +1787,13 @@ def setup_queue_actor():
 
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
+    # Make sure queue actor is initialized.
+    ray.get(queue.read.remote())
 
     @ray.remote
     def fork(queue, key, item):
+        # ray.get here could be blocked and cause ray to start
+        # a lot of python workers.
         return ray.get(queue.enqueue.remote(key, item))
 
     # Fork num_iters times.
