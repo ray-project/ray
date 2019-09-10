@@ -1423,8 +1423,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 
     # Create an actor that is not on the raylet.
     actor = Counter.remote()
-    while (ray.get(actor.node_id.remote()) !=
-           remote_node.plasma_store_socket_name):
+    while (ray.get(actor.node_id.remote()) != remote_node.unique_id):
         actor = Counter.remote()
 
     # Kill the second node.
@@ -2260,10 +2259,10 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
             }),
         )
 
-    def kill_node(object_store_socket):
+    def kill_node(node_id):
         node_to_remove = None
         for node in cluster.worker_nodes:
-            if object_store_socket == node.plasma_store_socket_name:
+            if node_id == node.unique_id:
                 node_to_remove = node
         cluster.remove_node(node_to_remove)
 
@@ -2470,8 +2469,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     remote_node = [node for node in cluster.worker_nodes]
     actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
-    while (ray.get(actor.node_id.remote()) !=
-           remote_node[0].plasma_store_socket_name):
+    while (ray.get(actor.node_id.remote()) != remote_node[0].unique_id):
         actor = actor_cls.remote()
 
     # Call increase several times.
@@ -2732,8 +2730,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     remote_node = cluster.list_all_nodes()[-1]
     remote_ping_id = None
     for i, actor in enumerate(actors):
-        if ray.get(actor.node_id.remote()
-                   ) == remote_node.plasma_store_socket_name:
+        if ray.get(actor.node_id.remote()) == remote_node.unique_id:
             remote_ping_id = ping_ids[i]
     ray.internal.free([remote_ping_id], local_only=True)
     cluster.remove_node(remote_node)
