@@ -148,31 +148,13 @@ def load_project_or_throw():
 class SessionRunner(object):
     """Class for setting up a session and executing commands in it."""
 
-    def __init__(self, command, args, shell):
+    def __init__(self):
         """Initialize session runner and try to parse the command arguments.
 
-        Args:
-            command (str, optional): Command from the project definition's
-                commands section to run, if any.
-            args (list): Arguments for the command to run.
-            shell (bool): If true, command is a shell command that should be
-                run directly.
         Raises:
             click.ClickException: This exception is raised if any error occurs.
         """
         self.project_definition = load_project_or_throw()
-
-        # We try to parse the command here so we can fail before the cluster
-        # is started in case the command is malformed.
-        if shell:
-            self.command_to_run = command
-        else:
-            try:
-                self.command_to_run = (
-                    self.project_definition.get_command_to_run(
-                        command=command, args=args))
-            except ValueError as e:
-                raise click.ClickException(e)
 
         # Check for features we don't support right now
         project_environment = self.project_definition.config["environment"]
@@ -229,6 +211,31 @@ class SessionRunner(object):
         if "shell" in project_environment:
             for cmd in project_environment["shell"]:
                 self.execute_command(cmd)
+
+    def format_command(self, command, args, shell):
+        """Validate and format a session command.
+
+        Args:
+            command (str, optional): Command from the project definition's
+                commands section to run, if any.
+            args (list): Arguments for the command to run.
+            shell (bool): If true, command is a shell command that should be
+                run directly.
+
+        Returns:
+            The formatted shell command to run.
+
+        Raises:
+            click.ClickException: This exception is raised if any error occurs.
+        """
+        if shell:
+            return command
+        else:
+            try:
+                return self.project_definition.get_command_to_run(
+                        command=command, args=args)
+            except ValueError as e:
+                raise click.ClickException(e)
 
     def execute_command(self, cmd):
         """Execute a shell command in the session.
@@ -287,23 +294,20 @@ def stop():
         "the command in the project config"),
     is_flag=True)
 def session_start(command, args, shell):
-    runner = SessionRunner(command, args, shell)
+    runner = SessionRunner()
+    steps = [
+        ("Creating cluster", lambda: runner.create_cluster()),
+        ("Syncing the project", lambda: runner.sync_files()),
+        ("Setting up environment", lambda: runner.setup_environment()),
+    ]
     if shell or command:
-        logger.info("[1/4] Creating cluster")
-        runner.create_cluster()
-        logger.info("[2/4] Syncing the project")
-        runner.sync_files()
-        logger.info("[3/4] Setting up environment")
-        runner.setup_environment()
-        logger.info("[4/4] Running command")
-        runner.execute_command(runner.command_to_run)
-    else:
-        logger.info("[1/3] Creating cluster")
-        runner.create_cluster()
-        logger.info("[2/3] Syncing the project")
-        runner.sync_files()
-        logger.info("[3/3] Setting up environment")
-        runner.setup_environment()
+        # Run this before the cluster is started to validate the command.
+        cmd = runner.format_command(command, args, shell)
+        steps += [("Running command", lambda: runner.execute_command(cmd))]
+
+    for i, (prompt, function) in enumerate(steps):
+        logger.info("[{}/{}] {}".format(i+1, len(steps), prompt))
+        function()
 
 
 @session_cli.command(
@@ -319,5 +323,6 @@ def session_start(command, args, shell):
         "the command in the project config"),
     is_flag=True)
 def session_execute(command, args, shell):
-    runner = SessionRunner(command, args, shell)
-    runner.execute_command(runner.command_to_run)
+    runner = SessionRunner()
+    cmd = runner.format_command(command, args, shell)
+    runner.execute_command(cmd)
