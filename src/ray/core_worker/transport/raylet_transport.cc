@@ -14,10 +14,11 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) 
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client,
+    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)
-    : raylet_client_(raylet_client),
+    : worker_context_(worker_context),
+      raylet_client_(raylet_client),
       object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
@@ -30,6 +31,12 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+  if (task_spec.IsActorTask() && worker_context_.CurrentActorUseDirectCall()) {
+    send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
+                        nullptr);
+    return;
+  }
+
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, &results);
 

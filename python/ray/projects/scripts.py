@@ -2,13 +2,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-import os
-import sys
-from shutil import copyfile
-import time
 import click
 import jsonschema
+import logging
+import os
+from shutil import copyfile
+import subprocess
+import sys
+import time
 
 import ray
 from ray.autoscaler.commands import (
@@ -19,7 +20,7 @@ from ray.autoscaler.commands import (
     teardown_cluster,
 )
 
-logging.basicConfig(format=ray.ray_constants.LOGGER_FORMAT)
+logging.basicConfig(format=ray.ray_constants.LOGGER_FORMAT, level=logging.INFO)
 logger = logging.getLogger(__file__)
 
 # File layout for generated project files
@@ -57,10 +58,10 @@ def project_cli():
     "--verbose", help="If set, print the validated file", is_flag=True)
 def validate(verbose):
     try:
-        project = ray.projects.load_project(os.getcwd())
+        project = ray.projects.ProjectDefinition(os.getcwd())
         print("Project files validated!", file=sys.stderr)
         if verbose:
-            print(project)
+            print(project.config)
     except (jsonschema.exceptions.ValidationError, ValueError) as e:
         print("Validation failed for the following reason", file=sys.stderr)
         raise click.ClickException(e)
@@ -83,7 +84,7 @@ def create(project_name, cluster_yaml, requirements):
     os.makedirs(PROJECT_DIR)
 
     if cluster_yaml is None:
-        logger.warn("Using default autoscaler yaml")
+        logger.warning("Using default autoscaler yaml")
 
         with open(CLUSTER_TEMPLATE) as f:
             template = f.read().replace(r"{{name}}", project_name)
@@ -93,11 +94,19 @@ def create(project_name, cluster_yaml, requirements):
         cluster_yaml = CLUSTER_YAML
 
     if requirements is None:
-        logger.warn("Using default requirements.txt")
+        logger.warning("Using default requirements.txt")
         # no templating required, just copy the file
         copyfile(REQUIREMENTS_TXT_TEMPLATE, REQUIREMENTS_TXT)
 
         requirements = REQUIREMENTS_TXT
+
+    repo = None
+    try:
+        repo = subprocess.check_output(
+            "git remote get-url origin".split(" ")).strip()
+        logger.info("Setting repo URL to %s", repo)
+    except subprocess.CalledProcessError:
+        pass
 
     with open(PROJECT_TEMPLATE) as f:
         project_template = f.read()
@@ -108,7 +117,12 @@ def create(project_name, cluster_yaml, requirements):
                                                     cluster_yaml)
         project_template = project_template.replace(r"{{requirements}}",
                                                     requirements)
-
+        if repo is None:
+            project_template = project_template.replace(
+                r"{{repo_string}}", "# repo: {}".format("..."))
+        else:
+            project_template = project_template.replace(
+                r"{{repo_string}}", "repo: {}".format(repo))
     with open(PROJECT_YAML, "w") as f:
         f.write(project_template)
 
@@ -124,7 +138,7 @@ def session_cli():
 def load_project_or_throw():
     # Validate the project file
     try:
-        return ray.projects.load_project(os.getcwd())
+        return ray.projects.ProjectDefinition(os.getcwd())
     except (jsonschema.exceptions.ValidationError, ValueError):
         raise click.ClickException(
             "Project file validation failed. Please run "
@@ -135,7 +149,7 @@ def load_project_or_throw():
 def attach():
     project_definition = load_project_or_throw()
     attach_cluster(
-        project_definition["cluster"],
+        project_definition.cluster_yaml(),
         start=False,
         use_tmux=False,
         override_cluster_name=None,
@@ -147,18 +161,37 @@ def attach():
 def stop():
     project_definition = load_project_or_throw()
     teardown_cluster(
-        project_definition["cluster"],
+        project_definition.cluster_yaml(),
         yes=True,
         workers_only=False,
         override_cluster_name=None)
 
 
-@session_cli.command(help="Start a session based on current project config")
-def start():
+@session_cli.command(
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Start a session based on current project config")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--shell",
+    help=(
+        "If set, run the command as a raw shell command instead of looking up "
+        "the command in the project config"),
+    is_flag=True)
+def start(command, args, shell):
     project_definition = load_project_or_throw()
 
+    if shell:
+        command_to_run = command
+    else:
+        try:
+            command_to_run = project_definition.get_command_to_run(
+                command=command, args=args)
+        except ValueError as e:
+            raise click.ClickException(e)
+
     # Check for features we don't support right now
-    project_environment = project_definition["environment"]
+    project_environment = project_definition.config["environment"]
     need_docker = ("dockerfile" in project_environment
                    or "dockerimage" in project_environment)
     if need_docker:
@@ -167,12 +200,9 @@ def start():
             "Please file an feature request at"
             "https://github.com/ray-project/ray/issues")
 
-    cluster_yaml = project_definition["cluster"]
-    working_directory = project_definition["name"]
-
     logger.info("[1/4] Creating cluster")
     create_or_update_cluster(
-        config_file=cluster_yaml,
+        config_file=project_definition.cluster_yaml(),
         override_min_workers=None,
         override_max_workers=None,
         no_restart=False,
@@ -181,30 +211,27 @@ def start():
         override_cluster_name=None,
     )
 
-    logger.info("[2/4] Syncing the repo")
-    if "repo" in project_definition:
-        # HACK: Skip git clone if exists so the this command can be idempotent
-        # More advanced repo update behavior can be found at
-        # https://github.com/jupyterhub/nbgitpuller/blob/master/nbgitpuller/pull.py
-        session_exec_cluster(
-            cluster_yaml,
-            "git clone {repo} {directory} || true".format(
-                repo=project_definition["repo"],
-                directory=project_definition["name"]),
-        )
-    else:
-        session_exec_cluster(
-            cluster_yaml,
-            "mkdir {directory} || true".format(
-                directory=project_definition["name"]))
+    logger.info("[2/4] Syncing the project")
+    rsync(
+        project_definition.cluster_yaml(),
+        source=project_definition.root,
+        target=project_definition.working_directory(),
+        override_cluster_name=None,
+        down=False,
+    )
 
     logger.info("[3/4] Setting up environment")
     _setup_environment(
-        cluster_yaml, project_definition["environment"], cwd=working_directory)
+        project_definition.cluster_yaml(),
+        project_environment,
+        cwd=project_definition.working_directory())
 
-    logger.info("[4/4] Running commands")
-    _run_commands(
-        cluster_yaml, project_definition["commands"], cwd=working_directory)
+    logger.info("[4/4] Running command")
+    logger.debug("Running {}".format(command))
+    session_exec_cluster(
+        project_definition.cluster_yaml(),
+        command_to_run,
+        cwd=project_definition.working_directory())
 
 
 def session_exec_cluster(cluster_yaml, cmd, cwd=None):
@@ -247,9 +274,3 @@ def _setup_environment(cluster_yaml, project_environment, cwd):
     if "shell" in project_environment:
         for cmd in project_environment["shell"]:
             session_exec_cluster(cluster_yaml, cmd, cwd=cwd)
-
-
-def _run_commands(cluster_yaml, commands, cwd):
-    for cmd in commands:
-        logger.debug("Running {}".format(cmd["name"]))
-        session_exec_cluster(cluster_yaml, cmd["command"], cwd=cwd)

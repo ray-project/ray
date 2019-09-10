@@ -409,22 +409,40 @@ def stop():
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
-        "raylet",
-        "plasma_store_server",
-        "raylet_monitor",
-        "monitor.py",
-        "redis-server",
-        "default_worker.py",  # Python worker.
-        " ray_",  # Python worker.
-        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
-        "log_monitor.py",
-        "reporter.py",
-        "dashboard.py",
+        # The first element is the substring to filter.
+        # The second element, if True, is to filter ps results by command name
+        # (only the first 15 charactors of the executable name);
+        # if False, is to filter ps results by command with all its arguments.
+        # See STANDARD FORMAT SPECIFIERS section of
+        # http://man7.org/linux/man-pages/man1/ps.1.html
+        # about comm and args. This can help avoid killing non-ray processes.
+        ["raylet", True],
+        ["plasma_store", True],
+        ["raylet_monitor", True],
+        ["monitor.py", False],
+        ["redis-server", True],
+        ["default_worker.py", False],  # Python worker.
+        [" ray_", True],  # Python worker.
+        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["log_monitor.py", False],
+        ["reporter.py", False],
+        ["dashboard.py", False],
     ]
 
     for process in processes_to_kill:
-        command = ("kill -9 $(ps aux | grep '" + process +
-                   "' | grep -v grep | " + "awk '{ print $2 }') 2> /dev/null")
+        filter = process[0]
+        if process[1]:
+            format = "pid,comm"
+            # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
+            # comm only prints the first 15 characters of the executable name.
+            if len(filter) > 15:
+                raise ValueError("The filter string should not be more than" +
+                                 " 15 characters. Actual length: " +
+                                 str(len(filter)) + ". Filter: " + filter)
+        else:
+            format = "pid,args"
+        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
+                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
         subprocess.call([command], shell=True)
 
 

@@ -26,8 +26,8 @@ def build_torch_policy(name,
 
     Arguments:
         name (str): name of the policy (e.g., "PPOTorchPolicy")
-        loss_fn (func): function that returns a loss tensor the policy,
-            and dict of experience tensor placeholders
+        loss_fn (func): function that returns a loss tensor as arguments
+            (policy, model, dist_class, train_batch)
         get_default_config (func): optional function that returns the default
             config to merge with any overrides
         stats_fn (func): optional function that returns a dict of
@@ -121,11 +121,11 @@ def build_torch_policy(name,
                 return TorchPolicy.optimizer(self)
 
         @override(TorchPolicy)
-        def extra_grad_info(self, batch_tensors):
+        def extra_grad_info(self, train_batch):
             if stats_fn:
-                return stats_fn(self, batch_tensors)
+                return stats_fn(self, train_batch)
             else:
-                return TorchPolicy.extra_grad_info(self, batch_tensors)
+                return TorchPolicy.extra_grad_info(self, train_batch)
 
     @staticmethod
     def with_updates(**overrides):

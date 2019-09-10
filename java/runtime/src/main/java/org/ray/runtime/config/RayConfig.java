@@ -1,6 +1,7 @@
 package org.ray.runtime.config;
 
 import com.google.common.base.Preconditions;
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
@@ -14,7 +15,6 @@ import org.ray.api.id.JobId;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.ray.runtime.util.NetworkUtil;
 import org.ray.runtime.util.ResourceUtil;
-import org.ray.runtime.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,6 +61,8 @@ public class RayConfig {
    * Number of threads that execute tasks.
    */
   public final int numberExecThreadsForDevRuntime;
+
+  public final int numWorkersPerProcess;
 
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
@@ -171,6 +173,8 @@ public class RayConfig {
     // Number of threads that execute tasks.
     numberExecThreadsForDevRuntime = config.getInt("ray.dev-runtime.execution-parallelism");
 
+    numWorkersPerProcess = config.getInt("ray.raylet.config.num_workers_per_process_java");
+
     // Validate config.
     validate();
     LOGGER.debug("Created config: {}", this);
@@ -244,7 +248,7 @@ public class RayConfig {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();
     String configPath = System.getProperty("ray.config");
-    if (StringUtil.isNullOrEmpty(configPath)) {
+    if (Strings.isNullOrEmpty(configPath)) {
       LOGGER.info("Loading config from \"ray.conf\" file in classpath.");
       config = config.withFallback(ConfigFactory.load(CUSTOM_CONFIG_FILE));
     } else {

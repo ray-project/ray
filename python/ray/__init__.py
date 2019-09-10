@@ -53,9 +53,6 @@ except ImportError as e:
             e.args += (helpful_message, )
     raise
 
-modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
-sys.path.append(modin_path)
-
 from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,
@@ -104,7 +101,7 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.8.0.dev3"
+__version__ = "0.8.0.dev4"
 
 __all__ = [
     "global_state",

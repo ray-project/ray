@@ -2,39 +2,20 @@ package org.ray.runtime.object;
 
 import com.google.common.base.Preconditions;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.ray.api.RayObject;
 import org.ray.api.WaitResult;
-import org.ray.api.exception.RayActorException;
 import org.ray.api.exception.RayException;
-import org.ray.api.exception.RayTaskException;
-import org.ray.api.exception.RayWorkerException;
-import org.ray.api.exception.UnreconstructableException;
 import org.ray.api.id.ObjectId;
 import org.ray.runtime.context.WorkerContext;
-import org.ray.runtime.generated.Gcs.ErrorType;
-import org.ray.runtime.util.Serializer;
 
 /**
  * A class that is used to put/get objects to/from the object store.
  */
 public abstract class ObjectStore {
-
-  private static final byte[] WORKER_EXCEPTION_META = String
-      .valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
-  private static final byte[] ACTOR_EXCEPTION_META = String
-      .valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
-  private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META = String
-      .valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
-
-  private static final byte[] TASK_EXECUTION_EXCEPTION_META = String
-      .valueOf(ErrorType.TASK_EXECUTION_EXCEPTION.getNumber()).getBytes();
-
-  private static final byte[] RAW_TYPE_META = "RAW".getBytes();
 
   private final WorkerContext workerContext;
 
@@ -65,7 +46,27 @@ public abstract class ObjectStore {
    * @return Id of the object.
    */
   public ObjectId put(Object object) {
-    return putRaw(serialize(object));
+    if (object instanceof NativeRayObject) {
+      throw new IllegalArgumentException(
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
+    }
+    return putRaw(ObjectSerializer.serialize(object));
+  }
+
+  /**
+   * Serialize and put an object to the object store, with the given object id.
+   *
+   * This method is only used for testing.
+   *
+   * @param object The object to put.
+   * @param objectId Object id.
+   */
+  public void put(Object object, ObjectId objectId) {
+    if (object instanceof NativeRayObject) {
+      throw new IllegalArgumentException(
+          "Trying to put a NativeRayObject. Please use putRaw instead.");
+    }
+    putRaw(ObjectSerializer.serialize(object), objectId);
   }
 
   /**
@@ -94,7 +95,8 @@ public abstract class ObjectStore {
       NativeRayObject dataAndMeta = dataAndMetaList.get(i);
       Object object = null;
       if (dataAndMeta != null) {
-        object = deserialize(dataAndMeta, ids.get(i));
+        object = ObjectSerializer
+            .deserialize(dataAndMeta, ids.get(i), workerContext.getCurrentClassLoader());
       }
       if (object instanceof RayException) {
         // If the object is a `RayException`, it means that an error occurred during task
@@ -156,62 +158,10 @@ public abstract class ObjectStore {
    * Delete a list of objects from the object store.
    *
    * @param objectIds IDs of the objects to delete.
-   * @param localOnly Whether only delete the objects in local node, or all nodes in the cluster.
+   * @param localOnly Whether only delete the objects in local node, or all nodes in the
+   *     cluster.
    * @param deleteCreatingTasks Whether also delete the tasks that created these objects.
    */
   public abstract void delete(List<ObjectId> objectIds, boolean localOnly,
       boolean deleteCreatingTasks);
-
-  /**
-   * Deserialize an object.
-   *
-   * @param nativeRayObject The object to deserialize.
-   * @param objectId The associated object ID of the object.
-   * @return The deserialized object.
-   */
-  public Object deserialize(NativeRayObject nativeRayObject, ObjectId objectId) {
-    byte[] meta = nativeRayObject.metadata;
-    byte[] data = nativeRayObject.data;
-
-    // If meta is not null, deserialize the object from meta.
-    if (meta != null && meta.length > 0) {
-      // If meta is not null, deserialize the object from meta.
-      if (Arrays.equals(meta, RAW_TYPE_META)) {
-        return data;
-      } else if (Arrays.equals(meta, WORKER_EXCEPTION_META)) {
-        return RayWorkerException.INSTANCE;
-      } else if (Arrays.equals(meta, ACTOR_EXCEPTION_META)) {
-        return RayActorException.INSTANCE;
-      } else if (Arrays.equals(meta, UNRECONSTRUCTABLE_EXCEPTION_META)) {
-        return new UnreconstructableException(objectId);
-      } else if (Arrays.equals(meta, TASK_EXECUTION_EXCEPTION_META)) {
-        return Serializer.decode(data, workerContext.getCurrentClassLoader());
-      }
-      throw new IllegalArgumentException("Unrecognized metadata " + Arrays.toString(meta));
-    } else {
-      // If data is not null, deserialize the Java object.
-      return Serializer.decode(data, workerContext.getCurrentClassLoader());
-    }
-  }
-
-  /**
-   * Serialize an object.
-   *
-   * @param object The object to serialize.
-   * @return The serialized object.
-   */
-  public NativeRayObject serialize(Object object) {
-    if (object instanceof NativeRayObject) {
-      return (NativeRayObject) object;
-    } else if (object instanceof byte[]) {
-      // If the object is a byte array, skip serializing it and use a special metadata to
-      // indicate it's raw binary. So that this object can also be read by Python.
-      return new NativeRayObject((byte[]) object, RAW_TYPE_META);
-    } else if (object instanceof RayTaskException) {
-      return new NativeRayObject(Serializer.encode(object),
-          TASK_EXECUTION_EXCEPTION_META);
-    } else {
-      return new NativeRayObject(Serializer.encode(object), null);
-    }
-  }
 }

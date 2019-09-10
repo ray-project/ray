@@ -1183,12 +1183,15 @@ def build_java_worker_command(
     command += "-Dray.home={} ".format(RAY_HOME)
     command += "-Dray.log-dir={} ".format(os.path.join(session_dir, "logs"))
 
+    command += ("-Dray.raylet.config.num_workers_per_process_java=" +
+                "RAY_WORKER_NUM_WORKERS_PLACEHOLDER ")
+
     if java_worker_options:
         # Put `java_worker_options` in the last, so it can overwrite the
         # above options.
         command += java_worker_options + " "
 
-    command += "RAY_WORKER_OPTION_0 "
+    command += "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0 "
     command += "org.ray.runtime.runner.worker.DefaultWorker"
 
     return command
@@ -1303,7 +1306,7 @@ def _start_plasma_store(plasma_store_memory,
                         "plasma_directory argument must be provided.")
 
     if not isinstance(plasma_store_memory, int):
-        raise Exception("plasma_store_memory should be an integer.")
+        plasma_store_memory = int(plasma_store_memory)
 
     command = [
         PLASMA_STORE_EXECUTABLE, "-s", socket_name, "-m",

@@ -8,6 +8,7 @@ import glob
 import json
 import logging
 import os
+import shutil
 import time
 import traceback
 
@@ -85,7 +86,27 @@ class LogMonitor(object):
             file_info = self.open_file_infos.pop(0)
             file_info.file_handle.close()
             file_info.file_handle = None
-            self.closed_file_infos.append(file_info)
+            try:
+                # Test if the worker process that generated the log file
+                # is still alive. Only applies to worker processes.
+                if file_info.worker_pid != "raylet":
+                    os.kill(file_info.worker_pid, 0)
+            except OSError:
+                # The process is not alive any more, so move the log file
+                # out of the log directory so glob.glob will not be slowed
+                # by it.
+                target = os.path.join(self.logs_dir, "old",
+                                      os.path.basename(file_info.filename))
+                try:
+                    shutil.move(file_info.filename, target)
+                except (IOError, OSError) as e:
+                    if e.errno == errno.ENOENT:
+                        logger.warning("Warning: The file {} was not "
+                                       "found.".format(file_info.filename))
+                    else:
+                        raise e
+            else:
+                self.closed_file_infos.append(file_info)
         self.can_open_more_files = True
 
     def update_log_filenames(self):
@@ -144,7 +165,7 @@ class LogMonitor(object):
             # file.
             if file_size > file_info.size_when_last_opened:
                 try:
-                    f = open(file_info.filename, "r")
+                    f = open(file_info.filename, "rb")
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning("Warning: The file {} was not "
@@ -179,6 +200,10 @@ class LogMonitor(object):
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
+                    # Replace any characters not in UTF-8 with
+                    # a replacement character, see
+                    # https://stackoverflow.com/a/38565489/10891801
+                    next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
                     if next_line[-1] == "\n":

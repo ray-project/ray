@@ -34,7 +34,7 @@ class EvalTest(unittest.TestCase):
         agent_classes = [DQNTrainer, A3CTrainer]
 
         for agent_cls in agent_classes:
-            ray.init()
+            ray.init(object_store_memory=1000 * 1024 * 1024)
             register_env("CartPoleWrapped-v0", env_creator)
             agent = agent_cls(
                 env="CartPoleWrapped-v0",

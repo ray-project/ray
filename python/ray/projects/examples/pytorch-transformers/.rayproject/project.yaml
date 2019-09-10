@@ -7,24 +7,28 @@ repo: https://github.com/huggingface/pytorch-transformers
 cluster: .rayproject/cluster.yaml
 
 environment:
-  requirements: requirements.txt
+  requirements: .rayproject/requirements.txt
 
 commands:
-  - name: train_sst_2
+  - name: train
     command: |
-      wget https://raw.githubusercontent.com/nyu-mll/GLUE-baselines/master/download_glue_data.py && \
-      python download_glue_data.py -d /tmp -t SST && \
+      wget https://raw.githubusercontent.com/ray-project/project-data/master/download_glue_data.py && \
+      python download_glue_data.py -d /tmp -t {{dataset}} && \
       python ./examples/run_glue.py \
       --model_type bert \
       --model_name_or_path bert-base-uncased \
-      --task_name SST-2 \
+      --task_name {{dataset}} \
       --do_train \
       --do_eval \
       --do_lower_case \
-      --data_dir /tmp/SST-2 \
+      --data_dir /tmp/{{dataset}} \
       --max_seq_length 128 \
       --per_gpu_eval_batch_size=8   \
       --per_gpu_train_batch_size=8   \
       --learning_rate 2e-5 \
       --num_train_epochs 3.0 \
       --output_dir /tmp/output/
+    params:
+      - name: "dataset"
+        help: "The GLUE dataset to fine-tune on"
+        choices: ["CoLA", "SST-2", "MRPC", "STS-B", "QQP", "MNLI", "QNLI", "RTE", "WNLI"]
