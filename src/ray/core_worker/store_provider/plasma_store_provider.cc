@@ -92,9 +92,9 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 Status CoreWorkerPlasmaStoreProvider::Get(
     const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
     const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
-  bool got_exception = false;
   std::vector<ObjectID> batch_ids;
   std::unordered_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
@@ -108,11 +108,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
                                                  /*fetch_only=*/true, task_id, results,
-                                                 &got_exception));
+                                                 got_exception));
   }
 
   // If all objects were fetched already, return.
-  if (remaining.empty() || got_exception) {
+  if (remaining.empty() || *got_exception) {
     return Status::OK();
   }
 
@@ -142,8 +142,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     size_t previous_size = remaining.size();
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
                                                  /*fetch_only=*/false, task_id, results,
-                                                 &got_exception));
-    should_break = should_break || got_exception;
+                                                 got_exception));
+    should_break = should_break || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
       unsuccessful_attempts++;
