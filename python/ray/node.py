@@ -75,7 +75,6 @@ class Node(object):
                                  "cannot both be true.")
 
             def clean_up_children(*args, **kwargs):
-                logger.info("Cleaning up children and exiting...")
                 self.kill_all_processes(check_alive=False, allow_graceful=True)
                 signal.signal(signal.SIGTERM, lambda *args: sys.exit(1))
                 try:
@@ -86,8 +85,8 @@ class Node(object):
                     # sending it to ourselves.
                     os.killpg(0, signal.SIGTERM)
                 except OSError as e:
-                    logger.warning("killpg failed, processes may not have "
-                                   "been cleaned up properly: {}.".format(e))
+                    print("killpg failed, processes may not have "
+                          "been cleaned up properly: {}.".format(e))
 
             atexit.register(clean_up_children)
             signal.signal(signal.SIGINT, clean_up_children)
