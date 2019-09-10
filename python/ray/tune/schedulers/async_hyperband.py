@@ -96,10 +96,10 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             return action
         if result[self._time_attr] >= self._max_t:
             action = TrialScheduler.STOP
-        
+
         bracket = self._trial_info[trial.trial_id]
         action = bracket.on_result(trial, result[self._time_attr],
-                                       self._metric_op * result[self._metric])
+                                   self._metric_op * result[self._metric])
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
