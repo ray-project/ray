@@ -167,7 +167,7 @@ def stop():
         override_cluster_name=None)
 
 
-def run_start_session(args, num_steps):
+def run_session_start(args, num_steps):
     project_definition = load_project_or_throw()
 
     # Check for features we don't support right now
@@ -207,7 +207,7 @@ def run_start_session(args, num_steps):
         cwd=project_definition.working_directory())
 
 
-def run_execute_session(command, args, shell):
+def run_session_execute(command, args, shell):
     project_definition = load_project_or_throw()
 
     if shell:
@@ -248,6 +248,7 @@ def session_start(command, args, shell):
 
 
 @session_cli.command(
+    name="execute",
     context_settings=dict(ignore_unknown_options=True, ),
     help="Execute a command in a session")
 @click.argument("command", required=False)
@@ -258,7 +259,7 @@ def session_start(command, args, shell):
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def execute(command, args, shell):
+def session_execute(command, args, shell):
     run_session_execute(command, args, shell)
 
 
