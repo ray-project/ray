@@ -553,7 +553,7 @@ cdef class CoreWorker:
         with nogil:
             message = self.core_worker.get().Objects().MemoryUsageString()
 
-        return message
+        return message.decode("utf-8")
 
     def disconnect(self):
         with nogil:

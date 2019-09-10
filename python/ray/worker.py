@@ -932,6 +932,7 @@ class Worker(object):
             self.core_worker.set_object_store_client_options(
                 name.encode("ascii"), object_store_memory)
         except Exception as e:
+            self.dump_object_store_memory_usage()
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
                 "plasma store may have insufficient memory remaining "
