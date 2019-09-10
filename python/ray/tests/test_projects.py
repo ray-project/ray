@@ -12,7 +12,7 @@ import sys
 
 from contextlib import contextmanager
 
-from ray.projects.scripts import session_start
+from ray.projects.scripts import session_start, session_execute
 import ray
 
 if sys.version_info >= (3, 3):
@@ -139,6 +139,29 @@ def test_session_start_default_project():
         commands_executed = [
             cmd for cmd in commands_executed if "pip install -r" not in cmd
         ]
+
+    assert expected_commands == commands_executed
+
+
+def test_session_execute_default_project():
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/project-pass", session_execute, ["default"])
+
+    loaded_project = ray.projects.ProjectDefinition(test_dir)
+    assert result.exit_code == 0
+
+    assert mock_calls["rsync"].call_count == 0
+    assert mock_calls["create_or_update_cluster"].call_count == 0
+
+    exec_cluster_call = mock_calls["exec_cluster"]
+    commands_executed = []
+    for _, kwargs in exec_cluster_call.call_args_list:
+        commands_executed.append(kwargs["cmd"].replace(
+            "cd {}; ".format(loaded_project.working_directory()), ""))
+
+    expected_commands = [
+        command["command"] for command in loaded_project.config["commands"]
+    ]
 
     assert expected_commands == commands_executed
 
