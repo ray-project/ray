@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import copy
 import logging
+import pickle
 try:  # Python 3 only -- needed for lint test.
     import bayes_opt as byo
 except ImportError:
@@ -111,3 +112,13 @@ class BayesOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = self.optimizer
+        with open(checkpoint_dir, "wb") as output:
+            pickle.dump(trials_object, output)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as input:
+            trials_object = pickle.load(input)
+        self.optimizer = trials_object
