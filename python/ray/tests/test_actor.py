@@ -40,7 +40,7 @@ def ray_checkpointable_actor_cls(request):
             self.resumed_from_checkpoint = False
             self.checkpoint_dir = checkpoint_dir
 
-        def local_plasma(self):
+        def node_id(self):
             return ray.worker.global_worker.node.unique_id
 
         def increase(self):
@@ -1418,7 +1418,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
         def __init__(self):
             self.x = 0
 
-        def local_plasma(self):
+        def node_id(self):
             return ray.worker.global_worker.node.unique_id
 
         def inc(self):
@@ -1427,7 +1427,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 
     # Create an actor that is not on the raylet.
     actor = Counter.remote()
-    while (ray.get(actor.local_plasma.remote()) !=
+    while (ray.get(actor.node_id.remote()) !=
            remote_node.plasma_store_socket_name):
         actor = Counter.remote()
 
@@ -1528,7 +1528,7 @@ def setup_counter_actor(test_checkpoint=False,
             self.save_exception = save_exception
             self.restored = False
 
-        def local_plasma(self):
+        def node_id(self):
             return ray.worker.global_worker.node.unique_id
 
         def inc(self, *xs):
@@ -1556,11 +1556,11 @@ def setup_counter_actor(test_checkpoint=False,
             self.num_inc_calls = 0
             self.restored = True
 
-    local_plasma = ray.worker.global_worker.node.unique_id
+    node_id = ray.worker.global_worker.node.unique_id
 
     # Create an actor that is not on the raylet.
     actor = Counter.remote(save_exception)
-    while ray.get(actor.local_plasma.remote()) == local_plasma:
+    while ray.get(actor.node_id.remote()) == node_id:
         actor = Counter.remote(save_exception)
 
     args = [ray.put(0) for _ in range(100)]
@@ -1691,7 +1691,7 @@ def _test_nondeterministic_reconstruction(
         def __init__(self):
             self.queue = []
 
-        def local_plasma(self):
+        def node_id(self):
             return ray.worker.global_worker.node.unique_id
 
         def push(self, item):
@@ -1701,9 +1701,9 @@ def _test_nondeterministic_reconstruction(
             return self.queue
 
     # Schedule the shared queue onto the remote raylet.
-    local_plasma = ray.worker.global_worker.node.unique_id
+    node_id = ray.worker.global_worker.node.unique_id
     actor = Queue.remote()
-    while ray.get(actor.local_plasma.remote()) == local_plasma:
+    while ray.get(actor.node_id.remote()) == node_id:
         actor = Queue.remote()
 
     # A task that takes in the shared queue and a list of items to enqueue,
@@ -2071,7 +2071,7 @@ def test_custom_label_placement(ray_start_cluster):
         def get_location(self):
             return ray.worker.global_worker.node.unique_id
 
-    local_plasma = ray.worker.global_worker.node.unique_id
+    node_id = ray.worker.global_worker.node.unique_id
 
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
@@ -2079,9 +2079,9 @@ def test_custom_label_placement(ray_start_cluster):
     locations1 = ray.get([a.get_location.remote() for a in actors1])
     locations2 = ray.get([a.get_location.remote() for a in actors2])
     for location in locations1:
-        assert location == local_plasma
+        assert location == node_id
     for location in locations2:
-        assert location != local_plasma
+        assert location != node_id
 
 
 def test_creating_more_actors_than_resources(shutdown_only):
@@ -2474,7 +2474,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     remote_node = [node for node in cluster.worker_nodes]
     actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
-    while (ray.get(actor.local_plasma.remote()) !=
+    while (ray.get(actor.node_id.remote()) !=
            remote_node[0].plasma_store_socket_name):
         actor = actor_cls.remote()
 
@@ -2718,7 +2718,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
         def __init__(self):
             pass
 
-        def local_plasma(self):
+        def node_id(self):
             return ray.worker.global_worker.node.unique_id
 
         def ping(self):
@@ -2736,7 +2736,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     remote_node = cluster.list_all_nodes()[-1]
     remote_ping_id = None
     for i, actor in enumerate(actors):
-        if ray.get(actor.local_plasma.remote()
+        if ray.get(actor.node_id.remote()
                    ) == remote_node.plasma_store_socket_name:
             remote_ping_id = ping_ids[i]
     ray.internal.free([remote_ping_id], local_only=True)

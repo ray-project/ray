@@ -281,7 +281,7 @@ def test_signal_on_node_failure(two_node_cluster):
         def __init__(self):
             pass
 
-        def local_plasma(self):
+        def node_id(self):
             return ray.worker.global_worker.node.unique_id
 
     # Place the actor on the remote node.
@@ -289,7 +289,7 @@ def test_signal_on_node_failure(two_node_cluster):
     actor_cls = ray.remote(max_reconstructions=0)(ActorSignal)
     actor = actor_cls.remote()
     # Try until we put an actor on a different node.
-    while (ray.get(actor.local_plasma.remote()) !=
+    while (ray.get(actor.node_id.remote()) !=
            remote_node.plasma_store_socket_name):
         actor = actor_cls.remote()
 

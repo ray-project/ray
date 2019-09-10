@@ -117,11 +117,10 @@ class CoreWorkerStoreProvider {
   /// map, not clear or remove from it, so the caller can pass in a non-empty map.
   /// \param[out] got_exception Whether any of the fetched results were an exception.
   /// \return Status.
-  virtual Status Get(
-      const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
-      const TaskID &task_id,
-      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
-      bool *got_exception) = 0;
+  virtual Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+                     const TaskID &task_id,
+                     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+                     bool *got_exception) = 0;
 
   /// Return whether or not the object store contains the given object.
   ///
