@@ -77,7 +77,7 @@ class Node(object):
             def clean_up_children(*args, **kwargs):
                 logger.info("Cleaning up children and exiting...")
                 self.kill_all_processes(check_alive=False, allow_graceful=True)
-                signal.signal(signal.SIGTERM, lambda: sys.exit(1))
+                signal.signal(signal.SIGTERM, lambda *args: sys.exit(1))
                 try:
                     # SIGTERM our process group as a last resort in case there
                     # were processes that we spawned but didn't add to the list
