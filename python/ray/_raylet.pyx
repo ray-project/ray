@@ -420,12 +420,13 @@ cdef class CoreWorker:
             if not result.get():
                 data_metadata_pairs.append((None, None))
             else:
-                data = Buffer.make(result.get().GetData())
+                data = None
+                metadata = None
+                if result.get().HasData():
+                    data = Buffer.make(result.get().GetData())
                 if result.get().HasMetadata():
                     metadata = Buffer.make(
                         result.get().GetMetadata()).to_pybytes()
-                else:
-                    metadata = None
                 data_metadata_pairs.append((data, metadata))
 
         return data_metadata_pairs

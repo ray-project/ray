@@ -145,6 +145,7 @@ cdef extern from "ray/core_worker/store_provider/store_provider.h" nogil:
         const shared_ptr[CBuffer] &GetData()
         const size_t DataSize() const
         const shared_ptr[CBuffer] &GetMetadata() const
+        c_bool HasData() const
         c_bool HasMetadata() const
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
