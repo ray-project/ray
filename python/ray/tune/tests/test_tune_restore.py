@@ -136,7 +136,7 @@ class HyperoptWarmStartTest(unittest.TestCase):
             loss = space["x"]**2 + space["y"]**2 + space["z"]**2
             reporter(loss=loss)
 
-        search_alg = BayesOptSearch(
+        search_alg = HyperOptSearch(
             space,
             max_concurrent=1,
             metric="loss",
@@ -187,7 +187,7 @@ class BayesoptWarmStartTest(unittest.TestCase):
             loss = space["width"]**2 + space["height"]**2
             reporter(loss=loss)
 
-        search_alg = HyperOptSearch(
+        search_alg = BayesOptSearch(
             space,
             max_concurrent=1,
             metric="loss",

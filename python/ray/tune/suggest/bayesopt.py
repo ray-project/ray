@@ -114,11 +114,11 @@ class BayesOptSearch(SuggestionAlgorithm):
         return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
-        trials_object = (self.optimizer)
+        trials_object = self.optimizer
         with open(checkpoint_dir, "wb") as output:
             pickle.dump(trials_object, output)
 
     def restore(self, checkpoint_dir):
         with open(checkpoint_dir, "rb") as input:
             trials_object = pickle.load(input)
-        self.optimizer = trials_object[0]
+        self.optimizer = trials_object

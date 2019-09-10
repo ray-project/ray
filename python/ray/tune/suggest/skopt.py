@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import pickle
 try:
     import skopt as sko
 except ImportError:
@@ -157,3 +158,13 @@ class SkOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = self._skopt_opt
+        with open(checkpoint_dir, "wb") as output:
+            pickle.dump(trials_object, output)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as input:
+            trials_object = pickle.load(input)
+        self._skopt_opt = trials_object
