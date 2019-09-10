@@ -548,7 +548,7 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
 TensorBoard
-~~~~~~
+~~~~~~~~~~~
 
 The ``tf2_compat_logger`` uses ``TFLogger`` for TF version < 1.14 and ``TF2Logger`` for TF version >= 1.14.
 The ``TF2Logger`` can log hyperparameters according to the `TB documentation <https://www.tensorflow.org/tensorboard/r2/hyperparameter_tuning_with_hparams>`_.
