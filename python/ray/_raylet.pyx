@@ -392,12 +392,12 @@ cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
-                  JobID job_id, GcsClientOptions gcs_options):
+                  JobID job_id, GcsClientOptions gcs_options, log_dir):
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], NULL))
+            gcs_options.native()[0], log_dir.encode("utf-8"), NULL))
 
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "

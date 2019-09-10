@@ -1966,6 +1966,7 @@ def connect(node,
         node.raylet_socket_name,
         worker.current_job_id,
         gcs_options,
+        node.get_logs_dir_path(),
     )
     worker.core_worker.set_current_job_id(worker.current_job_id)
     worker.core_worker.set_current_task_id(worker.current_task_id)
