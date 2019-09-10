@@ -2,6 +2,7 @@
 #define RAY_COMMON_RAY_OBJECT_H
 
 #include "ray/common/buffer.h"
+#include "ray/protobuf/gcs.pb.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -64,6 +65,9 @@ class RayObject {
 
   /// Whether this object has metadata.
   bool HasMetadata() const { return metadata_ != nullptr; }
+
+  /// Whether the object represents an exception.
+  bool IsException();
 
  private:
   std::shared_ptr<Buffer> data_;

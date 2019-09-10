@@ -8,12 +8,6 @@
 
 namespace ray {
 
-/// Whether the object represents an exception.
-///
-/// \param[in] object Object data.
-/// \return Whether it represents an exception object.
-bool IsException(const std::shared_ptr<RayObject> &object);
-
 /// Provider interface for store access. Store provider should inherit from this class and
 /// provide implementions for the methods. The actual store provider may use a plasma
 /// store or local memory store in worker process, or possibly other types of storage.

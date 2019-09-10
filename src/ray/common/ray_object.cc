@@ -1,12 +1,14 @@
-#include "ray/core_worker/store_provider/store_provider.h"
+#include "ray/common/ray_object.h"
 
 namespace ray {
 
-bool IsException(const std::shared_ptr<RayObject> &object) {
+bool RayObject::IsException() {
+  if (metadata_ == nullptr) {
+    return false;
+  }
   // TODO (kfstorm): metadata should be structured.
-  const std::string metadata(
-      reinterpret_cast<const char *>(object->GetMetadata()->Data()),
-      object->GetMetadata()->Size());
+  const std::string metadata(reinterpret_cast<const char *>(metadata_->Data()),
+                             metadata_->Size());
   const auto error_type_descriptor = ray::rpc::ErrorType_descriptor();
   for (int i = 0; i < error_type_descriptor->value_count(); i++) {
     const auto error_type_number = error_type_descriptor->value(i)->number();

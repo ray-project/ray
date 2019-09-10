@@ -111,7 +111,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       const auto result_object = std::make_shared<RayObject>(data, metadata);
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
-      if (IsException(result_object)) {
+      if (result_object->IsException()) {
         *got_exception = true;
       }
     }

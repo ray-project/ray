@@ -89,7 +89,8 @@ cdef extern from "ray/common/task/task_util.h" nogil:
 
         TaskSpecBuilder &AddByRefArg(const CObjectID &arg_id)
 
-        TaskSpecBuilder &AddByValueArg(const c_string &data, const c_string &metadata)
+        TaskSpecBuilder &AddByValueArg(const c_string &data,
+                                       const c_string &metadata)
 
         TaskSpecBuilder &SetActorCreationTaskSpec(
             const CActorID &actor_id, uint64_t max_reconstructions,
