@@ -70,7 +70,7 @@ class SkOptSearch(SuggestionAlgorithm):
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
         use_early_terminated_trials (bool): Determines whether to use
-            early terminated trial results.
+            early terminated trial results
 
     Example:
         >>> from skopt import Optimizer
@@ -126,6 +126,7 @@ class SkOptSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
+        self._use_early_terminated_trials = use_early_terminated_trials
         super(SkOptSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
@@ -155,7 +156,7 @@ class SkOptSearch(SuggestionAlgorithm):
         as it minimizes on default.
         """
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
-        if early_terminated and self.use_early_terminated_trials is False:
+        if early_terminated and self._use_early_terminated_trials is False:
             return
         if result:
             self._skopt_opt.tell(skopt_trial_info,
