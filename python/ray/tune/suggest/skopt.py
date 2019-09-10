@@ -92,7 +92,7 @@ class SkOptSearch(SuggestionAlgorithm):
                  mode="max",
                  points_to_evaluate=None,
                  evaluated_rewards=None,
-                 use_early_stopped_trials=True,
+                 use_early_terminated_trials=True,
                  **kwargs):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
@@ -153,7 +153,7 @@ class SkOptSearch(SuggestionAlgorithm):
         as it minimizes on default.
         """
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
-        if early_terminated and not use_early_stopped_trials:
+        if early_terminated and use_early_terminated_trials:
             return
         if result:
             self._skopt_opt.tell(skopt_trial_info,
