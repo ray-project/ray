@@ -19,7 +19,7 @@ CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
 
 Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
                                                        int64_t limit_bytes) {
-  std::unique_lock<std::mutex> guard(store_client_mutex_);
+  std::lock_guard<std::mutex> guard(store_client_mutex_);
   RAY_ARROW_RETURN_NOT_OK(store_client_.SetClientOptions(name, limit_bytes));
   return Status::OK();
 }
@@ -45,7 +45,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
-    std::unique_lock<std::mutex> guard(store_client_mutex_);
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
     arrow::Status status =
         store_client_.Create(plasma_id, data_size, metadata ? metadata->Data() : nullptr,
                              metadata ? metadata->Size() : 0, &arrow_buffer);
@@ -69,7 +69,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
   auto plasma_id = object_id.ToPlasmaId();
   {
-    std::unique_lock<std::mutex> guard(store_client_mutex_);
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(store_client_.Seal(plasma_id));
     RAY_ARROW_RETURN_NOT_OK(store_client_.Release(plasma_id));
   }
@@ -90,7 +90,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   }
   std::vector<plasma::ObjectBuffer> plasma_results;
   {
-    std::unique_lock<std::mutex> guard(store_client_mutex_);
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
     RAY_ARROW_RETURN_NOT_OK(
         store_client_.Get(plasma_batch_ids, timeout_ms, &plasma_results));
   }
@@ -183,7 +183,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
-  std::unique_lock<std::mutex> guard(store_client_mutex_);
+  std::lock_guard<std::mutex> guard(store_client_mutex_);
   RAY_ARROW_RETURN_NOT_OK(store_client_.Contains(object_id.ToPlasmaId(), has_object));
   return Status::OK();
 }
@@ -211,7 +211,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  std::unique_lock<std::mutex> guard(store_client_mutex_);
+  std::lock_guard<std::mutex> guard(store_client_mutex_);
   return store_client_.DebugString();
 }
 
