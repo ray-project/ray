@@ -182,7 +182,7 @@ class TF2Logger(Logger):
                 tmp = result.copy()
                 if not self._hp_logged:
                     if 'hparams' in tmp:
-                        hp.hparams(tmp['hparams'], trial_id=tmp['exp_id'])
+                        hp.hparams(tmp['hparams'], trial_id=tmp.get('exp_id'))
                         self._hp_logged = True
                         del tmp['hparams']
 
