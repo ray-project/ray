@@ -12,9 +12,8 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.trial import Resources
-from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
-from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
-    DistributedPyTorchRunner)
+from sgd.pytorch.pytorch_runner import PyTorchRunner
+from sgd.pytorch.distributed_pytorch_runner import DistributedPyTorchRunner
 from sgd.pytorch import utils
 
 logger = logging.getLogger(__name__)
@@ -49,8 +48,8 @@ class PyTorchTrainer(object):
                 and validation data sets using the config.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 creates the loss and optimizer using the model and the config.
-            config (dict): configuration passed to 'model_creator',
-                'data_creator', and 'optimizer_creator'.
+            config (dict): configuration passed to "model_creator",
+                "data_creator", and "optimizer_creator".
             num_replicas (int): the number of workers used in distributed
                 training.
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
@@ -89,14 +88,14 @@ class PyTorchTrainer(object):
                     loss_creator,
                     train_function=train_function,
                     validation_function=validation_function,
-                    initialization_hook=initialization_hook,
                     config=self.config,
                     batch_size=batch_size)
             ]
+            self.apply_all_workers(initialization_hook)
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
         else:
-            # Geneate actor class
+            # Generate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
             # Compute batch size per replica
@@ -120,11 +119,12 @@ class PyTorchTrainer(object):
                     backend=backend,
                     train_function=train_function,
                     validation_function=validation_function,
-                    initialization_hook=initialization_hook,
                     config=self.config,
                     batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
+            self.apply_all_workers(initialization_hook)
+
             # Compute URL for initializing distributed PyTorch
             ip = ray.get(self.workers[0].get_node_ip.remote())
             port = ray.get(self.workers[0].find_free_port.remote())
@@ -144,6 +144,9 @@ class PyTorchTrainer(object):
         train_stats["train_loss"] = np.mean(
             [s["train_loss"] for s in worker_stats])
         return train_stats
+
+    def apply_all_workers(self, fn):
+        return ray.get([w.apply_fn.remote(fn) for w in self.workers])
 
     def validate(self):
         """Evaluates the model on the validation data set."""

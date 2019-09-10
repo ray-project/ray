@@ -7,7 +7,7 @@ import torch
 import torch.utils.data
 
 import ray
-from ray.experimental.sgd.pytorch import utils
+from sgd.pytorch import utils
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,6 @@ class PyTorchRunner(object):
                  loss_creator,
                  train_function=None,
                  validation_function=None,
-                 initialization_hook=None,
                  config=None,
                  batch_size=16):
         """Initializes the runner.
@@ -35,8 +34,6 @@ class PyTorchRunner(object):
             config (dict): see pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
-        if initialization_hook:
-            initialization_hook(self)
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
@@ -65,7 +62,8 @@ class PyTorchRunner(object):
 
         logger.debug("Creating optimizer")
         self.optimizer = self.optimizer_creator(self.model, self.config)
-        self.criterion = self.loss_creator(**self.config.get("loss_kwargs", {}))
+        self.criterion = self.loss_creator(
+            **self.config.get("loss_kwargs", {}))
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
@@ -139,6 +137,9 @@ class PyTorchRunner(object):
         self.model.load_state_dict(state["model"])
         self.optimizer.load_state_dict(state["optimizer"])
         self.epoch = state["stats"]["epoch"]
+
+    def apply_fn(self, fn):
+        return fn(self)
 
     def shutdown(self):
         """Attempts to shut down the worker."""
