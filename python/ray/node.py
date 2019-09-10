@@ -233,7 +233,8 @@ class Node(object):
     @property
     def unique_id(self):
         """Get a unique identifier for this node."""
-        return self._plasma_store_socket_name
+        return "{}:{}".format(self.node_ip_address,
+                              self._plasma_store_socket_name)
 
     @property
     def webui_url(self):

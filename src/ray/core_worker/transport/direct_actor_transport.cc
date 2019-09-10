@@ -105,10 +105,10 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates() {
       }
     }
 
-    RAY_LOG(DEBUG) << "received notification on actor, state="
-                   << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                   << ", ip address: " << actor_data.ip_address()
-                   << ", port: " << actor_data.port();
+    RAY_LOG(INFO) << "received notification on actor, state="
+                  << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                  << ", ip address: " << actor_data.ip_address()
+                  << ", port: " << actor_data.port();
   };
 
   return gcs_client_.Actors().AsyncSubscribe(actor_notification_callback, nullptr);
