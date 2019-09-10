@@ -166,10 +166,12 @@ class TF2Logger(Logger):
 
     def _init(self):
         self._file_writer = None
+        self._hp_logged = False
 
     def on_result(self, result):
         if self._file_writer is None:
             from tensorflow.python.eager import context
+            from tensorboard.plugins.hparams import api as hp
             self._context = context
             self._file_writer = tf.summary.create_file_writer(self.logdir)
         with tf.device("/CPU:0"), self._context.eager_mode():
@@ -178,9 +180,15 @@ class TF2Logger(Logger):
                     TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
                 tmp = result.copy()
+                if not self._hp_logged:
+                    if 'hparams' in tmp:
+                        hp.hparams(tmp['hparams'], trial_id=tmp['exp_id'])
+                        self._hp_logged = True
+                        del tmp['hparams']
+
                 for k in [
                         "config", "pid", "timestamp", TIME_TOTAL_S,
-                        TRAINING_ITERATION
+                        TRAINING_ITERATION, 'exp_id'
                 ]:
                     if k in tmp:
                         del tmp[k]  # not useful to log these
