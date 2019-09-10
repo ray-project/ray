@@ -155,7 +155,9 @@ class SkOptSearch(SuggestionAlgorithm):
         as it minimizes on default.
         """
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
-        if result or early_terminated and self.use_early_terminated_trials:
+        if early_terminated and self.use_early_terminated_trials is False:
+            return
+        if result:
             self._skopt_opt.tell(skopt_trial_info,
                                  self._metric_op * result[self._metric])
 
