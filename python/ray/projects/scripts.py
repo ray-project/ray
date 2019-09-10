@@ -144,8 +144,22 @@ def load_project_or_throw():
             "Project file validation failed. Please run "
             "`ray project validate` to inspect the error.")
 
+
 class SessionRunner(object):
+    """Class for setting up a session and executing commands in it."""
+
     def __init__(self, command, args, shell):
+        """Initialize session runner and try to parse the command arguments.
+
+        Args:
+            command (str, optional): Command from the project definition's
+                commands section to run, if any.
+            args (list): Arguments for the command to run.
+            shell (bool): If true, command is a shell command that should be
+                run directly.
+        Raises:
+            click.ClickException: This exception is raised if any error occurs.
+        """
         self.project_definition = load_project_or_throw()
 
         # We try to parse the command here so we can fail before the cluster
@@ -170,6 +184,7 @@ class SessionRunner(object):
                 "https://github.com/ray-project/ray/issues")
 
     def create_cluster(self):
+        """Create a cluster that will run the session."""
         create_or_update_cluster(
             config_file=self.project_definition.cluster_yaml(),
             override_min_workers=None,
@@ -181,6 +196,7 @@ class SessionRunner(object):
         )
 
     def sync_files(self):
+        """Synchronize files with the session."""
         rsync(
             self.project_definition.cluster_yaml(),
             source=self.project_definition.root,
@@ -190,6 +206,7 @@ class SessionRunner(object):
         )
 
     def setup_environment(self):
+        """Set up the environment of the session."""
         project_environment = self.project_definition.config["environment"]
 
         if "requirements" in project_environment:
@@ -215,6 +232,12 @@ class SessionRunner(object):
 
 
     def execute_command(self, cmd):
+        """Execute a shell command in the session.
+
+        Args:
+            cmd (str): Shell command to run in the session. It will be
+                run in the working directory of the project.
+        """
         cwd = self.project_definition.working_directory()
         cmd = "cd {cwd}; {cmd}".format(cwd=cwd, cmd=cmd)
         exec_cluster(
@@ -228,6 +251,7 @@ class SessionRunner(object):
             override_cluster_name=None,
             port_forward=None,
         )
+
 
 @session_cli.command(help="Attach to an existing cluster")
 def attach():
