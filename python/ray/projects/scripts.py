@@ -178,17 +178,9 @@ def stop():
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def start(command, args, shell):
+@click.pass_context
+def start(ctx, command, args, shell):
     project_definition = load_project_or_throw()
-
-    if shell:
-        command_to_run = command
-    else:
-        try:
-            command_to_run = project_definition.get_command_to_run(
-                command=command, args=args)
-        except ValueError as e:
-            raise click.ClickException(e)
 
     # Check for features we don't support right now
     project_environment = project_definition.config["environment"]
@@ -227,7 +219,34 @@ def start(command, args, shell):
         cwd=project_definition.working_directory())
 
     logger.info("[4/4] Running command")
+    ctx.forward(execute)
+
+
+@session_cli.command(
+    context_settings=dict(ignore_unknown_options=True, ),
+    help="Execute a command in a session")
+@click.argument("command", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--shell",
+    help=(
+        "If set, run the command as a raw shell command instead of looking up "
+        "the command in the project config"),
+    is_flag=True)
+def execute(command, args, shell):
+    project_definition = load_project_or_throw()
+
+    if shell:
+        command_to_run = command
+    else:
+        try:
+            command_to_run = project_definition.get_command_to_run(
+                command=command, args=args)
+        except ValueError as e:
+            raise click.ClickException(e)
+
     logger.debug("Running {}".format(command))
+
     session_exec_cluster(
         project_definition.cluster_yaml(),
         command_to_run,
