@@ -233,7 +233,7 @@ class SessionRunner(object):
         else:
             try:
                 return self.project_definition.get_command_to_run(
-                        command=command, args=args)
+                    command=command, args=args)
             except ValueError as e:
                 raise click.ClickException(e)
 
@@ -306,7 +306,7 @@ def session_start(command, args, shell):
         steps += [("Running command", lambda: runner.execute_command(cmd))]
 
     for i, (prompt, function) in enumerate(steps):
-        logger.info("[{}/{}] {}".format(i+1, len(steps), prompt))
+        logger.info("[{}/{}] {}".format(i + 1, len(steps), prompt))
         function()
 
 
