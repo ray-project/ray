@@ -33,7 +33,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                  num_sgd_iter=1,
                  train_batch_size=1,
                  sgd_minibatch_size=0,
-                 standardize_fields=[]):
+                 standardize_fields=frozenset([])):
         PolicyOptimizer.__init__(self, workers)
 
         self.update_weights_timer = TimerStat()
