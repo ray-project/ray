@@ -676,18 +676,9 @@ class TrialRunner(object):
         if trial.status in [Trial.ERROR, Trial.TERMINATED]:
             return
         elif trial.status in [Trial.PENDING, Trial.PAUSED]:
-            try:
-                result = self.trial_executor.fetch_result(trial)
-                trial.update_last_result(result, terminate=True)
-                self._scheduler_alg.on_trial_remove(self, trial)
-                self._search_alg.on_trial_complete(
-                    trial.trial_id, result=result, early_terminated=True)
-            except Exception:
-                error_msg = traceback.format_exc()
-                logger.exception("Error processing event.")
-                self._scheduler_alg.on_trial_error(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id, error=True)
-                error = True
+            self._scheduler_alg.on_trial_remove(self, trial)
+            self._search_alg.on_trial_complete(
+                trial.trial_id, early_terminated=True)
         elif trial.status is Trial.RUNNING:
             try:
                 result = self.trial_executor.fetch_result(trial)
