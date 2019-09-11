@@ -107,9 +107,9 @@ class BayesOptSearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes the result to BayesOpt unless early terminated or errored"""
-        if early_terminated and self.use_early_terminated_trials is False:
-            return
         if result:
+            if early_terminated and self.use_early_terminated_trials is False:
+                return
             self.optimizer.register(
                 params=self._live_trial_mapping[trial_id],
                 target=self._metric_op * result[self._metric])
