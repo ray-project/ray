@@ -132,7 +132,7 @@ const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
 
 ResourceSet SchedulingQueue::GetResourceLoad() const {
   auto load = ready_queue_->GetCurrentResourceLoad();
-  // Also take into account infeasible tasks so they show up for autoscaling
+  // Also take into account infeasible tasks so they show up for autoscaling.
   load.AddResources(
       task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetCurrentResourceLoad());
   return load;
