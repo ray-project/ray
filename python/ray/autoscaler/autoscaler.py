@@ -10,7 +10,6 @@ import math
 import os
 import subprocess
 import threading
-import traceback
 import time
 from collections import defaultdict
 
@@ -157,9 +156,11 @@ class LoadMetrics(object):
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
+        self.resource_load_by_ip = {}
         self.local_ip = services.get_node_ip_address()
 
-    def update(self, ip, static_resources, dynamic_resources):
+    def update(self, ip, static_resources, dynamic_resources, resource_load):
+        self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
 
         # We are not guaranteed to have a corresponding dynamic resource for
@@ -204,6 +205,7 @@ class LoadMetrics(object):
         prune(self.last_used_time_by_ip)
         prune(self.static_resources_by_ip)
         prune(self.dynamic_resources_by_ip)
+        prune(self.resource_load_by_ip)
         prune(self.last_heartbeat_time_by_ip)
 
     def approx_workers_used(self):
@@ -218,7 +220,11 @@ class LoadMetrics(object):
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
             avail_resources = self.dynamic_resources_by_ip[ip]
+            resource_load = self.resource_load_by_ip[ip]
             max_frac = 0.0
+            for resource_id, amount in resource_load.items():
+                if amount > 0:
+                    max_frac = 1.0  # the resource is saturated
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
                 if resource_id not in resources_used:
@@ -722,19 +728,11 @@ class StandardAutoscaler(object):
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
-
-        while True:
-            try:
-                nodes = self.workers()
-                if nodes:
-                    self.provider.terminate_nodes(nodes)
-                logger.error(
-                    "StandardAutoscaler: terminated {} node(s)".format(
-                        len(nodes)))
-            except Exception:
-                traceback.print_exc()
-
-            time.sleep(10)
+        nodes = self.workers()
+        if nodes:
+            self.provider.terminate_nodes(nodes)
+        logger.error("StandardAutoscaler: terminated {} node(s)".format(
+            len(nodes)))
 
 
 def typename(v):
