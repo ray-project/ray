@@ -123,7 +123,6 @@ class Monitor(object):
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
-            logger.error("RESOURCE LOAD {}".format(resource_load))
             if ip:
                 self.load_metrics.update(ip, total_resources,
                                          available_resources, resource_load)
@@ -361,6 +360,7 @@ class Monitor(object):
         try:
             self._run()
         except Exception:
+            logger.exception("Error in monitor loop")
             if self.autoscaler:
                 self.autoscaler.kill_workers()
             raise
