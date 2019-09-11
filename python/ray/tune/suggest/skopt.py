@@ -69,8 +69,6 @@ class SkOptSearch(SuggestionAlgorithm):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
-        use_early_terminated_trials (bool): Determines whether to use
-            early terminated trial results
 
     Example:
         >>> from skopt import Optimizer
@@ -93,7 +91,6 @@ class SkOptSearch(SuggestionAlgorithm):
                  mode="max",
                  points_to_evaluate=None,
                  evaluated_rewards=None,
-                 use_early_terminated_trials=True,
                  **kwargs):
         assert sko is not None, """skopt must be installed!
             You can install Skopt with the command:
@@ -126,7 +123,6 @@ class SkOptSearch(SuggestionAlgorithm):
             self._metric_op = 1.
         self._skopt_opt = optimizer
         self._live_trial_mapping = {}
-        self._use_early_terminated_trials = use_early_terminated_trials
         super(SkOptSearch, self).__init__(**kwargs)
 
     def _suggest(self, trial_id):
