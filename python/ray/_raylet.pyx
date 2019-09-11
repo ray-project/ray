@@ -257,9 +257,6 @@ cdef class RayletClient:
         # initialized before the raylet client.
         self.client = &core_worker.core_worker.get().GetRayletClient()
 
-    def disconnect(self):
-        check_status(self.client.Disconnect())
-
     def submit_task(self, TaskSpec task_spec):
         cdef:
             CObjectID c_id
@@ -397,7 +394,7 @@ cdef class CoreWorker:
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], log_dir.encode("utf-8"), NULL))
+            gcs_options.native()[0], log_dir.encode("utf-8"), NULL, False))
 
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "

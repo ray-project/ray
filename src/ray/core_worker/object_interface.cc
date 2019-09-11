@@ -8,7 +8,7 @@
 namespace ray {
 
 // Group object ids according the the corresponding store providers.
-void GroupObjectIdsByStoreProvider(
+void CoreWorkerObjectInterface::GroupObjectIdsByStoreProvider(
     const std::vector<ObjectID> &object_ids,
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results) {
   // There are two cases:
@@ -25,7 +25,7 @@ void GroupObjectIdsByStoreProvider(
     //   and are only used locally.
     // Thus we need to check whether this object is a task return object in additional
     // to whether it's from direct actor call before we can choose memory store provider.
-    if (object_id.IsReturnObject() &&
+    if (use_memory_store_ && object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
             static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR)) {
       type = StoreProviderType::MEMORY;
@@ -37,13 +37,15 @@ void GroupObjectIdsByStoreProvider(
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    const std::string &store_socket)
+    const std::string &store_socket, bool use_memory_store)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket),
-      memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
+      use_memory_store_(use_memory_store) {
   AddStoreProvider(StoreProviderType::PLASMA);
-  AddStoreProvider(StoreProviderType::MEMORY);
+  if (use_memory_store_) {
+    AddStoreProvider(StoreProviderType::MEMORY);
+  }
 }
 
 Status CoreWorkerObjectInterface::SetClientOptions(std::string name,
@@ -271,7 +273,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
   case StoreProviderType::MEMORY:
     return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerMemoryStoreProvider(memory_store_));
+        new CoreWorkerMemoryStoreProvider(std::make_shared<CoreWorkerMemoryStore>()));
     break;
   default:
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);

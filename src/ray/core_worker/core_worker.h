@@ -28,13 +28,19 @@ class CoreWorker {
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
   /// \param[in] execution_callback Language worker callback to execute tasks.
+  /// \param[in] use_memory_store Whether or not to use the in-memory object store
+  ///            in addition to the plasma store.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
+  /// NOTE(edoakes): the use_memory_store flag is a stop-gap solution to the issue
+  ///                that randomly generated ObjectIDs may use the memory store
+  ///                instead of the plasma store.
   CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir,
-             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback);
+             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+             bool use_memory_store = true);
 
   ~CoreWorker();
 

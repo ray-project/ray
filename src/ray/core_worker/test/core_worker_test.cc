@@ -29,8 +29,6 @@ std::string store_executable;
 std::string raylet_executable;
 std::string mock_worker_executable;
 
-ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
-
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
   freeReplyObject(redisCommand(context, "FLUSHALL"));
@@ -111,7 +109,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + RandomObjectID().Hex();
+    std::string store_socket_name = "/tmp/store" + ObjectID::FromRandom().Hex();
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable + " -m 10000000 -s " +
                                  store_socket_name +
@@ -133,7 +131,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
+    std::string raylet_socket_name = "/tmp/raylet" + ObjectID::FromRandom().Hex();
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)

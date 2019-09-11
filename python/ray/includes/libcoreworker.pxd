@@ -44,7 +44,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
-                    const c_string log_dir, void* execution_callback)
+                    const c_string log_dir, void* execution_callback,
+                    c_bool use_memory_store_)
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()

@@ -8,7 +8,8 @@ CoreWorker::CoreWorker(
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
     const std::string &log_dir,
-    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback)
+    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+    bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
@@ -38,8 +39,9 @@ CoreWorker::CoreWorker(
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
-  object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
-      new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket));
+  object_interface_ =
+      std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
+          worker_context_, raylet_client_, store_socket, use_memory_store));
   task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
       worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
 
@@ -81,7 +83,9 @@ CoreWorker::~CoreWorker() {
 }
 
 void CoreWorker::Disconnect() {
-  gcs_client_->Disconnect();
+  if (gcs_client_) {
+    gcs_client_->Disconnect();
+  }
   if (raylet_client_) {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }

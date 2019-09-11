@@ -18,9 +18,14 @@ class CoreWorkerMemoryStore;
 /// The interface that contains all `CoreWorker` methods related to the object store.
 class CoreWorkerObjectInterface {
  public:
+  /// \param[in] worker_context WorkerContext of the parent CoreWorker.
+  /// \param[in] store_socket Path to the plasma store socket.
+  /// \param[in] use_memory_store Whether or not to use the in-memory object store
+  ///            in addition to the plasma store.
   CoreWorkerObjectInterface(WorkerContext &worker_context,
                             std::unique_ptr<RayletClient> &raylet_client,
-                            const std::string &store_socket);
+                            const std::string &store_socket,
+                            bool use_memory_store = true);
 
   /// Set options for this client's interactions with the object store.
   ///
@@ -111,6 +116,15 @@ class CoreWorkerObjectInterface {
   std::string MemoryUsageString();
 
  private:
+  /// Helper function to group object IDs by the store provider that should be used
+  /// for them.
+  ///
+  /// \param[in] object_ids Object IDs to group.
+  /// \param[out] results Map of provider type to object IDs.
+  void GroupObjectIdsByStoreProvider(
+      const std::vector<ObjectID> &object_ids,
+      EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results);
+
   /// Helper function to get a set of objects from different store providers.
   ///
   /// \param[in] ids_per_provider A map from store provider type to the set of
@@ -136,11 +150,11 @@ class CoreWorkerObjectInterface {
   /// Reference to the parent CoreWorker's raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
 
-  /// Store socket name.
   std::string store_socket_;
+  bool use_memory_store_;
 
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
-  std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+  // std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
