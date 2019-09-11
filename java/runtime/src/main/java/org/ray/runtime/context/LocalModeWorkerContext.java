@@ -5,6 +5,7 @@ import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.TaskId;
 import org.ray.api.id.UniqueId;
+import org.ray.runtime.config.RunMode;
 import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.task.LocalModeTaskSubmitter;
@@ -24,7 +25,7 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   @Override
   public UniqueId getCurrentWorkerId() {
-    throw new NotImplementedException("getCurrentWorkerId() not (yet) implemented.");
+    throw new NotImplementedException("Not supported in "+ RunMode.SINGLE_PROCESS +" mode.");
   }
 
   @Override
