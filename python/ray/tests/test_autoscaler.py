@@ -142,29 +142,40 @@ SMALL_CLUSTER = {
 class LoadMetricsTest(unittest.TestCase):
     def testUpdate(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
         assert lm.approx_workers_used() == 0.5
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
         assert lm.approx_workers_used() == 1.0
-        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0})
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
+        assert lm.approx_workers_used() == 2.0
+
+    def testLoadMessages(self):
+        lm = LoadMetrics()
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
+        assert lm.approx_workers_used() == 0.5
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {"CPU": 1})
+        assert lm.approx_workers_used() == 1.0
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})
+        assert lm.approx_workers_used() == 1.5
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {"GPU": 1})
         assert lm.approx_workers_used() == 2.0
 
     def testPruneByNodeIp(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0})
-        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0})
+        lm.update("1.1.1.1", {"CPU": 1}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 1}, {"CPU": 0}, {})
         lm.prune_active_ips({"1.1.1.1", "4.4.4.4"})
         assert lm.approx_workers_used() == 1.0
 
     def testBottleneckResource(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
-        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
         assert lm.approx_workers_used() == 1.88
 
     def testHeartbeat(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {})
         lm.mark_active("2.2.2.2")
         assert "1.1.1.1" in lm.last_heartbeat_time_by_ip
         assert "2.2.2.2" in lm.last_heartbeat_time_by_ip
@@ -172,15 +183,15 @@ class LoadMetricsTest(unittest.TestCase):
 
     def testDebugString(self):
         lm = LoadMetrics()
-        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0})
-        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2})
+        lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
+        lm.update("2.2.2.2", {"CPU": 2, "GPU": 16}, {"CPU": 2, "GPU": 2}, {})
         lm.update("3.3.3.3", {
             "memory": 20,
             "object_store_memory": 40
         }, {
             "memory": 0,
             "object_store_memory": 20
-        })
+        }, {})
         debug = lm.info_string()
         assert ("ResourceUsage=2.0/4.0 CPU, 14.0/16.0 GPU, "
                 "1.05 GiB/1.05 GiB memory, "
@@ -418,8 +429,8 @@ class AutoscalingTest(unittest.TestCase):
             tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
         addrs += head_ip
         for addr in addrs:
-            lm.update(addr, {"CPU": 2}, {"CPU": 0})
-            lm.update(addr, {"CPU": 2}, {"CPU": 2})
+            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
+            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
         assert autoscaler.bringup
         autoscaler.update()
 
@@ -428,7 +439,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(1)
 
         # All of the nodes are down. Simulate some load on the head node
-        lm.update(head_ip, {"CPU": 2}, {"CPU": 0})
+        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
 
         autoscaler.update()
         self.waitForNodes(6)  # expected due to batch sizes and concurrency
@@ -702,17 +713,17 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0})  # head
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0})  # worker 1
+        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
         autoscaler.update()
         self.waitForNodes(3)
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0})
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
         autoscaler.update()
         self.waitForNodes(5)
 
         # Holds steady when load is removed
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2})
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2})
+        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
+        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
         autoscaler.update()
         assert autoscaler.num_launches_pending.value == 0
         assert len(self.provider.non_terminated_nodes({})) == 5
@@ -746,20 +757,20 @@ class AutoscalingTest(unittest.TestCase):
 
         # Scales up as nodes are reported as used
         local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0})  # head
+        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
         # 1.0 nodes used => target nodes = 2 => target workers = 1
         autoscaler.update()
         self.waitForNodes(1)
 
         # Make new node idle, and never used.
         # Should hold steady as target is still 2.
-        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0})
+        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
         lm.last_used_time_by_ip["172.0.0.0"] = 0
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 1
 
         # Reduce load on head => target nodes = 1 => target workers = 0
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 1})
+        lm.update(local_ip, {"CPU": 2}, {"CPU": 1}, {})
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 0
 

@@ -108,6 +108,9 @@ class Monitor(object):
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
         for heartbeat_message in message.batch:
+            resource_load = dict(
+                zip(heartbeat_message.resource_load_label,
+                    heartbeat_message.resource_load_capacity))
             total_resources = dict(
                 zip(heartbeat_message.resources_total_label,
                     heartbeat_message.resources_total_capacity))
@@ -120,9 +123,10 @@ class Monitor(object):
             # Update the load metrics for this raylet.
             client_id = ray.utils.binary_to_hex(heartbeat_message.client_id)
             ip = self.raylet_id_to_ip_map.get(client_id)
+            logger.error("RESOURCE LOAD {}".format(resource_load))
             if ip:
                 self.load_metrics.update(ip, total_resources,
-                                         available_resources)
+                                         available_resources, resource_load)
             else:
                 logger.warning(
                     "Monitor: "

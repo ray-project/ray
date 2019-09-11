@@ -261,7 +261,7 @@ with GPU worker nodes instead.
 
 .. code-block:: yaml
 
-    min_workers: 1  # must have at least 1 GPU worker (issue #2106)
+    min_workers: 0  # NOTE: older Ray versions may need 1+ GPU workers (#2106)
     max_workers: 10
     head_node:
         InstanceType: m4.large
