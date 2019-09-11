@@ -132,7 +132,8 @@ class NevergradSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to Nevergrad unless early terminated or errored.
+        """Passes the result to Nevergrad unless errored or the trial is early
+        terminated and should not be used.
 
         The result is internally negated when interacting with Nevergrad
         so that Nevergrad Optimizers can "maximize" this value,
@@ -140,6 +141,8 @@ class NevergradSearch(SuggestionAlgorithm):
         """
         ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
+            if early_terminated and self._use_early_terminated_trials is False:
+                return
             self._nevergrad_opt.tell(ng_trial_info,
                                      self._metric_op * result[self._metric])
 
