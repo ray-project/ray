@@ -126,13 +126,15 @@ class SigOptSearch(SuggestionAlgorithm):
         Creates SigOpt Observation object for trial.
         """
         if result:
+            if early_terminated and self._use_early_terminated_trials is False:
+                return
             self.conn.experiments(self.experiment.id).observations().create(
                 suggestion=self._live_trial_mapping[trial_id].id,
                 value=self._metric_op * result[self._metric],
             )
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
-        elif error or early_terminated:
+        elif error:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
                 failed=True, suggestion=self._live_trial_mapping[trial_id].id)

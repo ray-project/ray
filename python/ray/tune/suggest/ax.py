@@ -87,6 +87,8 @@ class AxSearch(SuggestionAlgorithm):
         """
         ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
+            if early_terminated and self._use_early_terminated_trials is False:
+                return
             metric_dict = {
                 self._objective_name: (result[self._objective_name], 0.0)
             }
