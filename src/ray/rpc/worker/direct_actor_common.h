@@ -1,5 +1,5 @@
-#ifndef RAY_RPC_TASK_SIZE_H
-#define RAY_RPC_TASK_SIZE_H
+#ifndef RAY_RPC_DIRECT_ACTOR_COMMON_H
+#define RAY_RPC_DIRECT_ACTOR_COMMON_H
 
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
@@ -25,4 +25,4 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 }  // namespace rpc
 }  // namespace ray
 
-#endif  // RAY_RPC_TASK_SIZE_H
+#endif  // RAY_RPC_DIRECT_ACTOR_COMMON_H

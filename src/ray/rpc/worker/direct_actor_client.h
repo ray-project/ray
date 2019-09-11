@@ -10,7 +10,7 @@
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
-#include "ray/rpc/worker/task_size.h"
+#include "ray/rpc/worker/direct_actor_common.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
