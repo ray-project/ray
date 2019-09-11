@@ -108,6 +108,9 @@ class Monitor(object):
         message = ray.gcs_utils.HeartbeatBatchTableData.FromString(
             heartbeat_data)
         for heartbeat_message in message.batch:
+            resource_load = dict(
+                zip(heartbeat_message.resource_load_label,
+                    heartbeat_message.resource_load_capacity))
             total_resources = dict(
                 zip(heartbeat_message.resources_total_label,
                     heartbeat_message.resources_total_capacity))
@@ -122,7 +125,7 @@ class Monitor(object):
             ip = self.raylet_id_to_ip_map.get(client_id)
             if ip:
                 self.load_metrics.update(ip, total_resources,
-                                         available_resources)
+                                         available_resources, resource_load)
             else:
                 logger.warning(
                     "Monitor: "
@@ -357,6 +360,7 @@ class Monitor(object):
         try:
             self._run()
         except Exception:
+            logger.exception("Error in monitor loop")
             if self.autoscaler:
                 self.autoscaler.kill_workers()
             raise
