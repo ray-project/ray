@@ -729,19 +729,11 @@ class StandardAutoscaler(object):
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
-
-        while True:
-            try:
-                nodes = self.workers()
-                if nodes:
-                    self.provider.terminate_nodes(nodes)
-                logger.error(
-                    "StandardAutoscaler: terminated {} node(s)".format(
-                        len(nodes)))
-            except Exception:
-                traceback.print_exc()
-
-            time.sleep(10)
+        nodes = self.workers()
+        if nodes:
+            self.provider.terminate_nodes(nodes)
+        logger.error("StandardAutoscaler: terminated {} node(s)".format(
+            len(nodes)))
 
 
 def typename(v):
