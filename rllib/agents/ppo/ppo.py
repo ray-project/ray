@@ -126,12 +126,10 @@ def warn_about_bad_reward_scales(trainer, result):
 
 
 def validate_config(config):
-    if isinstance(config["entropy_coeff"], int):
-        raise ValueError(
-            "Entropy coefficient {} must be float.".format(
-                config["entropy_coeff"]))
     if config["entropy_coeff"] < 0:
         raise DeprecationWarning("entropy_coeff must be >= 0")
+    if isinstance(config["entropy_coeff"], int):
+        config["entropy_coeff"] = float(config["entropy_coeff"])
     if config["sgd_minibatch_size"] > config["train_batch_size"]:
         raise ValueError(
             "Minibatch size {} must be <= train batch size {}.".format(
