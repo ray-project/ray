@@ -21,7 +21,10 @@ from ray.projects.scripts import project_cli, session_cli
 logger = logging.getLogger(__name__)
 
 
-def check_no_existing_redis_clients(node_ip_address, redis_client):
+def check_no_existing_node(node_ip_address, redis_client):
+    """A helper method to check there is no node registered
+    to the cluster of the given ndoe address.
+    """
     clients = ray.state._parse_client_table(redis_client)
     for client in clients:
         assert "NodeID" in client
@@ -367,11 +370,10 @@ def start(node_ip_address, redis_address, address, redis_port,
             node_ip_address=services.get_node_ip_address(redis_address))
         logger.info("Using IP address {} for this node.".format(
             ray_params.node_ip_address))
-        # Check that there aren't already Redis clients with the same IP
-        # address connected with this Redis instance. This raises an exception
-        # if the Redis server already has clients on this node.
-        check_no_existing_redis_clients(ray_params.node_ip_address,
-                                        redis_client)
+        # Check that there aren't already nodes with the same address
+        # connected with this cluster. This raises an exception
+        # if the cluster already has nodes on this address.
+        check_no_existing_node(ray_params.node_ip_address, redis_client)
         ray_params.update(redis_address=redis_address)
         node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
