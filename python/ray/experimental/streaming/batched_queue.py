@@ -179,7 +179,8 @@ class BatchedQueue(object):
                self.read_batch_offset + self.prefetch_depth):
             plasma_prefetch(self._batch_id(self.prefetch_batch_offset))
             self.prefetch_batch_offset += 1
-        self.read_buffer = ray.get(self._batch_id(self.read_batch_offset))
+        self.read_buffer = ray.get(
+            ray.ObjectID(self._batch_id(self.read_batch_offset)))
         self.read_batch_offset += 1
         logger.debug("[reader] Fetched batch {} offset {} size {}".format(
             self.read_batch_offset, self.read_item_offset,
