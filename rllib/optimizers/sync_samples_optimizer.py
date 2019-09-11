@@ -105,7 +105,10 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 fetches[policy_id] = _averaged(iter_extra_fetches)
 
         self.grad_timer.push_units_processed(samples.count)
-        self.learner_stats = fetches
+        if len(fetches) == 1 and DEFAULT_POLICY_ID in fetches:
+            self.learner_stats = fetches[DEFAULT_POLICY_ID]
+        else:
+            self.learner_stats = fetches
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
         return self.learner_stats
