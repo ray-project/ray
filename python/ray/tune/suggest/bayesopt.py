@@ -32,8 +32,6 @@ class BayesOptSearch(SuggestionAlgorithm):
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.
         verbose (int): Sets verbosity level for BayesOpt packages.
-        use_early_terminated_trials (bool): Determines whether to use
-            early terminated trial results
 
     Example:
         >>> space = {
@@ -53,7 +51,6 @@ class BayesOptSearch(SuggestionAlgorithm):
                  utility_kwargs=None,
                  random_state=1,
                  verbose=0,
-                 use_early_terminated_trials=True,
                  **kwargs):
         assert byo is not None, (
             "BayesOpt must be installed!. You can install BayesOpt with"
@@ -78,7 +75,6 @@ class BayesOptSearch(SuggestionAlgorithm):
         elif mode == "min":
             self._metric_op = -1.
         self._live_trial_mapping = {}
-        self._use_early_terminated_trials = use_early_terminated_trials
 
         self.optimizer = byo.BayesianOptimization(
             f=None, pbounds=space, verbose=verbose, random_state=random_state)
