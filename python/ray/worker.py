@@ -476,6 +476,8 @@ class Worker(object):
         if metadata:
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
+                if data is None:
+                    return b""
                 return data.to_pybytes()
             # Otherwise, return an exception object based on
             # the error type.
