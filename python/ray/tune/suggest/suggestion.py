@@ -24,6 +24,10 @@ class SuggestionAlgorithm(SearchAlgorithm):
     `_suggest` will be passed a trial_id, which will be used in
     subsequent notifications.
 
+    Parameters:
+        use_early_terminated_trials (bool): Determines whether to use
+            early terminated trial results
+
     Example:
         >>> suggester = SuggestionAlgorithm()
         >>> suggester.add_configurations({ ... })
@@ -32,13 +36,14 @@ class SuggestionAlgorithm(SearchAlgorithm):
         >>> better_parameters = suggester._suggest()
     """
 
-    def __init__(self):
+    def __init__(self, use_early_terminated_trials=True):
         """Constructs a generator given experiment specifications.
         """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._use_early_terminated_trials = use_early_terminated_trials
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
