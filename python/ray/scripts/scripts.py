@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def check_no_existing_node(node_ip_address, redis_client):
     """A helper method to check there is no node registered
-    to the cluster of the given ndoe address.
+    to the cluster of the given node address.
     """
     clients = ray.state._parse_client_table(redis_client)
     for client in clients:
