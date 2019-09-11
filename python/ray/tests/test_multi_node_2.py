@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from flaky import flaky
 import logging
 import pytest
 import time
@@ -148,14 +149,15 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
 
+@flaky(max_runs=4)
 def test_heartbeats_cluster(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    timeout = 5
-    num_workers_nodes = 4
+    timeout = 8
+    num_workers_nodes = 3
     num_nodes_total = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
     cluster.wait_for_nodes()
