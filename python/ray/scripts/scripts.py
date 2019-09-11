@@ -22,25 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 def check_no_existing_redis_clients(node_ip_address, redis_client):
-    # The client table prefix must be kept in sync with the file
-    # "src/ray/gcs/redis_module/ray_redis_module.cc" where it is defined.
-    REDIS_CLIENT_TABLE_PREFIX = "CL:"
-    client_keys = redis_client.keys("{}*".format(REDIS_CLIENT_TABLE_PREFIX))
-    # Filter to clients on the same node and do some basic checking.
-    for key in client_keys:
-        info = redis_client.hgetall(key)
-        assert b"ray_client_id" in info
-        assert b"node_ip_address" in info
-        assert b"client_type" in info
-        assert b"deleted" in info
-        # Clients that ran on the same node but that are marked dead can be
-        # ignored.
-        deleted = info[b"deleted"]
-        deleted = bool(int(deleted))
-        if deleted:
+    clients = ray.state._parse_client_table(redis_client)
+    for client in clients:
+        assert "NodeID" in client
+        assert "NodeManagerAddress" in client
+        assert "Alive" in client
+        if client["Alive"] is False:
             continue
-
-        if ray.utils.decode(info[b"node_ip_address"]) == node_ip_address:
+        if client["NodeManagerAddress"] == node_ip_address:
             raise Exception("This Redis instance is already connected to "
                             "clients with this IP address.")
 
