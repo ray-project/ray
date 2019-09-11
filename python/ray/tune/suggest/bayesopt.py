@@ -102,7 +102,8 @@ class BayesOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to BayesOpt unless early terminated or errored"""
+        """Passes the result to BayesOpt unless errored or the trial is early
+        terminated and should not be used."""
         if result:
             if early_terminated and self.use_early_terminated_trials is False:
                 return
