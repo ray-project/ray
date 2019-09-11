@@ -2080,32 +2080,32 @@ def test_multiple_raylets(ray_start_cluster):
     # This must be run on the zeroth raylet.
     @ray.remote(num_cpus=11)
     def run_on_0():
-        return ray.worker.global_worker.node.unique_id
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first raylet.
     @ray.remote(num_gpus=2)
     def run_on_1():
-        return ray.worker.global_worker.node.unique_id
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the second raylet.
     @ray.remote(num_cpus=6, num_gpus=1)
     def run_on_2():
-        return ray.worker.global_worker.node.unique_id
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This can be run anywhere.
     @ray.remote(num_cpus=0, num_gpus=0)
     def run_on_0_1_2():
-        return ray.worker.global_worker.node.unique_id
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first or second raylet.
     @ray.remote(num_gpus=1)
     def run_on_1_2():
-        return ray.worker.global_worker.node.unique_id
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the zeroth or second raylet.
     @ray.remote(num_cpus=8)
     def run_on_0_2():
-        return ray.worker.global_worker.node.unique_id
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     def run_lots_of_tasks():
         names = []
