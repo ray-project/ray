@@ -44,6 +44,11 @@ class MockWorker {
       auto &data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
+    std::cout << "argument ";
+    for (unsigned int i=0; i < buffer.size(); i++) {
+      std::cout << ((int)buffer[i]) << " ";
+    }
+    std::cout << std::endl;
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size(), true);
 

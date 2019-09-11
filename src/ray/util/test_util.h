@@ -7,6 +7,9 @@
 
 namespace ray {
 
+// Magic argument to signal to mock_worker we should check message order.
+uint8_t SHOULD_CHECK_MESSAGE_ORDER[4] = {2, 2, 3, 3};
+
 /// Wait until the condition is met, or timeout is reached.
 ///
 /// \param[in] condition The condition to wait for.

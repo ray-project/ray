@@ -699,8 +699,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   std::vector<ObjectID> object_ids;
 
   // Test creating actor.
-  uint8_t array[] = {1, 2, 3};
-  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
+  auto buffer = std::make_shared<LocalMemoryBuffer>(
+      SHOULD_CHECK_MESSAGE_ORDER, sizeof(SHOULD_CHECK_MESSAGE_ORDER));
   RayFunction func{ray::Language::PYTHON, {}};
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
@@ -719,6 +719,9 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   for (int i = 0; i < num_tasks; i++) {
     // Create arguments with PassByValue.
     std::vector<TaskArg> args;
+    int64_t array[] = {i};
+    auto buffer = std::make_shared<LocalMemoryBuffer>(
+        reinterpret_cast<uint8_t*>(array), sizeof(array));
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     TaskOptions options{1, resources};
