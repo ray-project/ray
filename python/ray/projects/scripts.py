@@ -295,19 +295,24 @@ def stop():
     is_flag=True)
 def session_start(command, args, shell):
     runner = SessionRunner()
-    steps = [
-        ("Creating cluster", lambda: runner.create_cluster()),
-        ("Syncing the project", lambda: runner.sync_files()),
-        ("Setting up environment", lambda: runner.setup_environment()),
-    ]
     if shell or command:
-        # Run this before the cluster is started to validate the command.
+        # Get the actual command to run.
         cmd = runner.format_command(command, args, shell)
-        steps += [("Running command", lambda: runner.execute_command(cmd))]
+        num_steps = 4
+    else:
+        num_steps = 3
 
-    for i, (prompt, function) in enumerate(steps):
-        logger.info("[{}/{}] {}".format(i + 1, len(steps), prompt))
-        function()
+    logger.info("[1/{}] Creating cluster".format(num_steps))
+    runner.create_cluster()
+    logger.info("[2/{}] Syncing the project".format(num_steps))
+    runner.sync_files()
+    logger.info("[3/{}] Setting up environment".format(num_steps))
+    runner.setup_environment()
+
+    if shell or command:
+        # Run the actual command.
+        logger.info("[4/4] Running command")
+        runner.execute_command(cmd)
 
 
 @session_cli.command(
