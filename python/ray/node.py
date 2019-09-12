@@ -89,7 +89,6 @@ class Node(object):
                           "been cleaned up properly: {}.".format(e))
 
             atexit.register(clean_up_children)
-            signal.signal(signal.SIGINT, clean_up_children)
             signal.signal(signal.SIGTERM, clean_up_children)
 
         self.head = head
