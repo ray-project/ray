@@ -124,6 +124,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     }
     if (null != manager) {
       manager.cleanup();
+      manager = null;
     }
   }
 
