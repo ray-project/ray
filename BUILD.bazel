@@ -221,6 +221,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
+        ":gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
