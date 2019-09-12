@@ -34,6 +34,8 @@ class NevergradSearch(SuggestionAlgorithm):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        use_early_terminated_trials (bool): Determines whether to use
+            early terminated trial results
 
     Example:
         >>> from nevergrad.optimization import optimizerlib

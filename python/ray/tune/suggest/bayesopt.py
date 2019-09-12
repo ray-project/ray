@@ -32,6 +32,8 @@ class BayesOptSearch(SuggestionAlgorithm):
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.
         verbose (int): Sets verbosity level for BayesOpt packages.
+        use_early_terminated_trials (bool): Determines whether to use
+            early terminated trial results.
 
     Example:
         >>> space = {

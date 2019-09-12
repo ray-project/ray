@@ -40,6 +40,8 @@ class AxSearch(SuggestionAlgorithm):
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
+        use_early_terminated_trials (bool): Determines whether to use
+            early terminated trial results.
 
 
     Example:
