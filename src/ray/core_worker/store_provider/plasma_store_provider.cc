@@ -27,8 +27,9 @@ Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
   std::shared_ptr<Buffer> data;
-  RAY_RETURN_NOT_OK(
-      Create(object.GetMetadata(), object.HasData() ? object.GetData()->Size() : 0, object_id, &data));
+  RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
+                           object.HasData() ? object.GetData()->Size() : 0, object_id,
+                           &data));
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
   if (data != nullptr) {
