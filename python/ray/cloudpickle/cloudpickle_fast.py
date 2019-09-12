@@ -21,7 +21,7 @@ import sys
 import types
 import weakref
 
-from _pickle import Pickler, PickleBuffer  # export PickleBuffer
+from _pickle import Pickler
 
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,

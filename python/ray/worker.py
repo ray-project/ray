@@ -88,6 +88,9 @@ try:
 except ImportError:
     setproctitle = None
 
+if USE_NEW_SERIALIZER:
+    from _pickle import PickleBuffer
+
 
 class ActorCheckpointInfo(object):
     """Information used to maintain actor checkpoints."""
@@ -568,7 +571,7 @@ class Worker(object):
                 if USE_NEW_SERIALIZER:
                     r, buffers = pyarrow.deserialize(data,
                                                      serialization_context)
-                    buffers = [pickle.PickleBuffer(b) for b in buffers]
+                    buffers = [PickleBuffer(b) for b in buffers]
                     return pickle.loads(r, buffers=buffers)
                 else:
                     return pyarrow.deserialize(data, serialization_context)
