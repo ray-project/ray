@@ -24,10 +24,6 @@ class SuggestionAlgorithm(SearchAlgorithm):
     `_suggest` will be passed a trial_id, which will be used in
     subsequent notifications.
 
-    Parameters:
-        use_early_terminated_trials (bool): Determines whether to use
-            early terminated trial results
-
     Example:
         >>> suggester = SuggestionAlgorithm()
         >>> suggester.add_configurations({ ... })

@@ -53,6 +53,8 @@ class HyperOptSearch(SuggestionAlgorithm):
             results. Defaults to None.
         gamma (float in range (0,1)): parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
+        use_early_terminated_trials (bool): Determines whether to use
+            early terminated trial results.
 
     Example:
         >>> space = {

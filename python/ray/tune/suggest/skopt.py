@@ -70,6 +70,8 @@ class SkOptSearch(SuggestionAlgorithm):
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate. (See tune/examples/skopt_example.py)
+        use_early_terminated_trials (bool): Determines whether to use
+            early terminated trial results
 
     Example:
         >>> from skopt import Optimizer
