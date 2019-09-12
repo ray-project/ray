@@ -933,10 +933,6 @@ def test_actor_load_balancing(ray_start_cluster):
     ray.get(results)
 
 
-@pytest.mark.skipif(
-    pytest_timeout is None,
-    reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(20)
 def test_actor_lifetime_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -1791,9 +1787,13 @@ def setup_queue_actor():
 
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
+    # Make sure queue actor is initialized.
+    ray.get(queue.read.remote())
 
     @ray.remote
     def fork(queue, key, item):
+        # ray.get here could be blocked and cause ray to start
+        # a lot of python workers.
         return ray.get(queue.enqueue.remote(key, item))
 
     # Fork num_iters times.

@@ -48,6 +48,14 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
                                                                                 jclass);
 
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeSetResource
+ * Signature: (JLjava/lang/String;D[B)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+    JNIEnv *, jclass, jlong, jstring, jdouble, jbyteArray);
+
 #ifdef __cplusplus
 }
 #endif

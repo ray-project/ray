@@ -109,6 +109,8 @@ message ActorTableData {
   string ip_address = 9;
   // The port that the actor is listening on.
   int32 port = 10;
+  // Whether direct actor call is used.
+  bool is_direct_call = 11;
 }
 
 message ErrorTableData {
