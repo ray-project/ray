@@ -69,6 +69,7 @@ def make_stub_env(action_space, obs_space, check_action_bounds):
 def check_support(alg, config, stats, check_bounds=False, name=None):
     covered_a = set()
     covered_o = set()
+    config["log_level"] = "ERROR"
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing", alg, action_space, obs_space, "===")

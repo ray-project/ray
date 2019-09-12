@@ -57,7 +57,7 @@ Start an IPython interpreter, e.g., ``ipython``
 
   # Note that if you run this script on a non-head node, then you must replace
   # "localhost" with socket.gethostbyname("ray-head").
-  ray.init(redis_address="localhost:6379")
+  ray.init(address="localhost:6379")
 
   @ray.remote
   def f(x):
@@ -79,7 +79,7 @@ following.
 
 One of the pods will download and run `this example script`_.
 
-.. _`this example script`: https://github.com/ray-project/ray/tree/master/kubernetes/example.py
+.. _`this example script`: https://github.com/ray-project/ray/tree/master/doc/kubernetes/example.py
 
 The script prints its output. To view the output, first find the pod name by
 running ``kubectl get all``. You'll see output like the following.

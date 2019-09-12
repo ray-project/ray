@@ -132,6 +132,7 @@ cc_library(
         "cpp/src/plasma/eviction_policy.cc",
         "cpp/src/plasma/external_store.cc",
         "cpp/src/plasma/plasma_allocator.cc",
+        "cpp/src/plasma/quota_aware_policy.cc",
         "cpp/src/plasma/thirdparty/ae/ae.c",
     ],
     hdrs = [
@@ -139,6 +140,7 @@ cc_library(
         "cpp/src/plasma/eviction_policy.h",
         "cpp/src/plasma/external_store.h",
         "cpp/src/plasma/plasma_allocator.h",
+        "cpp/src/plasma/quota_aware_policy.h",
         "cpp/src/plasma/store.h",
         "cpp/src/plasma/thirdparty/ae/ae.h",
         "cpp/src/plasma/thirdparty/ae/ae_epoll.c",

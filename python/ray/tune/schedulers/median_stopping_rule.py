@@ -93,10 +93,8 @@ class MedianStoppingRule(FIFOScheduler):
         """Callback for early stopping.
 
         This stopping rule stops a running trial if the trial's best objective
-        value by step `t` is strictly worse than the median
-        of the running_window_size averages of all running trials'
-        objectives reported up to step `t`.
-
+        value by step `t` is strictly worse than the median of the running
+        averages of all completed trials' objectives reported up to step `t`.
         """
         if trial in self._stopped_trials:
             assert not self._hard_stop

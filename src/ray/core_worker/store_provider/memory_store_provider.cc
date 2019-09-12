@@ -18,35 +18,49 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  return store_->Put(object_id, object);
+  auto status = store_->Put(object_id, object);
+  if (status.IsObjectExists()) {
+    // Object already exists in store, treat it as ok.
+    return Status::OK();
+  } else {
+    return status;
+  }
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(
-    const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
-    std::vector<std::shared_ptr<RayObject>> *results) {
-  return store_->Get(object_ids, timeout_ms, true, results);
+    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const TaskID &task_id,
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+  const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<std::shared_ptr<RayObject>> result_objects;
+  RAY_RETURN_NOT_OK(
+      store_->Get(id_vector, id_vector.size(), timeout_ms, true, &result_objects));
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i] != nullptr) {
+      (*results)[id_vector[i]] = result_objects[i];
+    }
+  }
+  return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
-                                           std::vector<bool> *results) {
-  if (num_objects != static_cast<int>(object_ids.size())) {
-    return Status::Invalid("num_objects should equal to number of items in object_ids");
-  }
-
-  (*results).resize(object_ids.size(), false);
-
+                                           std::unordered_set<ObjectID> *ready) {
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  auto status = store_->Get(object_ids, timeout_ms, false, &result_objects);
-  if (status.ok()) {
-    RAY_CHECK(result_objects.size() == object_ids.size());
-    for (size_t i = 0; i < object_ids.size(); i++) {
-      (*results)[i] = (result_objects[i] != nullptr);
+  RAY_CHECK(object_ids.size() == id_vector.size());
+  RAY_RETURN_NOT_OK(
+      store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects));
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i] != nullptr) {
+      ready->insert(id_vector[i]);
     }
   }
 
-  return status;
+  return Status::OK();
 }
 
 Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,

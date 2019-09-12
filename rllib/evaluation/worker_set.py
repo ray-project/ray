@@ -80,6 +80,9 @@ class WorkerSet(object):
         remote_args = {
             "num_cpus": self._remote_config["num_cpus_per_worker"],
             "num_gpus": self._remote_config["num_gpus_per_worker"],
+            "memory": self._remote_config["memory_per_worker"],
+            "object_store_memory": self._remote_config[
+                "object_store_memory_per_worker"],
             "resources": self._remote_config["custom_resources_per_worker"],
         }
         cls = RolloutWorker.as_remote(**remote_args).remote

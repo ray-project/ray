@@ -67,12 +67,12 @@ if __name__ == "__main__":
         config={
             "env": "CartPole-v0",
             "callbacks": {
-                "on_episode_start": tune.function(on_episode_start),
-                "on_episode_step": tune.function(on_episode_step),
-                "on_episode_end": tune.function(on_episode_end),
-                "on_sample_end": tune.function(on_sample_end),
-                "on_train_result": tune.function(on_train_result),
-                "on_postprocess_traj": tune.function(on_postprocess_traj),
+                "on_episode_start": on_episode_start,
+                "on_episode_step": on_episode_step,
+                "on_episode_end": on_episode_end,
+                "on_sample_end": on_sample_end,
+                "on_train_result": on_train_result,
+                "on_postprocess_traj": on_postprocess_traj,
             },
         },
         return_trials=True)

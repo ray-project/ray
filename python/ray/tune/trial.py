@@ -108,6 +108,7 @@ class Trial(object):
                  config=None,
                  trial_id=None,
                  local_dir=DEFAULT_RESULTS_DIR,
+                 evaluated_params=None,
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
@@ -133,6 +134,9 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
+
+        #: Parameters that Tune varies across searches.
+        self.evaluated_params = evaluated_params or []
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
         if trainable_cls and hasattr(trainable_cls,
@@ -178,6 +182,7 @@ class Trial(object):
         self.result_logger = None
         self.last_debug = 0
         self.error_file = None
+        self.error_msg = None
         self.num_failures = 0
         self.custom_trial_name = None
 
@@ -270,6 +275,7 @@ class Trial(object):
             with open(error_file, "w") as f:
                 f.write(error_msg)
             self.error_file = error_file
+            self.error_msg = error_msg
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""

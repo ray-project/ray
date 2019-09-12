@@ -18,7 +18,8 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
-from ray.utils import try_to_create_directory
+from ray.resource_spec import ResourceSpec
+from ray.utils import try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -26,6 +27,7 @@ from ray.utils import try_to_create_directory
 logger = logging.getLogger(__name__)
 
 PY3 = sys.version_info.major >= 3
+SESSION_LATEST = "session_latest"
 
 
 class Node(object):
@@ -84,6 +86,7 @@ class Node(object):
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
+        self._resource_spec = None
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
         self._config = (json.loads(ray_params._internal_config)
@@ -169,20 +172,39 @@ class Node(object):
         else:
             self._session_dir = ray.utils.decode(
                 redis_client.get("session_dir"))
+        session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
+        try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
         try_to_create_directory(self._sockets_dir, warn_if_exist=False)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
         try_to_create_directory(self._logs_dir, warn_if_exist=False)
+        old_logs_dir = os.path.join(self._logs_dir, "old")
+        try_to_create_directory(old_logs_dir, warn_if_exist=False)
+
+    def get_resource_spec(self):
+        """Resolve and return the current resource spec for the node."""
+        if not self._resource_spec:
+            self._resource_spec = ResourceSpec(
+                self._ray_params.num_cpus, self._ray_params.num_gpus,
+                self._ray_params.memory, self._ray_params.object_store_memory,
+                self._ray_params.resources,
+                self._ray_params.redis_max_memory).resolve(is_head=self.head)
+        return self._resource_spec
 
     @property
     def node_ip_address(self):
         """Get the cluster Redis address."""
         return self._node_ip_address
+
+    @property
+    def address(self):
+        """Get the cluster address."""
+        return self._redis_address
 
     @property
     def redis_address(self):
@@ -344,14 +366,14 @@ class Node(object):
          process_infos) = ray.services.start_redis(
              self._node_ip_address,
              redis_log_files,
+             self.get_resource_spec(),
              port=self._ray_params.redis_port,
              redis_shard_ports=self._ray_params.redis_shard_ports,
              num_redis_shards=self._ray_params.num_redis_shards,
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             include_java=self._ray_params.include_java,
-             redis_max_memory=self._ray_params.redis_max_memory)
+             include_java=self._ray_params.include_java)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -406,9 +428,9 @@ class Node(object):
         """Start the plasma store."""
         stdout_file, stderr_file = self.new_log_files("plasma_store")
         process_info = ray.services.start_plasma_store(
+            self.get_resource_spec(),
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            object_store_memory=self._ray_params.object_store_memory,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
             plasma_store_socket_name=self._plasma_store_socket_name)
@@ -436,9 +458,7 @@ class Node(object):
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
-            self._ray_params.num_cpus,
-            self._ray_params.num_gpus,
-            self._ray_params.resources,
+            self.get_resource_spec(),
             self._ray_params.object_manager_port,
             self._ray_params.node_manager_port,
             self._ray_params.redis_password,

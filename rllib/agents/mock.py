@@ -20,6 +20,8 @@ class _MockTrainer(Trainer):
         "test_variable": 1,
         "num_workers": 0,
         "user_checkpoint_freq": 0,
+        "object_store_memory_per_worker": 0,
+        "object_store_memory": 0,
     })
 
     @classmethod
@@ -80,6 +82,8 @@ class _SigmoidFakeData(_MockTrainer):
         "iter_time": 10,
         "iter_timesteps": 1,
         "num_workers": 0,
+        "object_store_memory_per_worker": 0,
+        "object_store_memory": 0,
     })
 
     def _train(self):
@@ -104,6 +108,8 @@ class _ParameterTuningTrainer(_MockTrainer):
         "iter_time": 10,
         "iter_timesteps": 1,
         "num_workers": 0,
+        "object_store_memory_per_worker": 0,
+        "object_store_memory": 0,
     })
 
     def _train(self):

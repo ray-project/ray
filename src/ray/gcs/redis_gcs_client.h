@@ -19,6 +19,7 @@ class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
+  friend class SubscriptionExecutorTest;
 
  public:
   /// Constructor of RedisGcsClient.

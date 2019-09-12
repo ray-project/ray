@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -114,6 +115,12 @@ def cli(logging_level, logging_format):
     type=int,
     help="the port to use for starting the node manager")
 @click.option(
+    "--memory",
+    required=False,
+    type=int,
+    help="The amount of memory (in bytes) to make available to workers. "
+    "By default, this is set to the available memory on the node.")
+@click.option(
     "--object-store-memory",
     required=False,
     type=int,
@@ -219,7 +226,7 @@ def cli(logging_level, logging_format):
     help="Specify whether load code from local file or GCS serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
-          redis_shard_ports, object_manager_port, node_manager_port,
+          redis_shard_ports, object_manager_port, node_manager_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
           head, include_webui, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
@@ -252,6 +259,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         node_ip_address=node_ip_address,
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
+        memory=memory,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
         redirect_worker_output=redirect_worker_output,
@@ -384,7 +392,16 @@ def start(node_ip_address, redis_address, address, redis_port,
     if block:
         import time
         while True:
-            time.sleep(30)
+            time.sleep(1)
+            deceased = node.dead_processes()
+            if len(deceased) > 0:
+                logger.error("Ray processes died unexpectedly:")
+                for process_type, process in deceased:
+                    logger.error("\t{} died with exit code {}".format(
+                        process_type, process.returncode))
+                logger.error("Killing remaining processes and exiting...")
+                node.kill_all_processes(check_alive=False, allow_graceful=True)
+                sys.exit(1)
 
 
 @cli.command()
@@ -392,22 +409,40 @@ def stop():
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
-        "raylet",
-        "plasma_store_server",
-        "raylet_monitor",
-        "monitor.py",
-        "redis-server",
-        "default_worker.py",  # Python worker.
-        " ray_",  # Python worker.
-        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
-        "log_monitor.py",
-        "reporter.py",
-        "dashboard.py",
+        # The first element is the substring to filter.
+        # The second element, if True, is to filter ps results by command name
+        # (only the first 15 charactors of the executable name);
+        # if False, is to filter ps results by command with all its arguments.
+        # See STANDARD FORMAT SPECIFIERS section of
+        # http://man7.org/linux/man-pages/man1/ps.1.html
+        # about comm and args. This can help avoid killing non-ray processes.
+        ["raylet", True],
+        ["plasma_store", True],
+        ["raylet_monitor", True],
+        ["monitor.py", False],
+        ["redis-server", True],
+        ["default_worker.py", False],  # Python worker.
+        [" ray_", True],  # Python worker.
+        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["log_monitor.py", False],
+        ["reporter.py", False],
+        ["dashboard.py", False],
     ]
 
     for process in processes_to_kill:
-        command = ("kill -9 $(ps aux | grep '" + process +
-                   "' | grep -v grep | " + "awk '{ print $2 }') 2> /dev/null")
+        filter = process[0]
+        if process[1]:
+            format = "pid,comm"
+            # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
+            # comm only prints the first 15 characters of the executable name.
+            if len(filter) > 15:
+                raise ValueError("The filter string should not be more than" +
+                                 " 15 characters. Actual length: " +
+                                 str(len(filter)) + ". Filter: " + filter)
+        else:
+            format = "pid,args"
+        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
+                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
         subprocess.call([command], shell=True)
 
 

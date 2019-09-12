@@ -32,16 +32,7 @@ class GrpcServer {
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
   GrpcServer(std::string name, const uint32_t port)
-      : name_(std::move(name)), port_(port), is_closed_(false) {}
-
-  /// Construct a gRPC server that listens on unix domain socket.
-  ///
-  /// \param[in] name Name of this server, used for logging and debugging purpose.
-  /// \param[in] unix_socket_path Unix domain socket full path.
-  GrpcServer(std::string name, const std::string &unix_socket_path)
-      : GrpcServer(std::move(name), 0) {
-    unix_socket_path_ = unix_socket_path;
-  }
+      : name_(std::move(name)), port_(port), is_closed_(true) {}
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }
@@ -82,8 +73,6 @@ class GrpcServer {
   int port_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
-  /// Unix domain socket path.
-  std::string unix_socket_path_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
   std::vector<std::reference_wrapper<grpc::Service>> services_;
   /// The `ServerCallFactory` objects, and the maximum number of concurrent requests that

@@ -3,7 +3,6 @@
 
 // clang-format off
 #include "ray/common/id.h"
-#include "ray/common/ray_config.h"
 #include "ray/common/task/task.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/reconstruction_policy.h"

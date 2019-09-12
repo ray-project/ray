@@ -244,6 +244,14 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
+const std::string format_resource(std::string resource_name, double quantity) {
+  if (resource_name == "object_store_memory" || resource_name == "memory") {
+    // Convert to 100MiB chunks and then to GiB
+    return std::to_string(quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)) + " GiB";
+  }
+  return std::to_string(quantity);
+}
+
 const std::string ResourceSet::ToString() const {
   if (resource_capacity_.size() == 0) {
     return "{}";
@@ -255,14 +263,16 @@ const std::string ResourceSet::ToString() const {
     // Convert the first element to a string.
     if (it != resource_capacity_.end()) {
       double resource_amount = (it->second).ToDouble();
-      return_string += "{" + it->first + "," + std::to_string(resource_amount) + "}";
+      return_string +=
+          "{" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
       it++;
     }
 
     // Add the remaining elements to the string (along with a comma).
     for (; it != resource_capacity_.end(); ++it) {
       double resource_amount = (it->second).ToDouble();
-      return_string += ",{" + it->first + "," + std::to_string(resource_amount) + "}";
+      return_string +=
+          ", {" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
     }
 
     return return_string;
@@ -289,6 +299,7 @@ ResourceIds::ResourceIds() {}
 ResourceIds::ResourceIds(double resource_quantity) {
   RAY_CHECK(IsWhole(resource_quantity));
   int64_t whole_quantity = resource_quantity;
+  whole_ids_.reserve(whole_quantity);
   for (int64_t i = 0; i < whole_quantity; ++i) {
     whole_ids_.push_back(i);
   }
@@ -674,22 +685,37 @@ std::string ResourceIdSet::ToString() const {
   return return_string;
 }
 
-std::vector<rpc::ResourceIdSetInfo> ResourceIdSet::ToProtobuf() const {
-  std::vector<rpc::ResourceIdSetInfo> resources;
+std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToFlatbuf(
+    flatbuffers::FlatBufferBuilder &fbb) const {
+  std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> return_message;
   for (auto const &resource_pair : available_resources_) {
-    rpc::ResourceIdSetInfo resource_id_set_info;
-    resource_id_set_info.set_resource_name(resource_pair.first);
+    std::vector<int64_t> resource_ids;
+    std::vector<double> resource_fractions;
     for (auto whole_id : resource_pair.second.WholeIds()) {
-      resource_id_set_info.add_resource_ids(whole_id);
-      resource_id_set_info.add_resource_fractions(1);
+      resource_ids.push_back(whole_id);
+      resource_fractions.push_back(1);
     }
+
     for (auto const &fractional_pair : resource_pair.second.FractionalIds()) {
-      resource_id_set_info.add_resource_ids(fractional_pair.first);
-      resource_id_set_info.add_resource_fractions(fractional_pair.second.ToDouble());
+      resource_ids.push_back(fractional_pair.first);
+      resource_fractions.push_back(fractional_pair.second.ToDouble());
     }
-    resources.emplace_back(resource_id_set_info);
+
+    auto resource_id_set_message = protocol::CreateResourceIdSetInfo(
+        fbb, fbb.CreateString(resource_pair.first), fbb.CreateVector(resource_ids),
+        fbb.CreateVector(resource_fractions));
+
+    return_message.push_back(resource_id_set_message);
   }
-  return resources;
+
+  return return_message;
+}
+
+const std::string ResourceIdSet::Serialize() const {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto resource_id_set_flatbuf = ToFlatbuf(fbb);
+  fbb.Finish(fbb.CreateVector(resource_id_set_flatbuf));
+  return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
 }
 
 /// SchedulingResources class implementation

@@ -15,7 +15,7 @@ large cluster. To run this walkthrough, install Ray with ``pip install -U ray``.
   import ray
 
   # Start Ray. If you're connecting to an existing cluster, you would use
-  # ray.init(redis_address=<cluster-redis-address>) instead.
+  # ray.init(address=<cluster-address>) instead.
   ray.init()
 
 See the `Configuration <configure.html>`__ documentation for the various ways to
@@ -47,14 +47,12 @@ This causes a few things changes in behavior:
 
     .. code:: python
 
-        >>> regular_function()
-        1
+        assert regular_function() == 1
 
-        >>> remote_function.remote()
-        ObjectID(1c80d6937802cd7786ad25e50caf2f023c95e350)
+        object_id = remote_function.remote()
 
-        >>> ray.get(remote_function.remote())
-        1
+        # The value of the original `regular_function`
+        assert ray.get(object_id) == 1
 
 3. **Parallelism:** Invocations of ``regular_function`` happen
    **serially**, for example
@@ -76,17 +74,20 @@ This causes a few things changes in behavior:
 
 See the `ray.remote package reference <package-ref.html>`__ page for specific documentation on how to use ``ray.remote``.
 
-**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**.
+**Object IDs** can also be passed into remote functions. When the function actually gets executed, **the argument will be a retrieved as a regular Python object**. For example, take this function:
 
 .. code:: python
 
-    >>> y1_id = f.remote(x1_id)
-    >>> ray.get(y1_id)
-    1
+    @ray.remote
+    def remote_chain_function(value):
+        return value + 1
 
-    >>> y2_id = f.remote(x2_id)
-    >>> ray.get(y2_id)
-    [1, 2, 3]
+
+    y1_id = remote_function.remote()
+    assert ray.get(y1_id) == 1
+
+    chained_id = remote_chain_function.remote(y1_id)
+    assert ray.get(chained_id) == 2
 
 
 Note the following behaviors:
@@ -94,7 +95,7 @@ Note the following behaviors:
   -  The second task will not be executed until the first task has finished
      executing because the second task depends on the output of the first task.
   -  If the two tasks are scheduled on different machines, the output of the
-     first task (the value corresponding to ``x1_id``) will be sent over the
+     first task (the value corresponding to ``y1_id``) will be sent over the
      network to the machine where the second task is scheduled.
 
 Oftentimes, you may want to specify a task's resource requirements (for example
@@ -113,7 +114,7 @@ to execute the task. Ray can also handle arbitrary custom resources.
     * If you do not specify any resources in the ``@ray.remote`` decorator, the
       default is 1 CPU resource and no other resources.
     * If specifying CPUs, Ray does not enforce isolation (i.e., your task is
-      expected to honor its request.)
+      expected to honor its request).
     * If specifying GPUs, Ray does provide isolation in forms of visible devices
       (setting the environment variable ``CUDA_VISIBLE_DEVICES``), but it is the
       task's responsibility to actually use the GPUs (e.g., through a deep
@@ -158,7 +159,7 @@ Further, remote function can return multiple object IDs.
 Objects in Ray
 --------------
 
-In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object IDs** to refer to them. Remote objects are stored in **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
+In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object IDs** to refer to them. Remote objects are stored in `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
 
 An **object ID** is essentially a unique ID that can be used to refer to a
 remote object. If you're familiar with futures, our object IDs are conceptually
@@ -171,16 +172,11 @@ Object IDs can be created in multiple ways.
 
 .. code-block:: python
 
-    >>> y = 1
-    >>> y_id = ray.put(y)
-    >>> print(y_id)
-    ObjectID(0369a14bc595e08cfbd508dfaa162cb7feffffff)
-
-Here is the docstring for ``ray.put``:
+    y = 1
+    object_id = ray.put(y)
 
 .. autofunction:: ray.put
     :noindex:
-
 
 .. important::
 
@@ -193,19 +189,16 @@ Fetching Results
 ----------------
 
 The command ``ray.get(x_id)`` takes an object ID and creates a Python object
-from the corresponding remote object. For some objects like arrays, we can use
-shared memory and avoid copying the object.
+from the corresponding remote object. First, if the current node's object store
+does not contain the object, the object is downloaded. Then, if the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
+or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
+Otherwise, we deserialize the object data into a Python object.
 
 .. code-block:: python
 
-    >>> y = 1
-    >>> obj_id = ray.put(y)
-    >>> print(obj_id)
-    ObjectID(0369a14bc595e08cfbd508dfaa162cb7feffffff)
-    >>> ray.get(obj_id)
-    1
-
-Here is the docstring for ``ray.get``:
+    y = 1
+    obj_id = ray.put(y)
+    assert ray.get(obj_id) == 1
 
 .. autofunction:: ray.get
     :noindex:
@@ -219,11 +212,24 @@ works as follows.
 
     ready_ids, remaining_ids = ray.wait(object_ids, num_returns=1, timeout=None)
 
-Here is the docstring for ``ray.wait``:
-
 .. autofunction:: ray.wait
     :noindex:
 
+Object Eviction
+---------------
+
+When the object store gets full, objects will be evicted to make room for new objects.
+This happens in approximate LRU (least recently used) order. To avoid objects from
+being evicted, you can call ``ray.get`` and store their values instead. Numpy array
+objects cannot be evicted while they are mapped in any Python process. You can also
+configure `memory limits <memory-management.html>`__ to control object store usage by
+actors.
+
+.. note::
+
+    Objects created with ``ray.put`` are pinned in memory while a Python reference
+    to the object ID returned by the put exists. This only applies to the specific
+    ID returned by put, not IDs in general or copies of that IDs.
 
 Remote Classes (Actors)
 -----------------------

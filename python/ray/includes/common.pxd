@@ -88,16 +88,16 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
 
 cdef extern from "ray/protobuf/common.pb.h" nogil:
-    cdef cppclass CLanguage "ray::rpc::Language":
+    cdef cppclass CLanguage "Language":
         pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc::Language" nogil:
-    cdef CLanguage LANGUAGE_PYTHON "ray::rpc::Language::PYTHON"
-    cdef CLanguage LANGUAGE_CPP "ray::rpc::Language::CPP"
-    cdef CLanguage LANGUAGE_JAVA "ray::rpc::Language::JAVA"
+cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
+    cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
+    cdef CLanguage LANGUAGE_CPP "Language::CPP"
+    cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 
 cdef extern from "ray/common/task/scheduling_resources.h" \

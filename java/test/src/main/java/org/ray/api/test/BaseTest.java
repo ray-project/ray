@@ -16,7 +16,7 @@ public class BaseTest {
 
   private List<File> filesToDelete;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
     LOGGER.info("===== Running test: "
         + method.getDeclaringClass().getName() + "." + method.getName());
@@ -24,13 +24,17 @@ public class BaseTest {
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(
         new File(Ray.getRuntimeContext().getRayletSocketName()),
-        new File(Ray.getRuntimeContext().getObjectStoreSocketName())
+        new File(Ray.getRuntimeContext().getObjectStoreSocketName()),
+        // TODO(pcm): This is a workaround for the issue described
+        // in the PR description of https://github.com/ray-project/ray/pull/5450
+        // and should be fixed properly.
+        new File("/tmp/ray/test/raylet_socket")
     );
     // Make sure the files will be deleted even if the test doesn't exit gracefully.
     filesToDelete.forEach(File::deleteOnExit);
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void tearDownBase() {
     Ray.shutdown();
 
