@@ -59,7 +59,8 @@ class CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results Map of objects to write results into. Get will only add to this
   /// map, not clear or remove from it, so the caller can pass in a non-empty map.
-  /// \param[out] got_exception Whether any of the fetched results were an exception.
+  /// \param[out] got_exception Set to true if any of the fetched results were an
+  /// exception.
   /// \return Status.
   virtual Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
                      const TaskID &task_id,

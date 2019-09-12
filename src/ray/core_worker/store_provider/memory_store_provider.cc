@@ -7,9 +7,6 @@
 
 namespace ray {
 
-//
-// CoreWorkerMemoryStoreProvider functions
-//
 CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
     std::shared_ptr<CoreWorkerMemoryStore> store)
     : store_(store) {
@@ -24,13 +21,12 @@ Status CoreWorkerMemoryStoreProvider::SetClientOptions(std::string name,
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  auto status = store_->Put(object_id, object);
+  Status status = store_->Put(object_id, object);
   if (status.IsObjectExists()) {
     // Object already exists in store, treat it as ok.
     return Status::OK();
-  } else {
-    return status;
   }
+  return status;
 }
 
 Status CoreWorkerMemoryStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,

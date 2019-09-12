@@ -13,6 +13,7 @@
 #include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/util/test_util.h"
 
 #include <boost/asio.hpp>
@@ -824,6 +825,21 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());
   }
+
+  // Test Get() returns early when it encounters an error.
+  std::vector<ObjectID> ids_with_exception(ids.begin(), ids.end());
+  ids_with_exception.push_back(ObjectID::FromRandom());
+  std::vector<RayObject> buffers_with_exception(buffers.begin(), buffers.end());
+  std::string error_string = std::to_string(ray::rpc::TASK_EXECUTION_EXCEPTION);
+  char error_buffer[error_string.size()];
+  size_t len = error_string.copy(error_buffer, error_string.size(), 0);
+  buffers_with_exception.emplace_back(
+      nullptr, std::make_shared<LocalMemoryBuffer>(
+                   reinterpret_cast<uint8_t *>(error_buffer), len));
+
+  RAY_CHECK_OK(core_worker.Objects().Put(buffers_with_exception.back(),
+                                         ids_with_exception.back()));
+  RAY_CHECK_OK(core_worker.Objects().Get(ids_with_exception, -1, &results));
 
   // Test Wait().
   ObjectID non_existent_id = ObjectID::FromRandom();

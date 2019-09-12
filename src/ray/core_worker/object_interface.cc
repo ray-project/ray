@@ -41,12 +41,10 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket),
-      use_memory_store_(use_memory_store) {
+      use_memory_store_(use_memory_store),
+      memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
   AddStoreProvider(StoreProviderType::PLASMA);
-  if (use_memory_store_) {
-    memory_store_ = std::make_shared<CoreWorkerMemoryStore>();
-    AddStoreProvider(StoreProviderType::MEMORY);
-  }
+  AddStoreProvider(StoreProviderType::MEMORY);
 }
 
 Status CoreWorkerObjectInterface::SetClientOptions(std::string name,

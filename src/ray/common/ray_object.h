@@ -78,4 +78,4 @@ class RayObject {
 
 }  // namespace ray
 
-#endif  // RAY_COMMON_BUFFER_H
+#endif  // RAY_COMMON_RAY_OBJECT_H
