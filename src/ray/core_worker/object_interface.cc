@@ -76,6 +76,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto remaining_timeout_ms = timeout_ms;
+  bool got_exception = false;
 
   // Re-order the list so that we always get from plasma store provider first,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
@@ -99,7 +100,10 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
         entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
-        &result_map));
+        &result_map, &got_exception));
+    if (got_exception) {
+      break;
+    }
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =

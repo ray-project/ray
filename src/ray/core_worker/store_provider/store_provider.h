@@ -32,11 +32,12 @@ class CoreWorkerStoreProvider {
   /// \param[in] task_id ID for the current task.
   /// \param[out] results Map of objects to write results into. Get will only add to this
   /// map, not clear or remove from it, so the caller can pass in a non-empty map.
-  /// \return Status.
-  virtual Status Get(
-      const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
-      const TaskID &task_id,
-      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) = 0;
+  /// \param[out] got_exception Set to true if any of the fetched results were an
+  /// exception. \return Status.
+  virtual Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+                     const TaskID &task_id,
+                     std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+                     bool *got_exception) = 0;
 
   /// Wait for a list of objects to appear in the object store. Objects that appear will
   /// be added to the ready set.
