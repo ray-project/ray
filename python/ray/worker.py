@@ -933,7 +933,7 @@ class Worker(object):
                 object_store_memory, name))
             self.core_worker.set_object_store_client_options(
                 name.encode("ascii"), object_store_memory)
-        except Exception as e:
+        except RayError as e:
             self.dump_object_store_memory_usage()
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
@@ -1951,15 +1951,10 @@ def connect(node,
         # driver task.
         worker.task_context.current_task_id = driver_task_spec.task_id()
 
-    redis_address_components = node.redis_address.split(":")
-    redis_address = redis_address_components[0]
-    if len(redis_address_components) > 1:
-        redis_port = int(redis_address_components[1])
-    else:
-        redis_port = 0
+    redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
         redis_address,
-        redis_port,
+        int(redis_port),
         node.redis_password,
     )
     worker.core_worker = ray._raylet.CoreWorker(

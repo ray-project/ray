@@ -154,7 +154,7 @@ class CoreWorkerObjectInterface {
   bool use_memory_store_;
 
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
-  // std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>

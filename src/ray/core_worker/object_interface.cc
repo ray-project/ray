@@ -44,6 +44,7 @@ CoreWorkerObjectInterface::CoreWorkerObjectInterface(
       use_memory_store_(use_memory_store) {
   AddStoreProvider(StoreProviderType::PLASMA);
   if (use_memory_store_) {
+    memory_store_ = std::make_shared<CoreWorkerMemoryStore>();
     AddStoreProvider(StoreProviderType::MEMORY);
   }
 }
@@ -273,7 +274,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
         new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
   case StoreProviderType::MEMORY:
     return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerMemoryStoreProvider(std::make_shared<CoreWorkerMemoryStore>()));
+        new CoreWorkerMemoryStoreProvider(memory_store_));
     break;
   default:
     RAY_LOG(FATAL) << "unknown store provider type " << static_cast<int>(type);
