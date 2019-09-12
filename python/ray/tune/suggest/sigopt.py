@@ -132,7 +132,7 @@ class SigOptSearch(SuggestionAlgorithm):
             )
             # Update the experiment object
             self.experiment = self.conn.experiments(self.experiment.id).fetch()
-        elif error:
+        elif error or early_terminated:
             # Reports a failed Observation
             self.conn.experiments(self.experiment.id).observations().create(
                 failed=True, suggestion=self._live_trial_mapping[trial_id].id)
