@@ -492,8 +492,6 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            # Note, the lock is needed because `serialization_context` isn't
-            # thread-safe.
             return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
