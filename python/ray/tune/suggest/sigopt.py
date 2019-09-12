@@ -117,8 +117,7 @@ class SigOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to SigOpt unless errored or the trial is early
-        terminated and should not be used.
+        """Passes the result to SigOpt unless early terminated or errored.
 
         If a trial fails, it will be reported as a failed Observation, telling
         the optimizer that the Suggestion led to a metric failure, which
@@ -127,8 +126,6 @@ class SigOptSearch(SuggestionAlgorithm):
         Creates SigOpt Observation object for trial.
         """
         if result:
-            if early_terminated and self._use_early_terminated_trials is False:
-                return
             self.conn.experiments(self.experiment.id).observations().create(
                 suggestion=self._live_trial_mapping[trial_id].id,
                 value=self._metric_op * result[self._metric],

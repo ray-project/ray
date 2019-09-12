@@ -183,9 +183,6 @@ class HyperOptSearch(SuggestionAlgorithm):
         if error:
             ho_trial["state"] = hpo.base.JOB_STATE_ERROR
             ho_trial["misc"]["error"] = (str(TuneError), "Tune Error")
-        elif early_terminated:
-            ho_trial["state"] = hpo.base.JOB_STATE_ERROR
-            ho_trial["misc"]["error"] = (str(TuneError), "Tune Removed")
         else:
             ho_trial["state"] = hpo.base.JOB_STATE_DONE
             hp_result = self._to_hyperopt_result(result)
