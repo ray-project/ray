@@ -81,7 +81,8 @@ class AxSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Pass data back to Ax.
+        """Passes the result to Ax unless errored or the trial is early
+        terminated and should not be used.
 
         Data of form key value dictionary of metric names and values.
         """
