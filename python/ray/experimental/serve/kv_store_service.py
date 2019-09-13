@@ -62,8 +62,8 @@ class InMemoryKVStore(NamespacedKVStore):
     def __init__(self, namespace):
         self.data = dict()
 
-        # Namepsace is ignored, because each namespace is backed by
-        # a in-memory Python dictionary.
+        # Namespace is ignored, because each namespace is backed by
+        # an in-memory Python dictionary.
         self.namespace = namespace
 
     def get(self, key):
@@ -112,7 +112,7 @@ class RayInternalKVStore(NamespacedKVStore):
         return self._get(key)
 
     def put(self, key, value):
-        assert isinstance(key, str), "Key must be string"
+        assert isinstance(key, str), "Key must be a string."
 
         self._put(key, value)
 
@@ -152,7 +152,7 @@ class KVStoreProxy:
         return table
 
     def get_request_count(self):
-        """Return the number of requets made to fetch the routing table.
+        """Return the number of requests that fetched the routing table.
 
         This method is used for two purpose:
 
