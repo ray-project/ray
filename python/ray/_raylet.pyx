@@ -7,7 +7,7 @@ import numpy
 import time
 import logging
 
-from libc.stdint cimport uint8_t, int32_t, int64_t, uint64_t
+from libc.stdint cimport uint8_t, int32_t, int64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport (
     dynamic_pointer_cast,
