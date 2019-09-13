@@ -215,7 +215,10 @@ class LoadMetrics(object):
         return self._info()["NumNodesConnected"]
 
     def get_resource_usage(self):
+        num_nodes = len(self.static_resources_by_ip)
         nodes_used = 0.0
+        num_nonidle = 0
+        has_saturated_node = False
         resources_used = {}
         resources_total = {}
         for ip, max_resources in self.static_resources_by_ip.items():
@@ -224,6 +227,7 @@ class LoadMetrics(object):
             max_frac = 0.0
             for resource_id, amount in resource_load.items():
                 if amount > 0:
+                    has_saturated_node = True
                     max_frac = 1.0  # the resource is saturated
             for resource_id, amount in max_resources.items():
                 used = amount - avail_resources[resource_id]
@@ -238,6 +242,14 @@ class LoadMetrics(object):
                     if frac > max_frac:
                         max_frac = frac
             nodes_used += max_frac
+            if max_frac > 0:
+                num_nonidle += 1
+
+        # If any nodes have a queue buildup, assume all non-idle nodes are 100%
+        # busy, plus the head node. This guards against the case of not scaling
+        # up due to poor task packing.
+        if has_saturated_node:
+            nodes_used = min(num_nonidle + 1.0, num_nodes)
 
         return nodes_used, resources_used, resources_total
 
