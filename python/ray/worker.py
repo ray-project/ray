@@ -429,14 +429,6 @@ class Worker(object):
                 full.
         """
         try:
-            buffers = []
-            meta = pickle.dumps(
-                value, protocol=5, buffer_callback=buffers.append)
-            # TODO(suquark): This could involve more copies.
-            # Should implement zero-copy for PickleBuffer.
-            buffers = [b.raw().tobytes() for b in buffers]
-            value = (meta, buffers)
-
             if isinstance(value, bytes):
                 # If the object is a byte array, skip serializing it and
                 # use a special metadata to indicate it's raw binary. So
@@ -447,6 +439,14 @@ class Worker(object):
                     metadata=ray_constants.RAW_BUFFER_METADATA,
                     memcopy_threads=self.memcopy_threads)
             else:
+                buffers = []
+                meta = pickle.dumps(
+                    value, protocol=5, buffer_callback=buffers.append)
+                # TODO(suquark): This could involve more copies.
+                # Should implement zero-copy for PickleBuffer.
+                buffers = [b.raw().tobytes() for b in buffers]
+                value = (meta, buffers)
+                
                 self.plasma_client.put(
                     value,
                     object_id=pyarrow.plasma.ObjectID(object_id.binary()),
