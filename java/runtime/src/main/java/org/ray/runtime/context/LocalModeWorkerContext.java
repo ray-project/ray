@@ -8,7 +8,6 @@ import org.ray.api.id.UniqueId;
 import org.ray.runtime.generated.Common.TaskSpec;
 import org.ray.runtime.generated.Common.TaskType;
 import org.ray.runtime.task.LocalModeTaskSubmitter;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 /**
  * Worker context for local mode.
@@ -24,7 +23,7 @@ public class LocalModeWorkerContext implements WorkerContext {
 
   @Override
   public UniqueId getCurrentWorkerId() {
-    throw new NotImplementedException();
+    throw new UnsupportedOperationException();
   }
 
   @Override

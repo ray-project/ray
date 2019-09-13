@@ -4,11 +4,14 @@ from __future__ import print_function
 
 import logging
 import random
+from collections import defaultdict
 
 import ray
-from ray.rllib.evaluation.metrics import get_learner_stats
+from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
+from ray.rllib.optimizers.multi_gpu_optimizer import _averaged
 from ray.rllib.optimizers.policy_optimizer import PolicyOptimizer
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+    MultiAgentBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import RunningStat
 from ray.rllib.utils.timer import TimerStat
@@ -29,10 +32,12 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                  workers,
                  num_sgd_iter=1,
                  train_batch_size=1,
-                 sgd_minibatch_size=0):
+                 sgd_minibatch_size=0,
+                 standardize_fields=frozenset([])):
         PolicyOptimizer.__init__(self, workers)
 
         self.update_weights_timer = TimerStat()
+        self.standardize_fields = standardize_fields
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
@@ -40,6 +45,9 @@ class SyncSamplesOptimizer(PolicyOptimizer):
         self.sgd_minibatch_size = sgd_minibatch_size
         self.train_batch_size = train_batch_size
         self.learner_stats = {}
+        self.policies = dict(self.workers.local_worker()
+                             .foreach_trainable_policy(lambda p, i: (i, p)))
+        logger.debug("Policies to train: {}".format(self.policies))
 
     @override(PolicyOptimizer)
     def step(self):
@@ -63,16 +71,44 @@ class SyncSamplesOptimizer(PolicyOptimizer):
             samples = SampleBatch.concat_samples(samples)
             self.sample_timer.push_units_processed(samples.count)
 
-        with self.grad_timer:
-            for i in range(self.num_sgd_iter):
-                for minibatch in self._minibatches(samples):
-                    fetches = self.workers.local_worker().learn_on_batch(
-                        minibatch)
-                self.learner_stats = get_learner_stats(fetches)
-                if self.num_sgd_iter > 1:
-                    logger.debug("{} {}".format(i, fetches))
-            self.grad_timer.push_units_processed(samples.count)
+        # Handle everything as if multiagent
+        if isinstance(samples, SampleBatch):
+            samples = MultiAgentBatch({
+                DEFAULT_POLICY_ID: samples
+            }, samples.count)
 
+        fetches = {}
+        with self.grad_timer:
+            for policy_id, policy in self.policies.items():
+                if policy_id not in samples.policy_batches:
+                    continue
+
+                batch = samples.policy_batches[policy_id]
+                for field in self.standardize_fields:
+                    value = batch[field]
+                    standardized = (value - value.mean()) / max(
+                        1e-4, value.std())
+                    batch[field] = standardized
+
+                for i in range(self.num_sgd_iter):
+                    iter_extra_fetches = defaultdict(list)
+                    for minibatch in self._minibatches(batch):
+                        batch_fetches = (
+                            self.workers.local_worker().learn_on_batch(
+                                MultiAgentBatch({
+                                    policy_id: minibatch
+                                }, minibatch.count)))[policy_id]
+                        for k, v in batch_fetches[LEARNER_STATS_KEY].items():
+                            iter_extra_fetches[k].append(v)
+                    logger.debug("{} {}".format(i,
+                                                _averaged(iter_extra_fetches)))
+                fetches[policy_id] = _averaged(iter_extra_fetches)
+
+        self.grad_timer.push_units_processed(samples.count)
+        if len(fetches) == 1 and DEFAULT_POLICY_ID in fetches:
+            self.learner_stats = fetches[DEFAULT_POLICY_ID]
+        else:
+            self.learner_stats = fetches
         self.num_steps_sampled += samples.count
         self.num_steps_trained += samples.count
         return self.learner_stats

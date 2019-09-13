@@ -13,6 +13,7 @@
 #include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/direct_actor.grpc.pb.h"
 #include "src/ray/protobuf/direct_actor.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/util/test_util.h"
 
 #include <boost/asio.hpp>
@@ -28,8 +29,6 @@ namespace ray {
 std::string store_executable;
 std::string raylet_executable;
 std::string mock_worker_executable;
-
-ray::ObjectID RandomObjectID() { return ObjectID::FromRandom(); }
 
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -111,7 +110,7 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartStore() {
-    std::string store_socket_name = "/tmp/store" + RandomObjectID().Hex();
+    std::string store_socket_name = "/tmp/store" + ObjectID::FromRandom().Hex();
     std::string store_pid = store_socket_name + ".pid";
     std::string plasma_command = store_executable + " -m 10000000 -s " +
                                  store_socket_name +
@@ -133,7 +132,7 @@ class CoreWorkerTest : public ::testing::Test {
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
                           std::string redis_address, std::string resource) {
-    std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
+    std::string raylet_socket_name = "/tmp/raylet" + ObjectID::FromRandom().Hex();
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
@@ -220,7 +219,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
 void CoreWorkerTest::TestNormalTask(
     const std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -262,7 +261,7 @@ void CoreWorkerTest::TestNormalTask(
 void CoreWorkerTest::TestActorTask(
     const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
   auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
@@ -351,7 +350,7 @@ void CoreWorkerTest::TestActorTask(
 void CoreWorkerTest::TestActorReconstruction(
     const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
   // creating actor.
   auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
@@ -409,7 +408,7 @@ void CoreWorkerTest::TestActorReconstruction(
 void CoreWorkerTest::TestActorFailure(
     const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
+                    raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
   // creating actor.
   auto actor_handle =
@@ -518,10 +517,12 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
 
   // Test Get().
+  bool got_exception = false;
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
   std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
-  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results));
+  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results, &got_exception));
 
+  ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     const auto &expected = buffers[i];
@@ -542,7 +543,8 @@ void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
   RAY_CHECK_OK(provider.Delete(ids, true, false));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results));
+  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception));
+  ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
 
   // Test Wait() with objects which will become ready later.
@@ -694,7 +696,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, nullptr);
+                    raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, "",
+                    nullptr);
   std::unique_ptr<ActorHandle> actor_handle;
 
   // Test creating actor.
@@ -798,7 +801,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         JobID::FromInt(1), gcs_options_, nullptr);
+                         JobID::FromInt(1), gcs_options_, "", nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -822,6 +825,21 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
     ASSERT_EQ(*results[i]->GetMetadata(), *buffers[i].GetMetadata());
   }
+
+  // Test Get() returns early when it encounters an error.
+  std::vector<ObjectID> ids_with_exception(ids.begin(), ids.end());
+  ids_with_exception.push_back(ObjectID::FromRandom());
+  std::vector<RayObject> buffers_with_exception(buffers.begin(), buffers.end());
+  std::string error_string = std::to_string(ray::rpc::TASK_EXECUTION_EXCEPTION);
+  char error_buffer[error_string.size()];
+  size_t len = error_string.copy(error_buffer, error_string.size(), 0);
+  buffers_with_exception.emplace_back(
+      nullptr, std::make_shared<LocalMemoryBuffer>(
+                   reinterpret_cast<uint8_t *>(error_buffer), len));
+
+  RAY_CHECK_OK(core_worker.Objects().Put(buffers_with_exception.back(),
+                                         ids_with_exception.back()));
+  RAY_CHECK_OK(core_worker.Objects().Get(ids_with_exception, -1, &results));
 
   // Test Wait().
   ObjectID non_existent_id = ObjectID::FromRandom();
@@ -854,10 +872,10 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                     raylet_socket_names_[0], NextJobId(), gcs_options_, nullptr);
+                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
   CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
-                     raylet_socket_names_[1], NextJobId(), gcs_options_, nullptr);
+                     raylet_socket_names_[1], NextJobId(), gcs_options_, "", nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};

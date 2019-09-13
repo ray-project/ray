@@ -33,6 +33,15 @@ If you are using Anaconda, try fixing this problem by running:
 
 try:
     import pyarrow  # noqa: F401
+
+    # pyarrow is not imported inside of _raylet because of the issue described
+    # above. In order for Cython to compile _raylet, pyarrow is set to None
+    # in _raylet instead, so we give _raylet a real reference to it here.
+    # We first do the attribute checks here so that building the documentation
+    # succeeds without fully installing ray..
+    # TODO(edoakes): Fix this.
+    if hasattr(ray, "_raylet") and hasattr(ray._raylet, "pyarrow"):
+        ray._raylet.pyarrow = pyarrow
 except ImportError as e:
     if ((hasattr(e, "msg") and isinstance(e.msg, str)
          and ("libstdc++" in e.msg or "CXX" in e.msg))):
