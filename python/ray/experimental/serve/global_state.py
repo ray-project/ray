@@ -32,7 +32,7 @@ class GlobalState:
         self.kv_store_actor_handle = None
         #: actor handle to HTTP server
         self.http_actor_handle = None
-        #: actor handle the the router actor
+        #: actor handle the router actor
         self.router_actor_handle = None
 
         #: Set[str] list of backend names, used for deduplication
