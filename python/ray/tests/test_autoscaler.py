@@ -156,17 +156,30 @@ class LoadMetricsTest(unittest.TestCase):
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 1}, {"CPU": 1})
         self.assertEqual(lm.approx_workers_used(), 1.0)
 
-        # Both nodes count as busy since there is a queue on one. This covers
-        # the edge case with a small head and large worker, and the worker is
-        # busy but the head node cannot schedule tasks.
+        # Both nodes count as busy since there is a queue on one.
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 2}, {})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 0}, {})
+        self.assertEqual(lm.approx_workers_used(), 2.0)
         lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})
         self.assertEqual(lm.approx_workers_used(), 2.0)
 
-        # no queue anymore, so we're back to exact accounting
+        # No queue anymore, so we're back to exact accounting.
         lm.update("1.1.1.1", {"CPU": 2}, {"CPU": 0}, {})
         self.assertEqual(lm.approx_workers_used(), 1.5)
         lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {"GPU": 1})
         self.assertEqual(lm.approx_workers_used(), 2.0)
+
+        lm.update("3.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("4.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("5.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("6.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("7.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        lm.update("8.3.3.3", {"CPU": 2}, {"CPU": 1}, {})
+        self.assertEqual(lm.approx_workers_used(), 8.0)
+
+        lm.update("2.2.2.2", {"CPU": 2}, {"CPU": 1}, {})  # no queue anymore
+        self.assertEqual(lm.approx_workers_used(), 4.5)
 
     def testPruneByNodeIp(self):
         lm = LoadMetrics()
