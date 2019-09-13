@@ -145,7 +145,7 @@ class TestMemoryScheduling(unittest.TestCase):
                 resources_per_trial={"object_store_memory": 150 * 1024 * 1024},
                 raise_on_failed_trial=False)
             self.assertTrue(result.trials[0].status, "ERROR")
-            self.assertTrue("PlasmaStoreFull: object does not fit" in
+            self.assertTrue("ObjectStoreFullError: Failed to put" in
                             result.trials[0].error_msg)
         finally:
             ray.shutdown()

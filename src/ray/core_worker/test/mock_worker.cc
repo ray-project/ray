@@ -23,7 +23,7 @@ class MockWorker {
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
              const gcs::GcsClientOptions &gcs_options)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1), gcs_options,
+                JobID::FromInt(1), gcs_options, /*log_dir=*/"",
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {

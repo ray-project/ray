@@ -55,6 +55,7 @@ from ray.exceptions import (
     RayError,
     RayTaskError,
     RayWorkerError,
+    ObjectStoreFullError,
     UnreconstructableError,
     RAY_EXCEPTION_TYPES,
 )
@@ -67,7 +68,6 @@ from ray.utils import (
     check_oversized_pickle,
     is_cython,
     setup_logger,
-    thread_safe_client,
 )
 from ray.local_mode_manager import LocalModeManager
 
@@ -312,18 +312,15 @@ class Worker(object):
                     # If the object is a byte array, skip serializing it and
                     # use a special metadata to indicate it's raw binary. So
                     # that this object can also be read by Java.
-                    self.plasma_client.put_raw_buffer(
-                        value,
-                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                        metadata=ray_constants.RAW_BUFFER_METADATA,
-                        memcopy_threads=self.memcopy_threads)
+                    self.core_worker.put_raw_buffer(
+                        value, object_id, memcopy_threads=self.memcopy_threads)
                 else:
-                    self.plasma_client.put(
-                        value,
-                        object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                        memcopy_threads=self.memcopy_threads,
-                        serialization_context=self.get_serialization_context(
-                            self.current_job_id))
+                    serialization_context = self.get_serialization_context(
+                        self.current_job_id)
+                    self.core_worker.put_serialized_object(
+                        pyarrow.serialize(value, serialization_context),
+                        object_id,
+                        memcopy_threads=self.memcopy_threads)
                 break
             except pyarrow.SerializationCallbackError as e:
                 try:
@@ -377,9 +374,9 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            plasma.PlasmaStoreFull: This is raised if the attempt to store the
-                object fails because the object store is full even after
-                multiple retries.
+            ray.exceptions.ObjectStoreFullError: This is raised if the attempt
+                to store the object fails because the object store is full even
+                after multiple retries.
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
@@ -396,7 +393,7 @@ class Worker(object):
             try:
                 self._try_store_and_register(object_id, value)
                 break
-            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
+            except ObjectStoreFullError as e:
                 if attempt:
                     logger.warning("Waiting {} seconds for space to free up "
                                    "in the object store.".format(delay))
@@ -404,13 +401,12 @@ class Worker(object):
                     delay *= 2
                 else:
                     self.dump_object_store_memory_usage()
-                    raise plasma_exc
+                    raise e
 
     def dump_object_store_memory_usage(self):
         """Prints object store debug string to stdout."""
-        msg = "\n" + self.plasma_client.debug_string()
-        msg = msg.replace("\n", "\nplasma: ")
-        logger.warning("Local object store memory usage:\n{}\n".format(msg))
+        logger.warning("Local object store memory usage:\n{}\n".format(
+            self.core_worker.object_store_memory_usage_string()))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -422,14 +418,6 @@ class Worker(object):
         """
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.plasma.PlasmaObjectExists:
-            # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare hashes
-            # and make sure that the objects are in fact the same. We also
-            # should return an error code to caller instead of printing a
-            # message.
-            logger.info("The object with ID {} already exists "
-                        "in the object store.".format(object_id))
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
@@ -442,36 +430,25 @@ class Worker(object):
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
-    def retrieve_and_deserialize(self, object_ids, timeout, error_timeout=10):
+    def retrieve_and_deserialize(self, object_ids, error_timeout=10):
+        data_metadata_pairs = self.core_worker.get_objects(
+            object_ids, self.current_task_id)
+        assert len(data_metadata_pairs) == len(object_ids)
+
         start_time = time.time()
-        # Only send the warning once.
-        warning_sent = False
         serialization_context = self.get_serialization_context(
             self.current_job_id)
-        while True:
+        results = []
+        warning_sent = False
+        i = 0
+        while i < len(object_ids):
+            object_id = object_ids[i]
+            data, metadata = data_metadata_pairs[i]
             try:
-                # We divide very large get requests into smaller get requests
-                # so that a single get request doesn't block the store for a
-                # long time, if the store is blocked, it can block the manager
-                # as well as a consequence.
-                results = []
-                batch_size = ray._config.worker_fetch_request_size()
-                for i in range(0, len(object_ids), batch_size):
-                    metadata_data_pairs = self.plasma_client.get_buffers(
-                        object_ids[i:i + batch_size],
-                        timeout,
-                        with_meta=True,
-                    )
-                    for j in range(len(metadata_data_pairs)):
-                        metadata, data = metadata_data_pairs[j]
-                        results.append(
-                            self._deserialize_object_from_arrow(
-                                data,
-                                metadata,
-                                object_ids[i + j],
-                                serialization_context,
-                            ))
-                return results
+                results.append(
+                    self._deserialize_object_from_arrow(
+                        data, metadata, object_id, serialization_context))
+                i += 1
             except pyarrow.DeserializationCallbackError:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
@@ -492,11 +469,15 @@ class Worker(object):
                             job_id=self.current_job_id)
                     warning_sent = True
 
+        return results
+
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
+                if data is None:
+                    return b""
                 return data.to_pybytes()
             # Otherwise, return an exception object based on
             # the error type.
@@ -511,16 +492,13 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            # Note, the lock is needed because `serialization_context` isn't
-            # thread-safe.
-            with self.plasma_client.lock:
-                return pyarrow.deserialize(data, serialization_context)
+            return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
 
-    def get_object(self, object_ids):
-        """Get the value or values in the object store associated with the IDs.
+    def get_objects(self, object_ids):
+        """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_ids. This will
         block until all the values for object_ids have been written to the
@@ -542,72 +520,11 @@ class Worker(object):
                     "which is not an ray.ObjectID.".format(object_id))
 
         if self.mode == LOCAL_MODE:
-            return self.local_mode_manager.get_object(object_ids)
+            return self.local_mode_manager.get_objects(object_ids)
 
-        # Do an initial fetch for remote objects. We divide the fetch into
-        # smaller fetches so as to not block the manager for a prolonged period
-        # of time in a single call.
-        plain_object_ids = [
-            plasma.ObjectID(object_id.binary()) for object_id in object_ids
-        ]
-        for i in range(0, len(object_ids),
-                       ray._config.worker_fetch_request_size()):
-            self.raylet_client.fetch_or_reconstruct(
-                object_ids[i:(i + ray._config.worker_fetch_request_size())],
-                True)
-
-        # Get the objects. We initially try to get the objects immediately.
-        final_results = self.retrieve_and_deserialize(plain_object_ids, 0)
-        # Construct a dictionary mapping object IDs that we haven't gotten yet
-        # to their original index in the object_ids argument.
-        unready_ids = {
-            plain_object_ids[i].binary(): i
-            for (i, val) in enumerate(final_results)
-            if val is plasma.ObjectNotAvailable
-        }
-
-        if len(unready_ids) > 0:
-            # Try reconstructing any objects we haven't gotten yet. Try to
-            # get them until at least get_timeout_milliseconds
-            # milliseconds passes, then repeat.
-            while len(unready_ids) > 0:
-                object_ids_to_fetch = [
-                    plasma.ObjectID(unready_id)
-                    for unready_id in unready_ids.keys()
-                ]
-                ray_object_ids_to_fetch = [
-                    ObjectID(unready_id) for unready_id in unready_ids.keys()
-                ]
-                fetch_request_size = ray._config.worker_fetch_request_size()
-                for i in range(0, len(object_ids_to_fetch),
-                               fetch_request_size):
-                    self.raylet_client.fetch_or_reconstruct(
-                        ray_object_ids_to_fetch[i:(i + fetch_request_size)],
-                        False,
-                        self.current_task_id,
-                    )
-                results = self.retrieve_and_deserialize(
-                    object_ids_to_fetch,
-                    max([
-                        ray._config.get_timeout_milliseconds(),
-                        int(0.01 * len(unready_ids)),
-                    ]),
-                )
-                # Remove any entries for objects we received during this
-                # iteration so we don't retrieve the same object twice.
-                for i, val in enumerate(results):
-                    if val is not plasma.ObjectNotAvailable:
-                        object_id = object_ids_to_fetch[i].binary()
-                        index = unready_ids[object_id]
-                        final_results[index] = val
-                        unready_ids.pop(object_id)
-
-            # If there were objects that we weren't able to get locally,
-            # let the raylet know that we're now unblocked.
-            self.raylet_client.notify_unblocked(self.current_task_id)
-
-        assert len(final_results) == len(object_ids)
-        return final_results
+        results = self.retrieve_and_deserialize(object_ids)
+        assert len(results) == len(object_ids)
+        return results
 
     def submit_task(self,
                     function_descriptor,
@@ -859,7 +776,7 @@ class Worker(object):
 
         # Get the objects from the local object store.
         if len(object_ids) > 0:
-            values = self.get_object(object_ids)
+            values = self.get_objects(object_ids)
             for i, value in enumerate(values):
                 if isinstance(value, RayError):
                     raise value
@@ -893,8 +810,7 @@ class Worker(object):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
             if outputs[i] is ray.experimental.no_return.NoReturn:
-                if not self.plasma_client.contains(
-                        pyarrow.plasma.ObjectID(object_ids[i].binary())):
+                if not self.core_worker.object_exists(object_ids[i]):
                     raise RuntimeError(
                         "Attempting to return 'ray.experimental.NoReturn' "
                         "from a remote function, but the corresponding "
@@ -923,12 +839,14 @@ class Worker(object):
             # needed so that if the task throws an exception, we propagate
             # the error message to the correct driver.
             self.current_job_id = task.job_id()
+            self.core_worker.set_current_job_id(task.job_id())
         else:
             # If this worker is an actor, current_job_id wasn't reset.
             # Check that current task's driver ID equals the previous one.
             assert self.current_job_id == task.job_id()
 
         self.task_context.current_task_id = task.task_id()
+        self.core_worker.set_current_task_id(task.task_id())
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
@@ -972,7 +890,7 @@ class Worker(object):
                             ray_constants.from_memory_units(
                                 task.required_resources()["memory"]))
                     if "object_store_memory" in task.required_resources():
-                        self._set_plasma_client_options(
+                        self._set_object_store_client_options(
                             worker_name,
                             int(
                                 ray_constants.from_memory_units(
@@ -1007,20 +925,21 @@ class Worker(object):
                 function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
 
-    def _set_plasma_client_options(self, client_name, object_store_memory):
+    def _set_object_store_client_options(self, name, object_store_memory):
         try:
             logger.debug("Setting plasma memory limit to {} for {}".format(
-                object_store_memory, client_name))
-            self.plasma_client.set_client_options(client_name,
-                                                  object_store_memory)
-        except pyarrow._plasma.PlasmaStoreFull:
+                object_store_memory, name))
+            self.core_worker.set_object_store_client_options(
+                name.encode("ascii"), object_store_memory)
+        except RayError as e:
             self.dump_object_store_memory_usage()
             raise memory_monitor.RayOutOfMemoryError(
                 "Failed to set object_store_memory={} for {}. The "
                 "plasma store may have insufficient memory remaining "
                 "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage).".format(
-                    object_store_memory, client_name))
+                "permanently reserved for shared usage). The current "
+                "object store memory status is:\n\n{}".format(
+                    object_store_memory, name, e))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1092,6 +1011,7 @@ class Worker(object):
                 self._process_task(task, execution_info)
             # Reset the state fields so the next task can run.
             self.task_context.current_task_id = TaskID.nil()
+            self.core_worker.set_current_task_id(TaskID.nil())
             self.task_context.task_index = 0
             self.task_context.put_index = 1
             if self.actor_id.is_nil():
@@ -1099,6 +1019,7 @@ class Worker(object):
                 # actor. Because the following tasks should all have the
                 # same driver id.
                 self.current_job_id = WorkerID.nil()
+                self.core_worker.set_current_job_id(JobID.nil())
                 # Reset signal counters so that the next task can get
                 # all past signals.
                 ray_signal.reset()
@@ -1110,7 +1031,7 @@ class Worker(object):
         reached_max_executions = (self.function_actor_manager.get_task_counter(
             job_id, function_descriptor) == execution_info.max_calls)
         if reached_max_executions:
-            self.raylet_client.disconnect()
+            self.core_worker.disconnect()
             sys.exit(0)
 
     def _get_next_task_from_raylet(self):
@@ -1967,14 +1888,6 @@ def connect(node,
     else:
         raise Exception("This code should be unreachable.")
 
-    # Create an object store client.
-    worker.plasma_client = thread_safe_client(
-        plasma.connect(node.plasma_store_socket_name, None, 0, 300))
-
-    if driver_object_store_memory is not None:
-        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
-                                          driver_object_store_memory)
-
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if mode == SCRIPT_MODE:
@@ -2036,12 +1949,27 @@ def connect(node,
         # driver task.
         worker.task_context.current_task_id = driver_task_spec.task_id()
 
-    worker.raylet_client = ray._raylet.RayletClient(
-        node.raylet_socket_name,
-        WorkerID(worker.worker_id),
-        (mode == WORKER_MODE),
-        worker.current_job_id,
+    redis_address, redis_port = node.redis_address.split(":")
+    gcs_options = ray._raylet.GcsClientOptions(
+        redis_address,
+        int(redis_port),
+        node.redis_password,
     )
+    worker.core_worker = ray._raylet.CoreWorker(
+        (mode == SCRIPT_MODE),
+        node.plasma_store_socket_name,
+        node.raylet_socket_name,
+        worker.current_job_id,
+        gcs_options,
+        node.get_logs_dir_path(),
+    )
+    worker.core_worker.set_current_job_id(worker.current_job_id)
+    worker.core_worker.set_current_task_id(worker.current_task_id)
+    worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
+
+    if driver_object_store_memory is not None:
+        worker._set_object_store_client_options(
+            "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,
@@ -2141,8 +2069,8 @@ def disconnect():
 
     if hasattr(worker, "raylet_client"):
         del worker.raylet_client
-    if hasattr(worker, "plasma_client"):
-        worker.plasma_client.disconnect()
+    if hasattr(worker, "core_worker"):
+        del worker.core_worker
 
 
 @contextmanager
@@ -2331,7 +2259,7 @@ def get(object_ids):
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
-        values = worker.get_object(object_ids)
+        values = worker.get_objects(object_ids)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
@@ -2376,7 +2304,7 @@ def put(value, weakref=False):
             )
             try:
                 worker.put_object(object_id, value)
-            except pyarrow.plasma.PlasmaStoreFull:
+            except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
                     "store was full of pinned objects. If you are putting "
@@ -2387,10 +2315,14 @@ def put(value, weakref=False):
         worker.task_context.put_index += 1
         # Pin the object buffer with the returned id. This avoids put returns
         # from getting evicted out from under the id.
+        # TODO(edoakes): we should be able to avoid this extra IPC by holding
+        # a reference to the buffer created when putting the object, but the
+        # buffer returned by the plasma store create method doesn't prevent
+        # the object from being evicted.
         if not weakref and not worker.mode == LOCAL_MODE:
             object_id.set_buffer_ref(
-                worker.plasma_client.get_buffers(
-                    [pyarrow.plasma.ObjectID(object_id.binary())]))
+                worker.core_worker.get_objects([object_id],
+                                               worker.current_task_id))
         return object_id
 
 
@@ -2479,11 +2411,10 @@ def wait(object_ids, num_returns=1, timeout=None):
 
         timeout = timeout if timeout is not None else 10**6
         timeout_milliseconds = int(timeout * 1000)
-        ready_ids, remaining_ids = worker.raylet_client.wait(
+        ready_ids, remaining_ids = worker.core_worker.wait(
             object_ids,
             num_returns,
             timeout_milliseconds,
-            False,
             worker.current_task_id,
         )
         return ready_ids, remaining_ids
