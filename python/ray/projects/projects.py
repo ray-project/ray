@@ -93,6 +93,9 @@ class ProjectDefinition:
 
         return command_to_run
 
+    def git_repo(self):
+        return self.config.get("repo", None)
+
 
 def find_root(directory):
     """Find root directory of the ray project.
