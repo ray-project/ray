@@ -601,8 +601,7 @@ cdef class CoreWorker:
 
         with nogil:
             check_status(self.core_worker.get().Tasks().SubmitTask(
-                ray_function, args_vector,
-                task_options, &return_ids))
+                ray_function, args_vector, task_options, &return_ids))
 
         return VectorToObjectIDs(return_ids)
 
