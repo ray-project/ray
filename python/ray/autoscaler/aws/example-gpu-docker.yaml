@@ -3,16 +3,16 @@ cluster_name: gpu-docker
 
 # The minimum number of workers nodes to launch in addition to the head
 # node. This number should be >= 0.
-min_workers: 10
+min_workers: 1
 
 # The maximum number of workers nodes to launch in addition to the head
 # node. This takes precedence over min_workers.
-max_workers: 20
+max_workers: 1
 
 # The initial number of worker nodes to launch in addition to the head
 # node. When the cluster is first brought up (or when it is refreshed with a
 # subsequent `ray up`) this number of nodes will be started.
-initial_workers: 10
+initial_workers: 1
 
 # Whether or not to autoscale aggressively. If this is enabled, if at any point
 #   we would start more workers, we start at least enough to bring us to
@@ -75,14 +75,14 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: g3.8xlarge
+    InstanceType: g3.4xlarge
     ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 100
+              VolumeSize: 200
 
     # Additional options in the boto docs.
 
@@ -91,7 +91,7 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: g3.8xlarge
+    InstanceType: g3.4xlarge
     ImageId: ami-0b294f219d14e6a82 # Deep Learning AMI (Ubuntu) Version 21.0
 
     # Run workers on spot by default. Comment this out to use on-demand.
@@ -106,7 +106,7 @@ worker_nodes:
 # Files or directories to copy to the head and worker nodes. The format is a
 # dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
 file_mounts: {
-    /home/ubuntu/ray/: ~/Research/riselab/ray/python/ray/
+    ~/autoscaler/: ~/Research/riselab/ray/python/autoscaler/
    # "/path1/on/remote/machine": "/path1/on/local/machine",
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
@@ -120,7 +120,7 @@ file_sync_options:
 setup_commands:
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp27-cp27mu-manylinux1_x86_64.whl
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp36-cp36m-manylinux1_x86_64.whl
-    - cd /root/ray/ && python setup-dev.py --yes
+    - ln -s /usr/local/lib/python3.6/dist-packages/ray/autoscaler/ /home/ubuntu/autoscaler
     - apt-get update; apt-get install -y openjdk-8-jdk-headless wget openssh-server tar vim rsync
     # - mkdir /root/.ssh; chown -R root:root /root/.ssh;chmod -R 700 /root/.ssh; mkdir /var/run/sshd
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp36-cp36m-manylinux1_x86_64.whl
