@@ -433,11 +433,8 @@ class Worker(object):
                 # If the object is a byte array, skip serializing it and
                 # use a special metadata to indicate it's raw binary. So
                 # that this object can also be read by Java.
-                self.plasma_client.put_raw_buffer(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                    metadata=ray_constants.RAW_BUFFER_METADATA,
-                    memcopy_threads=self.memcopy_threads)
+                self.core_worker.put_raw_buffer(
+                    value, object_id, memcopy_threads=self.memcopy_threads)
             else:
                 buffers = []
                 meta = pickle.dumps(
@@ -447,12 +444,10 @@ class Worker(object):
                 buffers = [b.raw().tobytes() for b in buffers]
                 value = (meta, buffers)
 
-                self.plasma_client.put(
-                    value,
-                    object_id=pyarrow.plasma.ObjectID(object_id.binary()),
-                    memcopy_threads=self.memcopy_threads,
-                    serialization_context=self.get_serialization_context(
-                        self.current_job_id))
+                self.core_worker.put_serialized_object(
+                    pyarrow.serialize(value),
+                    object_id,
+                    memcopy_threads=self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare hashes
