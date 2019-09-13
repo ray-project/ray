@@ -11,7 +11,7 @@ class NamespacedKVStore(ABC):
 
     The idea is that multiple key-value stores can be created while sharing
     the same storage system. The keys of each instance are namespaced to avoid
-    key collision.
+    object_id key collision.
 
     Example:
 

@@ -94,9 +94,9 @@ class HTTPProxy:
             await JSONResponse(self.route_table)(scope, receive, send)
         elif current_path in self.route_table:
             endpoint_name = self.route_table[current_path]
-            result_oid_bytes = await as_future(
+            result_object_id_bytes = await as_future(
                 self.router.produce.remote(endpoint_name, scope))
-            result = await as_future(ray.ObjectID(result_oid_bytes))
+            result = await as_future(ray.ObjectID(result_object_id_bytes))
 
             if isinstance(result, ray.exceptions.RayTaskError):
                 await JSONResponse({

@@ -1,5 +1,4 @@
 from collections import defaultdict, deque
-from typing import Any
 
 import numpy as np
 
@@ -8,13 +7,20 @@ from ray.experimental.serve.utils import get_custom_object_id, logger
 
 
 class Query:
-    def __init__(self, request_body, result_oid=None):
+    def __init__(self, request_body, result_object_id=None):
         self.request_body = request_body
-        self.result_oid = result_oid if result_oid is not None else get_custom_object_id()
+        if result_object_id is None:
+            self.result_object_id = get_custom_object_id()
+        else:
+            self.result_object_id = result_object_id
+
 
 class WorkIntent:
-    def __init__(self, work_oid=None):
-        self.work_oid = work_oid if work_oid is not None else get_custom_object_id()
+    def __init__(self, work_object_id=None):
+        if work_object_id is None:
+            self.work_object_id = get_custom_object_id()
+        else:
+            self.work_object_id = work_object_id
 
 
 class CentralizedQueues:
@@ -66,13 +72,13 @@ class CentralizedQueues:
         query = Query(request_data)
         self.queues[service].append(query)
         self.flush()
-        return query.result_oid.binary()
+        return query.result_object_id.binary()
 
     def consume(self, backend):
         intention = WorkIntent()
         self.workers[backend].append(intention)
         self.flush()
-        return intention.work_oid.binary()
+        return intention.work_object_id.binary()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
@@ -110,7 +116,8 @@ class CentralizedQueues:
                     backend = ready_backends[0]
                     request, work = (queue.popleft(),
                                      self.workers[backend].popleft())
-                    ray.worker.global_worker.put_object(work.work_oid, request)
+                    ray.worker.global_worker.put_object(
+                        work.work_object_id, request)
 
                 # We have more than one backend available.
                 # We will roll a dice among the multiple backends.
@@ -128,7 +135,8 @@ class CentralizedQueues:
                         queue.popleft(),
                         self.workers[chosen_backend].popleft(),
                     )
-                    ray.worker.global_worker.put_object(work.work_oid, request)
+                    ray.worker.global_worker.put_object(
+                        work.work_object_id, request)
 
                 ready_backends = self._get_available_backends(service)
 

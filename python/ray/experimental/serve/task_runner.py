@@ -64,8 +64,8 @@ class RayServeMixin:
         # TODO(simon):
         # __call__ should be able to take multiple *args and **kwargs.
         result = wrap_to_ray_error(self.__call__, work_item.request_body)
-        result_oid = work_item.result_oid
-        ray.worker.global_worker.put_object(result_oid, result)
+        result_object_id = work_item.result_object_id
+        ray.worker.global_worker.put_object(result_object_id, result)
 
         # The worker finished one unit of work.
         # It will now tail recursively schedule the main_loop again.

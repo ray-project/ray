@@ -29,9 +29,9 @@ class RayServeHandle:
         self.endpoint_name = endpoint_name
 
     def remote(self, *args):
-        result_oid_bytes = ray.get(
+        result_object_id_bytes = ray.get(
             self.router_handle.produce.remote(self.endpoint_name, *args))
-        return ray.ObjectID(result_oid_bytes)
+        return ray.ObjectID(result_object_id_bytes)
 
     def get_traffic_policy(self):
         # TODO(simon): This method is implemented via checking global state
@@ -58,5 +58,5 @@ RayServeHandle(
            http_endpoint=self.get_http_endpoint(),
            traffic_policy=self.get_traffic_policy())
 
-    #TODO(simon): a convenience function that dumps equivalent requests 
-    #code for a given call.
+    # TODO(simon): a convenience function that dumps equivalent requests
+    # code for a given call.
