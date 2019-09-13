@@ -446,7 +446,7 @@ class Worker(object):
                 # Should implement zero-copy for PickleBuffer.
                 buffers = [b.raw().tobytes() for b in buffers]
                 value = (meta, buffers)
-                
+
                 self.plasma_client.put(
                     value,
                     object_id=pyarrow.plasma.ObjectID(object_id.binary()),
@@ -547,8 +547,7 @@ class Worker(object):
         elif data:
             # If data is not empty, deserialize the object.
             if USE_NEW_SERIALIZER:
-                r, buffers = pyarrow.deserialize(data,
-                                                 serialization_context)
+                r, buffers = pyarrow.deserialize(data, serialization_context)
                 buffers = [PickleBuffer(b) for b in buffers]
                 return pickle.loads(r, buffers=buffers)
             else:
