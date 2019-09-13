@@ -45,10 +45,10 @@ class RayServeMixin:
     _ray_serve_self_handle = None
     _ray_serve_router_handle = None
     _ray_serve_setup_completed = False
-    _ray_serve_consumer_name = None
+    _ray_serve_dequeue_requestr_name = None
 
     def _ray_serve_setup(self, my_name, _ray_serve_router_handle):
-        self._ray_serve_consumer_name = my_name
+        self._ray_serve_dequeue_requestr_name = my_name
         self._ray_serve_router_handle = _ray_serve_router_handle
         self._ray_serve_setup_completed = True
 
@@ -57,8 +57,8 @@ class RayServeMixin:
         self._ray_serve_self_handle = my_handle
 
         work_token = ray.get(
-            self._ray_serve_router_handle.consume.remote(
-                self._ray_serve_consumer_name))
+            self._ray_serve_router_handle.dequeue_request.remote(
+                self._ray_serve_dequeue_requestr_name))
         work_item = ray.get(ray.ObjectID(work_token))
 
         # TODO(simon):

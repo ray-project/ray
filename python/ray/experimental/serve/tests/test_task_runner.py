@@ -46,7 +46,7 @@ def test_runner_actor(serve_instance):
 
     for query in [333, 444, 555]:
         result_token = ray.ObjectID(
-            ray.get(q.produce.remote(PRODUCER_NAME, query)))
+            ray.get(q.enqueue_request.remote(PRODUCER_NAME, query)))
         assert ray.get(result_token) == query
 
 
@@ -76,5 +76,5 @@ def test_ray_serve_mixin(serve_instance):
 
     for query in [333, 444, 555]:
         result_token = ray.ObjectID(
-            ray.get(q.produce.remote(PRODUCER_NAME, query)))
+            ray.get(q.enqueue_request.remote(PRODUCER_NAME, query)))
         assert ray.get(result_token) == query + 3

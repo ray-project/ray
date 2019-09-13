@@ -29,8 +29,10 @@ class RayServeHandle:
         self.endpoint_name = endpoint_name
 
     def remote(self, *args):
+        # TODO(simon): Support kwargs once #5606 is merged.
         result_object_id_bytes = ray.get(
-            self.router_handle.produce.remote(self.endpoint_name, *args))
+            self.router_handle.enqueue_request.remote(self.endpoint_name,
+                                                      *args))
         return ray.ObjectID(result_object_id_bytes)
 
     def get_traffic_policy(self):

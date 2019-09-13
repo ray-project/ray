@@ -26,26 +26,26 @@ class WorkIntent:
 class CentralizedQueues:
     """A router that routes request to available workers.
 
-    Router aceepts each request from the `produce` method and enqueues it.
-    It also accepts worker request to work (called work_intention in code)
-    from workers via the `consume` method. The traffic policy is used to
-    match requests with their corresponding workers.
+    Router aceepts each request from the `enqueue_request` method and enqueues
+    it. It also accepts worker request to work (called work_intention in code)
+    from workers via the `dequeue_request` method. The traffic policy is used
+    to match requests with their corresponding workers.
 
     Behavior:
         >>> # psuedo-code
         >>> queue = CentralizedQueues()
-        >>> queue.produce('service-name', data)
+        >>> queue.enqueue_request('service-name', data)
         # nothing happens, request is queued.
         # returns result ObjectID, which will contains the final result
-        >>> queue.consume('backend-1')
+        >>> queue.dequeue_request('backend-1')
         # nothing happens, work intention is queued.
         # return work ObjectID, which will contains the future request payload
         >>> queue.link('service-name', 'backend-1')
-        # here the producer is matched with consumer, request data is put into
-        # work ObjectID, and the worker processs the request and store the
-        # result into result ObjectID
+        # here the enqueue_requester is matched with worker, request
+        # data is put into work ObjectID, and the worker processes the request
+        # and store the result into result ObjectID
 
-    Traffic policy splits the traffic among different consumers
+    Traffic policy splits the traffic among different workers
     probabilistically:
 
     1. When all backends are ready to receive traffic, we will randomly
@@ -68,13 +68,13 @@ class CentralizedQueues:
         # backend_name -> worker queue
         self.workers = defaultdict(deque)
 
-    def produce(self, service, request_data):
+    def enqueue_request(self, service, request_data):
         query = Query(request_data)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()
 
-    def consume(self, backend):
+    def dequeue_request(self, backend):
         intention = WorkIntent()
         self.workers[backend].append(intention)
         self.flush()

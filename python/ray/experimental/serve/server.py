@@ -61,7 +61,8 @@ class HTTPProxy:
                table actor. It will be used to populate routing table. It
                should implement `handle.list_service()`
             router_handle (ray.actor.ActorHandle): actor handle to push request
-               to. It should implement `handle.produce.remote(endpoint, body)`
+               to. It should implement
+               `handle.enqueue_request.remote(endpoint, body)`
         """
         assert ray.is_initialized()
 
@@ -95,7 +96,7 @@ class HTTPProxy:
         elif current_path in self.route_table:
             endpoint_name = self.route_table[current_path]
             result_object_id_bytes = await as_future(
-                self.router.produce.remote(endpoint_name, scope))
+                self.router.enqueue_request.remote(endpoint_name, scope))
             result = await as_future(ray.ObjectID(result_object_id_bytes))
 
             if isinstance(result, ray.exceptions.RayTaskError):
