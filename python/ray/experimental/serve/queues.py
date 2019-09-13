@@ -2,7 +2,6 @@ from collections import defaultdict, deque
 from typing import Any
 
 import numpy as np
-from dataclasses import dataclass
 
 import ray
 from ray.experimental.serve.utils import get_custom_object_id, logger

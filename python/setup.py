@@ -68,7 +68,7 @@ extras = {
     ],
     "debug": ["psutil", "setproctitle", "py-spy"],
     "dashboard": ["psutil", "aiohttp"],
-    "serve": ["uvicorn", "dataclasses", "pygments", "werkzeug"],
+    "serve": ["uvicorn", "pygments", "werkzeug"],
 }
 
 
