@@ -4,12 +4,11 @@ from __future__ import print_function
 
 import ray.worker
 from ray import profiling
-import pyarrow
 
 __all__ = ["free", "pin_object_data"]
 
 
-def pin_object_data(obj_id):
+def pin_object_data(object_id):
     """Pin the object data referenced by this object id in memory.
 
     The object data cannot be evicted while there exists a Python reference to
@@ -25,14 +24,13 @@ def pin_object_data(obj_id):
     Note that ray will automatically do this for objects created with
     ray.put() already, unless you ray.put with weakref=True.
     """
+    worker = ray.worker.get_global_worker()
 
-    ray.get(obj_id)
-    obj_id.set_buffer_ref(
-        ray.worker.global_worker.plasma_client.get_buffers(
-            [pyarrow.plasma.ObjectID(obj_id.binary())]))
+    object_id.set_buffer_ref(
+        worker.core_worker.get_objects([object_id], worker.current_task_id))
 
 
-def unpin_object_data(obj_id):
+def unpin_object_data(object_id):
     """Unpin an object pinned by pin_object_id.
 
     Examples:
@@ -41,7 +39,7 @@ def unpin_object_data(obj_id):
         >>> unpin_object_id(x_id)  # as if the pin didn't happen
     """
 
-    obj_id.set_buffer_ref(None)
+    object_id.set_buffer_ref(None)
 
 
 def free(object_ids, local_only=False, delete_creating_tasks=False):
@@ -94,5 +92,5 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         if len(object_ids) == 0:
             return
 
-        worker.raylet_client.free_objects(object_ids, local_only,
-                                          delete_creating_tasks)
+        worker.core_worker.free_objects(object_ids, local_only,
+                                        delete_creating_tasks)

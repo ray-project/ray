@@ -1538,7 +1538,7 @@ def test_free_objects_multi_node(ray_start_cluster):
 
     class RawActor(object):
         def get(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     ActorOnNode0 = ray.remote(resources={"Custom0": 1})(RawActor)
     ActorOnNode1 = ray.remote(resources={"Custom1": 1})(RawActor)
@@ -1585,7 +1585,7 @@ def test_free_objects_multi_node(ray_start_cluster):
     assert len(l1) == 2
     assert len(l2) == 1
     # The deleted object will have the same store with the driver.
-    local_return = ray.worker.global_worker.plasma_client.store_socket_name
+    local_return = ray.worker.global_worker.node.unique_id
     for object_id in l1:
         assert ray.get(object_id) != local_return
 
@@ -1998,16 +1998,16 @@ def test_zero_cpus_actor(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     @ray.remote
     class Foo(object):
         def method(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     # Make sure tasks and actors run on the remote raylet.
     a = Foo.remote()
-    assert ray.get(a.method.remote()) != local_plasma
+    assert ray.get(a.method.remote()) != node_id
 
 
 def test_fractional_resources(shutdown_only):
@@ -2080,32 +2080,32 @@ def test_multiple_raylets(ray_start_cluster):
     # This must be run on the zeroth raylet.
     @ray.remote(num_cpus=11)
     def run_on_0():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first raylet.
     @ray.remote(num_gpus=2)
     def run_on_1():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the second raylet.
     @ray.remote(num_cpus=6, num_gpus=1)
     def run_on_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This can be run anywhere.
     @ray.remote(num_cpus=0, num_gpus=0)
     def run_on_0_1_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first or second raylet.
     @ray.remote(num_gpus=1)
     def run_on_1_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the zeroth or second raylet.
     @ray.remote(num_cpus=8)
     def run_on_0_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     def run_lots_of_tasks():
         names = []
@@ -2196,27 +2196,27 @@ def test_custom_resources(ray_start_cluster):
     @ray.remote
     def f():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def g():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def h():
         ray.get([f.remote() for _ in range(5)])
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     # The f tasks should be scheduled on both raylets.
     assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
     assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] != local_plasma
+    assert list(raylet_ids)[0] != node_id
 
     # Make sure that resource bookkeeping works when a task that uses a
     # custom resources gets blocked.
@@ -2240,38 +2240,38 @@ def test_two_custom_resources(ray_start_cluster):
     @ray.remote(resources={"CustomResource1": 1})
     def f():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
     def g():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource1": 1, "CustomResource2": 3})
     def h():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource1": 4})
     def j():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource3": 1})
     def k():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     # The f and g tasks should be scheduled on both raylets.
     assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
     assert len(set(ray.get([g.remote() for _ in range(50)]))) == 2
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     # The h tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([h.remote() for _ in range(50)]))
     assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] != local_plasma
+    assert list(raylet_ids)[0] != node_id
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
@@ -2473,7 +2473,7 @@ def test_load_balancing(ray_start_cluster):
     @ray.remote
     def f():
         time.sleep(0.01)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
@@ -2491,7 +2491,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     @ray.remote
     def f(x):
         time.sleep(0.010)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
     # this doesn't prevent tasks from being scheduled on other raylets.
@@ -2820,8 +2820,7 @@ def test_wait_reconstruction(shutdown_only):
     x_id = f.remote()
     ray.wait([x_id])
     ray.wait([f.remote()])
-    assert not ray.worker.global_worker.plasma_client.contains(
-        ray.pyarrow.plasma.ObjectID(x_id.binary()))
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 
