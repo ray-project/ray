@@ -61,13 +61,6 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        # Make ourselves a process group session leader to ensure we can clean
-        # up child processes later without killing a process that started us.
-        try:
-            os.setpgrp()
-        except OSError as e:
-            logger.warning("setpgrp failed, processes may not be "
-                           "cleaned up properly: {}.".format(e))
 
         if shutdown_at_exit:
             if connect_only:
@@ -76,17 +69,6 @@ class Node(object):
 
             def clean_up_children(*args, **kwargs):
                 self.kill_all_processes(check_alive=False, allow_graceful=True)
-                signal.signal(signal.SIGTERM, lambda *args: sys.exit(1))
-                try:
-                    # SIGTERM our process group as a last resort in case there
-                    # were processes that we spawned but didn't add to the list
-                    # (could happen if interrupted just after spawning them).
-                    # We could send SIGKILL here to be sure, but we're also
-                    # sending it to ourselves.
-                    os.killpg(0, signal.SIGTERM)
-                except OSError as e:
-                    print("killpg failed, processes may not have "
-                          "been cleaned up properly: {}.".format(e))
 
             atexit.register(clean_up_children)
             signal.signal(signal.SIGTERM, clean_up_children)
