@@ -8,23 +8,14 @@ import ray
 from ray.experimental.serve.utils import get_custom_object_id, logger
 
 
-@dataclass
 class Query:
-    request_body: Any
-    result_oid: ray.ObjectID
+    def __init__(self, request_body, result_oid=None):
+        self.request_body = request_body
+        self.result_oid = result_oid if result_oid is not None else get_custom_object_id()
 
-    @staticmethod
-    def new(req: Any):
-        return Query(request_body=req, result_oid=get_custom_object_id())
-
-
-@dataclass
 class WorkIntent:
-    work_oid: ray.ObjectID
-
-    @staticmethod
-    def new():
-        return WorkIntent(work_oid=get_custom_object_id())
+    def __init__(self, work_oid=None):
+        self.work_oid = work_oid if work_oid is not None else get_custom_object_id()
 
 
 class CentralizedQueues:
@@ -73,13 +64,13 @@ class CentralizedQueues:
         self.workers = defaultdict(deque)
 
     def produce(self, service, request_data):
-        query = Query.new(request_data)
+        query = Query(request_data)
         self.queues[service].append(query)
         self.flush()
         return query.result_oid.binary()
 
     def consume(self, backend):
-        intention = WorkIntent.new()
+        intention = WorkIntent()
         self.workers[backend].append(intention)
         self.flush()
         return intention.work_oid.binary()
