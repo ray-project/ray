@@ -49,7 +49,7 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 }
 
 std::unique_ptr<ActorHandle> CreateActorHelper(
-    CoreWorker &worker, const std::unordered_map<std::string, double> &resources,
+    CoreWorker &worker, std::unordered_map<std::string, double> &resources,
     bool is_direct_call, uint64_t max_reconstructions) {
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -171,22 +171,22 @@ class CoreWorkerTest : public ::testing::Test {
   void TestStoreProvider(StoreProviderType type);
 
   // Test normal tasks.
-  void TestNormalTask(const std::unordered_map<std::string, double> &resources);
+  void TestNormalTask(std::unordered_map<std::string, double> &resources);
 
   // Test actor tasks.
-  void TestActorTask(const std::unordered_map<std::string, double> &resources,
+  void TestActorTask(std::unordered_map<std::string, double> &resources,
                      bool is_direct_call);
 
   // Test actor failure case, verify that the tasks would either succeed or
   // fail with exceptions, in that case the return objects fetched from `Get`
   // contain errors.
-  void TestActorFailure(const std::unordered_map<std::string, double> &resources,
+  void TestActorFailure(std::unordered_map<std::string, double> &resources,
                         bool is_direct_call);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
+  void TestActorReconstruction(std::unordered_map<std::string, double> &resources,
                                bool is_direct_call);
 
  protected:
@@ -216,8 +216,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
   return WaitForCondition(condition_func, timeout_ms);
 }
 
-void CoreWorkerTest::TestNormalTask(
-    const std::unordered_map<std::string, double> &resources) {
+void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -258,8 +257,8 @@ void CoreWorkerTest::TestNormalTask(
   }
 }
 
-void CoreWorkerTest::TestActorTask(
-    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources,
+                                   bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -348,7 +347,7 @@ void CoreWorkerTest::TestActorTask(
 }
 
 void CoreWorkerTest::TestActorReconstruction(
-    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+    std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -405,8 +404,8 @@ void CoreWorkerTest::TestActorReconstruction(
   }
 }
 
-void CoreWorkerTest::TestActorFailure(
-    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &resources,
+                                      bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 

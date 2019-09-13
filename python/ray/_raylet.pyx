@@ -28,7 +28,6 @@ from ray.includes.common cimport (
     CRayStatus,
     CGcsClientOptions,
     CTaskArg,
-    CTaskOptions,
     CRayFunction,
     LocalMemoryBuffer,
     LANGUAGE_CPP,
@@ -49,7 +48,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.libcoreworker cimport CCoreWorker
+from ray.includes.libcoreworker cimport CCoreWorker, CTaskOptions
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError, ObjectStoreFullError
@@ -570,15 +569,19 @@ cdef class CoreWorker:
                     int num_return_vals,
                     resources):
         cdef:
-            shared_ptr[CTaskOptions] task_options = make_shared[CTaskOptions](
-                num_return_vals, resource_map_from_dict(resources))
-            shared_ptr[CRayFunction] ray_function = make_shared[CRayFunction](
-                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            unordered_map[c_string, double] c_resources
+            CTaskOptions task_options
+            CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
             c_string pickled_str
             shared_ptr[CBuffer] arg_data
             shared_ptr[CBuffer] arg_metadata
+
+        c_resources = resource_map_from_dict(resources)
+        task_options = CTaskOptions(num_return_vals, c_resources)
+        ray_function = CRayFunction(
+            LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
 
         for arg in args:
             if isinstance(arg, ObjectID):
@@ -598,8 +601,8 @@ cdef class CoreWorker:
 
         with nogil:
             check_status(self.core_worker.get().Tasks().SubmitTask(
-                ray_function.get()[0], args_vector,
-                task_options.get()[0], &return_ids))
+                ray_function, args_vector,
+                task_options, &return_ids))
 
         return VectorToObjectIDs(return_ids)
 

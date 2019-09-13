@@ -152,6 +152,7 @@ cdef extern from "ray/common/ray_object.h" nogil:
 
 cdef extern from "ray/core_worker/common.h" nogil:
     cdef cppclass CRayFunction "ray::RayFunction":
+        CRayFunction()
         CRayFunction(CLanguage language,
                      const c_vector[c_string] function_descriptor)
 
@@ -162,9 +163,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
+cdef extern from "ray/core_worker/task_interface.h" nogil:
     cdef cppclass CTaskOptions "ray::TaskOptions":
+        CTaskOptions()
         CTaskOptions(int num_returns,
-                     const unordered_map[c_string, double] &resources)
+                     unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions(uint64_t max_reconstructions,

@@ -15,12 +15,13 @@ using WorkerType = rpc::WorkerType;
 /// Information about a remote function.
 class RayFunction {
  public:
-  RayFunction(const Language language, const std::vector<std::string> function_descriptor)
+  RayFunction() {}
+  RayFunction(Language language, std::vector<std::string> function_descriptor)
       : language_(language), function_descriptor_(function_descriptor) {}
   /// Language of the remote function.
-  const Language language_;
+  Language language_;
   /// Function descriptor of the remote function.
-  const std::vector<std::string> function_descriptor_;
+  std::vector<std::string> function_descriptor_;
 };
 
 /// Argument of a task.
