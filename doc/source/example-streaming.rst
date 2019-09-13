@@ -7,7 +7,7 @@ computes word counts on wikipedia articles.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/streaming
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/streaming
 
 To run the example, you need to install the dependencies
 
@@ -20,7 +20,7 @@ and then execute the script as follows:
 
 .. code-block:: bash
 
-  python ray/examples/streaming/streaming.py
+  python ray/doc/examples/streaming/streaming.py
 
 For each round of articles read, the script will output
 the top 10 words in these articles together with their word count:

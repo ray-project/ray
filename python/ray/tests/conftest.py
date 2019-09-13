@@ -9,7 +9,6 @@ import subprocess
 
 import ray
 from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import run_and_get_output
 
 
 @pytest.fixture
@@ -39,7 +38,7 @@ def get_default_fixture_ray_kwargs():
     internal_config = get_default_fixure_internal_config()
     ray_kwargs = {
         "num_cpus": 1,
-        "object_store_memory": 10**8,
+        "object_store_memory": 150 * 1024 * 1024,
         "_internal_config": internal_config,
     }
     return ray_kwargs
@@ -106,7 +105,7 @@ def _ray_start_cluster(**kwargs):
     for _ in range(num_nodes):
         remote_nodes.append(cluster.add_node(**init_kwargs))
     if do_init:
-        ray.init(redis_address=cluster.redis_address)
+        ray.init(address=cluster.address)
     yield cluster
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -155,20 +154,21 @@ def ray_start_object_store_memory(request):
 def call_ray_start(request):
     parameter = getattr(request, "param", "ray start --head --num-cpus=1")
     command_args = parameter.split(" ")
-    out = run_and_get_output(command_args)
+    out = ray.utils.decode(
+        subprocess.check_output(command_args, stderr=subprocess.STDOUT))
     # Get the redis address from the output.
     redis_substring_prefix = "redis_address=\""
-    redis_address_location = (
+    address_location = (
         out.find(redis_substring_prefix) + len(redis_substring_prefix))
-    redis_address = out[redis_address_location:]
-    redis_address = redis_address.split("\"")[0]
+    address = out[address_location:]
+    address = address.split("\"")[0]
 
-    yield redis_address
+    yield address
 
     # Disconnect from the Ray cluster.
     ray.shutdown()
     # Kill the Ray cluster.
-    subprocess.Popen(["ray", "stop"]).wait()
+    subprocess.check_output(["ray", "stop"])
 
 
 @pytest.fixture()
@@ -182,7 +182,7 @@ def two_node_cluster():
     for _ in range(2):
         remote_node = cluster.add_node(
             num_cpus=1, _internal_config=internal_config)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
     yield cluster, remote_node
 
     # The code after the yield will run as teardown code.

@@ -2,11 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import copy
-import fnmatch
 import logging
-import os
 import threading
 import time
 from collections import defaultdict
@@ -29,6 +26,7 @@ except ImportError:
 
 _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
+START_OF_TIME = time.time()
 
 
 class UtilMonitor(Thread):
@@ -43,10 +41,10 @@ class UtilMonitor(Thread):
 
     def __init__(self, start=True, delay=0.7):
         self.stopped = True
-        if GPUtil is None:
+        if GPUtil is None and start:
             logger.warning("Install gputil for GPU system monitoring.")
 
-        if psutil is None:
+        if psutil is None and start:
             logger.warning("Install psutil to monitor system performance.")
 
         if GPUtil is None and psutil is None:
@@ -100,27 +98,17 @@ class UtilMonitor(Thread):
 
 
 def pin_in_object_store(obj):
-    """Pin an object in the object store.
+    """Deprecated, use ray.put(value, weakref=False) instead."""
 
-    It will be available as long as the pinning process is alive. The pinned
-    object can be retrieved by calling get_pinned_object on the identifier
-    returned by this call.
-    """
-
-    obj_id = ray.put(_to_pinnable(obj))
-    _pinned_objects.append(ray.get(obj_id))
-    return "{}{}".format(PINNED_OBJECT_PREFIX,
-                         base64.b64encode(obj_id.binary()).decode("utf-8"))
+    obj_id = ray.put(obj, weakref=False)
+    _pinned_objects.append(obj_id)
+    return obj_id
 
 
 def get_pinned_object(pinned_id):
-    """Retrieve a pinned object from the object store."""
+    """Deprecated."""
 
-    from ray import ObjectID
-
-    return _from_pinnable(
-        ray.get(
-            ObjectID(base64.b64decode(pinned_id[len(PINNED_OBJECT_PREFIX):]))))
+    return ray.get(pinned_id)
 
 
 class warn_if_slow(object):
@@ -139,7 +127,7 @@ class warn_if_slow(object):
 
     def __exit__(self, type, value, traceback):
         now = time.time()
-        if now - self.start > 0.1:
+        if now - self.start > 0.5 and now - START_OF_TIME > 60.0:
             logger.warning("The `{}` operation took {} seconds to complete, ".
                            format(self.name, now - self.start) +
                            "which may be a performance bottleneck.")
@@ -180,14 +168,15 @@ def deep_update(original, new_dict, new_keys_allowed, whitelist):
     return original
 
 
-def flatten_dict(dt):
+def flatten_dict(dt, delimiter="/"):
+    dt = copy.deepcopy(dt)
     while any(isinstance(v, dict) for v in dt.values()):
         remove = []
         add = {}
         for key, value in dt.items():
             if isinstance(value, dict):
                 for subkey, v in value.items():
-                    add[":".join([key, subkey])] = v
+                    add[delimiter.join([key, subkey])] = v
                 remove.append(key)
         dt.update(add)
         for k in remove:
@@ -209,18 +198,6 @@ def _from_pinnable(obj):
     """Retrieve from _to_pinnable format."""
 
     return obj[0]
-
-
-def recursive_fnmatch(dirpath, pattern):
-    """Looks at a file directory subtree for a filename pattern.
-
-    Similar to glob.glob(..., recursive=True) but also supports 2.7
-    """
-    matches = []
-    for root, dirnames, filenames in os.walk(dirpath):
-        for filename in fnmatch.filter(filenames, pattern):
-            matches.append(os.path.join(root, filename))
-    return matches
 
 
 def validate_save_restore(trainable_cls, config=None, use_object_store=False):

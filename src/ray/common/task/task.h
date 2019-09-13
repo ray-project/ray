@@ -72,7 +72,7 @@ class Task {
   /// dependencies, etc.
   TaskSpecification task_spec_;
   /// Task execution specification, consisting of all dynamic/mutable
-  /// information about this task determined at execution time..
+  /// information about this task determined at execution time.
   TaskExecutionSpecification task_execution_spec_;
   /// A cached copy of the task's object dependencies, including arguments from
   /// the TaskSpecification and execution dependencies from the

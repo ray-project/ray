@@ -44,7 +44,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                int redis_port, const std::string &redis_password,
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
-               std::shared_ptr<gcs::AsyncGcsClient> gcs_client)
+               std::shared_ptr<gcs::RedisGcsClient> gcs_client)
     : gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
       object_manager_(main_service, object_manager_config, object_directory_),
@@ -78,22 +78,20 @@ ray::Status Raylet::RegisterGcs(const std::string &node_ip_address,
                                 const std::string &redis_password,
                                 boost::asio::io_service &io_service,
                                 const NodeManagerConfig &node_manager_config) {
-  RAY_RETURN_NOT_OK(gcs_client_->Attach(io_service));
-
-  ClientTableData client_info = gcs_client_->client_table().GetLocalClient();
-  client_info.set_node_manager_address(node_ip_address);
-  client_info.set_raylet_socket_name(raylet_socket_name);
-  client_info.set_object_store_socket_name(object_store_socket_name);
-  client_info.set_object_manager_port(object_manager_.GetServerPort());
-  client_info.set_node_manager_port(node_manager_.GetServerPort());
+  GcsNodeInfo node_info = gcs_client_->client_table().GetLocalClient();
+  node_info.set_node_manager_address(node_ip_address);
+  node_info.set_raylet_socket_name(raylet_socket_name);
+  node_info.set_object_store_socket_name(object_store_socket_name);
+  node_info.set_object_manager_port(object_manager_.GetServerPort());
+  node_info.set_node_manager_port(node_manager_.GetServerPort());
 
   RAY_LOG(DEBUG) << "Node manager " << gcs_client_->client_table().GetLocalClientId()
-                 << " started on " << client_info.node_manager_address() << ":"
-                 << client_info.node_manager_port() << " object manager at "
-                 << client_info.node_manager_address() << ":"
-                 << client_info.object_manager_port();
+                 << " started on " << node_info.node_manager_address() << ":"
+                 << node_info.node_manager_port() << " object manager at "
+                 << node_info.node_manager_address() << ":"
+                 << node_info.object_manager_port();
   ;
-  RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(client_info));
+  RAY_RETURN_NOT_OK(gcs_client_->client_table().Connect(node_info));
 
   // Add resource information.
   std::unordered_map<std::string, std::shared_ptr<gcs::ResourceTableData>> resources;

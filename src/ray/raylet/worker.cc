@@ -10,10 +10,11 @@ namespace ray {
 namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
-Worker::Worker(pid_t pid, const Language &language, int port,
+Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
                std::shared_ptr<LocalClientConnection> connection,
                rpc::ClientCallManager &client_call_manager)
-    : pid_(pid),
+    : worker_id_(worker_id),
+      pid_(pid),
       language_(language),
       port_(port),
       connection_(connection),
@@ -35,6 +36,8 @@ void Worker::MarkBlocked() { blocked_ = true; }
 void Worker::MarkUnblocked() { blocked_ = false; }
 
 bool Worker::IsBlocked() const { return blocked_; }
+
+WorkerID Worker::WorkerId() const { return worker_id_; }
 
 pid_t Worker::Pid() const { return pid_; }
 
@@ -125,13 +128,23 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
         task.GetTaskExecutionSpec().GetMessage());
     request.set_resource_ids(resource_id_set.Serialize());
 
-    auto status = rpc_client_->AssignTask(
-        request, [](Status status, const rpc::AssignTaskReply &reply) {
-          // Worker has finished this task. There's nothing to do here
-          // and assigning new task will be done when raylet receives
-          // `TaskDone` message.
-        });
+    auto status = rpc_client_->AssignTask(request, [](Status status,
+                                                      const rpc::AssignTaskReply &reply) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Worker failed to finish executing task: " << status.ToString();
+      }
+      // Worker has finished this task. There's nothing to do here
+      // and assigning new task will be done when raylet receives
+      // `TaskDone` message.
+    });
     finish_assign_callback(status);
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
+                     << " to worker " << worker_id_;
+    } else {
+      RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
+                     << " to worker " << worker_id_;
+    }
   } else {
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.

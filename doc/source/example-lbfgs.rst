@@ -11,13 +11,13 @@ application, first install these dependencies.
 
 You can view the `code for this example`_.
 
-.. _`code for this example`: https://github.com/ray-project/ray/tree/master/examples/lbfgs
+.. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/lbfgs
 
 Then you can run the example as follows.
 
 .. code-block:: bash
 
-  python ray/examples/lbfgs/driver.py
+  python ray/doc/examples/lbfgs/driver.py
 
 
 Optimization is at the heart of many machine learning algorithms. Much of

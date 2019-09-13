@@ -12,6 +12,7 @@ import json
 import logging
 import numpy as np
 import os
+import redis
 import signal
 from six.moves import queue
 import sys
@@ -40,7 +41,6 @@ import ray.state
 from ray import (
     ActorHandleID,
     ActorID,
-    ClientID,
     WorkerID,
     JobID,
     ObjectID,
@@ -200,7 +200,7 @@ class Worker(object):
                 # to the current task ID may not be correct. Generate a
                 # random task ID so that the backend can differentiate
                 # between different threads.
-                self._task_context.current_task_id = TaskID.from_random()
+                self._task_context.current_task_id = TaskID.for_fake_task()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -362,10 +362,14 @@ class Worker(object):
                         logger.warning(warning_message)
 
     def put_object(self, object_id, value):
-        """Put value in the local object store with object id objectid.
+        """Put value in the local object store with object id `objectid`.
 
-        This assumes that the value for objectid has not yet been placed in the
-        local object store.
+        This assumes that the value for `objectid` has not yet been placed in
+        the local object store. If the plasma store is full, the worker will
+        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
+        retry will delay for an exponentially doubling amount of time,
+        starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
+        will be raised.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
@@ -373,10 +377,9 @@ class Worker(object):
             value: The value to put in the object store.
 
         Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
+            plasma.PlasmaStoreFull: This is raised if the attempt to store the
+                object fails because the object store is full even after
+                multiple retries.
         """
         # Make sure that the value is not an object ID.
         if isinstance(value, ObjectID):
@@ -387,27 +390,55 @@ class Worker(object):
                 "do this, you can wrap the ray.ObjectID in a list and "
                 "call 'put' on it (or return it).")
 
-        # Serialize and put the object in the object store.
+        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
+        for attempt in reversed(
+                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
+            try:
+                self._try_store_and_register(object_id, value)
+                break
+            except pyarrow.plasma.PlasmaStoreFull as plasma_exc:
+                if attempt:
+                    logger.warning("Waiting {} seconds for space to free up "
+                                   "in the object store.".format(delay))
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    self.dump_object_store_memory_usage()
+                    raise plasma_exc
+
+    def dump_object_store_memory_usage(self):
+        """Prints object store debug string to stdout."""
+        msg = "\n" + self.plasma_client.debug_string()
+        msg = msg.replace("\n", "\nplasma: ")
+        logger.warning("Local object store memory usage:\n{}\n".format(msg))
+
+    def _try_store_and_register(self, object_id, value):
+        """Wraps `store_and_register` with cases for existence and pickling.
+
+        Args:
+            object_id (object_id.ObjectID): The object ID of the value to be
+                put.
+            value: The value to put in the object store.
+        """
         try:
             self.store_and_register(object_id, value)
-        except pyarrow.PlasmaObjectExists:
+        except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare the hashes
+            # need to add it again. TODO(rkn): We need to compare hashes
             # and make sure that the objects are in fact the same. We also
-            # should return an error code to the caller instead of printing a
+            # should return an error code to caller instead of printing a
             # message.
-            logger.info(
-                "The object with ID {} already exists in the object store.".
-                format(object_id))
+            logger.info("The object with ID {} already exists "
+                        "in the object store.".format(object_id))
         except TypeError:
-            # This error can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need these extra
-            # fallbacks here to start from the beginning. Hopefully the object
-            # could have a `__reduce__` method.
+            # TypeError can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need
+            # these extra fallbacks here to start from the beginning.
+            # Hopefully the object could have a `__reduce__` method.
             register_custom_serializer(type(value), use_pickle=True)
-            warning_message = (
-                "WARNING: Serializing the class {} failed, "
-                "so are are falling back to cloudpickle.".format(type(value)))
+            warning_message = ("WARNING: Serializing the class {} failed, "
+                               "falling back to cloudpickle.".format(
+                                   type(value)))
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
@@ -586,8 +617,8 @@ class Worker(object):
                     actor_counter=0,
                     actor_creation_id=None,
                     actor_creation_dummy_object_id=None,
+                    previous_actor_task_dummy_object_id=None,
                     max_actor_reconstructions=0,
-                    execution_dependencies=None,
                     new_actor_handles=None,
                     num_return_vals=None,
                     resources=None,
@@ -611,7 +642,9 @@ class Worker(object):
             actor_creation_dummy_object_id: If this task is an actor method,
                 then this argument is the dummy object ID associated with the
                 actor creation task for the corresponding actor.
-            execution_dependencies: The execution dependencies for this task.
+            previous_actor_task_dummy_object_id: If this task is an actor,
+                then this argument is the dummy object ID associated with the
+                task previously submitted to the corresponding actor.
             num_return_vals: The number of return values this function should
                 have.
             resources: The resource requirements for this task.
@@ -651,10 +684,6 @@ class Worker(object):
                     args_for_raylet.append(arg)
                 else:
                     args_for_raylet.append(put(arg))
-
-            # By default, there are no execution dependencies.
-            if execution_dependencies is None:
-                execution_dependencies = []
 
             if new_actor_handles is None:
                 new_actor_handles = []
@@ -696,7 +725,24 @@ class Worker(object):
             function_descriptor_list = (
                 function_descriptor.get_function_descriptor_list())
             assert isinstance(job_id, JobID)
+
+            if actor_creation_id is not None and not actor_creation_id.is_nil(
+            ):
+                # This is an actor creation task.
+                task_id = TaskID.for_actor_creation_task(actor_creation_id)
+            elif actor_id is not None and not actor_id.is_nil():
+                # This is an actor task.
+                task_id = TaskID.for_actor_task(
+                    self.current_job_id, self.current_task_id,
+                    self.task_context.task_index, actor_id)
+            else:
+                # This is a normal task.
+                task_id = TaskID.for_normal_task(self.current_job_id,
+                                                 self.current_task_id,
+                                                 self.task_context.task_index)
+
             task = ray._raylet.TaskSpec(
+                task_id,
                 job_id,
                 function_descriptor_list,
                 args_for_raylet,
@@ -705,6 +751,7 @@ class Worker(object):
                 self.task_context.task_index,
                 actor_creation_id,
                 actor_creation_dummy_object_id,
+                previous_actor_task_dummy_object_id,
                 max_actor_reconstructions,
                 actor_id,
                 actor_handle_id,
@@ -713,7 +760,7 @@ class Worker(object):
                 resources,
                 placement_resources,
             )
-            self.raylet_client.submit_task(task, execution_dependencies)
+            self.raylet_client.submit_task(task)
 
             return task.returns()
 
@@ -896,7 +943,7 @@ class Worker(object):
         try:
             if function_name != "__ray_terminate__":
                 self.reraise_actor_init_error()
-            self.memory_monitor.raise_if_low_memory()
+                self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments"):
                 arguments = self._get_arguments_for_execution(
                     function_name, args)
@@ -917,6 +964,20 @@ class Worker(object):
                         key = task.actor_id()
                     else:
                         key = task.actor_creation_id()
+                    worker_name = "ray_{}_{}".format(
+                        self.actors[key].__class__.__name__, os.getpid())
+                    if "memory" in task.required_resources():
+                        self.memory_monitor.set_heap_limit(
+                            worker_name,
+                            ray_constants.from_memory_units(
+                                task.required_resources()["memory"]))
+                    if "object_store_memory" in task.required_resources():
+                        self._set_plasma_client_options(
+                            worker_name,
+                            int(
+                                ray_constants.from_memory_units(
+                                    task.required_resources()[
+                                        "object_store_memory"])))
                     outputs = function_executor(dummy_return_id,
                                                 self.actors[key], *arguments)
         except Exception as e:
@@ -945,6 +1006,21 @@ class Worker(object):
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
                 ray.utils.format_error_message(traceback.format_exc()))
+
+    def _set_plasma_client_options(self, client_name, object_store_memory):
+        try:
+            logger.debug("Setting plasma memory limit to {} for {}".format(
+                object_store_memory, client_name))
+            self.plasma_client.set_client_options(client_name,
+                                                  object_store_memory)
+        except pyarrow._plasma.PlasmaStoreFull:
+            self.dump_object_store_memory_usage()
+            raise memory_monitor.RayOutOfMemoryError(
+                "Failed to set object_store_memory={} for {}. The "
+                "plasma store may have insufficient memory remaining "
+                "to satisfy this limit (30% of object store memory is "
+                "permanently reserved for shared usage).".format(
+                    object_store_memory, client_name))
 
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
@@ -1010,6 +1086,7 @@ class Worker(object):
             title = "ray_{}:{}()".format(actor.__class__.__name__,
                                          function_name)
             next_title = "ray_{}".format(actor.__class__.__name__)
+
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
                 self._process_task(task, execution_info)
@@ -1221,11 +1298,14 @@ def _initialize_serialization(job_id, worker=global_worker):
         class_id="ray.signature.FunctionSignature")
 
 
-def init(redis_address=None,
+def init(address=None,
+         redis_address=None,
          num_cpus=None,
          num_gpus=None,
-         resources=None,
+         memory=None,
          object_store_memory=None,
+         resources=None,
+         driver_object_store_memory=None,
          redis_max_memory=None,
          log_to_driver=True,
          node_ip_address=None,
@@ -1266,27 +1346,31 @@ def init(redis_address=None,
 
     .. code-block:: python
 
-        ray.init(redis_address="123.45.67.89:6379")
+        ray.init(address="123.45.67.89:6379")
 
     Args:
-        redis_address (str): The address of the Redis server to connect to. If
+        address (str): The address of the Ray cluster to connect to. If
             this address is not provided, then this command will start Redis, a
             raylet, a plasma store, a plasma manager, and some workers.
             It will also kill these processes when Python exits.
+        redis_address (str): Deprecated; same as address.
         num_cpus (int): Number of cpus the user wishes all raylets to
             be configured with.
         num_gpus (int): Number of gpus the user wishes all raylets to
             be configured with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        memory: The amount of memory (in bytes) that is available for use by
+            workers requesting memory resources. By default, this is autoset
+            based on available system memory.
         object_store_memory: The amount of memory (in bytes) to start the
-            object store with. By default, this is capped at 20GB but can be
-            set higher.
+            object store with. By default, this is autoset based on available
+            system memory, subject to a 20GB cap.
         redis_max_memory: The max amount of memory (in bytes) to allow each
             redis shard to use. Once the limit is exceeded, redis will start
             LRU eviction of entries. This only applies to the sharded redis
-            tables (task, object, and profile tables). By default, this is
-            capped at 10GB but can be set higher.
+            tables (task, object, and profile tables).  By default, this is
+            autoset based on available system memory, subject to a 10GB cap.
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         node_ip_address (str): The IP address of the node that we are on.
@@ -1297,6 +1381,9 @@ def init(redis_address=None,
             drivers.
         local_mode (bool): True if the code should be executed serially
             without Ray. This is useful for debugging.
+        driver_object_store_memory (int): Limit the amount of memory the driver
+            can use in the object store for creating objects. By default, this
+            is autoset based on available system memory, subject to a 20GB cap.
         ignore_reinit_error: True if we should suppress errors from calling
             ray.init() a second time.
         num_redis_shards: The number of Redis shards to start in addition to
@@ -1335,6 +1422,14 @@ def init(redis_address=None,
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+
+    if address:
+        if redis_address:
+            raise ValueError(
+                "You should specify address instead of redis_address.")
+        if address == "auto":
+            address = services.find_redis_address_or_die()
+        redis_address = address
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1390,6 +1485,7 @@ def init(redis_address=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
+            memory=memory,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,
             plasma_store_socket_name=plasma_store_socket_name,
@@ -1417,6 +1513,9 @@ def init(redis_address=None,
         if redis_max_clients is not None:
             raise Exception("When connecting to an existing cluster, "
                             "redis_max_clients must not be provided.")
+        if memory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "memory must not be provided.")
         if object_store_memory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "object_store_memory must not be provided.")
@@ -1458,6 +1557,7 @@ def init(redis_address=None,
         mode=driver_mode,
         log_to_driver=log_to_driver,
         worker=global_worker,
+        driver_object_store_memory=driver_object_store_memory,
         job_id=job_id)
 
     for hook in _post_init_hooks:
@@ -1521,8 +1621,12 @@ def custom_excepthook(type, value, tb):
     # If this is a driver, push the exception to redis.
     if global_worker.mode == SCRIPT_MODE:
         error_message = "".join(traceback.format_tb(tb))
-        global_worker.redis_client.hmset(b"Drivers:" + global_worker.worker_id,
-                                         {"exception": error_message})
+        try:
+            global_worker.redis_client.hmset(
+                b"Drivers:" + global_worker.worker_id,
+                {"exception": error_message})
+        except (ConnectionRefusedError, redis.exceptions.ConnectionError):
+            logger.warning("Could not push exception to redis.")
     # Call the normal excepthook.
     normal_excepthook(type, value, tb)
 
@@ -1567,15 +1671,22 @@ def print_logs(redis_client, threads_stopped):
             num_consecutive_messages_received += 1
 
             data = json.loads(ray.utils.decode(msg["data"]))
+
+            def color_for(data):
+                if data["pid"] == "raylet":
+                    return colorama.Fore.YELLOW
+                else:
+                    return colorama.Fore.CYAN
+
             if data["ip"] == localhost:
                 for line in data["lines"]:
                     print("{}{}(pid={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.DIM, color_for(data), data["pid"],
                         colorama.Style.RESET_ALL, line))
             else:
                 for line in data["lines"]:
                     print("{}{}(pid={}, ip={}){} {}".format(
-                        colorama.Style.DIM, colorama.Fore.CYAN, data["pid"],
+                        colorama.Style.DIM, color_for(data), data["pid"],
                         data["ip"], colorama.Style.RESET_ALL, line))
 
             if (num_consecutive_messages_received % 100 == 0
@@ -1584,6 +1695,8 @@ def print_logs(redis_client, threads_stopped):
                     "The driver may not be able to keep up with the "
                     "stdout/stderr of the workers. To avoid forwarding logs "
                     "to the driver, use 'ray.init(log_to_driver=False)'.")
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("print_logs: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         pubsub_client.close()
@@ -1651,8 +1764,8 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
     # worker.error_message_pubsub_client.psubscribe("*")
 
     try:
-        # Get the exports that occurred before the call to subscribe.
-        error_messages = ray.errors(include_cluster_errors=False)
+        # Get the errors that occurred before the call to subscribe.
+        error_messages = ray.errors()
         for error_message in error_messages:
             logger.error(error_message)
 
@@ -1681,7 +1794,9 @@ def listen_error_messages_raylet(worker, task_error_queue, threads_stopped):
                 # Delay it a bit to see if we can suppress it
                 task_error_queue.put((error_message, time.time()))
             else:
-                logger.error(error_message)
+                logger.warning(error_message)
+    except (OSError, redis.exceptions.ConnectionError) as e:
+        logger.error("listen_error_messages_raylet: {}".format(e))
     finally:
         # Close the pubsub client to avoid leaking file descriptors.
         worker.error_message_pubsub_client.close()
@@ -1700,6 +1815,7 @@ def connect(node,
             mode=WORKER_MODE,
             log_to_driver=False,
             worker=global_worker,
+            driver_object_store_memory=None,
             job_id=None):
     """Connect this worker to the raylet, to Plasma, and to Redis.
 
@@ -1710,6 +1826,8 @@ def connect(node,
         log_to_driver (bool): If true, then output from all of the worker
             processes on all nodes will be directed to the driver.
         worker: The ray.Worker instance.
+        driver_object_store_memory: Limit the amount of memory the driver can
+            use in the object store when creating objects.
         job_id: The ID of job. If it's None, then we will generate one.
     """
     # Do some basic checking to make sure we didn't call ray.init twice.
@@ -1853,6 +1971,10 @@ def connect(node,
     worker.plasma_client = thread_safe_client(
         plasma.connect(node.plasma_store_socket_name, None, 0, 300))
 
+    if driver_object_store_memory is not None:
+        worker._set_plasma_client_options("ray_driver_{}".format(os.getpid()),
+                                          driver_object_store_memory)
+
     # If this is a driver, set the current task ID, the task driver ID, and set
     # the task index to 0.
     if mode == SCRIPT_MODE:
@@ -1879,6 +2001,7 @@ def connect(node,
 
         function_descriptor = FunctionDescriptor.for_driver_task()
         driver_task_spec = ray._raylet.TaskSpec(
+            TaskID.for_driver_task(worker.current_job_id),
             worker.current_job_id,
             function_descriptor.get_function_descriptor_list(),
             [],  # arguments.
@@ -1887,6 +2010,7 @@ def connect(node,
             0,  # parent_counter.
             ActorID.nil(),  # actor_creation_id.
             ObjectID.nil(),  # actor_creation_dummy_object_id.
+            ObjectID.nil(),  # previous_actor_task_dummy_object_id.
             0,  # max_actor_reconstructions.
             ActorID.nil(),  # actor_id.
             ActorHandleID.nil(),  # actor_handle_id.
@@ -1914,7 +2038,7 @@ def connect(node,
 
     worker.raylet_client = ray._raylet.RayletClient(
         node.raylet_socket_name,
-        ClientID(worker.worker_id),
+        WorkerID(worker.worker_id),
         (mode == WORKER_MODE),
         worker.current_job_id,
     )
@@ -2211,6 +2335,8 @@ def get(object_ids):
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
+                if isinstance(value, ray.exceptions.UnreconstructableError):
+                    worker.dump_object_store_memory_usage()
                 raise value
 
         # Run post processors.
@@ -2222,11 +2348,18 @@ def get(object_ids):
         return values
 
 
-def put(value):
+def put(value, weakref=False):
     """Store an object in the object store.
+
+    The object may not be evicted while a reference to the returned ID exists.
+    Note that this pinning only applies to the particular object ID returned
+    by put, not object IDs in general.
 
     Args:
         value: The Python object to be stored.
+        weakref: If set, allows the object to be evicted while a reference
+            to the returned ID exists. You might want to set this if putting
+            a lot of objects that you might not need in the future.
 
     Returns:
         The object ID assigned to this value.
@@ -2241,8 +2374,23 @@ def put(value):
                 worker.current_task_id,
                 worker.task_context.put_index,
             )
-            worker.put_object(object_id, value)
+            try:
+                worker.put_object(object_id, value)
+            except pyarrow.plasma.PlasmaStoreFull:
+                logger.info(
+                    "Put failed since the value was either too large or the "
+                    "store was full of pinned objects. If you are putting "
+                    "and holding references to a lot of object ids, consider "
+                    "ray.put(value, weakref=True) to allow object data to "
+                    "be evicted early.")
+                raise
         worker.task_context.put_index += 1
+        # Pin the object buffer with the returned id. This avoids put returns
+        # from getting evicted out from under the id.
+        if not weakref and not worker.mode == LOCAL_MODE:
+            object_id.set_buffer_ref(
+                worker.plasma_client.get_buffers(
+                    [pyarrow.plasma.ObjectID(object_id.binary())]))
         return object_id
 
 
@@ -2359,6 +2507,8 @@ def get_global_worker():
 def make_decorator(num_return_vals=None,
                    num_cpus=None,
                    num_gpus=None,
+                   memory=None,
+                   object_store_memory=None,
                    resources=None,
                    max_calls=None,
                    max_reconstructions=None,
@@ -2372,8 +2522,8 @@ def make_decorator(num_return_vals=None,
                                 "allowed for remote functions.")
 
             return ray.remote_function.RemoteFunction(
-                function_or_class, num_cpus, num_gpus, resources,
-                num_return_vals, max_calls)
+                function_or_class, num_cpus, num_gpus, memory,
+                object_store_memory, resources, num_return_vals, max_calls)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -2384,7 +2534,8 @@ def make_decorator(num_return_vals=None,
                                 "actors.")
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
-                                     resources, max_reconstructions)
+                                     memory, object_store_memory, resources,
+                                     max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2456,15 +2607,21 @@ def remote(*args, **kwargs):
                     "with no arguments and no parentheses, for example "
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
-                    "'resources', 'max_calls', "
-                    "or 'max_reconstructions', like "
+                    "'memory', 'object_store_memory', 'resources', "
+                    "'max_calls', or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
     assert len(args) == 0 and len(kwargs) > 0, error_string
     for key in kwargs:
         assert key in [
-            "num_return_vals", "num_cpus", "num_gpus", "resources",
-            "max_calls", "max_reconstructions"
+            "num_return_vals",
+            "num_cpus",
+            "num_gpus",
+            "memory",
+            "object_store_memory",
+            "resources",
+            "max_calls",
+            "max_reconstructions",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -2482,11 +2639,15 @@ def remote(*args, **kwargs):
     num_return_vals = kwargs.get("num_return_vals")
     max_calls = kwargs.get("max_calls")
     max_reconstructions = kwargs.get("max_reconstructions")
+    memory = kwargs.get("memory")
+    object_store_memory = kwargs.get("object_store_memory")
 
     return make_decorator(
         num_return_vals=num_return_vals,
         num_cpus=num_cpus,
         num_gpus=num_gpus,
+        memory=memory,
+        object_store_memory=object_store_memory,
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,

@@ -94,7 +94,6 @@ table Task {
 }
 
 table SubmitTaskRequest {
-  execution_dependencies: [string];
   task_spec: string;
 }
 

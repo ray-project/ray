@@ -12,6 +12,8 @@ from ray.includes.task cimport (
     TaskSpecBuilder,
     TaskTableData,
 )
+from ray.ray_constants import RAW_BUFFER_METADATA
+from ray.utils import decode
 
 
 cdef class TaskSpec:
@@ -19,10 +21,12 @@ cdef class TaskSpec:
     cdef:
         unique_ptr[CTaskSpec] task_spec
 
-    def __init__(self, JobID job_id, function_descriptor, arguments,
+    def __init__(self, TaskID task_id, JobID job_id, function_descriptor,
+                 arguments,
                  int num_returns, TaskID parent_task_id, int parent_counter,
                  ActorID actor_creation_id,
                  ObjectID actor_creation_dummy_object_id,
+                 ObjectID previous_actor_task_dummy_object_id,
                  int32_t max_actor_reconstructions, ActorID actor_id,
                  ActorHandleID actor_handle_id, int actor_counter,
                  new_actor_handles, resource_map, placement_resource_map):
@@ -50,6 +54,7 @@ cdef class TaskSpec:
 
         # Build common task spec.
         builder.SetCommonTaskSpec(
+            task_id.native(),
             LANGUAGE_PYTHON,
             c_function_descriptor,
             job_id.native(),
@@ -64,10 +69,12 @@ cdef class TaskSpec:
         for arg in arguments:
             if isinstance(arg, ObjectID):
                 builder.AddByRefArg((<ObjectID>arg).native())
+            elif isinstance(arg, bytes):
+                builder.AddByValueArg(arg, RAW_BUFFER_METADATA)
             else:
                 pickled_str = pickle.dumps(
                     arg, protocol=pickle.HIGHEST_PROTOCOL)
-                builder.AddByValueArg(pickled_str)
+                builder.AddByValueArg(pickled_str, b'')
 
         if not actor_creation_id.is_nil():
             # Actor creation task.
@@ -75,6 +82,7 @@ cdef class TaskSpec:
                 actor_creation_id.native(),
                 max_actor_reconstructions,
                 [],
+                False,
             )
         elif not actor_id.is_nil():
             # Actor task.
@@ -85,6 +93,7 @@ cdef class TaskSpec:
                 actor_id.native(),
                 actor_handle_id.native(),
                 actor_creation_dummy_object_id.native(),
+                previous_actor_task_dummy_object_id.native(),
                 actor_counter,
                 c_new_actor_handles,
             )
@@ -175,9 +184,12 @@ cdef class TaskSpec:
                     arg_list.append(
                         ObjectID(task_spec.ArgId(i, 0).Binary()))
                 else:
-                    serialized_str = (
-                        task_spec.ArgVal(i)[:task_spec.ArgValLength(i)])
-                    obj = pickle.loads(serialized_str)
+                    data = (task_spec.ArgData(i)[:task_spec.ArgDataSize(i)])
+                    metadata = (task_spec.ArgMetadata(i)[:task_spec.ArgMetadataSize(i)])
+                    if metadata == RAW_BUFFER_METADATA:
+                        obj = data
+                    else:
+                        obj = pickle.loads(data)
                     arg_list.append(obj)
         elif lang == <int32_t>LANGUAGE_JAVA:
             arg_list = num_args * ["<java-argument>"]
@@ -206,7 +218,7 @@ cdef class TaskSpec:
         while iterator != resource_map.end():
             resource_name = dereference(iterator).first
             # bytes for Py2, unicode for Py3
-            py_resource_name = str(resource_name)
+            py_resource_name = decode(resource_name)
             resource_value = dereference(iterator).second
             required_resources[py_resource_name] = resource_value
             postincrement(iterator)
@@ -229,6 +241,13 @@ cdef class TaskSpec:
         return ObjectID(
             self.task_spec.get().ActorCreationDummyObjectId().Binary())
 
+    def previous_actor_task_dummy_object_id(self):
+        """Return the object ID of the previously executed actor task."""
+        if not self.is_actor_task():
+            return ObjectID.nil()
+        return ObjectID(
+            self.task_spec.get().PreviousActorTaskDummyObjectId().Binary())
+
     def actor_id(self):
         """Return the actor ID for this task."""
         if not self.is_actor_task():
@@ -247,32 +266,20 @@ cdef class TaskExecutionSpec:
     cdef:
         unique_ptr[CTaskExecutionSpec] c_spec
 
-    def __init__(self, execution_dependencies):
+    def __init__(self):
         cdef:
-            RpcTaskExecutionSpec message;
+            RpcTaskExecutionSpec message
 
-        for dependency in execution_dependencies:
-            message.add_dependencies(
-                (<ObjectID?>dependency).binary())
         self.c_spec.reset(new CTaskExecutionSpec(message))
 
     @staticmethod
     def from_string(const c_string& string):
         """Convert a string to a Ray `TaskExecutionSpec` Python object.
         """
-        cdef TaskExecutionSpec self = TaskExecutionSpec.__new__(TaskExecutionSpec)
+        cdef TaskExecutionSpec self = TaskExecutionSpec.__new__(
+            TaskExecutionSpec)
         self.c_spec.reset(new CTaskExecutionSpec(string))
         return self
-
-    def dependencies(self):
-        cdef:
-            CObjectID c_id
-            c_vector[CObjectID] dependencies = (
-                self.c_spec.get().ExecutionDependencies())
-        ret = []
-        for c_id in dependencies:
-            ret.append(ObjectID(c_id.Binary()))
-        return ret
 
     def num_forwards(self):
         return self.c_spec.get().NumForwards()
@@ -283,7 +290,8 @@ cdef class Task:
     cdef:
         unique_ptr[CTask] c_task
 
-    def __init__(self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
+    def __init__(
+            self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
         self.c_task.reset(new CTask(task_spec.task_spec.get()[0],
                                     task_execution_spec.c_spec.get()[0]))
 

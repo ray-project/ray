@@ -10,7 +10,9 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/protobuf/core_worker.pb.h"
 
 namespace ray {
@@ -32,22 +34,32 @@ struct TaskOptions {
 /// Options of an actor creation task.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(uint64_t max_reconstructions,
-                       const std::unordered_map<std::string, double> &resources)
-      : max_reconstructions(max_reconstructions), resources(resources) {}
+  ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::vector<std::string> &dynamic_worker_options)
+      : max_reconstructions(max_reconstructions),
+        is_direct_call(is_direct_call),
+        resources(resources),
+        dynamic_worker_options(dynamic_worker_options) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
   const uint64_t max_reconstructions = 0;
+  /// Whether to use direct actor call. If this is set to true, callers will submit
+  /// tasks directly to the created actor without going through raylet.
+  const bool is_direct_call = false;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
+  /// The dynamic options used in the worker command when starting a worker process for
+  /// an actor creation task.
+  const std::vector<std::string> dynamic_worker_options;
 };
 
 /// A handle to an actor.
 class ActorHandle {
  public:
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const Language actor_language,
+              const Language actor_language, bool is_direct_call,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   ActorHandle(const ActorHandle &other);
@@ -74,6 +86,10 @@ class ActorHandle {
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
   int64_t NumForks() const;
+
+  /// Whether direct call is used. If this is true, then the tasks
+  /// are submitted directly to the actor without going through raylet.
+  bool IsDirectCallActor() const;
 
   ActorHandle Fork();
 
@@ -114,7 +130,10 @@ class ActorHandle {
 class CoreWorkerTaskInterface {
  public:
   CoreWorkerTaskInterface(WorkerContext &worker_context,
-                          std::unique_ptr<RayletClient> &raylet_client);
+                          std::unique_ptr<RayletClient> &raylet_client,
+                          CoreWorkerObjectInterface &object_interface,
+                          boost::asio::io_service &io_service,
+                          gcs::RedisGcsClient &gcs_client);
 
   /// Submit a normal task.
   ///
@@ -153,25 +172,33 @@ class CoreWorkerTaskInterface {
  private:
   /// Build common attributes of the task spec, and compute return ids.
   ///
+  /// \param[in] builder Builder to build a `TaskSpec`.
+  /// \param[in] task_id The ID of this task.
+  /// \param[in] task_index The task index used to build this task.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] num_returns Number of returns.
   /// \param[in] required_resources Resources required by this task.
   /// \param[in] required_placement_resources Resources required by placing this task on a
   /// node.
+  /// \param[in] transport_type The transport used for this task.
   /// \param[out] return_ids Return IDs.
-  /// \return A `TaskSpecBuilder`.
-  TaskSpecBuilder BuildCommonTaskSpec(
+  /// \return Void.
+  void BuildCommonTaskSpec(
+      TaskSpecBuilder &builder, const TaskID &task_id, const int task_index,
       const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      std::vector<ObjectID> *return_ids);
+      TaskTransportType transport_type, std::vector<ObjectID> *return_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
 
   /// All the task submitters supported.
-  std::unordered_map<int, std::unique_ptr<CoreWorkerTaskSubmitter>> task_submitters_;
+  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
+      task_submitters_;
+
+  friend class CoreWorkerTest;
 };
 
 }  // namespace ray

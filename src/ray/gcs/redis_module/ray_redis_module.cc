@@ -585,7 +585,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     // This code path means they are updating command.
     size_t total_size = gcs_entry.entries_size();
     REPLY_AND_RETURN_IF_FALSE(total_size % 2 == 0, "Invalid Hash Update data vector.");
-    for (int i = 0; i < total_size; i += 2) {
+    for (size_t i = 0; i < total_size; i += 2) {
       // Reconstruct a key-value pair from a flattened list.
       RedisModuleString *entry_key = RedisModule_CreateString(
           ctx, gcs_entry.entries(i).data(), gcs_entry.entries(i).size());
@@ -603,7 +603,7 @@ int HashUpdate_DoWrite(RedisModuleCtx *ctx, RedisModuleString **argv, int argc,
     updated.set_change_mode(gcs_entry.change_mode());
 
     size_t total_size = gcs_entry.entries_size();
-    for (int i = 0; i < total_size; i++) {
+    for (size_t i = 0; i < total_size; i++) {
       RedisModuleString *entry_key = RedisModule_CreateString(
           ctx, gcs_entry.entries(i).data(), gcs_entry.entries(i).size());
       int deleted_num = RedisModule_HashSet(key, REDISMODULE_HASH_NONE, entry_key,
@@ -929,7 +929,7 @@ Status IsNil(bool *out, const std::string &data) {
     return Status::RedisError("Size of data doesn't match size of UniqueID");
   }
   const uint8_t *d = reinterpret_cast<const uint8_t *>(data.data());
-  for (int i = 0; i < kUniqueIDSize; ++i) {
+  for (size_t i = 0; i < kUniqueIDSize; ++i) {
     if (d[i] != 255) {
       *out = false;
     }

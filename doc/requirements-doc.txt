@@ -3,6 +3,7 @@ click
 filelock
 flatbuffers
 funcsigs
+jsonschema
 mock
 numpy
 opencv-python-headless
@@ -13,5 +14,6 @@ redis
 setproctitle
 sphinx
 sphinx-click
+sphinx-jsonschema
 sphinx_rtd_theme
 pandas

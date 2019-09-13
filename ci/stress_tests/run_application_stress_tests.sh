@@ -88,7 +88,7 @@ test_impala(){
             sleep 1 &&
             ray --logging-level=DEBUG exec "$CLUSTER" "rllib || true" &&
             ray --logging-level=DEBUG exec "$CLUSTER" "
-                rllib train -f tuned_examples/atari-impala-large.yaml --redis-address='localhost:6379' --queue-trials" &&
+                rllib train -f tuned_examples/atari-impala-large.yaml --ray-address='localhost:6379' --queue-trials" &&
             echo "PASS: IMPALA Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
         } || echo "FAIL: IMPALA Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
 
@@ -148,10 +148,9 @@ test_sgd(){
 }
 
 # RUN TESTS
-for PYTHON_VERSION in "p27" "p36"
+for PYTHON_VERSION in "p36"
 do
     test_impala $PYTHON_VERSION
-    test_sgd $PYTHON_VERSION
 done
 
 cat "$RESULT_FILE"

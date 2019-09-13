@@ -46,13 +46,11 @@ ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 cdef extern from "ray/raylet/raylet_client.h" nogil:
     cdef cppclass CRayletClient "RayletClient":
         CRayletClient(const c_string &raylet_socket,
-                      const CClientID &client_id,
+                      const CWorkerID &worker_id,
                       c_bool is_worker, const CJobID &job_id,
                       const CLanguage &language)
         CRayStatus Disconnect()
-        CRayStatus SubmitTask(
-            const c_vector[CObjectID] &execution_dependencies,
-            const CTaskSpec &task_spec)
+        CRayStatus SubmitTask(const CTaskSpec &task_spec)
         CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
         CRayStatus TaskDone()
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
@@ -75,7 +73,7 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
         CRayStatus SetResource(const c_string &resource_name, const double capacity, const CClientID &client_Id)
         CLanguage GetLanguage() const
-        CClientID GetClientID() const
+        CWorkerID GetWorkerID() const
         CJobID GetJobID() const
         c_bool IsWorker() const
         const ResourceMappingType &GetResourceIDs() const

@@ -118,12 +118,12 @@ file_sync_options:
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev1-cp27-cp27mu-manylinux1_x86_64.whl
-    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev2-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp27-cp27mu-manylinux1_x86_64.whl
+    - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp36-cp36m-manylinux1_x86_64.whl
     - cd /root/ray/ && python setup-dev.py --yes
     - apt-get update; apt-get install -y openjdk-8-jdk-headless wget openssh-server tar vim rsync
     # - mkdir /root/.ssh; chown -R root:root /root/.ssh;chmod -R 700 /root/.ssh; mkdir /var/run/sshd
-    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev1-cp36-cp36m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp36-cp36m-manylinux1_x86_64.whl
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands:

@@ -18,6 +18,7 @@ Currently, Tune offers the following search algorithms (and library integrations
 - `Nevergrad <tune-searchalg.html#nevergrad-search>`__
 - `Scikit-Optimize <tune-searchalg.html#scikit-optimize-search>`__
 - `Ax <tune-searchalg.html#ax-search>`__
+- `BOHB <tune-searchalg.html#bohb>`__
 
 
 Variant Generation (Grid Search/Random Search)
@@ -178,6 +179,53 @@ This algorithm requires specifying a search space and objective. You can use `Ax
 An example of this can be found in `ax_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/ax_example.py>`__.
 
 .. autoclass:: ray.tune.suggest.ax.AxSearch
+    :show-inheritance:
+    :noindex:
+
+BOHB
+----
+
+.. tip:: This implementation is still experimental. Please report issues on https://github.com/ray-project/ray/issues/. Thanks!
+
+``BOHB`` (Bayesian Optimization HyperBand) is a SearchAlgorithm that is backed by `HpBandSter <https://github.com/automl/HpBandSter>`__ to perform sequential model-based hyperparameter optimization in conjunction with HyperBand. Note that this class does not extend ``ray.tune.suggest.BasicVariantGenerator``, so you will not be able to use Tune's default variant generation/search space declaration when using BOHB.
+
+Importantly, BOHB is intended to be paired with a specific scheduler class: `HyperBandForBOHB <tune-schedulers.html#hyperband-bohb>`__.
+
+This algorithm requires using the `ConfigSpace search space specification <https://automl.github.io/HpBandSter/build/html/quickstart.html#searchspace>`_. In order to use this search algorithm, you will need to install ``HpBandSter`` and ``ConfigSpace``:
+
+.. code-block:: bash
+
+    $ pip install hpbandster ConfigSpace
+
+
+You can use ``TuneBOHB`` in conjunction with ``HyperBandForBOHB`` as follows:
+
+.. code-block:: python
+
+    # BOHB uses ConfigSpace for their hyperparameter search space
+    import ConfigSpace as CS
+
+    config_space = CS.ConfigurationSpace()
+    config_space.add_hyperparameter(
+        CS.UniformFloatHyperparameter("height", lower=10, upper=100))
+    config_space.add_hyperparameter(
+        CS.UniformFloatHyperparameter("width", lower=0, upper=100))
+
+    experiment_metrics = dict(metric="episode_reward_mean", mode="min")
+    bohb_hyperband = HyperBandForBOHB(
+        time_attr="training_iteration", max_t=100, **experiment_metrics)
+    bohb_search = TuneBOHB(
+        config_space, max_concurrent=4, **experiment_metrics)
+
+    tune.run(MyTrainableClass,
+        name="bohb_test",
+        scheduler=bohb_hyperband,
+        search_alg=bohb_search,
+        num_samples=5)
+
+Take a look at `an example here <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bohb_example.py>`_. See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
+
+.. autoclass:: ray.tune.suggest.bohb.TuneBOHB
     :show-inheritance:
     :noindex:
 

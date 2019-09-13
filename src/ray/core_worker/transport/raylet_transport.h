@@ -3,6 +3,7 @@
 
 #include <list>
 
+#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
@@ -21,7 +22,7 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status.
-  virtual Status SubmitTask(const TaskSpec &task) override;
+  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
 
  private:
   /// Raylet client.
@@ -31,7 +32,9 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+  CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
+                               std::unique_ptr<RayletClient> &raylet_client,
+                               CoreWorkerObjectInterface &object_interface,
                                boost::asio::io_service &io_service,
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
 
@@ -47,8 +50,12 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                         rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  // Worker context.
+  WorkerContext &worker_context_;
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
+  // Object interface.
+  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.

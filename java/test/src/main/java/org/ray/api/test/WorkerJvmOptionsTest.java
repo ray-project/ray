@@ -22,7 +22,9 @@ public class WorkerJvmOptionsTest extends BaseTest {
   public void testJvmOptions() {
     TestUtils.skipTestUnderSingleProcess();
     ActorCreationOptions options = new ActorCreationOptions.Builder()
-        .setJvmOptions("-Dtest.suffix=suffix")
+        // The whitespaces in following argument are intentionally added to test
+        // that raylet can correctly handle dynamic options with whitespaces.
+        .setJvmOptions(" -Dtest.suffix=suffix -Dtest.suffix1=suffix1 ")
         .createActorCreationOptions();
     RayActor<Echo> actor = Ray.createActor(Echo::new, options);
     RayObject<String> obj = Ray.call(Echo::getOptions, actor);

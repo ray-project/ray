@@ -28,11 +28,11 @@ enum class GcsStatus {
   UNCOMMITTED,
   /// We flushed this task and are waiting for the commit acknowledgement.
   COMMITTING,
-  // TODO(swang): Add a COMMITTED state for tasks for which we received a
-  // commit acknowledgement, but which we cannot evict yet (due to an ancestor
-  // that has not been evicted). This is to allow a performance optimization
-  // that avoids unnecessary subscribes when we receive tasks that were
-  // already COMMITTED at the sender.
+  // Tasks for which we received a commit acknowledgement, but which we cannot
+  // evict yet (due to an ancestor that has not been evicted). This is to allow
+  // a performance optimization that avoids unnecessary subscribes when we
+  // receive tasks that were already COMMITTED at the sender.
+  COMMITTED,
 };
 
 /// \class LineageEntry
@@ -306,8 +306,6 @@ class LineageCache {
   /// The pubsub storage system for task information. This can be used to
   /// request notifications for the commit of a task entry.
   gcs::PubsubInterface<TaskID> &task_pubsub_;
-  /// The set of tasks that have been committed but not evicted.
-  std::unordered_set<TaskID> committed_tasks_;
   /// All tasks and objects that we are responsible for writing back to the
   /// GCS, and the tasks and objects in their lineage.
   Lineage lineage_;

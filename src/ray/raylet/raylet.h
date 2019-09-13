@@ -16,13 +16,13 @@ namespace ray {
 
 namespace raylet {
 
-using rpc::ClientTableData;
+using rpc::GcsNodeInfo;
 
 class NodeManager;
 
 class Raylet {
  public:
-  /// Create a node manager server and listen for new clients.
+  /// Create a raylet server and listen for local clients.
   ///
   /// \param main_service The event loop to run the server on.
   /// \param object_manager_service The asio io_service tied to the object manager.
@@ -41,7 +41,7 @@ class Raylet {
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
-         std::shared_ptr<gcs::AsyncGcsClient> gcs_client);
+         std::shared_ptr<gcs::RedisGcsClient> gcs_client);
 
   /// Destroy the NodeServer.
   ~Raylet();
@@ -64,7 +64,7 @@ class Raylet {
   friend class TestObjectManagerIntegration;
 
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// The object table. This is shared between the object manager and node
   /// manager.
   std::shared_ptr<ObjectDirectoryInterface> object_directory_;

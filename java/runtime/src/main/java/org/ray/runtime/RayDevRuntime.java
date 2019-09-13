@@ -2,45 +2,43 @@ package org.ray.runtime;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import org.ray.api.id.JobId;
+import org.ray.api.id.UniqueId;
 import org.ray.runtime.config.RayConfig;
-import org.ray.runtime.objectstore.MockObjectStore;
-import org.ray.runtime.objectstore.ObjectStoreProxy;
-import org.ray.runtime.raylet.MockRayletClient;
+import org.ray.runtime.context.LocalModeWorkerContext;
+import org.ray.runtime.object.LocalModeObjectStore;
+import org.ray.runtime.task.LocalModeTaskExecutor;
+import org.ray.runtime.task.LocalModeTaskSubmitter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class RayDevRuntime extends AbstractRayRuntime {
 
-  public RayDevRuntime(RayConfig rayConfig) {
-    super(rayConfig);
-  }
-
-  private MockObjectStore store;
+  private static final Logger LOGGER = LoggerFactory.getLogger(RayDevRuntime.class);
 
   private AtomicInteger jobCounter = new AtomicInteger(0);
 
-  @Override
-  public void start() {
-    store = new MockObjectStore(this);
+  public RayDevRuntime(RayConfig rayConfig) {
+    super(rayConfig);
     if (rayConfig.getJobId().isNil()) {
       rayConfig.setJobId(nextJobId());
     }
-    workerContext = new WorkerContext(rayConfig.workerMode,
-        rayConfig.getJobId(), rayConfig.runMode);
-    objectStoreProxy = new ObjectStoreProxy(this, null);
-    rayletClient = new MockRayletClient(this, rayConfig.numberExecThreadsForDevRuntime);
+    taskExecutor = new LocalModeTaskExecutor(this);
+    workerContext = new LocalModeWorkerContext(rayConfig.getJobId());
+    objectStore = new LocalModeObjectStore(workerContext);
+    taskSubmitter = new LocalModeTaskSubmitter(this, (LocalModeObjectStore) objectStore,
+        rayConfig.numberExecThreadsForDevRuntime);
+    ((LocalModeObjectStore) objectStore).addObjectPutCallback(
+        objectId -> ((LocalModeTaskSubmitter) taskSubmitter).onObjectPut(objectId));
   }
 
   @Override
   public void shutdown() {
-    rayletClient.destroy();
-  }
-
-  public MockObjectStore getObjectStore() {
-    return store;
+    taskExecutor = null;
   }
 
   @Override
-  public Worker getWorker() {
-    return ((MockRayletClient) rayletClient).getCurrentWorker();
+  public void setResource(String resourceName, double capacity, UniqueId nodeId) {
+    LOGGER.error("Not implemented under SINGLE_PROCESS mode.");
   }
 
   private JobId nextJobId() {

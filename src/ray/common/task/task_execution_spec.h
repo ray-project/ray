@@ -29,12 +29,6 @@ class TaskExecutionSpecification : public MessageWrapper<rpc::TaskExecutionSpec>
   explicit TaskExecutionSpecification(const std::string &serialized_binary)
       : MessageWrapper(serialized_binary) {}
 
-  /// Get the task's execution dependencies.
-  ///
-  /// \return A vector of object IDs representing this task's execution
-  /// dependencies.
-  const std::vector<ObjectID> ExecutionDependencies() const;
-
   /// Get the number of times this task has been forwarded.
   ///
   /// \return The number of times this task has been forwarded.

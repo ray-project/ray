@@ -6,10 +6,12 @@ import json
 import numpy as np
 import os
 import pytest
+import sys
 import time
 
 import ray
 from ray.tests.cluster_utils import Cluster
+from ray.tests.utils import flat_errors
 import ray.ray_constants as ray_constants
 
 
@@ -24,7 +26,7 @@ def ray_start_sharded(request):
 
     # Start the Ray processes.
     ray.init(
-        object_store_memory=int(0.1 * 10**9),
+        object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
         num_redis_shards=num_redis_shards,
         redis_max_memory=10**7)
@@ -48,7 +50,7 @@ def ray_start_combination(request):
         })
     for i in range(num_nodes - 1):
         cluster.add_node(num_cpus=10)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield num_nodes, num_workers_per_scheduler, cluster
     # The code after the yield will run as teardown code.
@@ -199,7 +201,7 @@ def test_wait(ray_start_combination):
 def ray_start_reconstruction(request):
     num_nodes = request.param
 
-    plasma_store_memory = int(0.1 * 10**9)
+    plasma_store_memory = int(0.5 * 10**9)
 
     cluster = Cluster(
         initialize_head=True,
@@ -218,7 +220,7 @@ def ray_start_reconstruction(request):
             _internal_config=json.dumps({
                 "initial_reconstruction_timeout_milliseconds": 200
             }))
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     yield plasma_store_memory, num_nodes, cluster
 
@@ -396,13 +398,13 @@ def wait_for_errors(error_check):
     errors = []
     time_left = 100
     while time_left > 0:
-        errors = ray.errors()
+        errors = flat_errors()
         if error_check(errors):
             break
         time_left -= 1
         time.sleep(1)
 
-        # Make sure that enough errors came through.
+    # Make sure that enough errors came through.
     assert error_check(errors)
     return errors
 
@@ -479,6 +481,8 @@ def test_nondeterministic_task(ray_start_reconstruction):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_object_store_memory", [10**9], indirect=True)
 def test_driver_put_errors(ray_start_object_store_memory):
@@ -524,6 +528,7 @@ def test_driver_put_errors(ray_start_object_store_memory):
 
     errors = wait_for_errors(error_check)
     assert all(error["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+               or "ray.exceptions.UnreconstructableError" in error["message"]
                for error in errors)
 
 

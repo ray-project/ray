@@ -244,6 +244,14 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
+const std::string format_resource(std::string resource_name, double quantity) {
+  if (resource_name == "object_store_memory" || resource_name == "memory") {
+    // Convert to 100MiB chunks and then to GiB
+    return std::to_string(quantity * (50 * 1024 * 1024) / (1024 * 1024 * 1024)) + " GiB";
+  }
+  return std::to_string(quantity);
+}
+
 const std::string ResourceSet::ToString() const {
   if (resource_capacity_.size() == 0) {
     return "{}";
@@ -255,14 +263,16 @@ const std::string ResourceSet::ToString() const {
     // Convert the first element to a string.
     if (it != resource_capacity_.end()) {
       double resource_amount = (it->second).ToDouble();
-      return_string += "{" + it->first + "," + std::to_string(resource_amount) + "}";
+      return_string +=
+          "{" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
       it++;
     }
 
     // Add the remaining elements to the string (along with a comma).
     for (; it != resource_capacity_.end(); ++it) {
       double resource_amount = (it->second).ToDouble();
-      return_string += ",{" + it->first + "," + std::to_string(resource_amount) + "}";
+      return_string +=
+          ", {" + it->first + ": " + format_resource(it->first, resource_amount) + "}";
     }
 
     return return_string;
@@ -289,6 +299,7 @@ ResourceIds::ResourceIds() {}
 ResourceIds::ResourceIds(double resource_quantity) {
   RAY_CHECK(IsWhole(resource_quantity));
   int64_t whole_quantity = resource_quantity;
+  whole_ids_.reserve(whole_quantity);
   for (int64_t i = 0; i < whole_quantity; ++i) {
     whole_ids_.push_back(i);
   }

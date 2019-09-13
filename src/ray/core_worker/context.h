@@ -20,7 +20,13 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  void SetCurrentTask(const TaskSpecification &spec);
+  void SetCurrentTask(const TaskSpecification &task_spec);
+
+  std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
+
+  const ActorID &GetCurrentActorID() const;
+
+  bool CurrentActorUseDirectCall() const;
 
   int GetNextTaskIndex();
 
@@ -28,13 +34,19 @@ class WorkerContext {
 
  private:
   /// Type of the worker.
-  const WorkerType worker_type;
+  const WorkerType worker_type_;
 
   /// ID for this worker.
-  const WorkerID worker_id;
+  const WorkerID worker_id_;
 
   /// Job ID for this worker.
-  JobID current_job_id;
+  JobID current_job_id_;
+
+  /// ID of current actor.
+  ActorID current_actor_id_;
+
+  /// Whether current actor accepts direct calls.
+  bool current_actor_use_direct_call_;
 
  private:
   static WorkerThreadContext &GetThreadContext();

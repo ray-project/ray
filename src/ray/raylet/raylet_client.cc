@@ -201,20 +201,16 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
                            int port)
-    : client_id_(client_id),
-      is_worker_(is_worker),
-      job_id_(job_id),
-      language_(language),
-      port_(port) {
+    : worker_id_(worker_id), is_worker_(is_worker), job_id_(job_id), language_(language) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateRegisterClientRequest(
-      fbb, is_worker, to_flatbuf(fbb, client_id), getpid(), to_flatbuf(fbb, job_id),
+      fbb, is_worker, to_flatbuf(fbb, worker_id), getpid(), to_flatbuf(fbb, job_id),
       language, port);
   fbb.Finish(message);
   // Register the process ID with the raylet.
@@ -223,12 +219,10 @@ RayletClient::RayletClient(const std::string &raylet_socket, const ClientID &cli
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
-ray::Status RayletClient::SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                                     const ray::TaskSpecification &task_spec) {
+ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
-  auto execution_dependencies_message = to_flatbuf(fbb, execution_dependencies);
   auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, execution_dependencies_message, fbb.CreateString(task_spec.Serialize()));
+      fbb, fbb.CreateString(task_spec.Serialize()));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }

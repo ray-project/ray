@@ -15,7 +15,6 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.tune.sample import function as tune_function
 from ray.tune.error import TuneError
 from ray.tune.log_sync import log_sync_template, NodeSyncMixin
 
@@ -169,8 +168,7 @@ class CommandSyncer(BaseSyncer):
 def _get_sync_cls(sync_function):
     if not sync_function:
         return
-    if isinstance(sync_function, types.FunctionType) or isinstance(
-            sync_function, tune_function):
+    if isinstance(sync_function, types.FunctionType):
         return BaseSyncer
     elif isinstance(sync_function, str):
         return CommandSyncer

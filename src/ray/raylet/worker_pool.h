@@ -9,7 +9,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/client.h"
+#include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -33,15 +33,13 @@ class WorkerPool {
   /// and add them to the pool.
   ///
   /// \param num_worker_processes The number of worker processes to start, per language.
-  /// \param num_workers_per_process The number of workers per process.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(int num_worker_processes, int num_workers_per_process,
-             int maximum_startup_concurrency,
-             std::shared_ptr<gcs::AsyncGcsClient> gcs_client,
+  WorkerPool(int num_worker_processes, int maximum_startup_concurrency,
+             std::shared_ptr<gcs::RedisGcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
@@ -51,12 +49,14 @@ class WorkerPool {
   /// pool after it becomes idle (e.g., requests a work assignment).
   ///
   /// \param The Worker to be registered.
-  void RegisterWorker(const std::shared_ptr<Worker> &worker);
+  /// \return If the registration is successful.
+  Status RegisterWorker(const std::shared_ptr<Worker> &worker);
 
   /// Register a new driver.
   ///
   /// \param The driver to be registered.
-  void RegisterDriver(const std::shared_ptr<Worker> &worker);
+  /// \return If the registration is successful.
+  Status RegisterDriver(const std::shared_ptr<Worker> &worker);
 
   /// Get the client connection's registered worker.
   ///
@@ -132,7 +132,7 @@ class WorkerPool {
  protected:
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
-  /// register num_workers_per_process_ workers, then add them to the pool.
+  /// register num_workers_per_process workers, then add them to the pool.
   /// Failure to start the worker process is a fatal error. If too many workers
   /// are already being started, then this function will return without starting
   /// any workers.
@@ -148,7 +148,7 @@ class WorkerPool {
   ///
   /// \param worker_command_args The command arguments of new worker process.
   /// \return The process ID of started worker process.
-  virtual pid_t StartProcess(const std::vector<const char *> &worker_command_args);
+  virtual pid_t StartProcess(const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -157,6 +157,8 @@ class WorkerPool {
   struct State {
     /// The commands and arguments used to start the worker process
     std::vector<std::string> worker_command;
+    /// The number of workers per process.
+    int num_workers_per_process;
     /// The pool of dedicated workers for actor creation tasks
     /// with prefix or suffix worker command.
     std::unordered_map<TaskID, std::shared_ptr<Worker>> idle_dedicated_workers;
@@ -177,10 +179,14 @@ class WorkerPool {
     std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
     std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
+    /// We'll push a warning to the user every time a multiple of this many
+    /// worker processes has been started.
+    int multiple_for_warning;
+    /// The last size at which a warning about the number of registered workers
+    /// was generated.
+    int64_t last_warning_multiple;
   };
 
-  /// The number of workers per process.
-  int num_workers_per_process_;
   /// Pool states per language.
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
@@ -189,16 +195,10 @@ class WorkerPool {
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
 
-  /// We'll push a warning to the user every time a multiple of this many
-  /// workers has been started.
-  int multiple_for_warning_;
-  /// The maximum number of workers that can be started concurrently.
+  /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
-  /// The last size at which a warning about the number of registered workers
-  /// was generated.
-  int64_t last_warning_multiple_;
   /// A client connection to the GCS.
-  std::shared_ptr<gcs::AsyncGcsClient> gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 };
 
 }  // namespace raylet

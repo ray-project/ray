@@ -13,14 +13,17 @@ import numbers
 import numpy as np
 
 import ray.cloudpickle as cloudpickle
+from ray.tune.util import flatten_dict
 from ray.tune.syncer import get_log_syncer
-from ray.tune.result import NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S, \
-    TIMESTEPS_TOTAL
+from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
+                             TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
+                             EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
+                             EXPR_RESULT_FILE)
 
 logger = logging.getLogger(__name__)
 
 tf = None
-use_tf150_api = True
+VALID_SUMMARY_TYPES = [int, float, np.float32, np.float64, np.int32]
 
 
 class Logger(object):
@@ -49,7 +52,7 @@ class Logger(object):
         raise NotImplementedError
 
     def update_config(self, config):
-        """Updates the config for all loggers."""
+        """Updates the config for logger."""
 
         pass
 
@@ -69,10 +72,38 @@ class NoopLogger(Logger):
         pass
 
 
+class MLFLowLogger(Logger):
+    """MLFlow logger.
+
+    Requires the experiment configuration to have a MLFlow Experiment ID
+    or manually set the proper environment variables.
+
+    """
+
+    def _init(self):
+        from mlflow.tracking import MlflowClient
+        client = MlflowClient()
+        run = client.create_run(self.config.get("mlflow_experiment_id"))
+        self._run_id = run.info.run_id
+        for key, value in self.config.items():
+            client.log_param(self._run_id, key, value)
+        self.client = client
+
+    def on_result(self, result):
+        for key, value in result.items():
+            if not isinstance(value, float):
+                continue
+            self.client.log_metric(
+                self._run_id, key, value, step=result.get(TRAINING_ITERATION))
+
+    def close(self):
+        self.client.set_terminated(self._run_id)
+
+
 class JsonLogger(Logger):
     def _init(self):
         self.update_config(self.config)
-        local_file = os.path.join(self.logdir, "result.json")
+        local_file = os.path.join(self.logdir, EXPR_RESULT_FILE)
         self.local_out = open(local_file, "a")
 
     def on_result(self, result):
@@ -91,7 +122,7 @@ class JsonLogger(Logger):
 
     def update_config(self, config):
         self.config = config
-        config_out = os.path.join(self.logdir, "params.json")
+        config_out = os.path.join(self.logdir, EXPR_PARAM_FILE)
         with open(config_out, "w") as f:
             json.dump(
                 self.config,
@@ -99,44 +130,102 @@ class JsonLogger(Logger):
                 indent=2,
                 sort_keys=True,
                 cls=_SafeFallbackEncoder)
-        config_pkl = os.path.join(self.logdir, "params.pkl")
+        config_pkl = os.path.join(self.logdir, EXPR_PARAM_PICKLE_FILE)
         with open(config_pkl, "wb") as f:
             cloudpickle.dump(self.config, f)
 
 
+def tf2_compat_logger(config, logdir):
+    """Chooses TensorBoard logger depending on imported TF version."""
+    global tf
+    if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
+        logger.warning("Not importing TensorFlow for test purposes")
+        tf = None
+        raise RuntimeError("Not importing TensorFlow for test purposes")
+    else:
+        import tensorflow as tf
+        use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
+                       distutils.version.LooseVersion("2.0.0"))
+        if use_tf2_api:
+            tf = tf.compat.v2  # setting this for TF2.0
+            return TF2Logger(config, logdir)
+        else:
+            return TFLogger(config, logdir)
+
+
+class TF2Logger(Logger):
+    """TensorBoard Logger for TF version >= 1.14.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
+    def _init(self):
+        self._file_writer = None
+
+    def on_result(self, result):
+        if self._file_writer is None:
+            from tensorflow.python.eager import context
+            self._context = context
+            self._file_writer = tf.summary.create_file_writer(self.logdir)
+        with tf.device("/CPU:0"), self._context.eager_mode():
+            with tf.summary.record_if(True), self._file_writer.as_default():
+                step = result.get(
+                    TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+
+                tmp = result.copy()
+                for k in [
+                        "config", "pid", "timestamp", TIME_TOTAL_S,
+                        TRAINING_ITERATION
+                ]:
+                    if k in tmp:
+                        del tmp[k]  # not useful to log these
+
+                flat_result = flatten_dict(tmp, delimiter="/")
+                path = ["ray", "tune"]
+                for attr, value in flat_result.items():
+                    if type(value) in VALID_SUMMARY_TYPES:
+                        tf.summary.scalar(
+                            "/".join(path + [attr]), value, step=step)
+        self._file_writer.flush()
+
+    def flush(self):
+        if self._file_writer is not None:
+            self._file_writer.flush()
+
+    def close(self):
+        if self._file_writer is not None:
+            self._file_writer.close()
+
+
 def to_tf_values(result, path):
-    values = []
-    for attr, value in result.items():
-        if value is not None:
-            if use_tf150_api:
-                type_list = [int, float, np.float32, np.float64, np.int32]
-            else:
-                type_list = [int, float]
-            if type(value) in type_list:
-                values.append(
-                    tf.Summary.Value(
-                        tag="/".join(path + [attr]), simple_value=value))
-            elif type(value) is dict:
-                values.extend(to_tf_values(value, path + [attr]))
+    flat_result = flatten_dict(result, delimiter="/")
+    values = [
+        tf.Summary.Value(tag="/".join(path + [attr]), simple_value=value)
+        for attr, value in flat_result.items()
+        if type(value) in VALID_SUMMARY_TYPES
+    ]
     return values
 
 
 class TFLogger(Logger):
+    """TensorBoard Logger for TF version < 1.14.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
     def _init(self):
-        try:
-            global tf, use_tf150_api
-            if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
-                logger.warning("Not importing TensorFlow for test purposes")
-                tf = None
-            else:
-                import tensorflow
-                tf = tensorflow
-                use_tf150_api = (distutils.version.LooseVersion(tf.VERSION) >=
-                                 distutils.version.LooseVersion("1.5.0"))
-        except ImportError:
-            logger.warning("Couldn't import TensorFlow - "
-                           "disabling TensorBoard logging.")
-        self._file_writer = tf.summary.FileWriter(self.logdir)
+        logger.info("Initializing TFLogger instead of TF2Logger.")
+        self._file_writer = tf.compat.v1.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
         tmp = result.copy()
@@ -150,7 +239,7 @@ class TFLogger(Logger):
         t = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
         self._file_writer.add_summary(train_stats, t)
         iteration_value = to_tf_values({
-            "training_iteration": result[TRAINING_ITERATION]
+            TRAINING_ITERATION: result[TRAINING_ITERATION]
         }, ["ray", "tune"])
         iteration_stats = tf.Summary(value=iteration_value)
         self._file_writer.add_summary(iteration_stats, t)
@@ -164,15 +253,27 @@ class TFLogger(Logger):
 
 
 class CSVLogger(Logger):
+    """Logs results to progress.csv under the trial directory.
+
+    Automatically flattens nested dicts in the result dict before writing
+    to csv:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    """
+
     def _init(self):
         """CSV outputted with Headers as first set of results."""
-        # Note that we assume params.json was already created by JsonLogger
-        progress_file = os.path.join(self.logdir, "progress.csv")
+        progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
         self._continuing = os.path.exists(progress_file)
         self._file = open(progress_file, "a")
         self._csv_out = None
 
     def on_result(self, result):
+        tmp = result.copy()
+        if "config" in tmp:
+            del tmp["config"]
+        result = flatten_dict(tmp, delimiter="/")
         if self._csv_out is None:
             self._csv_out = csv.DictWriter(self._file, result.keys())
             if not self._continuing:
@@ -180,6 +281,7 @@ class CSVLogger(Logger):
         self._csv_out.writerow(
             {k: v
              for k, v in result.items() if k in self._csv_out.fieldnames})
+        self._file.flush()
 
     def flush(self):
         self._file.flush()
@@ -188,7 +290,7 @@ class CSVLogger(Logger):
         self._file.close()
 
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TFLogger)
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
 
 
 class UnifiedLogger(Logger):
@@ -218,9 +320,9 @@ class UnifiedLogger(Logger):
         for cls in self._logger_cls_list:
             try:
                 self._loggers.append(cls(self.config, self.logdir))
-            except Exception:
-                logger.warning("Could not instantiate {} - skipping.".format(
-                    str(cls)))
+            except Exception as exc:
+                logger.warning("Could not instantiate {}: {}.".format(
+                    cls.__name__, str(exc)))
         self._log_syncer = get_log_syncer(
             self.logdir,
             remote_dir=self.logdir,

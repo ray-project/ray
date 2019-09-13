@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import redis
 import threading
 import traceback
 
@@ -10,6 +11,10 @@ from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray import profiling
 from ray import utils
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ImportThread(object):
@@ -80,6 +85,8 @@ class ImportThread(object):
                     num_imported += 1
                     key = self.redis_client.lindex("Exports", i)
                     self._process_key(key)
+        except (OSError, redis.exceptions.ConnectionError) as e:
+            logger.error("ImportThread: {}".format(e))
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()

@@ -16,7 +16,7 @@ using ray::ClientID;
 using ray::JobID;
 using ray::ObjectID;
 using ray::TaskID;
-using ray::UniqueID;
+using ray::WorkerID;
 
 using ray::Language;
 using ray::rpc::ProfileTableData;
@@ -72,7 +72,7 @@ class RayletClient {
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
   /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const ClientID &client_id,
+  RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                int port = -1);
 
@@ -80,11 +80,9 @@ class RayletClient {
 
   /// Submit a task using the raylet code path.
   ///
-  /// \param The execution dependencies.
   /// \param The task specification.
   /// \return ray::Status.
-  ray::Status SubmitTask(const std::vector<ObjectID> &execution_dependencies,
-                         const ray::TaskSpecification &task_spec);
+  ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
 
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
@@ -180,7 +178,7 @@ class RayletClient {
 
   Language GetLanguage() const { return language_; }
 
-  ClientID GetClientID() const { return client_id_; }
+  WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
 
@@ -189,11 +187,10 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
-  const ClientID client_id_;
+  const WorkerID worker_id_;
   const bool is_worker_;
   const JobID job_id_;
   const Language language_;
-  const int port_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

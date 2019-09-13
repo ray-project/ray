@@ -52,7 +52,7 @@ proto_library(
 
 cc_proto_library(
     name = "node_manager_cc_proto",
-    deps = ["node_manager_proto"],
+    deps = [":node_manager_proto"],
 )
 
 proto_library(
@@ -62,7 +62,7 @@ proto_library(
 
 cc_proto_library(
     name = "object_manager_cc_proto",
-    deps = ["object_manager_proto"],
+    deps = [":object_manager_proto"],
 )
 
 proto_library(
@@ -87,11 +87,22 @@ cc_proto_library(
     deps = ["core_worker_proto"],
 )
 
+proto_library(
+    name = "direct_actor_proto",
+    srcs = ["src/ray/protobuf/direct_actor.proto"],
+    deps = [":common_proto"],
+)
+
+cc_proto_library(
+    name = "direct_actor_cc_proto",
+    deps = ["direct_actor_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
 
-# grpc common lib
+# GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
     srcs = glob([
@@ -141,7 +152,7 @@ cc_grpc_library(
     deps = [":object_manager_cc_proto"],
 )
 
-# Object manager server and client.
+# Object manager rpc server and client.
 cc_library(
     name = "object_manager_rpc",
     hdrs = glob([
@@ -157,12 +168,20 @@ cc_library(
     ],
 )
 
-# worker gRPC lib.
+# Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
     srcs = [":worker_proto"],
     grpc_only = True,
     deps = [":worker_cc_proto"],
+)
+
+# direct actor gRPC lib.
+cc_grpc_library(
+    name = "direct_actor_cc_grpc",
+    srcs = [":direct_actor_proto"],
+    grpc_only = True,
+    deps = [":direct_actor_cc_proto"],
 )
 
 # worker server and client.
@@ -173,6 +192,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "direct_actor_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
         ":worker_cc_grpc",
@@ -201,6 +221,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
+        ":gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
@@ -326,6 +347,7 @@ cc_library(
         [
             "src/ray/core_worker/*.cc",
             "src/ray/core_worker/store_provider/*.cc",
+            "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
         ],
         exclude = [
@@ -336,6 +358,7 @@ cc_library(
     hdrs = glob([
         "src/ray/core_worker/*.h",
         "src/ray/core_worker/store_provider/*.h",
+        "src/ray/core_worker/store_provider/memory_store/*.h",
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
@@ -347,26 +370,49 @@ cc_library(
         # should only depend on `raylet_client`, instead of the whole `raylet_lib`.
         ":raylet_lib",
         ":worker_rpc",
+        ":gcs",
+    ],
+)
+
+cc_library(
+    name = "mock_worker_lib",
+    srcs = ["src/ray/core_worker/test/mock_worker.cc"],
+    hdrs = glob([
+        "src/ray/core_worker/test/*.h",
+    ]),
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
     ],
 )
 
 cc_binary(
     name = "mock_worker",
-    srcs = ["src/ray/core_worker/mock_worker.cc"],
     copts = COPTS,
     deps = [
-        ":core_worker_lib",
+        ":mock_worker_lib",
     ],
 )
 
-cc_binary(
-    name = "core_worker_test",
-    srcs = ["src/ray/core_worker/core_worker_test.cc"],
+cc_library(
+    name = "core_worker_test_lib",
+    srcs = ["src/ray/core_worker/test/core_worker_test.cc"],
+    hdrs = glob([
+        "src/ray/core_worker/test/*.h",
+    ]),
     copts = COPTS,
     deps = [
         ":core_worker_lib",
         ":gcs",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "core_worker_test",
+    copts = COPTS,
+    deps = [
+        ":core_worker_test_lib",
     ],
 )
 
@@ -399,6 +445,16 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "id_test",
+    srcs = ["src/ray/common/id_test.cc"],
+    copts = COPTS,
+    deps = [
+        "ray_common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -585,10 +641,33 @@ cc_library(
     ],
 )
 
+# TODO(micafan) Replace cc_binary with cc_test for GCS test.
 cc_binary(
-    name = "gcs_client_test",
+    name = "redis_gcs_client_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/client_test.cc"],
+    srcs = ["src/ray/gcs/redis_gcs_client_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "actor_state_accessor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "subscription_executor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -647,13 +726,11 @@ pyx_library(
 )
 
 cc_binary(
-    name = "libraylet_library_java.so",
-    srcs = [
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.h",
-        "src/ray/raylet/lib/java/org_ray_runtime_raylet_RayletClientImpl.cc",
-        "src/ray/common/id.h",
-        "src/ray/raylet/raylet_client.h",
-        "src/ray/util/logging.h",
+    name = "libcore_worker_library_java.so",
+    srcs = glob([
+        "src/ray/core_worker/lib/java/*.h",
+        "src/ray/core_worker/lib/java/*.cc",
+    ]) + [
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({
         "@bazel_tools//src/conditions:windows": ["@bazel_tools//tools/jdk:jni_md_header-windows"],
@@ -671,24 +748,23 @@ cc_binary(
     linkshared = 1,
     linkstatic = 1,
     deps = [
-        "//:raylet_lib",
-        "@plasma//:plasma_client",
+        "//:core_worker_lib",
     ],
 )
 
 genrule(
-    name = "raylet-jni-darwin-compat",
-    srcs = [":libraylet_library_java.so"],
-    outs = ["libraylet_library_java.dylib"],
+    name = "core_worker-jni-darwin-compat",
+    srcs = [":libcore_worker_library_java.so"],
+    outs = ["libcore_worker_library_java.dylib"],
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
 
 filegroup(
-    name = "raylet_library_java",
+    name = "core_worker_library_java",
     srcs = select({
-        "@bazel_tools//src/conditions:darwin": [":libraylet_library_java.dylib"],
-        "//conditions:default": [":libraylet_library_java.so"],
+        "@bazel_tools//src/conditions:darwin": [":libcore_worker_library_java.dylib"],
+        "//conditions:default": [":libcore_worker_library_java.so"],
     }),
     visibility = ["//java:__subpackages__"],
 )
@@ -712,6 +788,8 @@ filegroup(
         "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
+        "python/ray/projects/*.py",
+        "python/ray/projects/schema.json",
         "python/ray/workers/default_worker.py",
     ]),
 )

@@ -1,95 +1,107 @@
-Tune: Scalable Hyperparameter Search
-====================================
+Tune: A Scalable Hyperparameter Tuning Library
+==============================================
+
+.. important:: Take the 3 minute `2019 Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a scalable framework for hyperparameter search with a focus on deep learning and deep reinforcement learning.
+Tune is a Python library for hyperparameter tuning at any scale. Core features:
 
-You can find the code for Tune `here on GitHub <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__. To get started with Tune, try going through `our tutorial of using Tune with Keras <https://github.com/ray-project/tutorial/blob/master/tune_exercises/Tutorial.ipynb>`__.
+  * Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
+  * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras.
+  * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
+  * Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
-(Experimental): You can try out `the above tutorial on a free hosted server via Binder <https://mybinder.org/v2/gh/ray-project/tutorial/master?filepath=tune_exercises%2FTutorial.ipynb>`__.
+.. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
+.. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
+.. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
 
 
-Features
---------
+Quick Start
+-----------
 
-*  Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+.. note::
 
-*  Choose among scalable hyperparameter and model search techniques such as:
+    To run this example, you will need to install the following:
 
-   -  `Population Based Training (PBT) <tune-schedulers.html#population-based-training-pbt>`__
+    .. code-block:: bash
 
-   -  `Median Stopping Rule <tune-schedulers.html#median-stopping-rule>`__
+        $ pip install ray torch torchvision filelock
 
-   -  `HyperBand <tune-schedulers.html#asynchronous-hyperband>`__
 
-*  Mix and match different hyperparameter optimization approaches - such as using `HyperOpt with HyperBand`_ or `Nevergrad with HyperBand`_.
+This example runs a small grid search to train a CNN using PyTorch and Tune.
 
-*  Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__ and `rllab's VisKit <https://github.com/vitchyr/viskit>`__.
+.. literalinclude:: ../../python/ray/tune/tests/example.py
+   :language: python
+   :start-after: __quick_start_begin__
+   :end-before: __quick_start_end__
 
-*  Scale to running on a large distributed cluster without changing your code.
+If TensorBoard is installed, automatically visualize all trial results:
 
-*  Parallelize training for models with GPU requirements or algorithms that may themselves be parallel and distributed, using Tune's `resource-aware scheduling <tune-usage.html#using-gpus-resource-allocation>`__,
+.. code-block:: bash
 
-Take a look at `the User Guide <tune-usage.html>`__ for a comprehensive overview on how to use Tune's features.
+    tensorboard --logdir ~/ray_results
+
+
+.. image:: images/tune-start-tb.png
+
+Distributed Quick Start
+-----------------------
+
+1. Import and initialize Ray by appending the following to your example script.
+
+.. code-block:: python
+
+    # Append to top of your script
+    import ray
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ray-address")
+    args = parser.parse_args()
+    ray.init(address=args.ray_address)
+
+Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
+
+2. Download the following example Ray cluster configuration as ``tune-local-default.yaml`` and replace the appropriate fields:
+
+.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
+   :language: yaml
+
+Alternatively, download it here: :download:`tune-local-default.yaml <../../python/ray/tune/examples/tune-local-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
+
+3. Run ``ray submit`` like the following.
+
+.. code-block:: bash
+
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
+
+This will start Ray on all of your machines and run a distributed hyperparameter search across them.
+
+To summarize, here are the full set of commands:
+
+.. code-block:: bash
+
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/examples/mnist_pytorch.py
+    wget https://raw.githubusercontent.com/ray-project/ray/master/python/ray/tune/tune-local-default.yaml
+    ray submit tune-local-default.yaml mnist_pytorch.py --args="--ray-address=localhost:6379" --start
+
+
+Take a look at the `Distributed Experiments <tune-distributed.html>`_ documentation for more details, including:
+
+ 1. Setting up distributed experiments on your local cluster
+ 2. Using AWS and GCP
+ 3. Spot instance usage/pre-emptible instances, and more.
 
 Getting Started
 ---------------
 
-Installation
-~~~~~~~~~~~~
-
-You'll need to first `install ray <installation.html>`__ to import Tune.
-
-.. code-block:: bash
-
-    pip install ray  # also recommended: ray[debug]
-
-
-Quick Start
-~~~~~~~~~~~
-
-This example runs a small grid search over a neural network training function using Tune, reporting status on the command line until the stopping condition of ``mean_accuracy >= 99`` is reached. Tune works with any deep learning framework.
-
-Tune uses Ray as a backend, so we will first import and initialize Ray.
-
-.. code-block:: python
-
-    import ray
-    from ray import tune
-
-    ray.init()
-
-
-For the function you wish to tune, pass in a ``reporter`` object:
-
-.. code-block:: python
-   :emphasize-lines: 1,9
-
-    def train_func(config, reporter):  # add a reporter arg
-        model = ( ... )
-        optimizer = SGD(model.parameters(),
-                        momentum=config["momentum"])
-        dataset = ( ... )
-
-        for idx, (data, target) in enumerate(dataset):
-            accuracy = model.fit(data, target)
-            reporter(mean_accuracy=accuracy) # report metrics
-
-**Finally**, configure your search and execute it on your Ray cluster:
-
-.. code-block:: python
-
-    all_trials = tune.run(
-        train_func,
-        name="quick-start",
-        stop={"mean_accuracy": 99},
-        config={"momentum": tune.grid_search([0.1, 0.2])}
-    )
-
-Tune can be used anywhere Ray can, e.g. on your laptop with ``ray.init()`` embedded in a Python script, or in an `auto-scaling cluster <autoscaling.html>`__ for massive parallelism.
+  * `Code <https://github.com/ray-project/ray/tree/master/python/ray/tune>`__: GitHub repository for Tune.
+  * `User Guide <tune-usage.html>`__: A comprehensive overview on how to use Tune's features.
+  * `Tutorial Notebook <https://github.com/ray-project/tutorial/blob/master/tune_exercises/>`__: Our tutorial notebooks of using Tune with Keras or PyTorch.
 
 Contribute to Tune
 ------------------

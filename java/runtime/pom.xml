@@ -22,10 +22,6 @@
       <artifactId>ray-api</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <dependency>
-      <groupId>org.apache.arrow</groupId>
-      <artifactId>arrow-plasma</artifactId>
-    </dependency>
 <dependency>
   <groupId>com.beust</groupId>
   <artifactId>jcommander</artifactId>
@@ -79,7 +75,7 @@
 <dependency>
   <groupId>org.testng</groupId>
   <artifactId>testng</artifactId>
-  <version>6.9.9</version>
+  <version>6.9.10</version>
 </dependency>
 <dependency>
   <groupId>redis.clients</groupId>

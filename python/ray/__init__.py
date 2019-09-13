@@ -5,6 +5,13 @@ from __future__ import print_function
 import os
 import sys
 
+# MUST import ray._raylet before pyarrow to initialize some global variables.
+# It seems the library related to memory allocation in pyarrow will destroy the
+# initialization of grpc if we import pyarrow at first.
+# NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
+# details.
+import ray._raylet
+
 if "pyarrow" in sys.modules:
     raise ImportError("Ray must be imported before pyarrow because Ray "
                       "requires a specific version of pyarrow (which is "
@@ -46,9 +53,6 @@ except ImportError as e:
             e.args += (helpful_message, )
     raise
 
-modin_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), "modin")
-sys.path.append(modin_path)
-
 from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,
@@ -89,6 +93,7 @@ from ray.worker import (
     wait,
 )  # noqa: E402
 import ray.internal  # noqa: E402
+import ray.projects  # noqa: E402
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
 import ray.actor  # noqa: F401
@@ -96,7 +101,7 @@ from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
 # Ray version string.
-__version__ = "0.8.0.dev2"
+__version__ = "0.8.0.dev4"
 
 __all__ = [
     "global_state",
@@ -128,6 +133,7 @@ __all__ = [
     "is_initialized",
     "method",
     "profile",
+    "projects",
     "put",
     "register_custom_serializer",
     "remote",

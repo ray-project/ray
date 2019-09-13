@@ -1,6 +1,7 @@
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
@@ -12,47 +13,47 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       object_interface_(object_interface),
       execution_callback_(executor),
       worker_server_("Worker", 0 /* let grpc choose port */),
-      main_work_(main_service_) {
+      main_service_(std::make_shared<boost::asio::io_service>()),
+      main_work_(*main_service_) {
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
-                        std::placeholders::_1);
+                        std::placeholders::_1, std::placeholders::_2);
   task_receivers_.emplace(
-      static_cast<int>(TaskTransportType::RAYLET),
+      TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, main_service_, worker_server_, func)));
+          worker_context_, raylet_client, object_interface_, *main_service_,
+          worker_server_, func)));
+  task_receivers_.emplace(
+      TaskTransportType::DIRECT_ACTOR,
+      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+          new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+                                                *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
 }
 
-Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &spec) {
-  worker_context_.SetCurrentTask(spec);
+Status CoreWorkerTaskExecutionInterface::ExecuteTask(
+    const TaskSpecification &task_spec,
+    std::vector<std::shared_ptr<RayObject>> *results) {
+  RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
-  RayFunction func{spec.GetLanguage(), spec.FunctionDescriptor()};
+  worker_context_.SetCurrentTask(task_spec);
+
+  RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
-  RAY_CHECK_OK(BuildArgsForExecutor(spec, &args));
+  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args));
 
-  TaskType task_type;
-  if (spec.IsActorCreationTask()) {
-    task_type = TaskType::ACTOR_CREATION_TASK;
-  } else if (spec.IsActorTask()) {
-    task_type = TaskType::ACTOR_TASK;
-  } else {
-    task_type = TaskType::NORMAL_TASK;
-  }
-
-  TaskInfo task_info{spec.TaskId(), spec.JobId(), task_type};
-
-  auto num_returns = spec.NumReturns();
-  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
+  auto num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(num_returns > 0);
     // Decrease to account for the dummy object id.
     num_returns--;
   }
 
-  auto status = execution_callback_(func, args, task_info, num_returns);
+  auto status = execution_callback_(func, args, num_returns, results);
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
@@ -61,33 +62,45 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(const TaskSpecification &sp
 
 void CoreWorkerTaskExecutionInterface::Run() {
   // Run main IO service.
-  main_service_.run();
+  main_service_->run();
+}
 
-  // should never reach here.
-  RAY_LOG(FATAL) << "should never reach here after running main io service";
+void CoreWorkerTaskExecutionInterface::Stop() {
+  // Stop main IO service.
+  std::shared_ptr<boost::asio::io_service> main_service = main_service_;
+  // Delay the execution of io_service::stop() to avoid deadlock if
+  // CoreWorkerTaskExecutionInterface::Stop is called inside a task.
+  main_service_->post([main_service]() { main_service->stop(); });
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &spec, std::vector<std::shared_ptr<RayObject>> *args) {
-  auto num_args = spec.NumArgs();
+    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args) {
+  auto num_args = task.NumArgs();
   (*args).resize(num_args);
 
   std::vector<ObjectID> object_ids_to_fetch;
   std::vector<int> indices;
 
-  for (int i = 0; i < spec.NumArgs(); ++i) {
-    int count = spec.ArgIdCount(i);
+  for (size_t i = 0; i < task.NumArgs(); ++i) {
+    int count = task.ArgIdCount(i);
     if (count > 0) {
       // pass by reference.
       RAY_CHECK(count == 1);
-      object_ids_to_fetch.push_back(spec.ArgId(i, 0));
+      object_ids_to_fetch.push_back(task.ArgId(i, 0));
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<RayObject>(
-          std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(spec.ArgVal(i)),
-                                              spec.ArgValLength(i)),
-          nullptr);
+      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
+      if (task.ArgDataSize(i)) {
+        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
+                                                   task.ArgDataSize(i));
+      }
+      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
+      if (task.ArgMetadataSize(i)) {
+        metadata = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+      }
+      (*args)[i] = std::make_shared<RayObject>(data, metadata);
     }
   }
 

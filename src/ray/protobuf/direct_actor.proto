@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+import "src/ray/protobuf/common.proto";
+
+message ReturnObject {
+  // Object ID.
+  bytes object_id = 1;
+  // Data of the object.
+  bytes data = 2;
+  // Metaata of the object.
+  bytes metadata = 3;
+}
+
+message PushTaskRequest {
+  // The task to be pushed.
+  TaskSpec task_spec = 1;
+}
+
+message PushTaskReply {
+  // The returned objects.
+  repeated ReturnObject return_objects = 1;
+}
+
+// Service for direct actor.
+service DirectActorService {
+  // Push a task to a worker.
+  rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+}

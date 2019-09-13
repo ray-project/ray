@@ -12,7 +12,7 @@ void GrpcServer::Run() {
   // TODO(hchen): Add options for authentication.
   builder.AddListeningPort(server_address, grpc::InsecureServerCredentials(), &port_);
   // Register all the services to this server.
-  if (services_.size() == 0) {
+  if (services_.empty()) {
     RAY_LOG(WARNING) << "No service is found when start grpc server " << name_;
   }
   for (auto &entry : services_) {
@@ -54,9 +54,7 @@ void GrpcServer::PollEventsFromCompletionQueue() {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:
         // We've received a new incoming request. Now this call object is used to
-        // track this request. So we need to create another call to handle next
-        // incoming request.
-        server_call->GetFactory().CreateCall();
+        // track this request.
         server_call->SetState(ServerCallState::PROCESSING);
         server_call->HandleRequest();
         break;

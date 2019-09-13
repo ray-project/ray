@@ -14,7 +14,7 @@ public abstract class BaseId implements Serializable {
   /**
    * Create a BaseId instance according to the input byte array.
    */
-  public BaseId(byte[] id) {
+  protected BaseId(byte[] id) {
     if (id.length != size()) {
       throw new IllegalArgumentException("Failed to construct BaseId, expect " + size()
               + " bytes, but got " + id.length + " bytes.");

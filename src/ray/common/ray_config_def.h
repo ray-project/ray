@@ -137,8 +137,11 @@ RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
 /// chunks exceeds the number of available sending threads.
 RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 
-/// Number of workers per process
-RAY_CONFIG(int, num_workers_per_process, 1)
+/// Number of workers per Python worker process
+RAY_CONFIG(int, num_workers_per_process_python, 1)
+
+/// Number of workers per Java worker process
+RAY_CONFIG(int, num_workers_per_process_java, 10)
 
 /// Maximum timeout in milliseconds within which a task lease must be renewed.
 RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)
@@ -147,7 +150,14 @@ RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)
 /// Note: this number should be set to at least 2. Because saving a application
 /// checkpoint isn't atomic with saving the backend checkpoint, and it will break
 /// if this number is set to 1 and users save application checkpoints in place.
-RAY_CONFIG(uint32_t, num_actor_checkpoints_to_keep, 20)
+RAY_CONFIG(int32_t, num_actor_checkpoints_to_keep, 20)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
+
+/// When getting objects from object store, print a warning every this number of attempts.
+RAY_CONFIG(uint32_t, object_store_get_warn_per_num_attempts, 50)
+
+/// When getting objects from object store, max number of ids to print in the warning
+/// message.
+RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)

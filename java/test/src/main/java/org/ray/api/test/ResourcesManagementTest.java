@@ -102,4 +102,3 @@ public class ResourcesManagementTest extends BaseTest {
   }
 
 }
-
