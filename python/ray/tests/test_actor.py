@@ -1776,7 +1776,11 @@ def setup_queue_actor():
         def read(self):
             return self.queue
 
-    yield Queue.remote()
+    queue = Queue.remote()
+    # Make sure queue actor is initialized.
+    ray.get(queue.read.remote())
+
+    yield queue
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -1784,8 +1788,6 @@ def setup_queue_actor():
 
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
-    # Make sure queue actor is initialized.
-    ray.get(queue.read.remote())
 
     @ray.remote
     def fork(queue, key, item):
