@@ -237,6 +237,7 @@ class Trial(object):
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
+                trial=self,
                 loggers=self.loggers,
                 sync_function=self.sync_to_driver_fn)
 
