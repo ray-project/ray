@@ -98,7 +98,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise RayletError(message)
 
 
-cdef VectorToObjectIDs(c_vector[CObjectID] object_ids):
+cdef VectorToObjectIDs(const c_vector[CObjectID] &object_ids):
     result = []
     for i in range(object_ids.size()):
         result.append(ObjectID(object_ids[i].Binary()))
@@ -253,11 +253,9 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
     return out
 
 
-cdef c_vector[c_string] string_vector_from_list(string_list):
+cdef c_vector[c_string] string_vector_from_list(list string_list):
     cdef:
         c_vector[c_string] out
-    if not isinstance(string_list, list):
-        raise TypeError("string_list must be a list")
     for s in string_list:
         if not isinstance(s, bytes):
             raise TypeError("string_list elements must be bytes")

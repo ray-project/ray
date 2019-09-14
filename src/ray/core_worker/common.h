@@ -16,11 +16,15 @@ using WorkerType = rpc::WorkerType;
 class RayFunction {
  public:
   RayFunction() {}
-  RayFunction(Language language, std::vector<std::string> function_descriptor)
+  RayFunction(Language language, const std::vector<std::string> &function_descriptor)
       : language_(language), function_descriptor_(function_descriptor) {}
-  /// Language of the remote function.
+
+  Language GetLanguage() const { return language_; }
+
+  std::vector<std::string> GetFunctionDescriptor() const { return function_descriptor_; }
+
+ private:
   Language language_;
-  /// Function descriptor of the remote function.
   std::vector<std::string> function_descriptor_;
 };
 
