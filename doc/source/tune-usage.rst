@@ -550,19 +550,25 @@ These loggers will be called along with the default Tune loggers. All loggers mu
 TensorBoard
 ~~~~~~~~~~~
 
-The ``tf2_compat_logger`` uses ``TFLogger`` for TF version < 1.14 and ``TF2Logger`` for TF version >= 1.14.
+The ``tf2_compat_logger`` chooses ``TFLogger`` for TF version < 1.14 and ``TF2Logger`` for TF version >= 1.14.
 The ``TF2Logger`` can log hyperparameters according to the `TB documentation <https://www.tensorflow.org/tensorboard/r2/hyperparameter_tuning_with_hparams>`_.
-In order to use the hparam logging, add ``hparams`` and ``exp_id`` (optional) to the dict returned by the ``_train()`` method of a ``Trainable``, e.g.:
+The logger automatically picks up the hparams from `trial.evaluated_params` and logs it during the first call to `on_result` with `Trial ID` from `trial.trial_id`.
+
+For example running tune with the following config creates an overview in Tensorboard as shown below:
 
 .. code-block:: python
-    
-   def _train(self):
-        # training code
-        training_stats = {'training_loss': training_loss}
-        training_stats.update({'hparams': hparams})
-        training_stats.update({'exp_id'}: self._experiment_id)
-        return training_stats
 
+    tune.run(
+        ...,
+        config={
+            "lr": tune.grid_search([1e-5, 1e-4]),
+            "momentum": tune.grid_search([0, 0.9])
+        }
+    )
+
+.. image:: ray-tune-tb-hparams.png
+
+The nonrelevant Metrics (like timing stats) can be disabled on the left to show only the relevant ones (like accuracy, loss, etc.).
 
 MLFlow
 ~~~~~~
