@@ -2201,18 +2201,17 @@ def register_custom_serializer(cls, serializer, deserializer, class_id=None):
         cls,
         serializer=serializer,
         deserializer=deserializer,
-        class_id=class_id
-    )
+        class_id=class_id)
 
 
 def _register_custom_serializer(cls,
-                               use_pickle=False,
-                               use_dict=False,
-                               serializer=None,
-                               deserializer=None,
-                               local=False,
-                               job_id=None,
-                               class_id=None):
+                                use_pickle=False,
+                                use_dict=False,
+                                serializer=None,
+                                deserializer=None,
+                                local=False,
+                                job_id=None,
+                                class_id=None):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,

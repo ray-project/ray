@@ -9,8 +9,6 @@ import wikipedia
 
 import ray
 from ray.experimental.streaming.streaming import Environment
-from ray.experimental.streaming.batched_queue import BatchedQueue
-from ray.experimental.streaming.operator import OpType, PStrategy
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
