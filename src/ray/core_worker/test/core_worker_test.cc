@@ -49,7 +49,7 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 }
 
 std::unique_ptr<ActorHandle> CreateActorHelper(
-    CoreWorker &worker, const std::unordered_map<std::string, double> &resources,
+    CoreWorker &worker, std::unordered_map<std::string, double> &resources,
     bool is_direct_call, uint64_t max_reconstructions) {
   std::unique_ptr<ActorHandle> actor_handle;
 
@@ -57,7 +57,7 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
-  RayFunction func{ray::Language::PYTHON, {"actor creation task"}};
+  RayFunction func(ray::Language::PYTHON, {"actor creation task"});
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
@@ -171,22 +171,22 @@ class CoreWorkerTest : public ::testing::Test {
   void TestStoreProvider(StoreProviderType type);
 
   // Test normal tasks.
-  void TestNormalTask(const std::unordered_map<std::string, double> &resources);
+  void TestNormalTask(std::unordered_map<std::string, double> &resources);
 
   // Test actor tasks.
-  void TestActorTask(const std::unordered_map<std::string, double> &resources,
+  void TestActorTask(std::unordered_map<std::string, double> &resources,
                      bool is_direct_call);
 
   // Test actor failure case, verify that the tasks would either succeed or
   // fail with exceptions, in that case the return objects fetched from `Get`
   // contain errors.
-  void TestActorFailure(const std::unordered_map<std::string, double> &resources,
+  void TestActorFailure(std::unordered_map<std::string, double> &resources,
                         bool is_direct_call);
 
   // Test actor failover case. Verify that actor can be reconstructed successfully,
   // and as long as we wait for actor reconstruction before submitting new tasks,
   // it is guaranteed that all tasks are successfully completed.
-  void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
+  void TestActorReconstruction(std::unordered_map<std::string, double> &resources,
                                bool is_direct_call);
 
  protected:
@@ -216,8 +216,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
   return WaitForCondition(condition_func, timeout_ms);
 }
 
-void CoreWorkerTest::TestNormalTask(
-    const std::unordered_map<std::string, double> &resources) {
+void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -236,7 +235,7 @@ void CoreWorkerTest::TestNormalTask(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
       TaskOptions options;
 
       std::vector<ObjectID> return_ids;
@@ -258,8 +257,8 @@ void CoreWorkerTest::TestNormalTask(
   }
 }
 
-void CoreWorkerTest::TestActorTask(
-    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &resources,
+                                   bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -281,7 +280,7 @@ void CoreWorkerTest::TestActorTask(
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
 
       RAY_CHECK_OK(driver.Tasks().SubmitActorTask(*actor_handle, func, args, options,
                                                   &return_ids));
@@ -323,7 +322,7 @@ void CoreWorkerTest::TestActorTask(
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {}};
+    RayFunction func(ray::Language::PYTHON, {});
     auto status =
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
     if (is_direct_call) {
@@ -348,7 +347,7 @@ void CoreWorkerTest::TestActorTask(
 }
 
 void CoreWorkerTest::TestActorReconstruction(
-    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+    std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -389,7 +388,7 @@ void CoreWorkerTest::TestActorReconstruction(
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
 
       auto status =
           driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
@@ -405,8 +404,8 @@ void CoreWorkerTest::TestActorReconstruction(
   }
 }
 
-void CoreWorkerTest::TestActorFailure(
-    const std::unordered_map<std::string, double> &resources, bool is_direct_call) {
+void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &resources,
+                                      bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
 
@@ -435,7 +434,7 @@ void CoreWorkerTest::TestActorFailure(
 
       TaskOptions options{1, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func{ray::Language::PYTHON, {}};
+      RayFunction func(ray::Language::PYTHON, {});
 
       auto status =
           driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids);
@@ -641,7 +640,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // to benchmark performance.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction function{ray::Language::PYTHON, {}};
+  RayFunction function(ray::Language::PYTHON, {});
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
@@ -649,8 +648,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                           ActorHandleID::Nil(), function.language, true,
-                           function.function_descriptor);
+                           ActorHandleID::Nil(), function.GetLanguage(), true,
+                           function.GetFunctionDescriptor());
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -664,8 +663,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(RandomTaskId(), function.language,
-                              function.function_descriptor, job_id, RandomTaskId(), 0,
+    builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
+                              function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
@@ -703,7 +702,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   // Test creating actor.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction func{ray::Language::PYTHON, {}};
+  RayFunction func(ray::Language::PYTHON, {});
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
@@ -725,7 +724,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func{ray::Language::PYTHON, {}};
+    RayFunction func(ray::Language::PYTHON, {});
 
     RAY_CHECK_OK(
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));

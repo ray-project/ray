@@ -707,11 +707,14 @@ class Worker(object):
                     self.current_job_id, self.current_task_id,
                     self.task_context.task_index, actor_id)
             else:
-                # This is a normal task.
-                task_id = TaskID.for_normal_task(self.current_job_id,
-                                                 self.current_task_id,
-                                                 self.task_context.task_index)
+                # Normal tasks are submitted through the core worker (in the
+                # future, all tasks will be).
+                return self.core_worker.submit_task(function_descriptor_list,
+                                                    args_for_raylet,
+                                                    num_return_vals, resources)
 
+            # Actor creation tasks and actor tasks are submitted directly to
+            # the raylet.
             task = ray._raylet.TaskSpec(
                 task_id,
                 job_id,

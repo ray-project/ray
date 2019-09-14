@@ -121,10 +121,10 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_placement_resources,
     TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, function.language, function.function_descriptor,
-                            worker_context_.GetCurrentJobID(),
-                            worker_context_.GetCurrentTaskID(), task_index, num_returns,
-                            required_resources, required_placement_resources);
+  builder.SetCommonTaskSpec(
+      task_id, function.GetLanguage(), function.GetFunctionDescriptor(),
+      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(), task_index,
+      num_returns, required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -177,8 +177,8 @@ Status CoreWorkerTaskInterface::CreateActor(
                                    actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-      actor_id, ActorHandleID::Nil(), function.language,
-      actor_creation_options.is_direct_call, function.function_descriptor));
+      actor_id, ActorHandleID::Nil(), function.GetLanguage(),
+      actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 

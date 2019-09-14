@@ -26,26 +26,6 @@ class CoreWorkerMemoryStore {
   /// \return Status.
   Status Put(const ObjectID &object_id, const RayObject &object);
 
-  /// Create and return a buffer in the object store that can be directly written
-  /// into. After writing to the buffer, the caller must call `Seal()` to finalize
-  /// the object. The `Create()` and `Seal()` combination is an alternative interface
-  /// to `Put()` that allows frontends to avoid an extra copy when possible.
-  ///
-  /// \param[in] metadata Metadata of the object to be written.
-  /// \param[in] data_size Size of the object to be written.
-  /// \param[in] object_id Object ID specified by the user.
-  /// \param[out] data Buffer for the user to write the object into.
-  /// \return Status.
-  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
-
-  /// Finalize placing an object into the object store. This should be called after
-  /// a corresponding `Create()` call and then writing into the returned buffer.
-  ///
-  /// \param[in] object_id Object ID corresponding to the object.
-  /// \return Status.
-  Status Seal(const ObjectID &object_id);
-
   /// Get a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to get. Duplicates are not allowed.
