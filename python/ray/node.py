@@ -74,9 +74,15 @@ class Node(object):
                 raise ValueError("'shutdown_at_exit' and 'connect_only' "
                                  "cannot both be true.")
 
-            def clean_up_children(*args, **kwargs):
+            def atexit_handler():
+                return clean_up_children(lambda *args, **kwargs: None)
+
+            def sigterm_handler():
+                return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+
+            def clean_up_children(sigterm_handler):
                 self.kill_all_processes(check_alive=False, allow_graceful=True)
-                signal.signal(signal.SIGTERM, lambda *args: sys.exit(1))
+                signal.signal(signal.SIGTERM, sigterm_handler)
                 try:
                     # SIGTERM our process group as a last resort in case there
                     # were processes that we spawned but didn't add to the list
@@ -88,8 +94,8 @@ class Node(object):
                     print("killpg failed, processes may not have "
                           "been cleaned up properly: {}.".format(e))
 
-            atexit.register(clean_up_children)
-            signal.signal(signal.SIGTERM, clean_up_children)
+            atexit.register(atexit_handler)
+            signal.signal(signal.SIGTERM, sigterm_handler)
 
         self.head = head
         self.all_processes = {}
