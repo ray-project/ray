@@ -77,7 +77,6 @@ class Experiment(object):
                  restore=None,
                  repeat=None,
                  trial_resources=None,
-                 custom_loggers=None,
                  sync_function=None):
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
@@ -96,7 +95,8 @@ class Experiment(object):
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
-            "local_dir": os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR),
+            "local_dir": os.path.abspath(
+                os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
             "upload_dir": upload_dir,
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
@@ -107,7 +107,8 @@ class Experiment(object):
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
-            "restore": restore
+            "restore": os.path.abspath(os.path.expanduser(restore))
+            if restore else None
         }
 
         self.name = name or run_identifier

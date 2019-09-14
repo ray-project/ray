@@ -17,8 +17,8 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-# Add the upstream branch if it doesn't exist
-if ! [[ -e "$ROOT/.git/refs/remotes/upstream" ]]; then
+# Add the upstream remote if it doesn't exist
+if ! git remote -v | grep -q upstream; then
     git remote add 'upstream' 'https://github.com/ray-project/ray.git'
 fi
 
@@ -86,7 +86,7 @@ format_changed() {
     if ! git diff --diff-filter=ACM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
         if which flake8 >/dev/null; then
             git diff --name-only --diff-filter=ACM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504,W605
+                 flake8 --inline-quotes '"' --no-avoid-escape --exclude=python/ray/core/generated/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E704,E999,W503,W504,W605
         fi
     fi
 

@@ -90,7 +90,6 @@ flatbuffers::Offset<flatbuffers::String> to_flatbuf(flatbuffers::FlatBufferBuild
 
 template <typename ID>
 ID from_flatbuf(const flatbuffers::String &string) {
-  RAY_CHECK(string.size() == ID::Size());
   return ID::FromBinary(string.str());
 }
 

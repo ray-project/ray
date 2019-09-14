@@ -37,7 +37,9 @@ def warmup():
 def test_task_submission(benchmark, num_tasks):
     num_cpus = 16
     ray.init(
-        num_cpus=num_cpus, object_store_memory=10**7, ignore_reinit_error=True)
+        num_cpus=num_cpus,
+        object_store_memory=150 * 1024 * 1024,
+        ignore_reinit_error=True)
     # warm up the plasma store
     warmup()
     benchmark(benchmark_task_submission, num_tasks)
@@ -57,11 +59,11 @@ def test_task_forward(benchmark, num_tasks):
             do_init=True,
             num_nodes=1,
             num_cpus=16,
-            object_store_memory=10**7,
+            object_store_memory=150 * 1024 * 1024,
     ) as cluster:
         cluster.add_node(
             num_cpus=16,
-            object_store_memory=10**7,
+            object_store_memory=150 * 1024 * 1024,
             resources={"my_resource": 100},
         )
 

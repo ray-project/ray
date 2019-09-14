@@ -45,7 +45,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
                  metric="episode_reward_mean",
                  mode="max",
                  max_t=100,
-                 grace_period=10,
+                 grace_period=1,
                  reduction_factor=4,
                  brackets=1):
         assert max_t > 0, "Max (time_attr) not valid!"
@@ -92,6 +92,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def on_trial_result(self, trial_runner, trial, result):
         action = TrialScheduler.CONTINUE
+        if self._time_attr not in result or self._metric not in result:
+            return action
         if result[self._time_attr] >= self._max_t:
             action = TrialScheduler.STOP
         else:
@@ -103,6 +105,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         return action
 
     def on_trial_complete(self, trial_runner, trial, result):
+        if self._time_attr not in result or self._metric not in result:
+            return
         bracket = self._trial_info[trial.trial_id]
         bracket.on_result(trial, result[self._time_attr],
                           self._metric_op * result[self._metric])

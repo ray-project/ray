@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import glob
 import os
+import numpy as np
 import shutil
 import sys
 import tempfile
@@ -25,7 +26,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
                              TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
 from ray.tune.logger import Logger
-from ray.tune.util import pin_in_object_store, get_pinned_object
+from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
 from ray.tune.trial_runner import TrialRunner
@@ -44,7 +45,7 @@ else:
 
 class TrainableFunctionApiTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=4, num_gpus=0)
+        ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
         ray.shutdown()
@@ -433,14 +434,16 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 reporter(test={"test1": {"test2": i}})
 
-        [trial] = tune.run(
-            train, stop={
-                "test": {
-                    "test1": {
-                        "test2": 6
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(
+                train, stop={
+                    "test": {
+                        "test1": {
+                            "test2": 6
+                        }
                     }
-                }
-            }).trials
+                }).trials
+        [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
     def testEarlyReturn(self):
@@ -456,6 +459,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 100)
+
+    def testReporterNoUsage(self):
+        def run_task(config, reporter):
+            print("hello")
+
+        experiment = Experiment(run=run_task, name="ray_crash_repro")
+        [trial] = ray.tune.run(experiment).trials
+        print(trial.last_result)
+        self.assertEqual(trial.last_result[DONE], True)
 
     def testErrorReturn(self):
         def train(config, reporter):
@@ -513,6 +525,53 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result["mean_accuracy"], float("inf"))
+
+    def testNestedResults(self):
+        def create_result(i):
+            return {"test": {"1": {"2": {"3": i, "4": False}}}}
+
+        flattened_keys = list(flatten_dict(create_result(0)))
+
+        class _MockScheduler(FIFOScheduler):
+            results = []
+
+            def on_trial_result(self, trial_runner, trial, result):
+                self.results += [result]
+                return TrialScheduler.CONTINUE
+
+            def on_trial_complete(self, trial_runner, trial, result):
+                self.complete_result = result
+
+        def train(config, reporter):
+            for i in range(100):
+                reporter(**create_result(i))
+
+        algo = _MockSuggestionAlgorithm()
+        scheduler = _MockScheduler()
+        [trial] = tune.run(
+            train,
+            scheduler=scheduler,
+            search_alg=algo,
+            stop={
+                "test/1/2/3": 20
+            }).trials
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["3"], 20)
+        self.assertEqual(trial.last_result["test"]["1"]["2"]["4"], False)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 21)
+        self.assertEqual(len(scheduler.results), 20)
+        self.assertTrue(
+            all(
+                set(result) >= set(flattened_keys)
+                for result in scheduler.results))
+        self.assertTrue(set(scheduler.complete_result) >= set(flattened_keys))
+        self.assertEqual(len(algo.results), 20)
+        self.assertTrue(
+            all(set(result) >= set(flattened_keys) for result in algo.results))
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"1/2/3": 20})
+        with self.assertRaises(TuneError):
+            [trial] = tune.run(train, stop={"test": 1}).trials
 
     def testReportTimeStep(self):
         # Test that no timestep count are logged if never the Trainable never
@@ -704,9 +763,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
 
 class RunExperimentTest(unittest.TestCase):
-    def setUp(self):
-        ray.init()
-
     def tearDown(self):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
@@ -916,8 +972,8 @@ class RunExperimentTest(unittest.TestCase):
                 "stop": {
                     "training_iteration": 1
                 },
-                "trial_name_creator": tune.function(
-                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id))
+                "trial_name_creator":
+                    lambda t: "{}_{}_321".format(t.trainable_name, t.trial_id)
             }
         })
         self.assertEquals(
@@ -1057,7 +1113,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 "training_iteration": 1
             },
             upload_dir=tmpdir2,
-            sync_to_cloud=tune.function(sync_func)).trials
+            sync_to_cloud=sync_func).trials
         test_file_path = glob.glob(os.path.join(tmpdir2, "foo", "*.json"))
         self.assertTrue(test_file_path)
         shutil.rmtree(tmpdir)
@@ -1078,7 +1134,7 @@ class TestSyncFunctionality(unittest.TestCase):
             stop={
                 "training_iteration": 1
             },
-            sync_to_driver=tune.function(sync_func_driver)).trials
+            sync_to_driver=sync_func_driver).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
@@ -1091,7 +1147,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 stop={
                     "training_iteration": 1
                 },
-                sync_to_driver=tune.function(sync_func_driver)).trials
+                sync_to_driver=sync_func_driver).trials
         test_file_path = os.path.join(trial.logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
@@ -1110,8 +1166,8 @@ class TestSyncFunctionality(unittest.TestCase):
                         "training_iteration": 1
                     },
                     "upload_dir": "test",
-                    "sync_to_driver": tune.function(sync_func),
-                    "sync_to_cloud": tune.function(sync_func)
+                    "sync_to_driver": sync_func,
+                    "sync_to_cloud": sync_func
                 }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
@@ -1242,6 +1298,17 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def testLogUniform(self):
+        sampler = tune.loguniform(1e-10, 1e-1).func
+        results = [sampler(None) for i in range(1000)]
+        assert abs(np.log(min(results)) / np.log(10) - -10) < 0.1
+        assert abs(np.log(max(results)) / np.log(10) - -1) < 0.1
+
+        sampler_e = tune.loguniform(np.e**-4, np.e, base=np.e).func
+        results_e = [sampler_e(None) for i in range(1000)]
+        assert abs(np.log(min(results_e)) - -4) < 0.1
+        assert abs(np.log(max(results_e)) - 1) < 0.1
 
     def test_resolve_dict(self):
         config = {
@@ -1463,6 +1530,14 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.PENDING)
         self.assertEqual(trials[3].status, Trial.PENDING)
+
+    def testResourceNumericalError(self):
+        resource = Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
+        small_resource = Resources(
+            cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
+        for i in range(3):
+            resource = Resources.subtract(resource, small_resource)
+        self.assertTrue(resource.is_nonnegative())
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
@@ -2206,11 +2281,9 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init()
         trial = Trial(
             "__fake",
-            config={
-                "callbacks": {
-                    "on_episode_start": tune.function(lambda i: i),
-                }
-            },
+            config={"callbacks": {
+                "on_episode_start": lambda i: i,
+            }},
             checkpoint_freq=1)
         tmpdir = tempfile.mkdtemp()
         runner = TrialRunner(local_checkpoint_dir=tmpdir, checkpoint_period=0)

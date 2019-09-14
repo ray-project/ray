@@ -7,11 +7,21 @@
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
+
+#include "ray/gcs/callback.h"
+
+#include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/lineage_cache.h"
+
+#include "ray/util/test_util.h"
 
 namespace ray {
 
 namespace raylet {
+
+const static JobID kDefaultJobId = JobID::FromInt(1);
+
+const static TaskID kDefaultDriverTaskId = TaskID::ForDriverTask(kDefaultJobId);
 
 class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
                 public gcs::PubsubInterface<TaskID> {
@@ -61,7 +71,8 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status RequestNotifications(const JobID &job_id, const TaskID &task_id,
-                              const ClientID &client_id) {
+                              const ClientID &client_id,
+                              const gcs::StatusCallback &done) {
     subscribed_tasks_.insert(task_id);
     if (task_table_.count(task_id) == 1) {
       callbacks_.push_back({notification_callback_, task_id});
@@ -71,7 +82,7 @@ class MockGcs : public gcs::TableInterface<TaskID, TaskTableData>,
   }
 
   Status CancelNotifications(const JobID &job_id, const TaskID &task_id,
-                             const ClientID &client_id) {
+                             const ClientID &client_id, const gcs::StatusCallback &done) {
     subscribed_tasks_.erase(task_id);
     return ray::Status::OK();
   }
@@ -127,8 +138,8 @@ class LineageCacheTest : public ::testing::Test {
 static inline Task ExampleTask(const std::vector<ObjectID> &arguments,
                                uint64_t num_returns) {
   TaskSpecBuilder builder;
-  builder.SetCommonTaskSpec(Language::PYTHON, {"", "", ""}, JobID::Nil(),
-                            TaskID::FromRandom(), 0, num_returns, {}, {});
+  builder.SetCommonTaskSpec(RandomTaskId(), Language::PYTHON, {"", "", ""}, JobID::Nil(),
+                            RandomTaskId(), 0, num_returns, {}, {});
   for (const auto &arg : arguments) {
     builder.AddByRefArg(arg);
   }
@@ -155,7 +166,7 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
     lineage_cache.AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
     inserted_tasks.push_back(task);
     arguments.clear();
-    for (int j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
+    for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
       arguments.push_back(task.GetTaskSpecification().ReturnId(j));
     }
   }

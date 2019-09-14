@@ -31,10 +31,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def run_test_exp(self):
         self.ea = run(
             MyTrainableClass,
-            global_checkpoint_period=0,
             name=self.test_name,
             local_dir=self.test_dir,
-            return_trials=False,
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
@@ -48,6 +46,10 @@ class ExperimentAnalysisSuite(unittest.TestCase):
 
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEquals(df.shape[0], self.num_samples)
+
+    def testStats(self):
+        assert self.ea.stats()
+        assert self.ea.runner_data()
 
     def testTrialDataframe(self):
         checkpoints = self.ea._checkpoints
@@ -82,7 +84,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testIgnoreOtherExperiment(self):
         analysis = run(
             MyTrainableClass,
-            global_checkpoint_period=0,
             name="test_example",
             local_dir=self.test_dir,
             return_trials=False,
@@ -108,7 +109,6 @@ class AnalysisSuite(unittest.TestCase):
 
     def run_test_exp(self, test_name=None):
         run(MyTrainableClass,
-            global_checkpoint_period=0,
             name=test_name,
             local_dir=self.test_dir,
             return_trials=False,
@@ -137,6 +137,13 @@ class AnalysisSuite(unittest.TestCase):
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
         self.assertTrue(logdir2.startswith(self.test_dir))
         self.assertNotEquals(logdir, logdir2)
+
+    def testBestConfigIsLogdir(self):
+        analysis = Analysis(self.test_dir)
+        for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
+            logdir = analysis.get_best_logdir(metric, mode=mode)
+            best_config = analysis.get_best_config(metric, mode=mode)
+            self.assertEquals(analysis.get_all_configs()[logdir], best_config)
 
 
 if __name__ == "__main__":

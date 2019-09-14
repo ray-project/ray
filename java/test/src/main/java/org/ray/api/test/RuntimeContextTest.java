@@ -3,6 +3,7 @@ package org.ray.api.test;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.id.ActorId;
 import org.ray.api.id.JobId;
 import org.ray.api.id.UniqueId;
 import org.testng.Assert;
@@ -41,7 +42,7 @@ public class RuntimeContextTest extends BaseTest {
   @RayRemote
   public static class RuntimeContextTester {
 
-    public String testRuntimeContext(UniqueId actorId) {
+    public String testRuntimeContext(ActorId actorId) {
       Assert.assertEquals(JOB_ID, Ray.getRuntimeContext().getCurrentJobId());
       Assert.assertEquals(actorId, Ray.getRuntimeContext().getCurrentActorId());
       Assert.assertEquals(RAYLET_SOCKET_NAME, Ray.getRuntimeContext().getRayletSocketName());

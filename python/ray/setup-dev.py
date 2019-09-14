@@ -13,11 +13,11 @@ import subprocess
 import ray
 
 
-def do_link(package, force=False):
+def do_link(package, force=False, local_path=""):
     package_home = os.path.abspath(
         os.path.join(ray.__file__, "../{}".format(package)))
     local_home = os.path.abspath(
-        os.path.join(__file__, "../{}".format(package)))
+        os.path.join(__file__, local_path + "../{}".format(package)))
     assert os.path.isdir(package_home), package_home
     assert os.path.isdir(local_home), local_home
     if not force and not click.confirm(
@@ -43,7 +43,7 @@ if __name__ == "__main__":
         "--yes", action="store_true", help="Don't ask for confirmation.")
     args = parser.parse_args()
 
-    do_link("rllib", force=args.yes)
+    do_link("rllib", force=args.yes, local_path="../../")
     do_link("tune", force=args.yes)
     do_link("autoscaler", force=args.yes)
     do_link("scripts", force=args.yes)

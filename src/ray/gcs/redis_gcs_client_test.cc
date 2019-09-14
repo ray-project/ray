@@ -8,6 +8,7 @@ extern "C" {
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/tables.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -104,7 +105,7 @@ bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) 
 }
 
 void TestTableLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  const auto task_id = TaskID::FromRandom();
+  const auto task_id = RandomTaskId();
   const auto data = CreateTaskTableData(task_id);
 
   // Check that we added the correct task.
@@ -151,7 +152,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookup);
 
 void TestLogLookup(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
   // Append some entries to the log at an object ID.
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   std::vector<std::string> node_manager_ids = {"abc", "def", "ghi"};
   for (auto &node_manager_id : node_manager_ids) {
     auto data = std::make_shared<TaskReconstructionData>();
@@ -196,7 +197,7 @@ TEST_F(TestGcsWithAsio, TestLogLookup) {
 
 void TestTableLookupFailure(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
 
   // Check that the lookup does not return data.
   auto lookup_callback = [](gcs::RedisGcsClient *client, const TaskID &id,
@@ -222,7 +223,7 @@ TEST_MACRO(TestGcsWithChainAsio, TestTableLookupFailure);
 #endif
 
 void TestLogAppendAt(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
-  TaskID task_id = TaskID::FromRandom();
+  TaskID task_id = RandomTaskId();
   std::vector<std::string> node_manager_ids = {"A", "B"};
   std::vector<std::shared_ptr<TaskReconstructionData>> data_log;
   for (const auto &node_manager_id : node_manager_ids) {
@@ -352,7 +353,7 @@ void TestDeleteKeysFromLog(
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::FromRandom();
+    task_id = RandomTaskId();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
@@ -400,7 +401,7 @@ void TestDeleteKeysFromTable(const JobID &job_id,
   std::vector<TaskID> ids;
   TaskID task_id;
   for (auto &data : data_vector) {
-    task_id = TaskID::FromRandom();
+    task_id = RandomTaskId();
     ids.push_back(task_id);
     // Check that we added the correct object entries.
     auto add_callback = [task_id, data](gcs::RedisGcsClient *client, const TaskID &id,
@@ -521,7 +522,7 @@ void TestDeleteKeys(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cl
   std::vector<std::shared_ptr<TaskTableData>> task_vector;
   auto AppendTaskData = [&task_vector](size_t add_count) {
     for (size_t i = 0; i < add_count; ++i) {
-      task_vector.push_back(CreateTaskTableData(TaskID::FromRandom()));
+      task_vector.push_back(CreateTaskTableData(RandomTaskId()));
     }
   };
   AppendTaskData(1);
@@ -700,13 +701,13 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeAll) {
 
 void TestTableSubscribeId(const JobID &job_id,
                           std::shared_ptr<gcs::RedisGcsClient> client) {
-  int num_modifications = 3;
+  size_t num_modifications = 3;
 
   // Add a table entry.
-  TaskID task_id1 = TaskID::FromRandom();
+  TaskID task_id1 = RandomTaskId();
 
   // Add a table entry at a second key.
-  TaskID task_id2 = TaskID::FromRandom();
+  TaskID task_id2 = RandomTaskId();
 
   // The callback for a notification from the table. This should only be
   // received for keys that we requested notifications for.
@@ -740,7 +741,7 @@ void TestTableSubscribeId(const JobID &job_id,
                              num_modifications](gcs::RedisGcsClient *client) {
     // Request notifications for one of the keys.
     RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
-        job_id, task_id2, client->client_table().GetLocalClientId()));
+        job_id, task_id2, client->client_table().GetLocalClientId(), nullptr));
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
     for (uint64_t i = 0; i < num_modifications; i++) {
@@ -813,7 +814,7 @@ void TestLogSubscribeId(const JobID &job_id,
                              job_ids2](gcs::RedisGcsClient *client) {
     // Request notifications for one of the keys.
     RAY_CHECK_OK(client->job_table().RequestNotifications(
-        job_id, job_id2, client->client_table().GetLocalClientId()));
+        job_id, job_id2, client->client_table().GetLocalClientId(), nullptr));
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
     auto remaining = std::vector<std::string>(++job_ids1.begin(), job_ids1.end());
@@ -889,7 +890,7 @@ void TestSetSubscribeId(const JobID &job_id,
                              managers2](gcs::RedisGcsClient *client) {
     // Request notifications for one of the keys.
     RAY_CHECK_OK(client->object_table().RequestNotifications(
-        job_id, object_id2, client->client_table().GetLocalClientId()));
+        job_id, object_id2, client->client_table().GetLocalClientId(), nullptr));
     // Write both keys. We should only receive notifications for the key that
     // we requested them for.
     auto remaining = std::vector<std::string>(++managers1.begin(), managers1.end());
@@ -927,7 +928,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeId) {
 void TestTableSubscribeCancel(const JobID &job_id,
                               std::shared_ptr<gcs::RedisGcsClient> client) {
   // Add a table entry.
-  const auto task_id = TaskID::FromRandom();
+  const auto task_id = RandomTaskId();
   const int num_modifications = 3;
   const auto data = CreateTaskTableData(task_id, 0);
   RAY_CHECK_OK(client->raylet_task_table().Add(job_id, task_id, data, nullptr));
@@ -963,9 +964,9 @@ void TestTableSubscribeCancel(const JobID &job_id,
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
-        job_id, task_id, client->client_table().GetLocalClientId()));
+        job_id, task_id, client->client_table().GetLocalClientId(), nullptr));
     RAY_CHECK_OK(client->raylet_task_table().CancelNotifications(
-        job_id, task_id, client->client_table().GetLocalClientId()));
+        job_id, task_id, client->client_table().GetLocalClientId(), nullptr));
     // Write to the key. Since we canceled notifications, we should not receive
     // a notification for these writes.
     for (uint64_t i = 1; i < num_modifications; i++) {
@@ -975,7 +976,7 @@ void TestTableSubscribeCancel(const JobID &job_id,
     // Request notifications again. We should receive a notification for the
     // current value at the key.
     RAY_CHECK_OK(client->raylet_task_table().RequestNotifications(
-        job_id, task_id, client->client_table().GetLocalClientId()));
+        job_id, task_id, client->client_table().GetLocalClientId(), nullptr));
   };
 
   // Subscribe to notifications for this client. This allows us to request and
@@ -1032,9 +1033,9 @@ void TestLogSubscribeCancel(const JobID &job_id,
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->job_table().RequestNotifications(
-        job_id, random_job_id, client->client_table().GetLocalClientId()));
+        job_id, random_job_id, client->client_table().GetLocalClientId(), nullptr));
     RAY_CHECK_OK(client->job_table().CancelNotifications(
-        job_id, random_job_id, client->client_table().GetLocalClientId()));
+        job_id, random_job_id, client->client_table().GetLocalClientId(), nullptr));
     // Append to the key. Since we canceled notifications, we should not
     // receive a notification for these writes.
     auto remaining = std::vector<std::string>(++job_ids.begin(), job_ids.end());
@@ -1046,7 +1047,7 @@ void TestLogSubscribeCancel(const JobID &job_id,
     // Request notifications again. We should receive a notification for the
     // current values at the key.
     RAY_CHECK_OK(client->job_table().RequestNotifications(
-        job_id, random_job_id, client->client_table().GetLocalClientId()));
+        job_id, random_job_id, client->client_table().GetLocalClientId(), nullptr));
   };
 
   // Subscribe to notifications for this client. This allows us to request and
@@ -1114,9 +1115,9 @@ void TestSetSubscribeCancel(const JobID &job_id,
     // Request notifications, then cancel immediately. We should receive a
     // notification for the current value at the key.
     RAY_CHECK_OK(client->object_table().RequestNotifications(
-        job_id, object_id, client->client_table().GetLocalClientId()));
+        job_id, object_id, client->client_table().GetLocalClientId(), nullptr));
     RAY_CHECK_OK(client->object_table().CancelNotifications(
-        job_id, object_id, client->client_table().GetLocalClientId()));
+        job_id, object_id, client->client_table().GetLocalClientId(), nullptr));
     // Add to the key. Since we canceled notifications, we should not
     // receive a notification for these writes.
     auto remaining = std::vector<std::string>(++managers.begin(), managers.end());
@@ -1128,7 +1129,7 @@ void TestSetSubscribeCancel(const JobID &job_id,
     // Request notifications again. We should receive a notification for the
     // current values at the key.
     RAY_CHECK_OK(client->object_table().RequestNotifications(
-        job_id, object_id, client->client_table().GetLocalClientId()));
+        job_id, object_id, client->client_table().GetLocalClientId(), nullptr));
   };
 
   // Subscribe to notifications for this client. This allows us to request and
@@ -1341,7 +1342,7 @@ void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> cli
   RAY_CHECK_OK(client->resource_table().Subscribe(
       job_id, ClientID::Nil(), notification_callback, subscribe_callback));
   RAY_CHECK_OK(client->resource_table().RequestNotifications(
-      job_id, client_id, client->client_table().GetLocalClientId()));
+      job_id, client_id, client->client_table().GetLocalClientId(), nullptr));
 
   // Step 1: Add elements to the hash table.
   auto update_callback1 = [data_map1, compare_test](

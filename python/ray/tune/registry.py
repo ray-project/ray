@@ -14,8 +14,10 @@ TRAINABLE_CLASS = "trainable_class"
 ENV_CREATOR = "env_creator"
 RLLIB_MODEL = "rllib_model"
 RLLIB_PREPROCESSOR = "rllib_preprocessor"
+RLLIB_ACTION_DIST = "rllib_action_dist"
 KNOWN_CATEGORIES = [
-    TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR
+    TRAINABLE_CLASS, ENV_CREATOR, RLLIB_MODEL, RLLIB_PREPROCESSOR,
+    RLLIB_ACTION_DIST
 ]
 
 logger = logging.getLogger(__name__)

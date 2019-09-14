@@ -38,7 +38,7 @@ size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
 
 ObjectID TaskSpecification::ReturnId(size_t return_index) const {
-  return ObjectID::ForTaskReturn(TaskId(), return_index + 1);
+  return ObjectID::ForTaskReturn(TaskId(), return_index + 1, /*transport_type=*/0);
 }
 
 bool TaskSpecification::ArgByRef(size_t arg_index) const {
@@ -53,12 +53,20 @@ ObjectID TaskSpecification::ArgId(size_t arg_index, size_t id_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ids(id_index));
 }
 
-const uint8_t *TaskSpecification::ArgVal(size_t arg_index) const {
+const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }
 
-size_t TaskSpecification::ArgValLength(size_t arg_index) const {
+size_t TaskSpecification::ArgDataSize(size_t arg_index) const {
   return message_->args(arg_index).data().size();
+}
+
+const uint8_t *TaskSpecification::ArgMetadata(size_t arg_index) const {
+  return reinterpret_cast<const uint8_t *>(message_->args(arg_index).metadata().data());
+}
+
+size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
+  return message_->args(arg_index).metadata().size();
 }
 
 const ResourceSet TaskSpecification::GetRequiredResources() const {
@@ -146,6 +154,11 @@ std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
       message_->actor_task_spec().new_actor_handles());
 }
 
+bool TaskSpecification::IsDirectCall() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().is_direct_call();
+}
+
 std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
@@ -156,7 +169,7 @@ std::string TaskSpecification::DebugString() const {
   const auto list = VectorFromProtobuf(message_->function_descriptor());
   // The 4th is the code hash which is binary bits. No need to output it.
   const size_t size = std::min(static_cast<size_t>(3), list.size());
-  for (int i = 0; i < size; ++i) {
+  for (size_t i = 0; i < size; ++i) {
     if (i != 0) {
       stream << ",";
     }
@@ -169,7 +182,8 @@ std::string TaskSpecification::DebugString() const {
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_reconstructions=" << MaxActorReconstructions() << "}";
+           << ", max_reconstructions=" << MaxActorReconstructions()
+           << ", is_direct_call=" << IsDirectCall() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()

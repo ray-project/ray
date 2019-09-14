@@ -95,7 +95,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
 
   GcsClientOptions options_;
 
-  // Whether this client is connected to GCS.
+  /// Whether this client is connected to GCS.
   bool is_connected_{false};
 
   std::unique_ptr<ActorStateAccessor> actor_accessor_;

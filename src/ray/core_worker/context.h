@@ -20,9 +20,19 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentJobId(const JobID &job_id);
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentTaskId(const TaskID &task_id);
+
   void SetCurrentTask(const TaskSpecification &task_spec);
 
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
+
+  const ActorID &GetCurrentActorID() const;
+
+  bool CurrentActorUseDirectCall() const;
 
   int GetNextTaskIndex();
 
@@ -37,6 +47,12 @@ class WorkerContext {
 
   /// Job ID for this worker.
   JobID current_job_id_;
+
+  /// ID of current actor.
+  ActorID current_actor_id_;
+
+  /// Whether current actor accepts direct calls.
+  bool current_actor_use_direct_call_;
 
  private:
   static WorkerThreadContext &GetThreadContext();

@@ -1,6 +1,8 @@
 #ifndef RAY_COMMON_TASK_TASK_UTIL_H
 #define RAY_COMMON_TASK_TASK_UTIL_H
 
+#include "ray/common/buffer.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/protobuf/common.pb.h"
 
@@ -22,9 +24,9 @@ class TaskSpecBuilder {
   ///
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetCommonTaskSpec(
-      const Language &language, const std::vector<std::string> &function_descriptor,
-      const JobID &job_id, const TaskID &parent_task_id, uint64_t parent_counter,
-      uint64_t num_returns,
+      const TaskID &task_id, const Language &language,
+      const std::vector<std::string> &function_descriptor, const JobID &job_id,
+      const TaskID &parent_task_id, uint64_t parent_counter, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -33,8 +35,7 @@ class TaskSpecBuilder {
       message_->add_function_descriptor(fd);
     }
     message_->set_job_id(job_id.Binary());
-    message_->set_task_id(
-        GenerateTaskId(job_id, parent_task_id, parent_counter).Binary());
+    message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
     message_->set_parent_counter(parent_counter);
     message_->set_num_returns(num_returns);
@@ -57,19 +58,29 @@ class TaskSpecBuilder {
   /// Add a by-value argument to the task.
   ///
   /// \param data String object that contains the data.
+  /// \param metadata String object that contains the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const std::string &data) {
-    message_->add_args()->set_data(data);
+  TaskSpecBuilder &AddByValueArg(const std::string &data, const std::string &metadata) {
+    auto arg = message_->add_args();
+    arg->set_data(data);
+    arg->set_metadata(metadata);
     return *this;
   }
 
   /// Add a by-value argument to the task.
   ///
-  /// \param data Pointer to the data.
-  /// \param size Size of the data.
+  /// \param value the RayObject instance that contains the data and the metadata.
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &AddByValueArg(const void *data, size_t size) {
-    message_->add_args()->set_data(data, size);
+  TaskSpecBuilder &AddByValueArg(const RayObject &value) {
+    auto arg = message_->add_args();
+    if (value.HasData()) {
+      const auto &data = value.GetData();
+      arg->set_data(data->Data(), data->Size());
+    }
+    if (value.HasMetadata()) {
+      const auto &metadata = value.GetMetadata();
+      arg->set_metadata(metadata->Data(), metadata->Size());
+    }
     return *this;
   }
 
@@ -79,7 +90,8 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id, uint64_t max_reconstructions = 0,
-      const std::vector<std::string> &dynamic_worker_options = {}) {
+      const std::vector<std::string> &dynamic_worker_options = {},
+      bool is_direct_call = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -87,6 +99,7 @@ class TaskSpecBuilder {
     for (const auto &option : dynamic_worker_options) {
       actor_creation_spec->add_dynamic_worker_options(option);
     }
+    actor_creation_spec->set_is_direct_call(is_direct_call);
     return *this;
   }
 

@@ -75,12 +75,10 @@ class Raylet {
   /// The name of the socket this raylet listens on.
   std::string socket_name_;
 
-  /// The gRPC server, listens for local raylet client connections through a unix domain
-  /// socket.
-  rpc::GrpcServer raylet_server_;
-
-  /// The gRPC service.
-  rpc::RayletGrpcService raylet_service_;
+  /// An acceptor for new clients.
+  boost::asio::local::stream_protocol::acceptor acceptor_;
+  /// The socket to listen on for new clients.
+  boost::asio::local::stream_protocol::socket socket_;
 };
 
 }  // namespace raylet

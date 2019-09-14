@@ -5,12 +5,10 @@
 
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
-#include "ray/rpc/raylet/raylet_client.h"
+#include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
-
-using rpc::RayletClient;
 
 /// In raylet task submitter and receiver, a task is submitted to raylet, and possibly
 /// gets forwarded to another raylet on which node the task should be executed, and
@@ -34,7 +32,8 @@ class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+  CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
+                               std::unique_ptr<RayletClient> &raylet_client,
                                CoreWorkerObjectInterface &object_interface,
                                boost::asio::io_service &io_service,
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
@@ -51,6 +50,8 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                         rpc::SendReplyCallback send_reply_callback) override;
 
  private:
+  // Worker context.
+  WorkerContext &worker_context_;
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
   // Object interface.

@@ -12,7 +12,7 @@ import ray
 
 logger = logging.getLogger(__name__)
 
-ray.init(redis_address="localhost:6379")
+ray.init(address="localhost:6379")
 
 
 @ray.remote

@@ -1,7 +1,9 @@
 package org.ray.runtime.runner.worker;
 
 import org.ray.api.Ray;
-import org.ray.runtime.AbstractRayRuntime;
+import org.ray.api.runtime.RayRuntime;
+import org.ray.runtime.RayMultiWorkerNativeRuntime;
+import org.ray.runtime.RayNativeRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +22,14 @@ public class DefaultWorker {
       });
       Ray.init();
       LOGGER.info("Worker started.");
-      ((AbstractRayRuntime)Ray.internal()).loop();
+      RayRuntime runtime = Ray.internal();
+      if (runtime instanceof RayNativeRuntime) {
+        ((RayNativeRuntime)runtime).run();
+      } else if (runtime instanceof RayMultiWorkerNativeRuntime) {
+        ((RayMultiWorkerNativeRuntime)runtime).run();
+      } else {
+        throw new RuntimeException("Unknown RayRuntime: " + runtime);
+      }
     } catch (Exception e) {
       LOGGER.error("Failed to start worker.", e);
     }

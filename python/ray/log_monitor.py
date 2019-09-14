@@ -8,6 +8,7 @@ import glob
 import json
 import logging
 import os
+import shutil
 import time
 import traceback
 
@@ -85,15 +86,38 @@ class LogMonitor(object):
             file_info = self.open_file_infos.pop(0)
             file_info.file_handle.close()
             file_info.file_handle = None
-            self.closed_file_infos.append(file_info)
+            try:
+                # Test if the worker process that generated the log file
+                # is still alive. Only applies to worker processes.
+                if file_info.worker_pid != "raylet":
+                    os.kill(file_info.worker_pid, 0)
+            except OSError:
+                # The process is not alive any more, so move the log file
+                # out of the log directory so glob.glob will not be slowed
+                # by it.
+                target = os.path.join(self.logs_dir, "old",
+                                      os.path.basename(file_info.filename))
+                try:
+                    shutil.move(file_info.filename, target)
+                except (IOError, OSError) as e:
+                    if e.errno == errno.ENOENT:
+                        logger.warning("Warning: The file {} was not "
+                                       "found.".format(file_info.filename))
+                    else:
+                        raise e
+            else:
+                self.closed_file_infos.append(file_info)
         self.can_open_more_files = True
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
-        # we only monior worker log files
+        # output of user code is written here
         log_file_paths = glob.glob("{}/worker*[.out|.err]".format(
             self.logs_dir))
-        for file_path in log_file_paths:
+        # segfaults and other serious errors are logged here
+        raylet_err_paths = (glob.glob("{}/raylet*.err".format(self.logs_dir)) +
+                            glob.glob("{}/monitor*.err".format(self.logs_dir)))
+        for file_path in log_file_paths + raylet_err_paths:
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 self.log_filenames.add(file_path)
@@ -142,7 +166,7 @@ class LogMonitor(object):
             # file.
             if file_size > file_info.size_when_last_opened:
                 try:
-                    f = open(file_info.filename, "r")
+                    f = open(file_info.filename, "rb")
                 except (IOError, OSError) as e:
                     if e.errno == errno.ENOENT:
                         logger.warning("Warning: The file {} was not "
@@ -177,6 +201,10 @@ class LogMonitor(object):
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
+                    # Replace any characters not in UTF-8 with
+                    # a replacement character, see
+                    # https://stackoverflow.com/a/38565489/10891801
+                    next_line = next_line.decode("utf-8", "replace")
                     if next_line == "":
                         break
                     if next_line[-1] == "\n":
@@ -195,6 +223,8 @@ class LogMonitor(object):
                     file_info.worker_pid = int(
                         lines_to_publish[0].split(" ")[-1])
                     lines_to_publish = lines_to_publish[1:]
+                elif "/raylet" in file_info.filename:
+                    file_info.worker_pid = "raylet"
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()

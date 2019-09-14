@@ -63,9 +63,6 @@ class ServerCall {
   /// `GrpcServer` when the request is received.
   virtual void HandleRequest() = 0;
 
-  /// Get the factory that created this `ServerCall`.
-  virtual const ServerCallFactory &GetFactory() const = 0;
-
   /// Invoked when sending reply successes.
   virtual void OnReplySent() = 0;
 
@@ -141,6 +138,9 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequestImpl() {
     state_ = ServerCallState::PROCESSING;
+    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
+    // a different thread, and will cause `this` to be deleted.
+    const auto &factory = factory_;
     (service_handler_.*handle_request_function_)(
         request_, &reply_,
         [this](Status status, std::function<void()> success,
@@ -155,9 +155,10 @@ class ServerCallImpl : public ServerCall {
           // this server call might be deleted
           SendReply(status);
         });
+    // We've finished handling this request,
+    // create a new `ServerCall` to accept the next incoming request.
+    factory.CreateCall();
   }
-
-  const ServerCallFactory &GetFactory() const override { return factory_; }
 
   void OnReplySent() override {
     if (send_reply_success_callback_ && !io_service_.stopped()) {

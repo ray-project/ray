@@ -14,10 +14,10 @@ To run the workloads, first edit the config.yaml and replace
 
     ./start_workloads.sh
 
-This will start one EC2 instance per  workload and will start
-the workloads running (one per instance). Running the ``./start_workloads.sh``
-script again will clean up any state from the previous runs and will start the
-workloads again.
+This will start one EC2 instance per workload and will start the workloads
+running (one per instance). Running the ``./start_workloads.sh`` script again
+will clean up any state from the previous runs and will start the workloads
+again.
 
 Check Workload Statuses
 -----------------------

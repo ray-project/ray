@@ -37,21 +37,6 @@ def has_trainable(trainable_name):
         ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
-def recursive_criteria_check(result, criteria):
-    for criteria, stop_value in criteria.items():
-        if criteria not in result:
-            raise TuneError(
-                "Stopping criteria {} not provided in result {}.".format(
-                    criteria, result))
-        elif isinstance(result[criteria], dict) and isinstance(
-                stop_value, dict):
-            if recursive_criteria_check(result[criteria], stop_value):
-                return True
-        elif result[criteria] >= stop_value:
-            return True
-    return False
-
-
 class Checkpoint(object):
     """Describes a checkpoint of trial state.
 
@@ -123,6 +108,7 @@ class Trial(object):
                  config=None,
                  trial_id=None,
                  local_dir=DEFAULT_RESULTS_DIR,
+                 evaluated_params=None,
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
@@ -148,6 +134,9 @@ class Trial(object):
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
+
+        #: Parameters that Tune varies across searches.
+        self.evaluated_params = evaluated_params or []
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
         if trainable_cls and hasattr(trainable_cls,
@@ -193,6 +182,7 @@ class Trial(object):
         self.result_logger = None
         self.last_debug = 0
         self.error_file = None
+        self.error_msg = None
         self.num_failures = 0
         self.custom_trial_name = None
 
@@ -285,6 +275,7 @@ class Trial(object):
             with open(error_file, "w") as f:
                 f.write(error_msg)
             self.error_file = error_file
+            self.error_msg = error_msg
 
     def should_stop(self, result):
         """Whether the given result meets this trial's stopping criteria."""
@@ -292,7 +283,18 @@ class Trial(object):
         if result.get(DONE):
             return True
 
-        return recursive_criteria_check(result, self.stopping_criterion)
+        for criteria, stop_value in self.stopping_criterion.items():
+            if criteria not in result:
+                raise TuneError(
+                    "Stopping criteria {} not provided in result {}.".format(
+                        criteria, result))
+            elif isinstance(criteria, dict):
+                raise ValueError(
+                    "Stopping criteria is now flattened by default. "
+                    "Use forward slashes to nest values `key1/key2/key3`.")
+            elif result[criteria] >= stop_value:
+                return True
+        return False
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
@@ -325,7 +327,7 @@ class Trial(object):
                     location_string(
                         self.last_result.get(HOSTNAME),
                         self.last_result.get(PID))), "{} s".format(
-                            int(self.last_result.get(TIME_TOTAL_S)))
+                            int(self.last_result.get(TIME_TOTAL_S, 0)))
         ]
 
         if self.last_result.get(TRAINING_ITERATION) is not None:

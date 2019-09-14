@@ -7,7 +7,17 @@ from ray.tune import track
 
 
 class TuneReporterCallback(keras.callbacks.Callback):
+    """Tune Callback for Keras."""
+
     def __init__(self, reporter=None, freq="batch", logs={}):
+        """Initializer.
+
+        Args:
+            reporter (StatusReporter|tune.track.log|None): Tune object for
+                returning results.
+            freq (str): Sets the frequency of reporting intermediate results.
+                One of ["batch", "epoch"].
+        """
         self.reporter = reporter or track.log
         self.iteration = 0
         if freq not in ["batch", "epoch"]:

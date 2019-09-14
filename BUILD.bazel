@@ -66,20 +66,6 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "raylet_proto",
-    srcs = ["src/ray/protobuf/raylet.proto"],
-    deps = [
-        ":common_proto",
-        ":gcs_proto",
-    ],
-)
-
-cc_proto_library(
-    name = "raylet_cc_proto",
-    deps = [":raylet_proto"],
-)
-
-proto_library(
     name = "worker_proto",
     srcs = ["src/ray/protobuf/worker.proto"],
     deps = [":common_proto"],
@@ -182,34 +168,6 @@ cc_library(
     ],
 )
 
-# Raylet gRPC lib.
-cc_grpc_library(
-    name = "raylet_cc_grpc",
-    srcs = [":raylet_proto"],
-    grpc_only = True,
-    deps = [":raylet_cc_proto"],
-)
-
-# Raylet rpc server and client.
-cc_library(
-    name = "raylet_rpc",
-    srcs = glob([
-        "src/ray/rpc/raylet/*.cc",
-    ]),
-    hdrs = glob([
-        "src/ray/rpc/raylet/*.h",
-        "src/ray/raylet/*.h",
-    ]),
-    copts = COPTS,
-    deps = [
-        ":grpc_common_lib",
-        ":ray_common",
-        ":raylet_cc_grpc",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-    ],
-)
-
 # Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
@@ -263,6 +221,8 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
+        ":gcs_cc_proto",
+        ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
@@ -361,11 +321,11 @@ cc_library(
     deps = [
         ":common_cc_proto",
         ":gcs",
+        ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
         ":ray_common",
         ":ray_util",
-        ":raylet_rpc",
         ":stats_lib",
         ":worker_rpc",
         "@boost//:asio",
@@ -387,6 +347,7 @@ cc_library(
         [
             "src/ray/core_worker/*.cc",
             "src/ray/core_worker/store_provider/*.cc",
+            "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
         ],
         exclude = [
@@ -397,6 +358,7 @@ cc_library(
     hdrs = glob([
         "src/ray/core_worker/*.h",
         "src/ray/core_worker/store_provider/*.h",
+        "src/ray/core_worker/store_provider/memory_store/*.h",
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
@@ -459,6 +421,7 @@ cc_test(
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
     deps = [
+        ":node_manager_fbs",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -469,6 +432,7 @@ cc_test(
     srcs = ["src/ray/raylet/reconstruction_policy_test.cc"],
     copts = COPTS,
     deps = [
+        ":node_manager_fbs",
         ":object_manager",
         ":raylet_lib",
         "@com_google_googletest//:gtest_main",
@@ -481,6 +445,16 @@ cc_test(
     copts = COPTS,
     deps = [
         ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "id_test",
+    srcs = ["src/ray/common/id_test.cc"],
+    copts = COPTS,
+    deps = [
+        "ray_common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -658,6 +632,7 @@ cc_library(
     deps = [
         ":gcs_cc_proto",
         ":hiredis",
+        ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
@@ -666,6 +641,7 @@ cc_library(
     ],
 )
 
+# TODO(micafan) Replace cc_binary with cc_test for GCS test.
 cc_binary(
     name = "redis_gcs_client_test",
     testonly = 1,
@@ -681,6 +657,17 @@ cc_binary(
     name = "actor_state_accessor_test",
     testonly = 1,
     srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "subscription_executor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -714,6 +701,13 @@ flatbuffer_cc_library(
 )
 
 flatbuffer_cc_library(
+    name = "node_manager_fbs",
+    srcs = ["src/ray/raylet/format/node_manager.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "src/ray/raylet/format/",
+)
+
+flatbuffer_cc_library(
     name = "object_manager_fbs",
     srcs = ["src/ray/object_manager/format/object_manager.fbs"],
     flatc_args = FLATC_ARGS,
@@ -728,7 +722,10 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"],
+    deps = [
+        "//:core_worker_lib",
+        "//:raylet_lib",
+    ],
 )
 
 cc_binary(
@@ -736,8 +733,6 @@ cc_binary(
     srcs = glob([
         "src/ray/core_worker/lib/java/*.h",
         "src/ray/core_worker/lib/java/*.cc",
-        "src/ray/raylet/lib/java/*.h",
-        "src/ray/raylet/lib/java/*.cc",
     ]) + [
         "@bazel_tools//tools/jdk:jni_header",
     ] + select({
@@ -796,6 +791,8 @@ filegroup(
         "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
+        "python/ray/projects/*.py",
+        "python/ray/projects/schema.json",
         "python/ray/workers/default_worker.py",
     ]),
 )

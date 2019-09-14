@@ -6,9 +6,9 @@ This page describes the internal concepts used to implement algorithms in RLlib.
 Policies
 --------
 
-Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/pg/pg_policy.py>`__.
+Policy classes encapsulate the core numerical components of RL algorithms. This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given postprocessed experiences. For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg_policy.py>`__.
 
-Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks. To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates. You can also write your own from scratch. Here is an example:
+Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks. To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates. You can also write your own from scratch. Here is an example:
 
 .. code-block:: python
 
@@ -120,12 +120,14 @@ To start, you first have to define a loss function. In RLlib, loss functions are
     import tensorflow as tf
     from ray.rllib.policy.sample_batch import SampleBatch
 
-    def policy_gradient_loss(policy, batch_tensors):
-        actions = batch_tensors[SampleBatch.ACTIONS]
-        rewards = batch_tensors[SampleBatch.REWARDS]
-        return -tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
+    def policy_gradient_loss(policy, model, dist_class, train_batch):
+        actions = train_batch[SampleBatch.ACTIONS]
+        rewards = train_batch[SampleBatch.REWARDS]
+        logits, _ = model.from_batch(train_batch)
+        action_dist = dist_class(logits, model)
+        return -tf.reduce_mean(action_dist.logp(actions) * rewards)
 
-In the above snippet, ``actions`` is a Tensor placeholder of shape ``[batch_size, action_dim...]``, and ``rewards`` is a placeholder of shape ``[batch_size]``. The ``policy.action_dist`` object is an `ActionDistribution <rllib-package-ref.html#ray.rllib.models.ActionDistribution>`__ that represents the output of the neural network policy model. Passing this loss function to ``build_tf_policy`` is enough to produce a very basic TF policy:
+In the above snippet, ``actions`` is a Tensor placeholder of shape ``[batch_size, action_dim...]``, and ``rewards`` is a placeholder of shape ``[batch_size]``. The ``action_dist`` object is an `ActionDistribution <rllib-package-ref.html#ray.rllib.models.ActionDistribution>`__ that is parameterized by the output of the neural network policy model. Passing this loss function to ``build_tf_policy`` is enough to produce a very basic TF policy:
 
 .. code-block:: python
 
@@ -148,12 +150,12 @@ We can create a `Trainer <#trainers>`__ and try running this policy on a toy env
     MyTrainer = build_trainer(
         name="MyCustomTrainer",
         default_policy=MyTFPolicy)
-    
+
     ray.init()
     tune.run(MyTrainer, config={"env": "CartPole-v0", "num_workers": 2})
 
 
-If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:
+If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:
 
 .. code-block:: bash
 
@@ -181,10 +183,12 @@ Let's modify our policy loss to include rewards summed over time. To enable this
         return compute_advantages(
             sample_batch, 0.0, policy.config["gamma"], use_gae=False)
 
-    def policy_gradient_loss(policy, batch_tensors):
-        actions = batch_tensors[SampleBatch.ACTIONS]
-        advantages = batch_tensors[Postprocessing.ADVANTAGES]
-        return -tf.reduce_mean(policy.action_dist.logp(actions) * advantages)
+    def policy_gradient_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
+        action_dist = dist_class(logits, model)
+        return -tf.reduce_mean(
+            action_dist.logp(train_batch[SampleBatch.ACTIONS]) *
+            train_batch[Postprocessing.ADVANTAGES])
 
     MyTFPolicy = build_tf_policy(
         name="MyTFPolicy",
@@ -193,11 +197,11 @@ Let's modify our policy loss to include rewards summed over time. To enable this
 
 The ``postprocess_advantages()`` function above uses calls RLlib's ``compute_advantages`` function to compute advantages for each timestep. If you re-run the trainer with this improved policy, you'll find that it quickly achieves the max reward of 200.
 
-You might be wondering how RLlib makes the advantages placeholder automatically available as ``batch_tensors[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization. You can also access these placeholders via ``policy.get_placeholder(<name>)`` after loss initialization.
+You might be wondering how RLlib makes the advantages placeholder automatically available as ``train_batch[Postprocessing.ADVANTAGES]``. When building your policy, RLlib will create a "dummy" trajectory batch where all observations, actions, rewards, etc. are zeros. It then calls your ``postprocess_fn``, and generates TF placeholders based on the numpy shapes of the postprocessed batch. RLlib tracks which placeholders that ``loss_fn`` and ``stats_fn`` access, and then feeds the corresponding sample data into those placeholders during loss optimization. You can also access these placeholders via ``policy.get_placeholder(<name>)`` after loss initialization.
 
 **Example 1: Proximal Policy Optimization**
 
-In the above section you saw how to compose a simple policy gradient algorithm with RLlib. In this example, we'll dive into how PPO was built with RLlib and how you can modify it. First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/ppo.py>`__:
+In the above section you saw how to compose a simple policy gradient algorithm with RLlib. In this example, we'll dive into how PPO was built with RLlib and how you can modify it. First, check out the `PPO trainer definition <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo.py>`__:
 
 .. code-block:: python
 
@@ -250,7 +254,7 @@ Suppose we want to customize PPO to use an asynchronous-gradient optimization st
 
 
 The ``with_updates`` method that we use here is also available for Torch and TF policies built from templates.
- 
+
 Now let's take a look at the ``update_kl`` function. This is used to adaptively adjust the KL penalty coefficient on the PPO loss, which bounds the policy change per training step. You'll notice the code handles both single and multi-agent cases (where there are be multiple policies each with different KL coeffs):
 
 .. code-block:: python
@@ -271,7 +275,7 @@ Now let's take a look at the ``update_kl`` function. This is used to adaptively 
             # multi-agent
             trainer.workers.local_worker().foreach_trainable_policy(update)
 
-The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/ppo/ppo_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
+The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_policy.py>`__ via the ``KLCoeffMixin``, along with several other advanced features. Let's look at each new feature used by the policy:
 
 .. code-block:: python
 
@@ -290,9 +294,9 @@ The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://githu
 
 .. code-block:: python
 
-    def kl_and_loss_stats(policy, batch_tensors):
+    def kl_and_loss_stats(policy, train_batch):
         policy.explained_variance = explained_variance(
-            batch_tensors[Postprocessing.VALUE_TARGETS], policy.value_function)
+            train_batch[Postprocessing.VALUE_TARGETS], policy.model.value_function())
 
         stats_fetches = {
             "cur_kl_coeff": policy.kl_coeff,
@@ -307,14 +311,14 @@ The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://githu
 
         return stats_fetches
 
-``extra_actions_fetches_fn``: This function defines extra outputs that will be recorded when generating actions with the policy. For example, this enables saving the raw policy logits in the experience batch, which e.g. means it can be referenced in the PPO loss function via ``batch_tensors[BEHAVIOUR_LOGITS]``. Other values such as the current value prediction can also be emitted for debugging or optimization purposes:
+``extra_actions_fetches_fn``: This function defines extra outputs that will be recorded when generating actions with the policy. For example, this enables saving the raw policy logits in the experience batch, which e.g. means it can be referenced in the PPO loss function via ``batch[BEHAVIOUR_LOGITS]``. Other values such as the current value prediction can also be emitted for debugging or optimization purposes:
 
 .. code-block:: python
 
     def vf_preds_and_logits_fetches(policy):
         return {
-            SampleBatch.VF_PREDS: policy.value_function,
-            BEHAVIOUR_LOGITS: policy.model.outputs,
+            SampleBatch.VF_PREDS: policy.model.value_function(),
+            BEHAVIOUR_LOGITS: policy.model.last_output(),
         }
 
 ``gradients_fn``: If defined, this function returns TF gradients for the loss function. You'd typically only want to override this to apply transformations such as gradient clipping:
@@ -323,12 +327,10 @@ The ``update_kl`` method on the policy is defined in `PPOTFPolicy <https://githu
 
     def clip_gradients(policy, optimizer, loss):
         if policy.config["grad_clip"] is not None:
-            policy.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                tf.get_variable_scope().name)
-            grads = tf.gradients(loss, policy.var_list)
+            grads = tf.gradients(loss, policy.model.trainable_variables())
             policy.grads, _ = tf.clip_by_global_norm(grads,
                                                      policy.config["grad_clip"])
-            clipped_grads = list(zip(policy.grads, policy.var_list))
+            clipped_grads = list(zip(policy.grads, policy.model.trainable_variables()))
             return clipped_grads
         else:
             return optimizer.compute_gradients(
@@ -347,7 +349,7 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/dqn/simple_q_policy.py>`__:
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q_policy.py>`__:
 
 .. code-block:: python
 
@@ -407,7 +409,7 @@ The action sampler is straightforward, it just takes the q_model, runs a forward
                              config):
         # do max over Q values...
         ...
-        return action, action_prob
+        return action, action_logp
 
 The remainder of DQN is similar to other algorithms. Target updates are handled by a ``after_optimizer_step`` callback that periodically copies the weights of the Q network to the target.
 
@@ -416,56 +418,34 @@ Finally, note that you do not have to use ``build_tf_policy`` to define a Tensor
 Building Policies in TensorFlow Eager
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-While RLlib runs all TF operations in graph mode, you can still leverage TensorFlow eager using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. However, note that eager and non-eager tensors cannot be mixed within the ``py_function``. Here's an example of embedding eager execution within a policy loss function:
+Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` config option or using ``rllib train --eager``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
 
-.. code-block:: python
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it is slower than graph mode.
 
-    def eager_loss(policy, batch_tensors):
-        """Example of using embedded eager execution in a custom loss.
-
-        Here `compute_penalty` prints the actions and rewards for debugging, and
-        also computes a (dummy) penalty term to add to the loss.
-        """
-
-        def compute_penalty(actions, rewards):
-            penalty = tf.reduce_mean(tf.cast(actions, tf.float32))
-            if random.random() > 0.9:
-                print("The eagerly computed penalty is", penalty, actions, rewards)
-            return penalty
-
-        actions = batch_tensors[SampleBatch.ACTIONS]
-        rewards = batch_tensors[SampleBatch.REWARDS]
-        penalty = tf.py_function(
-            compute_penalty, [actions, rewards], Tout=tf.float32)
-
-        return penalty - tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
-
-You can find a runnable file for the above eager execution example `here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/eager_execution.py>`__.
+You can also selectively leverage eager operations within graph mode execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager ops embedded `within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
 
 Building Policies in PyTorch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Here's a simple example of a trivial torch policy `(runnable file here) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/custom_torch_policy.py>`__:
+Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a trainer given a Torch policy is exactly the same). Here's a simple example of a trivial torch policy `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
 
 .. code-block:: python
 
     from ray.rllib.policy.sample_batch import SampleBatch
     from ray.rllib.policy.torch_policy_template import build_torch_policy
 
-    def policy_gradient_loss(policy, batch_tensors):
-        logits, _, values, _ = policy.model({
-            SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-        }, [])
-        action_dist = policy.dist_class(logits)
-        log_probs = action_dist.logp(batch_tensors[SampleBatch.ACTIONS])
-        return -batch_tensors[SampleBatch.REWARDS].dot(log_probs)
+    def policy_gradient_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
+        action_dist = dist_class(logits)
+        log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        return -train_batch[SampleBatch.REWARDS].dot(log_probs)
 
     # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>
     MyTorchPolicy = build_torch_policy(
         name="MyTorchPolicy",
         loss_fn=policy_gradient_loss)
 
-Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
+Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c_torch_policy.py>`__ is defined:
 
 .. code-block:: python
 
@@ -480,17 +460,16 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
         optimizer_fn=torch_optimizer,
         mixins=[ValueNetworkMixin])
 
-``loss_fn``: Similar to the TF example, the actor critic loss is defined over ``batch_tensors``. We imperatively execute the forward pass by calling ``policy.model()`` on the observations followed by ``policy.dist_class()`` on the output logits. The output Tensors are saved as attributes of the policy object (e.g., ``policy.entropy = dist.entropy.mean()``), and we return the scalar loss:
+``loss_fn``: Similar to the TF example, the actor critic loss is defined over ``batch``. We imperatively execute the forward pass by calling ``model()`` on the observations followed by ``dist_class()`` on the output logits. The output Tensors are saved as attributes of the policy object (e.g., ``policy.entropy = dist.entropy.mean()``), and we return the scalar loss:
 
 .. code-block:: python
 
-    def actor_critic_loss(policy, batch_tensors):
-        logits, _, values, _ = policy.model({
-            SampleBatch.CUR_OBS: batch_tensors[SampleBatch.CUR_OBS]
-        }, [])
-        dist = policy.dist_class(logits)
-        log_probs = dist.logp(batch_tensors[SampleBatch.ACTIONS])
-        policy.entropy = dist.entropy().mean()
+    def actor_critic_loss(policy, model, dist_class, train_batch):
+        logits, _ = model.from_batch(train_batch)
+        values = model.value_function()
+        action_dist = dist_class(logits)
+        log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
+        policy.entropy = action_dist.entropy().mean()
         ...
         return overall_err
 
@@ -498,19 +477,19 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
 
 .. code-block:: python
 
-    def loss_and_entropy_stats(policy, batch_tensors):
+    def loss_and_entropy_stats(policy, train_batch):
         return {
             "policy_entropy": policy.entropy.item(),
             "policy_loss": policy.pi_err.item(),
             "vf_loss": policy.value_err.item(),
         }
 
-``extra_action_out_fn``: We save value function predictions given model outputs. This makes the value function predictions of the model available in the trajectory as ``batch_tensors[SampleBatch.VF_PREDS]``:
+``extra_action_out_fn``: We save value function predictions given model outputs. This makes the value function predictions of the model available in the trajectory as ``batch[SampleBatch.VF_PREDS]``:
 
 .. code-block:: python
 
-    def model_value_predictions(policy, input_dict, state_batches, model_out):
-        return {SampleBatch.VF_PREDS: model_out[2].cpu().numpy()}
+    def model_value_predictions(policy, input_dict, state_batches, model):
+        return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
 
 ``postprocess_fn`` and ``mixins``: Similar to the PPO example, we need access to the value function during postprocessing (i.e., ``add_advantages`` below calls ``policy._value()``. The value function is exposed through a mixin class that defines the method:
 
@@ -535,9 +514,9 @@ Now, building on the TF examples above, let's look at how the `A3C torch policy 
                 _, _, vf, _ = self.model({"obs": obs}, [])
                 return vf.detach().cpu().numpy().squeeze()
 
-You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/agents/a3c/a3c_torch_policy.py>`__.
+You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c_torch_policy.py>`__.
 
-In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch these functions are called imperatively each time they are used.
+In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch (or TensorFlow Eager) these functions are called imperatively each time they are used.
 
 Extending Existing Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -559,9 +538,9 @@ You can use the ``with_updates`` method on Trainers and Policy objects built wit
 Policy Evaluation
 -----------------
 
-Given an environment and policy, policy evaluation produces `batches <https://github.com/ray-project/ray/blob/master/python/ray/rllib/policy/sample_batch.py>`__ of experiences. This is your classic "environment interaction loop". Efficient policy evaluation can be burdensome to get right, especially when leveraging vectorization, RNNs, or when operating in a multi-agent environment. RLlib provides a `RolloutWorker <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/rollout_worker.py>`__ class that manages all of this, and this class is used in most RLlib algorithms.
+Given an environment and policy, policy evaluation produces `batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ of experiences. This is your classic "environment interaction loop". Efficient policy evaluation can be burdensome to get right, especially when leveraging vectorization, RNNs, or when operating in a multi-agent environment. RLlib provides a `RolloutWorker <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ class that manages all of this, and this class is used in most RLlib algorithms.
 
-You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `WorkerSet <https://github.com/ray-project/ray/blob/master/python/ray/rllib/evaluation/worker_set.py>`__).
+You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `WorkerSet <https://github.com/ray-project/ray/blob/master/rllib/evaluation/worker_set.py>`__).
 
 Here is an example of creating a set of rollout workers and using them gather experiences in parallel. The trajectories are concatenated, the policy learns on the trajectory batch, and then we broadcast the policy weights to the workers for the next round of rollouts:
 
@@ -591,9 +570,9 @@ Here is an example of creating a set of rollout workers and using them gather ex
 Policy Optimization
 -------------------
 
-Similar to how a `gradient-descent optimizer <https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer>`__ can be used to improve a model, RLlib's `policy optimizers <https://github.com/ray-project/ray/tree/master/python/ray/rllib/optimizers>`__ implement different strategies for improving a policy.
+Similar to how a `gradient-descent optimizer <https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer>`__ can be used to improve a model, RLlib's `policy optimizers <https://github.com/ray-project/ray/tree/master/rllib/optimizers>`__ implement different strategies for improving a policy.
 
-For example, in A3C you'd want to compute gradients asynchronously on different workers, and apply them to a central policy replica. This strategy is implemented by the `AsyncGradientsOptimizer <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/async_gradients_optimizer.py>`__. Another alternative is to gather experiences synchronously in parallel and optimize the model centrally, as in `SyncSamplesOptimizer <https://github.com/ray-project/ray/blob/master/python/ray/rllib/optimizers/sync_samples_optimizer.py>`__. Policy optimizers abstract these strategies away into reusable modules.
+For example, in A3C you'd want to compute gradients asynchronously on different workers, and apply them to a central policy replica. This strategy is implemented by the `AsyncGradientsOptimizer <https://github.com/ray-project/ray/blob/master/rllib/optimizers/async_gradients_optimizer.py>`__. Another alternative is to gather experiences synchronously in parallel and optimize the model centrally, as in `SyncSamplesOptimizer <https://github.com/ray-project/ray/blob/master/rllib/optimizers/sync_samples_optimizer.py>`__. Policy optimizers abstract these strategies away into reusable modules.
 
 This is how the example in the previous section looks when written using a policy optimizer:
 
@@ -604,7 +583,7 @@ This is how the example in the previous section looks when written using a polic
         policy=CustomPolicy,
         env_creator=lambda c: gym.make("CartPole-v0"),
         num_workers=10)
-    
+
     # this optimizer implements the IMPALA architecture
     optimizer = AsyncSamplesOptimizer(workers, train_batch_size=500)
 
@@ -615,7 +594,7 @@ This is how the example in the previous section looks when written using a polic
 Trainers
 --------
 
-Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <https://ray.readthedocs.io/en/latest/tune-usage.html#training-api>`__ for easy experiment management.
+Trainers are the boilerplate classes that put the above components together, making algorithms accessible via Python API and the command line. They manage algorithm configuration, setup of the rollout workers and optimizer, and collection of training metrics. Trainers also implement the `Trainable API <tune-usage.html#trainable-api>`__ for easy experiment management.
 
 Example of three equivalent ways of interacting with the PPO trainer, all of which log results in ``~/ray_results``:
 
@@ -630,6 +609,6 @@ Example of three equivalent ways of interacting with the PPO trainer, all of whi
     rllib train --run=PPO --env=CartPole-v0 --config='{"train_batch_size": 4000}'
 
 .. code-block:: python
-    
+
     from ray import tune
     tune.run(PPOTrainer, config={"env": "CartPole-v0", "train_batch_size": 4000})

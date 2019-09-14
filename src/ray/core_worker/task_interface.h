@@ -17,8 +17,6 @@
 
 namespace ray {
 
-using rpc::RayletClient;
-
 class CoreWorker;
 
 /// Options of a non-actor-creation task.
@@ -37,10 +35,12 @@ struct TaskOptions {
 struct ActorCreationOptions {
   ActorCreationOptions() {}
   ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
-                       const std::unordered_map<std::string, double> &resources)
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::vector<std::string> &dynamic_worker_options)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
-        resources(resources) {}
+        resources(resources),
+        dynamic_worker_options(dynamic_worker_options) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
@@ -50,6 +50,9 @@ struct ActorCreationOptions {
   const bool is_direct_call = false;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
+  /// The dynamic options used in the worker command when starting a worker process for
+  /// an actor creation task.
+  const std::vector<std::string> dynamic_worker_options;
 };
 
 /// A handle to an actor.
@@ -170,20 +173,23 @@ class CoreWorkerTaskInterface {
   /// Build common attributes of the task spec, and compute return ids.
   ///
   /// \param[in] builder Builder to build a `TaskSpec`.
+  /// \param[in] task_id The ID of this task.
+  /// \param[in] task_index The task index used to build this task.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] num_returns Number of returns.
   /// \param[in] required_resources Resources required by this task.
   /// \param[in] required_placement_resources Resources required by placing this task on a
   /// node.
+  /// \param[in] transport_type The transport used for this task.
   /// \param[out] return_ids Return IDs.
   /// \return Void.
   void BuildCommonTaskSpec(
-      TaskSpecBuilder &builder, const RayFunction &function,
-      const std::vector<TaskArg> &args, uint64_t num_returns,
+      TaskSpecBuilder &builder, const TaskID &task_id, const int task_index,
+      const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      std::vector<ObjectID> *return_ids);
+      TaskTransportType transport_type, std::vector<ObjectID> *return_ids);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
