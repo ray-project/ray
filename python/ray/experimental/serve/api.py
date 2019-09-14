@@ -77,11 +77,11 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
 
         runner = CustomActor.remote(*actor_init_args)
     else:
-        raise Exception(
+        raise TypeError(
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
-    global_state.actor_nursery.append(runner)
+    global_state.backend_actor_handles.append(runner)
 
     runner._ray_serve_setup.remote(backend_tag,
                                    global_state.router_actor_handle)
@@ -161,9 +161,9 @@ Current traffic policy is:
 
 Will rollback to:
 {prev_policy}
-""").format(
+""".format(
         cur_policy=pformat_color_json(cur_policy),
-        prev_policy=pformat_color_json(prev_policy))
+        prev_policy=pformat_color_json(prev_policy)))
 
     action_queues.pop()
     global_state.router_actor_handle.set_traffic.remote(

@@ -8,7 +8,7 @@ import requests
 from werkzeug import urls
 
 from ray.experimental import serve
-from utils import pprint_color_json
+from ray.experimental.serve.utils import pformat_color_json
 
 
 class EchoActor:
@@ -32,10 +32,10 @@ serve.link("my_endpoint", "echo:v1")
 
 while True:
     resp = requests.get("http://127.0.0.1:8000/echo?message=hello").json()
-    pprint_color_json(resp)
+    print(pformat_color_json(resp))
 
     resp = requests.get("http://127.0.0.1:8000/echo").json()
-    pprint_color_json(resp)
+    print(pformat_color_json(resp))
 
     print("...Sleeping for 2 seconds...")
     time.sleep(2)

@@ -7,14 +7,14 @@ import time
 import requests
 
 from ray.experimental import serve
-from utils import pprint_color_json
+from ray.experimental.serve.utils import pformat_color_json
 
 
-def echo_v1(context):
+def echo_v1(_):
     return "v1"
 
 
-def echo_v2(context):
+def echo_v2(_):
     return "v2"
 
 
@@ -26,7 +26,7 @@ serve.link("my_endpoint", "echo:v1")
 
 for _ in range(3):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
-    pprint_color_json(resp)
+    print(pformat_color_json(resp))
 
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
@@ -36,7 +36,7 @@ serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
 for _ in range(6):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
-    pprint_color_json(resp)
+    print(pformat_color_json(resp))
 
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
@@ -44,7 +44,7 @@ for _ in range(6):
 serve.rollback("my_endpoint")
 for _ in range(6):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
-    pprint_color_json(resp)
+    print(pformat_color_json(resp))
 
     print("...Sleeping for 2 seconds...")
     time.sleep(2)

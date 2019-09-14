@@ -14,12 +14,12 @@ from Python.
 """
 
 import time
-from pprint import pprint
 
 import requests
 
 import ray
 from ray.experimental import serve
+from ray.experimental.serve.utils import pformat_color_json
 
 
 def echo(_):
@@ -34,7 +34,7 @@ serve.link("my_endpoint", "echo:v1")
 
 for _ in range(2):
     resp = requests.get("http://127.0.0.1:8000/echo").json()
-    pprint(resp)
+    print(pformat_color_json(resp))
 
     print("...Sleeping for 2 seconds...")
     time.sleep(2)
