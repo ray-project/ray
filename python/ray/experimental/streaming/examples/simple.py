@@ -8,6 +8,8 @@ import time
 
 import ray
 from ray.experimental.streaming.streaming import Environment
+from ray.experimental.streaming.batched_queue import BatchedQueue
+from ray.experimental.streaming.operator import OpType, PStrategy
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +34,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init()
+    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
+    ray.register_custom_serializer(OpType, use_pickle=True)
+    ray.register_custom_serializer(PStrategy, use_pickle=True)
 
     # A Ray streaming environment with the default configuration
     env = Environment()
