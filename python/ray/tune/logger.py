@@ -182,11 +182,9 @@ class TF2Logger(Logger):
 
                 tmp = result.copy()
                 if not self._hp_logged:
-                    eval_params = {
-                        ep.split("=")[0]: ep.split("=")[1]
-                        for ep in self.trial.evaluated_params.split(",")
-                    }
-                    hp.hparams(eval_params, trial_id=self.trial.trial_id)
+                    hp.hparams(
+                        self.trial.evaluated_params,
+                        trial_id=self.trial.trial_id)
                     self._hp_logged = True
 
                 for k in [

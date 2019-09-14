@@ -39,10 +39,15 @@ def generate_variants(unresolved_spec):
 
         "activation": {"grid_search": ["relu", "tanh"]}
         "cpu": {"eval": "spec.config.num_workers"}
+
+    Use `format_vars` to return a formatted string of hyperparameters.
+
+    Yields:
+        (Dict of resolved variables, Spec object)
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
-        yield format_vars(resolved_vars), spec
+        yield resolved_vars, spec
 
 
 def grid_search(values):
@@ -78,8 +83,8 @@ def resolve_nested_dict(nested_dict):
     return res
 
 
-def format_vars(resolved_vars):
-    out = []
+def prepare_resolved_vars(resolved_vars):
+    resolved_vars_list = []
     for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
@@ -92,6 +97,20 @@ def format_vars(resolved_vars):
                 last_string = False
                 pieces.append(k)
         pieces.reverse()
+        resolved_vars_list.append((pieces, value))
+    return resolved_vars_list
+
+
+def flatten_resolved_vars(resolved_vars):
+    flattened_resolved_vars_dict = {}
+    for pieces, value in prepare_resolved_vars(resolved_vars):
+        flattened_resolved_vars_dict["/".join(pieces)] = value
+    return flattened_resolved_vars_dict
+
+
+def format_vars(resolved_vars):
+    out = []
+    for pieces, value in prepare_resolved_vars(resolved_vars):
         out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
     return ",".join(out)
 

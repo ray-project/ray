@@ -136,7 +136,7 @@ class Trial(object):
         self.local_dir = local_dir  # This remains unexpanded for syncing.
 
         #: Parameters that Tune varies across searches.
-        self.evaluated_params = evaluated_params or []
+        self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
         if trainable_cls and hasattr(trainable_cls,
