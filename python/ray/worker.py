@@ -2183,11 +2183,11 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
 
 
 def register_custom_serializer(cls,
-                                serializer=None,
-                                deserializer=None,
-                                use_pickle=False,
-                                use_dict=False,
-                                class_id=None):
+                               serializer=None,
+                               deserializer=None,
+                               use_pickle=False,
+                               use_dict=False,
+                               class_id=None):
     """Registers custom functions for efficient object serialization.
 
     The serializer and deserializer are used when transferring objects of
