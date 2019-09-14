@@ -1246,7 +1246,7 @@ def _initialize_serialization(job_id, worker=global_worker):
 
     if not USE_NEW_SERIALIZER:
         for error_cls in RAY_EXCEPTION_TYPES:
-            register_custom_serializer(
+            _register_custom_serializer(
                 error_cls,
                 use_dict=True,
                 local=True,
@@ -1254,14 +1254,14 @@ def _initialize_serialization(job_id, worker=global_worker):
                 class_id=error_cls.__module__ + ". " + error_cls.__name__,
             )
         # Tell Ray to serialize lambdas with pickle.
-        register_custom_serializer(
+        _register_custom_serializer(
             type(lambda: 0),
             use_pickle=True,
             local=True,
             job_id=job_id,
             class_id="lambda")
         # Tell Ray to serialize types with pickle.
-        register_custom_serializer(
+        _register_custom_serializer(
             type(int),
             use_pickle=True,
             local=True,
@@ -1269,7 +1269,7 @@ def _initialize_serialization(job_id, worker=global_worker):
             class_id="type")
         # Tell Ray to serialize FunctionSignatures as dictionaries. This is
         # used when passing around actor handles.
-        register_custom_serializer(
+        _register_custom_serializer(
             ray.signature.FunctionSignature,
             use_dict=True,
             local=True,
