@@ -11,41 +11,37 @@ import tarfile
 import urllib
 import time
 import json
-from nas_benchmarks.tabular_benchmarks import FCNetProteinStructureBenchmark, \
-    FCNetSliceLocalizationBenchmark, FCNetNavalPropulsionBenchmark, \
-    FCNetParkinsonsTelemonitoringBenchmark
+from tabular_benchmarks import (
+    FCNetProteinStructureBenchmark, FCNetSliceLocalizationBenchmark,
+    FCNetNavalPropulsionBenchmark, FCNetParkinsonsTelemonitoringBenchmark
+)
+
+def download_fcnet():
+    # download dataset
+    file_tmp = urllib.request.urlretrieve(
+        "http://ml4aad.org/wp-content/uploads/2019/01" +
+        "/fcnet_tabular_benchmarks.tar.gz",
+        "./fcnet_tabular_benchmarks")[0]
+    base_name = os.path.basename(
+        "http://ml4aad.org/wp-content/uploads/2019/01" +
+        "fcnet_tabular_benchmarks.tar.gz")
+
+    file_name, file_extension = os.path.splitext(base_name)
+    tar = tarfile.open(file_tmp)
+    tar.extractall(file_name)
 
 
-class FCNetTrainable(Trainable):
+class AbstractFCNetTrainable(Trainable):
     """ Trainable using FCNet Benchmark from Tabular Benchmarks for Hyperparameter
         Optimization and Neural Architecture Search """
+    BENCHMARK_CLASS = None
 
     def _setup(self, config):
+        self.net = self.BENCHMARK_CLASS(data_dir="./fcnet_tabular_benchmarks/")
 
-        # download dataset
-        file_tmp = urllib.urlretrieve(
-            "http://ml4aad.org/wp-content/uploads/2019/01" +
-            "/fcnet_tabular_benchmarks.tar.gz",
-            "./fcnet_tabular_benchmarks")[0]
-        base_name = os.path.basename(
-            "http://ml4aad.org/wp-content/uploads/2019/01" +
-            "fcnet_tabular_benchmarks.tar.gz")
-
-        file_name, file_extension = os.path.splitext(base_name)
-        tar = tarfile.open(file_tmp)
-        tar.extractall(file_name)
-
-        self._global_start = config.get("start", time.time())
-        self._trial_start = time.time()
-        self.config = config
-        cwd = os.getcwd()
-        if ray.worker._mode() == ray.worker.LOCAL_MODE:
-            os.chdir(cwd)
-        self.iteration = 0
 
     def _train(self):
         acc, time = self.net.objective_function(self.config, self.iteration)
-        self.iteration += 1
         return {"validation_accuracy": acc, "runtime": time}
 
     def _save(self, checkpoint_dir):
@@ -63,41 +59,25 @@ class FCNetTrainable(Trainable):
         return cs.sample_configuration().get_dictionary()
 
 
-class FCNetProteinStructureTrainable(FCNetTrainable):
-    def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetProteinStructureBenchmark(
-            data_dir="./fcnet_tabular_benchmarks/")
-        super(FCNetProteinStructureTrainable, self).__init__(
-            config, logger_creator)
+class FCNetProteinStructureTrainable(AbstractFCNetTrainable):
+    BENCHMARK_CLASS = FCNetProteinStructureBenchmark
 
 
-class FCNetSliceLocalizationTrainable(FCNetTrainable):
-    def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetSliceLocalizationBenchmark(
-            data_dir="./fcnet_tabular_benchmarks/")
-        super(FCNetSliceLocalizationTrainable, self).__init__(
-            config, logger_creator)
+class FCNetSliceLocalizationTrainable(AbstractFCNetTrainable):
+    BENCHMARK_CLASS = FCNetSliceLocalizationBenchmark
 
 
-class FCNetNavalPropulsionTrainable(FCNetTrainable):
-    def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetNavalPropulsionBenchmark(
-            data_dir="./fcnet_tabular_benchmarks/")
-        super(FCNetNavalPropulsionTrainable, self).__init__(
-            config, logger_creator)
+class FCNetNavalPropulsionTrainable(AbstractFCNetTrainable):
+    BENCHMARK_CLASS = FCNetNavalPropulsionBenchmark
 
 
-class FCNetParkinsonsTelemonitoringTrainable(FCNetTrainable):
-    def __init__(self, config=None, logger_creator=None):
-        self.net = FCNetParkinsonsTelemonitoringBenchmark(
-            data_dir="./fcnet_tabular_benchmarks/")
-        super(FCNetParkinsonsTelemonitoringTrainable, self).__init__(
-            config, logger_creator)
+class FCNetParkinsonsTelemonitoringTrainable(AbstractFCNetTrainable):
+    BENCHMARK_CLASS = FCNetParkinsonsTelemonitoringBenchmark
 
 
 if __name__ == "__main__":
     """Example with FCNetProteinStructure and Hyperband."""
-
+    download_fcnet()
     hyperband = HyperBandScheduler(
         time_attr="training_iteration",
         metric="episode_reward_mean",
