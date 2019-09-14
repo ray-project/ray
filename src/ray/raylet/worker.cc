@@ -119,6 +119,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (rpc_client_ != nullptr) {
+    RAY_CHECK(!task.IsVectorTask());
     // Use push mode.
     RAY_CHECK(port_ > 0);
     rpc::AssignTaskRequest request;
@@ -151,8 +152,16 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     flatbuffers::FlatBufferBuilder fbb;
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
+    std::vector<flatbuffers::Offset<flatbuffers::String>> task_strs;
+    if (task.isVector()) {
+      for (const auto& s : task.GetTaskSpecificationVector()) {
+        task_strs.push_back(fbb.CreateString(s.Serialize()))
+      }
+    } else {
+      task_strs.push_back(fbb.CreateString(spec.Serialize()))
+    }
     auto message =
-        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
+        protocol::CreateGetTaskReply(fbb, fbb.CreateVector(task_strs),
                                      fbb.CreateVector(resource_id_set_flatbuf));
     fbb.Finish(message);
     Connection()->WriteMessageAsync(

@@ -1125,7 +1125,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
     // locally, there is no uncommitted lineage.
     SubmitTask(Task(tasks[0]), Lineage());
   } else {
-    // Vector case
+    // Vector case.
     std::vector<TaskSpecification> task_specs;
     for (const auto &task : tasks) {
       task_specs.push_back(TaskSpecification(task.task_spec()));

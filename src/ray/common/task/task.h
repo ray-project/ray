@@ -73,6 +73,13 @@ class Task {
 
   std::string DebugString() const;
 
+  bool IsVectorTask() { return !task_spec_vector_.empty(); }
+
+  const std::vector<TaskSpecification>& GetTaskSpecificationVector() {
+    RAY_CHECK(IsVectorTask());
+    return task_spec_vector_;
+  }
+
  private:
   void ComputeDependencies();
 

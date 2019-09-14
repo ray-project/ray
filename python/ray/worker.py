@@ -1098,12 +1098,12 @@ class Worker(object):
             A task from the raylet.
         """
         with profiling.profile("worker_idle"):
-            task = self.raylet_client.get_task()
+            tasks = self.raylet_client.get_tasks()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-        return task
+        return tasks
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -1115,7 +1115,9 @@ class Worker(object):
         signal.signal(signal.SIGTERM, exit)
 
         while True:
-            task = self._get_next_task_from_raylet()
+            tasks = self._get_next_tasks_from_raylet()
+            for task in tasks:
+                self._wait_for_and_process_task(task)
             self._wait_for_and_process_task(task)
 
 

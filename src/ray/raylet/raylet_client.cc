@@ -235,7 +235,7 @@ ray::Status RayletClient::SubmitTaskBatch(
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
+ray::Status RayletClient::GetTasks(std::vector<std::unique_ptr<ray::TaskSpecification>>& task_specs) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the raylet
   // gives this client a task.
@@ -268,8 +268,13 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(
-      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
+  int num_tasks = reply_message->task_specs()->size();
+  for (int i = 0; i < num_tasks; i++) {
+    task_specs.emplace_back(
+      std::unique_ptr<ray::TaskSpecification>(
+        new ray::TaskSpecification(string_from_flatbuf(
+            *reply_message->task_specs()->Get(i)))));
+  }
   return ray::Status::OK();
 }
 
