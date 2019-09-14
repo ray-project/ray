@@ -59,7 +59,8 @@ CoreWorker::CoreWorker(
   task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
       worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
 
-  object_interface_->SetFlushTasksCallback([this]() { task_interface_->FlushTaskBatch(); });
+  object_interface_->SetFlushTasksCallback(
+      [this]() { task_interface_->FlushTaskBatch(); });
 
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot

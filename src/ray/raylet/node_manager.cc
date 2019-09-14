@@ -1112,18 +1112,27 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
   std::vector<rpc::Task> tasks;
   for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
-    const auto& task_str = message->task_specs()->Get(i);
+    const auto &task_str = message->task_specs()->Get(i);
     rpc::Task task_message;
-    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-        task_str->data(), task_str->size()));
+    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
+                                                               task_str->size()));
     tasks.push_back(task_message);
   }
   RAY_LOG(INFO) << "Processed task submit batch of size " << tasks.size();
 
-  // Submit the task to the raylet. Since the task was submitted
-  // locally, there is no uncommitted lineage.
-  for (const auto& task_message : tasks) {
-    SubmitTask(Task(task_message), Lineage());
+  if (tasks.size() == 1) {
+    // Submit the task to the raylet. Since the task was submitted
+    // locally, there is no uncommitted lineage.
+    SubmitTask(Task(tasks[0]), Lineage());
+  } else {
+    // Vector case
+    std::vector<TaskSpecification> task_specs;
+    for (const auto &task : tasks) {
+      task_specs.push_back(TaskSpecification(task.task_spec()));
+    }
+    SubmitTask(
+        Task(TaskExecutionSpecification(tasks[0].task_execution_spec()), task_specs),
+        Lineage());
   }
 }
 

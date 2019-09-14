@@ -23,8 +23,9 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTaskBatch(const std::vector<TaskSpecification> &tasks) {
-  for (const auto& task : tasks) {
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTaskBatch(
+    const std::vector<TaskSpecification> &tasks) {
+  for (const auto &task : tasks) {
     auto status = SubmitTask(task);
     if (!status.ok()) {
       return status;

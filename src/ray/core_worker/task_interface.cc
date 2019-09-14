@@ -102,8 +102,7 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     gcs::RedisGcsClient &gcs_client)
-    : worker_context_(worker_context),
-      batch_timer_(io_service) {
+    : worker_context_(worker_context), batch_timer_(io_service) {
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
@@ -163,7 +162,8 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   if (task_batch_.size() >= MAX_TASK_BATCH_SIZE) {
     FlushTaskBatch();
   } else {
-    batch_timer_.expires_from_now(boost::posix_time::milliseconds(TASK_SUBMIT_BATCH_MILLIS));
+    batch_timer_.expires_from_now(
+        boost::posix_time::milliseconds(TASK_SUBMIT_BATCH_MILLIS));
     batch_timer_.async_wait([this](const boost::system::error_code &error) {
       if (error == boost::asio::error::operation_aborted) {
         return;  // time deadline was adjusted
@@ -251,7 +251,6 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
   return status;
 }
-
 
 void CoreWorkerTaskInterface::FlushTaskBatch() {
   std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);

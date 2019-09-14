@@ -174,8 +174,9 @@ class CoreWorkerTaskInterface {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
-  /// Flush any pending task submissions. This function is critical for task get performance,
-  /// otherwise task submissions could be delayed for up to TASK_SUBMIT_BATCH_MILLIS.
+  /// Flush any pending task submissions. This function is critical for task get
+  /// performance, otherwise task submissions could be delayed for up to
+  /// TASK_SUBMIT_BATCH_MILLIS.
   void FlushTaskBatch();
 
  private:

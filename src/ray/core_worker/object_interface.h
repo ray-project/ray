@@ -27,9 +27,9 @@ class CoreWorkerObjectInterface {
                             std::unique_ptr<RayletClient> &raylet_client,
                             const std::string &store_socket,
                             bool use_memory_store = true);
-  
+
   /// \param[in] flush_submitted_tasks Callback to flush any pending submitted tasks.
-  void SetFlushTasksCallback(std::function<void ()> flush_submitted_tasks) {
+  void SetFlushTasksCallback(std::function<void()> flush_submitted_tasks) {
     flush_submitted_tasks_ = flush_submitted_tasks;
   }
 
@@ -125,9 +125,7 @@ class CoreWorkerObjectInterface {
   /// Ensures all submitted tasks are flushed to the raylet before this returns. This
   /// function is critical for task get performance, otherwise task submissions
   /// could be delayed for up to TASK_SUBMIT_BATCH_MILLIS.
-  void FlushTaskBatch() {
-    flush_submitted_tasks_();
-  }
+  void FlushTaskBatch() { flush_submitted_tasks_(); }
 
   /// Helper function to group object IDs by the store provider that should be used
   /// for them.
@@ -163,7 +161,7 @@ class CoreWorkerObjectInterface {
   /// Reference to the parent CoreWorker's raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
   /// Callback to flush tasks.
-  std::function<void ()> flush_submitted_tasks_;
+  std::function<void()> flush_submitted_tasks_;
 
   std::string store_socket_;
   bool use_memory_store_;
