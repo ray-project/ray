@@ -89,9 +89,8 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 else:
                     break
             spec = copy.deepcopy(experiment_spec)
-            spec["config"] = merge_dicts(
-                spec["config"],
-                copy.deepcopy(suggested_config))
+            spec["config"] = merge_dicts(spec["config"],
+                                         copy.deepcopy(suggested_config))
             flattened_config = resolve_nested_dict(spec["config"])
             self._counter += 1
             tag = "{0}_{1}".format(

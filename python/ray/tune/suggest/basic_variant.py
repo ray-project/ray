@@ -8,8 +8,8 @@ import random
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.variant_generator import (
-    generate_variants, format_vars, flatten_resolved_vars)
+from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
+                                                flatten_resolved_vars)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
