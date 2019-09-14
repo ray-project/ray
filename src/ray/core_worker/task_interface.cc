@@ -102,7 +102,8 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     gcs::RedisGcsClient &gcs_client)
-    : worker_context_(worker_context) {
+    : worker_context_(worker_context),
+      batch_timer_(io_service) {
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
@@ -155,7 +156,23 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   BuildCommonTaskSpec(builder, task_id, next_task_index, function, args,
                       task_options.num_returns, task_options.resources, {},
                       TaskTransportType::RAYLET, return_ids);
-  return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
+
+  std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
+  task_batch_.push_back(builder.Build());
+
+  if (task_batch_.size() >= MAX_TASK_BATCH_SIZE) {
+    FlushTaskBatch();
+  } else {
+    batch_timer_.expires_from_now(boost::posix_time::milliseconds(TASK_SUBMIT_BATCH_MILLIS));
+    batch_timer_.async_wait([this](const boost::system::error_code &error) {
+      if (error == boost::asio::error::operation_aborted) {
+        return;  // time deadline was adjusted
+      }
+      RAY_LOG(INFO) << "Flushing task batch since timer expired";
+      FlushTaskBatch();
+    });
+  }
+  return Status::OK();
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
@@ -233,6 +250,15 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   (*return_ids).pop_back();
 
   return status;
+}
+
+
+void CoreWorkerTaskInterface::FlushTaskBatch() {
+  std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
+  if (!task_batch_.empty()) {
+    task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(task_batch_);
+    task_batch_.clear();
+  }
 }
 
 }  // namespace ray

@@ -94,7 +94,7 @@ table Task {
 }
 
 table SubmitTaskRequest {
-  task_spec: string;
+  task_specs: [string];
 }
 
 // This message describes a given resource that is reserved for a worker.

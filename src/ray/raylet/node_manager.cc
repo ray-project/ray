@@ -1109,14 +1109,22 @@ void NodeManager::ProcessDisconnectClientMessage(
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
+  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+  std::vector<rpc::Task> tasks;
+  for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
+    const auto& task_str = message->task_specs()->Get(i);
+    rpc::Task task_message;
+    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
+        task_str->data(), task_str->size()));
+    tasks.push_back(task_message);
+  }
+  RAY_LOG(INFO) << "Processed task submit batch of size " << tasks.size();
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message), Lineage());
+  for (const auto& task_message : tasks) {
+    SubmitTask(Task(task_message), Lineage());
+  }
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(

@@ -29,6 +29,12 @@ class CoreWorkerTaskSubmitter {
   /// \return Status.
   virtual Status SubmitTask(const TaskSpecification &task_spec) = 0;
 
+  /// Submit a batch of tasks for execution.
+  ///
+  /// \param[in] tasks The task specs to submit.
+  /// \return Status.
+  virtual Status SubmitTaskBatch(const std::vector<TaskSpecification> &tasks) = 0;
+
   virtual ~CoreWorkerTaskSubmitter() {}
 };
 

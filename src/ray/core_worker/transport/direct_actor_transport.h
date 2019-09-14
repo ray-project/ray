@@ -33,11 +33,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
       boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
       std::unique_ptr<CoreWorkerStoreProvider> store_provider);
 
-  /// Submit a task to an actor for execution.
-  ///
-  /// \param[in] task The task spec to submit.
-  /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
+  Status SubmitTaskBatch(const std::vector<TaskSpecification> &tasks) override;
 
  private:
   /// Subscribe to updates of an actor.

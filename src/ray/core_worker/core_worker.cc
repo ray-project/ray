@@ -34,17 +34,6 @@ CoreWorker::CoreWorker(
     RayLog::InstallFailureSignalHandler();
   }
 
-  // Initialize gcs client.
-  gcs_client_ =
-      std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
-
-  object_interface_ =
-      std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
-          worker_context_, raylet_client_, store_socket, use_memory_store));
-  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
-      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
-
   // Initialize task execution.
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
@@ -57,6 +46,20 @@ CoreWorker::CoreWorker(
       rpc_server_port = task_execution_interface_->worker_server_.GetPort();
     }
   }
+
+  // Initialize gcs client.
+  gcs_client_ =
+      std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+
+  object_interface_ =
+      std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
+          worker_context_, raylet_client_, store_socket, use_memory_store));
+
+  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
+      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
+
+  object_interface_->SetFlushTasksCallback([this]() { task_interface_->FlushTaskBatch(); });
 
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot

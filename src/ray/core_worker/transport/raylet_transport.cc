@@ -10,7 +10,12 @@ CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
 
 Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) {
   RAY_CHECK(raylet_client_ != nullptr);
-  return raylet_client_->SubmitTask(task);
+  return raylet_client_->SubmitTaskBatch({task});
+}
+
+Status CoreWorkerRayletTaskSubmitter::SubmitTaskBatch(const std::vector<TaskSpecification> &tasks) {
+  RAY_CHECK(raylet_client_ != nullptr);
+  return raylet_client_->SubmitTaskBatch(tasks);
 }
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(

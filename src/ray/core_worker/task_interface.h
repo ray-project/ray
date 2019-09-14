@@ -1,6 +1,8 @@
 #ifndef RAY_CORE_WORKER_TASK_INTERFACE_H
 #define RAY_CORE_WORKER_TASK_INTERFACE_H
 
+#include <mutex>
+
 #include "ray/common/buffer.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
@@ -16,6 +18,9 @@
 #include "ray/protobuf/core_worker.pb.h"
 
 namespace ray {
+
+const int MAX_TASK_BATCH_SIZE = 128;
+const int TASK_SUBMIT_BATCH_MILLIS = 5;
 
 class CoreWorker;
 
@@ -169,6 +174,10 @@ class CoreWorkerTaskInterface {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
+  /// Flush any pending task submissions. This function is critical for task get performance,
+  /// otherwise task submissions could be delayed for up to TASK_SUBMIT_BATCH_MILLIS.
+  void FlushTaskBatch();
+
  private:
   /// Build common attributes of the task spec, and compute return ids.
   ///
@@ -197,6 +206,15 @@ class CoreWorkerTaskInterface {
   /// All the task submitters supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskSubmitter>>
       task_submitters_;
+
+  /// Pending tasks for submission. Guarded by task_batch_lock_.
+  std::vector<TaskSpecification> task_batch_;
+
+  /// Protects task_batch_.
+  std::recursive_mutex task_batch_lock_;
+
+  /// Timer for flushing the task batch.
+  boost::asio::deadline_timer batch_timer_;
 
   friend class CoreWorkerTest;
 };
