@@ -59,6 +59,12 @@ std::string Status::CodeAsString() const {
   case StatusCode::IOError:
     type = "IOError";
     break;
+  case StatusCode::ObjectExists:
+    type = "ObjectExists";
+    break;
+  case StatusCode::ObjectStoreFull:
+    type = "ObjectStoreFull";
+    break;
   case StatusCode::UnknownError:
     type = "Unknown error";
     break;
