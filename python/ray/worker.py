@@ -25,6 +25,7 @@ import random
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
+from ray.cloudpickle import USE_NEW_SERIALIZER
 import ray.experimental.signal as ray_signal
 import ray.experimental.no_return
 import ray.gcs_utils
@@ -86,6 +87,9 @@ try:
     import setproctitle
 except ImportError:
     setproctitle = None
+
+if USE_NEW_SERIALIZER:
+    from _pickle import PickleBuffer
 
 
 class ActorCheckpointInfo(object):
@@ -391,7 +395,10 @@ class Worker(object):
         for attempt in reversed(
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
-                self._try_store_and_register(object_id, value)
+                if USE_NEW_SERIALIZER:
+                    self.store_with_plasma(object_id, value)
+                else:
+                    self._try_store_and_register(object_id, value)
                 break
             except ObjectStoreFullError as e:
                 if attempt:
@@ -407,6 +414,48 @@ class Worker(object):
         """Prints object store debug string to stdout."""
         logger.warning("Local object store memory usage:\n{}\n".format(
             self.core_worker.object_store_memory_usage_string()))
+
+    def store_with_plasma(self, object_id, value):
+        """Serialize and store an object.
+
+        Args:
+            object_id: The ID of the object to store.
+            value: The value to put in the object store.
+
+        Raises:
+            Exception: An exception is raised if the attempt to store the
+                object fails. This can happen if there is already an object
+                with the same ID in the object store or if the object store is
+                full.
+        """
+        try:
+            if isinstance(value, bytes):
+                # If the object is a byte array, skip serializing it and
+                # use a special metadata to indicate it's raw binary. So
+                # that this object can also be read by Java.
+                self.core_worker.put_raw_buffer(
+                    value, object_id, memcopy_threads=self.memcopy_threads)
+            else:
+                buffers = []
+                meta = pickle.dumps(
+                    value, protocol=5, buffer_callback=buffers.append)
+                # TODO(suquark): This could involve more copies.
+                # Should implement zero-copy for PickleBuffer.
+                buffers = [b.raw().tobytes() for b in buffers]
+                value = (meta, buffers)
+
+                self.core_worker.put_serialized_object(
+                    pyarrow.serialize(value),
+                    object_id,
+                    memcopy_threads=self.memcopy_threads)
+        except pyarrow.plasma.PlasmaObjectExists:
+            # The object already exists in the object store, so there is no
+            # need to add it again. TODO(rkn): We need to compare hashes
+            # and make sure that the objects are in fact the same. We also
+            # should return an error code to caller instead of printing a
+            # message.
+            logger.info("The object with ID {} already exists "
+                        "in the object store.".format(object_id))
 
     def _try_store_and_register(self, object_id, value):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -492,7 +541,12 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            return pyarrow.deserialize(data, serialization_context)
+            if USE_NEW_SERIALIZER:
+                r, buffers = pyarrow.deserialize(data, serialization_context)
+                buffers = [PickleBuffer(b) for b in buffers]
+                return pickle.loads(r, buffers=buffers)
+            else:
+                return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
@@ -1190,33 +1244,37 @@ def _initialize_serialization(job_id, worker=global_worker):
 
     worker.serialization_context_map[job_id] = serialization_context
 
-    # Register exception types.
-    for error_cls in RAY_EXCEPTION_TYPES:
+    if not USE_NEW_SERIALIZER:
+        for error_cls in RAY_EXCEPTION_TYPES:
+            register_custom_serializer(
+                error_cls,
+                use_dict=True,
+                local=True,
+                job_id=job_id,
+                class_id=error_cls.__module__ + ". " + error_cls.__name__,
+            )
+        # Tell Ray to serialize lambdas with pickle.
         register_custom_serializer(
-            error_cls,
+            type(lambda: 0),
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="lambda")
+        # Tell Ray to serialize types with pickle.
+        register_custom_serializer(
+            type(int),
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="type")
+        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # used when passing around actor handles.
+        register_custom_serializer(
+            ray.signature.FunctionSignature,
             use_dict=True,
             local=True,
             job_id=job_id,
-            class_id=error_cls.__module__ + ". " + error_cls.__name__,
-        )
-    # Tell Ray to serialize lambdas with pickle.
-    register_custom_serializer(
-        type(lambda: 0),
-        use_pickle=True,
-        local=True,
-        job_id=job_id,
-        class_id="lambda")
-    # Tell Ray to serialize types with pickle.
-    register_custom_serializer(
-        type(int), use_pickle=True, local=True, job_id=job_id, class_id="type")
-    # Tell Ray to serialize FunctionSignatures as dictionaries. This is
-    # used when passing around actor handles.
-    register_custom_serializer(
-        ray.signature.FunctionSignature,
-        use_dict=True,
-        local=True,
-        job_id=job_id,
-        class_id="ray.signature.FunctionSignature")
+            class_id="ray.signature.FunctionSignature")
 
 
 def init(address=None,
@@ -2204,20 +2262,33 @@ def register_custom_serializer(cls,
     assert isinstance(job_id, JobID)
 
     def register_class_for_serialization(worker_info):
-        # TODO(rkn): We need to be more thoughtful about what to do if custom
-        # serializers have already been registered for class_id. In some cases,
-        # we may want to use the last user-defined serializers and ignore
-        # subsequent calls to register_custom_serializer that were made by the
-        # system.
+        if USE_NEW_SERIALIZER:
+            if pickle.FAST_CLOUDPICKLE_USED:
+                # construct a reducer
+                pickle.CloudPickler.dispatch[
+                    cls] = lambda obj: (deserializer, (serializer(obj), ))
+            else:
 
-        serialization_context = worker_info[
-            "worker"].get_serialization_context(job_id)
-        serialization_context.register_type(
-            cls,
-            class_id,
-            pickle=use_pickle,
-            custom_serializer=serializer,
-            custom_deserializer=deserializer)
+                def _CloudPicklerReducer(_self, obj):
+                    _self.save_reduce(
+                        deserializer, (serializer(obj), ), obj=obj)
+
+                # use a placeholder for 'self' argument
+                pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+        else:
+            # TODO(rkn): We need to be more thoughtful about what to do if
+            # custom serializers have already been registered for class_id.
+            # In some cases, we may want to use the last user-defined
+            # serializers and ignore subsequent calls to
+            # register_custom_serializer that were made by the system.
+            serialization_context = worker_info[
+                "worker"].get_serialization_context(job_id)
+            serialization_context.register_type(
+                cls,
+                class_id,
+                pickle=use_pickle,
+                custom_serializer=serializer,
+                custom_deserializer=deserializer)
 
     if not local:
         worker.run_function_on_all_workers(register_class_for_serialization)
