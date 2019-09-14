@@ -648,8 +648,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                           ActorHandleID::Nil(), function.language_, true,
-                           function.function_descriptor_);
+                           ActorHandleID::Nil(), function.GetLanguage(), true,
+                           function.GetFunctionDescriptor());
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -663,8 +663,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
-    builder.SetCommonTaskSpec(RandomTaskId(), function.language_,
-                              function.function_descriptor_, job_id, RandomTaskId(), 0,
+    builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
+                              function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               num_returns, resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
