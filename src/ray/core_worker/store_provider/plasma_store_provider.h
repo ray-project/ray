@@ -14,29 +14,40 @@ namespace ray {
 class CoreWorker;
 
 /// The class provides implementations for accessing plasma store, which includes both
-/// local and remote store, remote access is done via raylet.
+/// local and remote stores. Local access goes is done via a
+/// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
+/// See `CoreWorkerStoreProvider` for the semantics of public methods.
 class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
                                 std::unique_ptr<RayletClient> &raylet_client);
 
-  /// See `CoreWorkerStoreProvider::Put` for semantics.
+  ~CoreWorkerPlasmaStoreProvider();
+
+  Status SetClientOptions(std::string name, int64_t limit_bytes);
+
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
-  /// See `CoreWorkerStoreProvider::Get` for semantics.
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data) override;
+
+  Status Seal(const ObjectID &object_id) override;
+
   Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
              const TaskID &task_id,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception) override;
 
-  /// See `CoreWorkerStoreProvider::Wait` for semantics.
+  Status Contains(const ObjectID &object_id, bool *has_object) override;
+
   Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
               std::unordered_set<ObjectID> *ready) override;
 
-  /// See `CoreWorkerStoreProvider::Delete` for semantics.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
+
+  std::string MemoryUsageString() override;
 
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
@@ -62,7 +73,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
       bool *got_exception);
 
   /// Print a warning if we've attempted too many times, but some objects are still
-  /// unavailable.
+  /// unavailable. Only the keys in the 'remaining' map are used.
   ///
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.

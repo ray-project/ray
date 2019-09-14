@@ -27,7 +27,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   if (HasByReferenceArgs(task_spec)) {
-    return Status::Invalid("direct actor call only supports by-value arguments");
+    return Status::Invalid("Direct actor call only supports by-value arguments");
   }
 
   RAY_CHECK(task_spec.IsActorTask());
@@ -243,7 +243,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
   if (HasByReferenceArgs(task_spec)) {
     send_reply_callback(
-        Status::Invalid("direct actor call only supports by value arguments"), nullptr,
+        Status::Invalid("Direct actor call only supports by value arguments"), nullptr,
         nullptr);
     return;
   }

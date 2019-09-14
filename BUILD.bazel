@@ -722,7 +722,10 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"],
+    deps = [
+        "//:core_worker_lib",
+        "//:raylet_lib",
+    ],
 )
 
 cc_binary(

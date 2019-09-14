@@ -101,12 +101,13 @@ def create(project_name, cluster_yaml, requirements):
         requirements = REQUIREMENTS_TXT
 
     repo = None
-    try:
-        repo = subprocess.check_output(
-            "git remote get-url origin".split(" ")).strip()
-        logger.info("Setting repo URL to %s", repo)
-    except subprocess.CalledProcessError:
-        pass
+    if os.path.exists(".git"):
+        try:
+            repo = subprocess.check_output(
+                "git remote get-url origin".split(" ")).strip()
+            logger.info("Setting repo URL to %s", repo)
+        except subprocess.CalledProcessError:
+            pass
 
     with open(PROJECT_TEMPLATE) as f:
         project_template = f.read()
