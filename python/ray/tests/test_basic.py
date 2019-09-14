@@ -375,11 +375,16 @@ def test_ray_recursive_objects(ray_start_regular):
     # Create a list of recursive objects.
     recursive_objects = [lst, a1, a2, a3, d1]
 
-    # Check that exceptions are thrown when we serialize the recursive
-    # objects.
-    for obj in recursive_objects:
-        with pytest.raises(Exception):
+    if ray.worker.USE_NEW_SERIALIZER:
+        # Serialize the recursive objects.
+        for obj in recursive_objects:
             ray.put(obj)
+    else:
+        # Check that exceptions are thrown when we serialize the recursive
+        # objects.
+        for obj in recursive_objects:
+            with pytest.raises(Exception):
+                ray.put(obj)
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
