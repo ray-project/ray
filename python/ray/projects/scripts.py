@@ -276,13 +276,17 @@ def attach():
 
 
 @session_cli.command(help="Stop a session based on current project config")
-def stop():
+@click.option(
+    "--name", help="Name of the session to stop",
+    default=None
+)
+def stop(name):
     project_definition = load_project_or_throw()
     teardown_cluster(
         project_definition.cluster_yaml(),
         yes=True,
         workers_only=False,
-        override_cluster_name=None)
+        override_cluster_name=name)
 
 
 @session_cli.command(
@@ -297,8 +301,10 @@ def stop():
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def session_start(command, args, shell):
-    runner = SessionRunner()
+@click.option(
+    "--name", help="A name to tag the session with.", default=None)
+def session_start(command, args, shell, name):
+    runner = SessionRunner(session_name=name)
     if shell or command:
         # Get the actual command to run.
         cmd = runner.format_command(command, args, shell)
@@ -331,7 +337,11 @@ def session_start(command, args, shell):
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def session_execute(command, args, shell):
-    runner = SessionRunner()
+@click.option(
+    "--name", help="Name of the session to run this command on",
+    default=None
+)
+def session_execute(command, args, shell, name):
+    runner = SessionRunner(session_name=name)
     cmd = runner.format_command(command, args, shell)
     runner.execute_command(cmd)
