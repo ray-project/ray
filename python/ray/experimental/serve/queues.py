@@ -101,9 +101,10 @@ class CentralizedQueues:
 
     def _get_available_backends(self, service):
         backends_in_policy = set(self.traffic[service].keys())
-        available_workers = set((backend
-                                 for backend, queues in self.workers.items()
-                                 if len(queues) > 0))
+        available_workers = {
+            backend
+            for backend, queues in self.workers.items() if len(queues) > 0
+        }
         return list(backends_in_policy.intersection(available_workers))
 
     def _flush(self):
