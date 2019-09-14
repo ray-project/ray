@@ -61,41 +61,11 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        # Make ourselves a process group session leader to ensure we can clean
-        # up child processes later without killing a process that started us.
-        try:
-            os.setpgrp()
-        except OSError as e:
-            logger.warning("setpgrp failed, processes may not be "
-                           "cleaned up properly: {}.".format(e))
-
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError("'shutdown_at_exit' and 'connect_only' "
                                  "cannot both be true.")
-
-            def atexit_handler():
-                return clean_up_children(lambda *args, **kwargs: None)
-
-            def sigterm_handler():
-                return clean_up_children(lambda *args, **kwargs: sys.exit(1))
-
-            def clean_up_children(sigterm_handler):
-                self.kill_all_processes(check_alive=False, allow_graceful=True)
-                signal.signal(signal.SIGTERM, sigterm_handler)
-                try:
-                    # SIGTERM our process group as a last resort in case there
-                    # were processes that we spawned but didn't add to the list
-                    # (could happen if interrupted just after spawning them).
-                    # We could send SIGKILL here to be sure, but we're also
-                    # sending it to ourselves.
-                    os.killpg(0, signal.SIGTERM)
-                except OSError as e:
-                    print("killpg failed, processes may not have "
-                          "been cleaned up properly: {}.".format(e))
-
-            atexit.register(atexit_handler)
-            signal.signal(signal.SIGTERM, sigterm_handler)
+            self._register_shutdown_hooks()
 
         self.head = head
         self.all_processes = {}
@@ -184,6 +154,51 @@ class Node(object):
 
         if not connect_only:
             self.start_ray_processes()
+
+    def _register_shutdown_hooks(self):
+        # Make ourselves a process group session leader to ensure we can clean
+        # up child processes later without killing a process that started us.
+        try:
+            os.setpgrp()
+        except OSError as e:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+
+        # Clean up child process by first going through the normal
+        # kill_all_processes procedure (which should clean them all up
+        # under normal circumstances), then sending a SIGTERM to our
+        # process group to take care of any children that may have been
+        # spawned but not yet added to the list.
+        def clean_up_children(sigterm_handler):
+            self.kill_all_processes(check_alive=False, allow_graceful=True)
+            signal.signal(signal.SIGTERM, sigterm_handler)
+            try:
+                # SIGTERM our process group as a last resort in case there
+                # were processes that we spawned but didn't add to the list
+                # (could happen if interrupted just after spawning them).
+                # We could send SIGKILL here to be sure, but we're also
+                # sending it to ourselves.
+                os.killpg(0, signal.SIGTERM)
+            except OSError as e:
+                print("killpg failed, processes may not have "
+                      "been cleaned up properly: {}.".format(e))
+
+        # Register the a handler to be called during the normal python
+        # shutdown process. We pass an empty lambda to clean_up_children
+        # because after cleaning up the child processes, it should do
+        # nothing and return so that the shutdown process can continue.
+        def atexit_handler():
+            return clean_up_children(lambda *args, **kwargs: None)
+
+        atexit.register(atexit_handler)
+
+        # Register the a handler to be called if we get a SIGTERM.
+        # In this case, we want to exit with an error code (1) after
+        # cleaning up chlid processes.
+        def sigterm_handler():
+            return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
