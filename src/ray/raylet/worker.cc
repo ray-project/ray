@@ -153,12 +153,12 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
     std::vector<flatbuffers::Offset<flatbuffers::String>> task_strs;
-    if (task.isVector()) {
+    if (task.IsVectorTask()) {
       for (const auto& s : task.GetTaskSpecificationVector()) {
-        task_strs.push_back(fbb.CreateString(s.Serialize()))
+        task_strs.push_back(fbb.CreateString(s.Serialize()));
       }
     } else {
-      task_strs.push_back(fbb.CreateString(spec.Serialize()))
+      task_strs.push_back(fbb.CreateString(spec.Serialize()));
     }
     auto message =
         protocol::CreateGetTaskReply(fbb, fbb.CreateVector(task_strs),

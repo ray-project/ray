@@ -288,7 +288,7 @@ cdef class RayletClient:
             c_vector[unique_ptr[CTaskSpec]] task_specs
 
         with nogil:
-            check_status(self.client.get().GetTasks(task_specs))
+            check_status(self.client.GetTasks(task_specs))
 
         result = []
         for i in range(task_specs.size()):

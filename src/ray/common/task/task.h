@@ -73,9 +73,9 @@ class Task {
 
   std::string DebugString() const;
 
-  bool IsVectorTask() { return !task_spec_vector_.empty(); }
+  bool IsVectorTask() const { return !task_spec_vector_.empty(); }
 
-  const std::vector<TaskSpecification>& GetTaskSpecificationVector() {
+  const std::vector<TaskSpecification>& GetTaskSpecificationVector() const {
     RAY_CHECK(IsVectorTask());
     return task_spec_vector_;
   }

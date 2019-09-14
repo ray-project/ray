@@ -1091,7 +1091,7 @@ class Worker(object):
             self.core_worker.disconnect()
             sys.exit(0)
 
-    def _get_next_task_from_raylet(self):
+    def _get_next_tasks_from_raylet(self):
         """Get the next task from the raylet.
 
         Returns:
