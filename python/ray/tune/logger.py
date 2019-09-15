@@ -151,7 +151,7 @@ def tf2_compat_logger(config, logdir, trial=None):
             tf = tf.compat.v2  # setting this for TF2.0
             return TF2Logger(config, logdir, trial)
         else:
-            return TFLogger(config, logdir)
+            return TFLogger(config, logdir, trial)
 
 
 class TF2Logger(Logger):
@@ -183,9 +183,12 @@ class TF2Logger(Logger):
                 tmp = result.copy()
                 if not self._hp_logged:
                     if self.trial and self.trial.evaluated_params:
-                        hp.hparams(
-                            self.trial.evaluated_params,
-                            trial_id=self.trial.trial_id)
+                        try:
+                            hp.hparams(
+                                self.trial.evaluated_params,
+                                trial_id=self.trial.trial_id)
+                        except Exception as exc:
+                            logger.error("HParams failed with %s", exc)
                     self._hp_logged = True
 
                 for k in [

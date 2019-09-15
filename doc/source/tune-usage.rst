@@ -497,8 +497,8 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Visualizing Results
--------------------
+TensorBoard
+-----------
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -520,7 +520,28 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
 .. image:: ray-tune-tensorboard.png
 
-To use rllab's VisKit (you may have to install some dependencies), run:
+If using TF2, Tune also automatically generates TensorBoard HParams output, as shown below:
+
+.. code-block:: python
+
+    tune.run(
+        ...,
+        config={
+            "lr": tune.grid_search([1e-5, 1e-4]),
+            "momentum": tune.grid_search([0, 0.9])
+        }
+    )
+
+.. image:: images/tune-hparams.png
+
+
+The nonrelevant metrics (like timing stats) can be disabled on the left to show only the relevant ones (like accuracy, loss, etc.).
+
+
+Viskit
+------
+
+To use VisKit (you may have to install some dependencies), run:
 
 .. code-block:: bash
 
@@ -547,28 +568,6 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
-TensorBoard
-~~~~~~~~~~~
-
-The ``tf2_compat_logger`` chooses ``TFLogger`` for TF version < 1.14 and ``TF2Logger`` for TF version >= 1.14.
-The ``TF2Logger`` can log hyperparameters according to the `TB documentation <https://www.tensorflow.org/tensorboard/r2/hyperparameter_tuning_with_hparams>`_.
-The logger automatically picks up the hparams from `trial.evaluated_params` and logs it during the first call to `on_result` with `Trial ID` from `trial.trial_id`.
-
-For example running tune with the following config creates an overview in Tensorboard as shown below:
-
-.. code-block:: python
-
-    tune.run(
-        ...,
-        config={
-            "lr": tune.grid_search([1e-5, 1e-4]),
-            "momentum": tune.grid_search([0, 0.9])
-        }
-    )
-
-.. image:: ray-tune-tb-hparams.png
-
-The nonrelevant Metrics (like timing stats) can be disabled on the left to show only the relevant ones (like accuracy, loss, etc.).
 
 MLFlow
 ~~~~~~
