@@ -194,7 +194,7 @@ class Node(object):
 
         # Register the a handler to be called if we get a SIGTERM.
         # In this case, we want to exit with an error code (1) after
-        # cleaning up chlid processes.
+        # cleaning up child processes.
         def sigterm_handler():
             return clean_up_children(lambda *args, **kwargs: sys.exit(1))
 
