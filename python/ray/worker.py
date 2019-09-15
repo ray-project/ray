@@ -867,11 +867,12 @@ class Worker(object):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
             if outputs[i] is ray.experimental.no_return.NoReturn:
-                if not self.core_worker.object_exists(object_ids[i]):
-                    raise RuntimeError(
-                        "Attempting to return 'ray.experimental.NoReturn' "
-                        "from a remote function, but the corresponding "
-                        "ObjectID does not exist in the local object store.")
+                pass
+#                if not self.core_worker.object_exists(object_ids[i]):
+#                    raise RuntimeError(
+#                        "Attempting to return 'ray.experimental.NoReturn' "
+#                        "from a remote function, but the corresponding "
+#                        "ObjectID does not exist in the local object store.")
             else:
                 self.put_object(object_ids[i], outputs[i])
 
@@ -976,7 +977,7 @@ class Worker(object):
                 num_returns = len(return_object_ids)
                 if num_returns == 1:
                     outputs = (outputs, )
-                self._store_outputs_in_object_store(return_object_ids, outputs)
+            self._store_outputs_in_object_store(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
