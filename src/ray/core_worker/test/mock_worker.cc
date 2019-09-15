@@ -44,6 +44,16 @@ class MockWorker {
       auto &data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
+    if (buffer.size() >= 8) {
+      auto int_arr = reinterpret_cast<int64_t *>(buffer.data());
+      if (int_arr[0] == SHOULD_CHECK_MESSAGE_ORDER) {
+        auto seq_no = int_arr[1];
+        if (seq_no > 0) {
+          RAY_CHECK(seq_no == prev_seq_no_ + 1) << seq_no << " vs " << prev_seq_no_;
+        }
+        prev_seq_no_ = seq_no;
+      }
+    }
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size(), true);
 
@@ -56,6 +66,7 @@ class MockWorker {
   }
 
   CoreWorker worker_;
+  int64_t prev_seq_no_ = 0;
 };
 
 }  // namespace ray

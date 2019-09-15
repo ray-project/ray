@@ -698,6 +698,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, "",
                     nullptr);
   std::unique_ptr<ActorHandle> actor_handle;
+  std::vector<ObjectID> object_ids;
 
   // Test creating actor.
   uint8_t array[] = {1, 2, 3};
@@ -715,11 +716,14 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                                           30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
-  const int num_tasks = 10000;
+  const int num_tasks = 100000;
   RAY_LOG(INFO) << "start submitting " << num_tasks << " tasks";
   for (int i = 0; i < num_tasks; i++) {
     // Create arguments with PassByValue.
     std::vector<TaskArg> args;
+    int64_t array[] = {SHOULD_CHECK_MESSAGE_ORDER, i};
+    auto buffer = std::make_shared<LocalMemoryBuffer>(reinterpret_cast<uint8_t *>(array),
+                                                      sizeof(array));
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     TaskOptions options{1, resources};
@@ -729,8 +733,17 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     RAY_CHECK_OK(
         driver.Tasks().SubmitActorTask(*actor_handle, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
+    object_ids.emplace_back(return_ids[0]);
   }
   RAY_LOG(INFO) << "finish submitting " << num_tasks << " tasks"
+                << ", which takes " << current_time_ms() - start_ms << " ms";
+
+  for (const auto &object_id : object_ids) {
+    std::vector<std::shared_ptr<RayObject>> results;
+    RAY_CHECK_OK(driver.Objects().Get({object_id}, -1, &results));
+    ASSERT_EQ(results.size(), 1);
+  }
+  RAY_LOG(INFO) << "finish executing " << num_tasks << " tasks"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
