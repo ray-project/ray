@@ -1118,7 +1118,6 @@ class Worker(object):
             tasks = self._get_next_tasks_from_raylet()
             for task in tasks:
                 self._wait_for_and_process_task(task)
-            self._wait_for_and_process_task(task)
 
 
 def get_gpu_ids():
