@@ -83,16 +83,9 @@ def resolve_nested_dict(nested_dict):
     return res
 
 
-def _prepare_resolved_vars(resolved_vars):
-    """Formats the resolved variable dict to a list of (tuple -> value).
-
-    This mapping can be then converted into different formats (i.e.,
-    strings or other dict formats).
-
-    Returns:
-        Sorted list of (tuple, value)
-    """
-    resolved_vars_list = []
+def format_vars(resolved_vars):
+    """Formats the resolved variable dict into a single string."""
+    out = []
     for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
@@ -105,24 +98,19 @@ def _prepare_resolved_vars(resolved_vars):
                 last_string = False
                 pieces.append(k)
         pieces.reverse()
-        resolved_vars_list.append((pieces, value))
-    return resolved_vars_list
+        out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
+    return ",".join(out)
 
 
 def flatten_resolved_vars(resolved_vars):
     """Formats the resolved variable dict into a mapping of (str -> value)."""
     flattened_resolved_vars_dict = {}
-    for pieces, value in _prepare_resolved_vars(resolved_vars):
+    for pieces, value in resolved_vars.items():
+        if pieces[0] == "config":
+            pieces = pieces[1:]
+        pieces = [str(piece) for piece in pieces]
         flattened_resolved_vars_dict["/".join(pieces)] = value
     return flattened_resolved_vars_dict
-
-
-def format_vars(resolved_vars):
-    """Formats the resolved variable dict into a single string."""
-    out = []
-    for pieces, value in _prepare_resolved_vars(resolved_vars):
-        out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
-    return ",".join(out)
 
 
 def _clean_value(value):
