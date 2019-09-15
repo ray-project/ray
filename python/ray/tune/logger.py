@@ -182,7 +182,7 @@ class TF2Logger(Logger):
 
                 tmp = result.copy()
                 if not self._hp_logged:
-                    if self.trial.evaluated_params:
+                    if self.trial and self.trial.evaluated_params:
                         hp.hparams(
                             self.trial.evaluated_params,
                             trial_id=self.trial.trial_id)
