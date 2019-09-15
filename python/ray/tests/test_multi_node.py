@@ -9,8 +9,13 @@ import time
 
 import ray
 from ray.utils import _random_string
-from ray.tests.utils import (run_string_as_driver,
-                             run_string_as_driver_nonblocking)
+from ray.tests.utils import (
+    run_string_as_driver,
+    run_string_as_driver_nonblocking,
+    wait_for_children_of_pid,
+    wait_for_children_of_pid_to_exit,
+    kill_process_by_name,
+)
 
 
 def test_error_isolation(call_ray_start):
@@ -267,7 +272,7 @@ print("success")
 
 
 def test_calling_start_ray_head():
-    # Test that we can call start-ray.sh with various command line
+    # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
     # should also test the non-head node code path.
 
@@ -327,62 +332,30 @@ def test_calling_start_ray_head():
             ["ray", "start", "--head", "--redis-address", "127.0.0.1:6379"])
     subprocess.check_output(["ray", "stop"])
 
-    # Test --block. Killing any child process should cause the command to exit.
+    # Test --block. Killing a child process should cause the command to exit.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
-    blocked.poll()
 
-    # Wait for up to 10s for the ray command to spawn a child process.
-    for _ in range(10):
-        try:
-            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
-            break
-        except subprocess.CalledProcessError:
-            time.sleep(1)
-    else:
-        assert False, "ray start didn't spawn children within 10s of starting"
+    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
     blocked.poll()
     assert blocked.returncode is None
 
-    # Kill all child processes of the ray command and check that it exits.
-    subprocess.check_output(["pkill", "-P", str(blocked.pid)])
-    for _ in range(10):
-        time.sleep(1)
-        blocked.poll()
-        if blocked.returncode is not None:
-            break
-    else:
-        assert False, "ray start didn't exit within 10s of child process dying"
-
-    assert blocked.returncode != 0
+    kill_process_by_name("raylet")
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    blocked.wait()
+    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
     # Test --block. Killing the command should clean up all child processes.
     blocked = subprocess.Popen(["ray", "start", "--head", "--block"])
     blocked.poll()
     assert blocked.returncode is None
 
-    # Wait for up to 10s for the ray command to spawn a child process.
-    for _ in range(10):
-        try:
-            subprocess.check_output(["pgrep", "-P", str(blocked.pid)])
-            break
-        except subprocess.CalledProcessError:
-            time.sleep(1)
-    else:
-        assert False, "ray start didn't spawn children within 10s of starting"
+    wait_for_children_of_pid(blocked.pid, num_children=7, timeout=30)
 
     blocked.terminate()
-
-    # Check that the child processes are cleaned up within 10s.
-    for _ in range(10):
-        try:
-            subprocess.check_output(
-                ["pgrep", "-P", str(blocked.pid), "raylet"])
-        except subprocess.CalledProcessError:
-            # pgrep didn't find anything, so the child processes are dead.
-            break
-    else:
-        assert False, "ray start didn't kill children within 10s of exiting."
+    wait_for_children_of_pid_to_exit(blocked.pid, timeout=120)
+    blocked.wait()
+    assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
 
 
 @pytest.mark.parametrize(
