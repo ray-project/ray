@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import fnmatch
 import os
+import psutil
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,39 @@ def wait_for_pid_to_exit(pid, timeout=20):
             return
         time.sleep(0.1)
     raise Exception("Timed out while waiting for process to exit.")
+
+
+def wait_for_children_of_pid(pid, num_children=1, timeout=20):
+    p = psutil.Process(pid)
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        num_alive = len(p.children(recursive=False))
+        if num_alive >= num_children:
+            return
+        time.sleep(0.1)
+    raise Exception("Timed out while waiting for process children to start "
+                    "({}/{} started).".format(num_alive, num_children))
+
+
+def wait_for_children_of_pid_to_exit(pid, timeout=20):
+    children = psutil.Process(pid).children()
+    if len(children) == 0:
+        return
+
+    _, alive = psutil.wait_procs(children, timeout=timeout)
+    if len(alive) > 0:
+        raise Exception("Timed out while waiting for process children to exit."
+                        " Children still alive: {}.".format(
+                            [p.name() for p in alive]))
+
+
+def kill_process_by_name(name, SIGKILL=False):
+    for p in psutil.process_iter(attrs=["name"]):
+        if p.info["name"] == name:
+            if SIGKILL:
+                p.kill()
+            else:
+                p.terminate()
 
 
 def run_string_as_driver(driver_script):
