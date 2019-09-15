@@ -4,6 +4,7 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
@@ -147,6 +148,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                      << " to worker " << worker_id_;
     }
   } else {
+//    auto start = current_sys_time_us();
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
     flatbuffers::FlatBufferBuilder fbb;
@@ -167,6 +169,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     Connection()->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
         fbb.GetBufferPointer(), finish_assign_callback);
+//    RAY_LOG(INFO) << "worker push task time " << (current_sys_time_us() - start);
   }
 }
 

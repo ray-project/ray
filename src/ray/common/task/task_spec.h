@@ -140,9 +140,9 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  private:
   void ComputeResources();
   /// Field storing required resources. Initalized in constructor.
-  ResourceSet required_resources_;
+  std::shared_ptr<ResourceSet> required_resources_;
   /// Field storing required placement resources. Initalized in constructor.
-  ResourceSet required_placement_resources_;
+  std::shared_ptr<ResourceSet> required_placement_resources_;
 };
 
 }  // namespace ray

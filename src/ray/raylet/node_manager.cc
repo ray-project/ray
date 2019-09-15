@@ -8,6 +8,7 @@
 #include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -1108,31 +1109,39 @@ void NodeManager::ProcessDisconnectClientMessage(
 }
 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
+//  auto start = current_sys_time_us();
   // Read the task submitted by the client.
   auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  std::vector<rpc::Task> tasks;
+  std::vector<std::unique_ptr<rpc::Task>> tasks;
   for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
     const auto &task_str = message->task_specs()->Get(i);
-    rpc::Task task_message;
-    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
+    std::unique_ptr<rpc::Task> task_message = std::unique_ptr<rpc::Task>(new rpc::Task());
+    RAY_CHECK(task_message->mutable_task_spec()->ParseFromArray(task_str->data(),
                                                                task_str->size()));
-    tasks.push_back(task_message);
+    tasks.push_back(std::move(task_message));
   }
-  RAY_LOG(INFO) << "Processed task submit batch of size " << tasks.size();
+//  RAY_LOG(INFO) << "parse task time " << (current_sys_time_us() - start);
 
   if (tasks.size() == 1) {
     // Submit the task to the raylet. Since the task was submitted
     // locally, there is no uncommitted lineage.
-    SubmitTask(Task(tasks[0]), Lineage());
+    auto start = current_sys_time_us();
+    const auto& task = Task(*tasks[0]);
+    RAY_LOG(INFO) << "copy submit task time " << (current_sys_time_us() - start);
+    SubmitTask(task, Lineage());
+    RAY_LOG(INFO) << "handle submit task time " << (current_sys_time_us() - start);
   } else {
+    auto start = current_sys_time_us();
     // Vector case.
     std::vector<TaskSpecification> task_specs;
     for (const auto &task : tasks) {
-      task_specs.push_back(TaskSpecification(task.task_spec()));
+      task_specs.push_back(TaskSpecification(task->task_spec()));  // copy
     }
-    SubmitTask(
-        Task(TaskExecutionSpecification(tasks[0].task_execution_spec()), task_specs),
-        Lineage());
+//    RAY_LOG(INFO) << "construct submit1 task time " << (current_sys_time_us() - start);
+    const auto& tb = Task(TaskExecutionSpecification(tasks[0]->task_execution_spec()), task_specs);
+//    RAY_LOG(INFO) << "construct submit2 task time " << (current_sys_time_us() - start);
+    SubmitTask(tb, Lineage());
+    RAY_LOG(INFO) << "handle submit task time " << (current_sys_time_us() - start);
   }
 }
 
@@ -1550,6 +1559,7 @@ void NodeManager::TreatTaskAsFailedIfLost(const Task &task) {
 
 void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                              bool forwarded) {
+//  auto start = current_sys_time_us();
   stats::TaskCountReceived().Record(1);
   const TaskSpecification &spec = task.GetTaskSpecification();
   const TaskID &task_id = spec.TaskId();
@@ -1561,6 +1571,15 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
                         "likely due to spurious reconstruction.";
     return;
   }
+//  RAY_LOG(INFO) << "submit [start]: " << (current_sys_time_us() - start);
+//  const Task task2 = task;
+//  RAY_LOG(INFO) << "submit [copy]: " << (current_sys_time_us() - start);
+//  const TaskSpecification ts3 = task.GetTaskSpecification();
+//  RAY_LOG(INFO) << "submit [copy-spec]: " << (current_sys_time_us() - start);
+//  if (task.IsVectorTask()) {
+//    const auto vec = task.GetTaskSpecificationVector();
+//    RAY_LOG(INFO) << "submit [copy-spec-vec]: " << (current_sys_time_us() - start);
+//  }
 
   // Add the task and its uncommitted lineage to the lineage cache.
   if (forwarded) {
@@ -1572,6 +1591,7 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
           << " already committed to the GCS. This is most likely due to reconstruction.";
     }
   }
+//  RAY_LOG(INFO) << "submit [lineage]: " << (current_sys_time_us() - start);
 
   if (spec.IsActorTask()) {
     // Check whether we know the location of the actor.
@@ -1666,7 +1686,9 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
     } else {
       // (See design_docs/task_states.rst for the state transition diagram.)
       local_queues_.QueueTasks({task}, TaskState::PLACEABLE);
+//      RAY_LOG(INFO) << "submit [queue]: " << (current_sys_time_us() - start);
       ScheduleTasks(cluster_resource_map_);
+//      RAY_LOG(INFO) << "submit [scheduled]: " << (current_sys_time_us() - start);
       // TODO(atumanov): assert that !placeable.isempty() => insufficient available
       // resources locally.
     }
