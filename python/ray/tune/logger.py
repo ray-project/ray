@@ -224,7 +224,7 @@ class TFLogger(Logger):
     """
 
     def _init(self):
-        logger.info("Initializing TFLogger instead of TF2Logger.")
+        logger.debug("Initializing TFLogger instead of TF2Logger.")
         self._file_writer = tf.compat.v1.summary.FileWriter(self.logdir)
 
     def on_result(self, result):

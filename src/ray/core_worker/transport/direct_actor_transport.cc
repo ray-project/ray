@@ -1,4 +1,3 @@
-
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/common/task/task.h"
 
@@ -68,7 +67,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    PushTask(*client, *request, actor_id, task_id, num_returns);
+    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
     return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
@@ -138,32 +137,31 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates(
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
-  std::unique_ptr<rpc::DirectActorClient> grpc_client(
-      new rpc::DirectActorClient(ip_address, port, client_call_manager_));
+  std::shared_ptr<rpc::DirectActorClient> grpc_client =
+      rpc::DirectActorClient::make(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.
   auto &client = rpc_clients_[actor_id];
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty()) {
-    const auto &request = *requests.front();
-    PushTask(*client, request, actor_id,
-             TaskID::FromBinary(request.task_spec().task_id()),
-             request.task_spec().num_returns());
+    auto request = std::move(requests.front());
+    auto num_returns = request->task_spec().num_returns();
+    auto task_id = TaskID::FromBinary(request->task_spec().task_id());
+    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
     requests.pop_front();
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushTask(rpc::DirectActorClient &client,
-                                                  const rpc::PushTaskRequest &request,
-                                                  const ActorID &actor_id,
-                                                  const TaskID &task_id,
-                                                  int num_returns) {
+void CoreWorkerDirectActorTaskSubmitter::PushTask(
+    rpc::DirectActorClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
-  auto status =
-      client.PushTask(request, [this, actor_id, task_id, num_returns](
-                                   Status status, const rpc::PushTaskReply &reply) {
+
+  auto status = client.PushTask(
+      std::move(request), [this, actor_id, task_id, num_returns](
+                              Status status, const rpc::PushTaskReply &reply) {
         {
           std::unique_lock<std::mutex> guard(mutex_);
           waiting_reply_tasks_[actor_id].erase(task_id);
@@ -230,6 +228,7 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     boost::asio::io_service &io_service, rpc::GrpcServer &server,
     const TaskHandler &task_handler)
     : worker_context_(worker_context),
+      io_service_(io_service),
       object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler) {
@@ -253,33 +252,47 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
-  auto num_returns = task_spec.NumReturns();
-  RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
-  RAY_CHECK(num_returns > 0);
-  // Decrease to account for the dummy object id.
-  num_returns--;
-
-  std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, &results);
-  RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
-
-  for (size_t i = 0; i < results.size(); i++) {
-    auto return_object = (*reply).add_return_objects();
-    ObjectID id = ObjectID::ForTaskReturn(
-        task_spec.TaskId(), /*index=*/i + 1,
-        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
-    return_object->set_object_id(id.Binary());
-    const auto &result = results[i];
-    if (result->HasData()) {
-      return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-    }
-    if (result->HasMetadata()) {
-      return_object->set_metadata(result->GetMetadata()->Data(),
-                                  result->GetMetadata()->Size());
-    }
+  auto it = scheduling_queue_.find(task_spec.ActorHandleId());
+  if (it == scheduling_queue_.end()) {
+    auto result = scheduling_queue_.emplace(
+        task_spec.ActorHandleId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(io_service_)));
+    it = result.first;
   }
+  it->second->Add(
+      request.sequence_number(), request.client_processed_up_to(),
+      [this, reply, send_reply_callback, task_spec]() {
+        auto num_returns = task_spec.NumReturns();
+        RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
+        RAY_CHECK(num_returns > 0);
+        // Decrease to account for the dummy object id.
+        num_returns--;
 
-  send_reply_callback(status, nullptr, nullptr);
+        std::vector<std::shared_ptr<RayObject>> results;
+        auto status = task_handler_(task_spec, &results);
+        RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
+
+        for (size_t i = 0; i < results.size(); i++) {
+          auto return_object = (*reply).add_return_objects();
+          ObjectID id = ObjectID::ForTaskReturn(
+              task_spec.TaskId(), /*index=*/i + 1,
+              /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
+          return_object->set_object_id(id.Binary());
+          const auto &result = results[i];
+          if (result->GetData() != nullptr) {
+            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+          }
+          if (result->GetMetadata() != nullptr) {
+            return_object->set_metadata(result->GetMetadata()->Data(),
+                                        result->GetMetadata()->Size());
+          }
+        }
+
+        send_reply_callback(status, nullptr, nullptr);
+      },
+      [this, send_reply_callback]() {
+        send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
+      });
 }
 
 }  // namespace ray

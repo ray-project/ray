@@ -707,11 +707,14 @@ class Worker(object):
                     self.current_job_id, self.current_task_id,
                     self.task_context.task_index, actor_id)
             else:
-                # This is a normal task.
-                task_id = TaskID.for_normal_task(self.current_job_id,
-                                                 self.current_task_id,
-                                                 self.task_context.task_index)
+                # Normal tasks are submitted through the core worker (in the
+                # future, all tasks will be).
+                return self.core_worker.submit_task(function_descriptor_list,
+                                                    args_for_raylet,
+                                                    num_return_vals, resources)
 
+            # Actor creation tasks and actor tasks are submitted directly to
+            # the raylet.
             task = ray._raylet.TaskSpec(
                 task_id,
                 job_id,
@@ -2031,6 +2034,13 @@ def connect(node,
     if driver_object_store_memory is not None:
         worker._set_object_store_client_options(
             "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
+
+    # Put something in the plasma store so that subsequent plasma store
+    # accesses will be faster. Currently the first access is always slow, and
+    # we don't want the user to experience this.
+    temporary_object_id = ray.ObjectID(np.random.bytes(20))
+    worker.put_object(temporary_object_id, 1)
+    ray.internal.free([temporary_object_id])
 
     # Start the import thread
     worker.import_thread = import_thread.ImportThread(worker, mode,

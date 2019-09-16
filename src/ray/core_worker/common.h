@@ -13,11 +13,19 @@ namespace ray {
 using WorkerType = rpc::WorkerType;
 
 /// Information about a remote function.
-struct RayFunction {
-  /// Language of the remote function.
-  const Language language;
-  /// Function descriptor of the remote function.
-  const std::vector<std::string> function_descriptor;
+class RayFunction {
+ public:
+  RayFunction() {}
+  RayFunction(Language language, const std::vector<std::string> &function_descriptor)
+      : language_(language), function_descriptor_(function_descriptor) {}
+
+  Language GetLanguage() const { return language_; }
+
+  std::vector<std::string> GetFunctionDescriptor() const { return function_descriptor_; }
+
+ private:
+  Language language_;
+  std::vector<std::string> function_descriptor_;
 };
 
 /// Argument of a task.

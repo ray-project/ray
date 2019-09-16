@@ -1,6 +1,6 @@
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 
@@ -10,15 +10,34 @@ from ray.includes.unique_ids cimport (
     CObjectID,
 )
 from ray.includes.common cimport (
+    CActorCreationOptions,
+    CActorHandle,
     CBuffer,
-    CRayStatus,
+    CRayFunction,
     CRayObject,
+    CRayStatus,
+    CTaskArg,
+    CTaskOptions,
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
 )
 from ray.includes.libraylet cimport CRayletClient
 
+
+cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
+    cdef cppclass CTaskSubmissionInterface "CoreWorkerTaskInterface":
+        CRayStatus SubmitTask(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CTaskOptions &options, c_vector[CObjectID] *return_ids)
+        CRayStatus CreateActor(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CActorCreationOptions &options,
+            unique_ptr[CActorHandle] *handle)
+        CRayStatus SubmitActorTask(
+            CActorHandle &handle, const CRayFunction &function,
+            const c_vector[CTaskArg] &args, const CTaskOptions &options,
+            c_vector[CObjectID] *return_ids)
 
 cdef extern from "ray/core_worker/object_interface.h" nogil:
     cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
@@ -50,13 +69,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        # CTaskSubmissionInterface &Tasks()
+        CTaskSubmissionInterface &Tasks()
         # CTaskExecutionInterface &Execution()
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
         CRayletClient &GetRayletClient()
-        # TODO(edoakes): remove this once the Python core worker uses the task
+        # TODO(edoakes): remove these once the Python core worker uses the task
         # interfaces
         void SetCurrentJobId(const CJobID &job_id)
         void SetCurrentTaskId(const CTaskID &task_id)

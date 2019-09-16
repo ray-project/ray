@@ -417,6 +417,16 @@ cc_binary(
 )
 
 cc_test(
+    name = "scheduling_queue_test",
+    srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "lineage_cache_test",
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
