@@ -32,12 +32,16 @@ class CoreWorkerTaskExecutionInterface {
   using TaskExecutor = std::function<Status(
       const RayFunction &ray_function,
       const std::vector<std::shared_ptr<RayObject>> &args, int num_returns,
+      const TaskSpecification &task_spec,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
                                    const TaskExecutor &executor);
+
+  // Get the resource IDs available to this worker (as assigned by the raylet).
+  const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -62,9 +66,11 @@ class CoreWorkerTaskExecutionInterface {
   /// Execute a task.
   ///
   /// \param spec[in] Task specification.
+  /// \param spec[in] Resource IDs of resources assigned to this worker.
   /// \param results[out] Results for task execution.
   /// \return Status.
-  Status ExecuteTask(const TaskSpecification &spec,
+  Status ExecuteTask(const TaskSpecification &task_spec,
+                     const ResourceMappingType &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Reference to the parent CoreWorker's context.
@@ -87,6 +93,11 @@ class CoreWorkerTaskExecutionInterface {
 
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
+
+  /// A map from resource name to the resource IDs that are currently reserved
+  /// for this worker. Each pair consists of the resource ID and the fraction
+  /// of that resource allocated for this worker.
+  ResourceMappingType resource_ids_;
 
   friend class CoreWorker;
 };

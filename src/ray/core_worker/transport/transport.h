@@ -37,6 +37,7 @@ class CoreWorkerTaskReceiver {
  public:
   using TaskHandler =
       std::function<Status(const TaskSpecification &task_spec,
+                           const ResourceMappingType &resource_ids,
                            std::vector<std::shared_ptr<RayObject>> *results)>;
 
   virtual ~CoreWorkerTaskReceiver() {}

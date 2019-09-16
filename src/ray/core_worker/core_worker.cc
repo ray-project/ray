@@ -48,14 +48,11 @@ CoreWorker::CoreWorker(
   // Initialize task execution.
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
-    // TODO(edoakes): Remove this check once Python core worker migration is complete.
-    if (language != Language::PYTHON || execution_callback != nullptr) {
-      RAY_CHECK(execution_callback != nullptr);
-      task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-          new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                               *object_interface_, execution_callback));
-      rpc_server_port = task_execution_interface_->worker_server_.GetPort();
-    }
+    RAY_CHECK(execution_callback != nullptr);
+    task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
+        new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
+                                             *object_interface_, execution_callback));
+    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
 
   // Initialize raylet client.

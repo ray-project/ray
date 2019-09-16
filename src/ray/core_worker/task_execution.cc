@@ -18,7 +18,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   RAY_CHECK(execution_callback_ != nullptr);
 
   auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
-                        std::placeholders::_1, std::placeholders::_2);
+                        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
@@ -36,9 +36,11 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     const TaskSpecification &task_spec,
+    const ResourceMappingType &resource_ids,
     std::vector<std::shared_ptr<RayObject>> *results) {
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
+  resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
@@ -53,7 +55,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     num_returns--;
   }
 
-  auto status = execution_callback_(func, args, num_returns, results);
+  auto status = execution_callback_(func, args, num_returns, task_spec, results);
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.

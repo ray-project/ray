@@ -1024,6 +1024,9 @@ class Worker(object):
         Args:
             task: The task to execute.
         """
+        # Automatically restrict the GPUs available to this task.
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
         job_id = task.job_id()
@@ -1100,9 +1103,6 @@ class Worker(object):
         with profiling.profile("worker_idle"):
             task = self.raylet_client.get_task()
 
-        # Automatically restrict the GPUs available to this task.
-        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
-
         return task
 
     def main_loop(self):
@@ -1113,10 +1113,7 @@ class Worker(object):
             sys.exit(0)
 
         signal.signal(signal.SIGTERM, exit)
-
-        while True:
-            task = self._get_next_task_from_raylet()
-            self._wait_for_and_process_task(task)
+        self.core_worker.run_task_loop()
 
 
 def get_gpu_ids():
@@ -1134,7 +1131,7 @@ def get_gpu_ids():
         raise Exception("ray.get_gpu_ids() currently does not work in LOCAL "
                         "MODE.")
 
-    all_resource_ids = global_worker.raylet_client.resource_ids()
+    all_resource_ids = global_worker.core_worker.resource_ids()
     assigned_ids = [
         resource_id for resource_id, _ in all_resource_ids.get("GPU", [])
     ]
@@ -1162,7 +1159,7 @@ def get_resource_ids():
             "ray.get_resource_ids() currently does not work in LOCAL "
             "MODE.")
 
-    return global_worker.raylet_client.resource_ids()
+    return global_worker.core_worker.resource_ids()
 
 
 def get_webui_url():

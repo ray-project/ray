@@ -40,7 +40,6 @@ from ray.includes.libraylet cimport (
     CRayletClient,
     GCSProfileEvent,
     GCSProfileTableData,
-    ResourceMappingType,
     WaitResultPair,
 )
 from ray.includes.unique_ids cimport (
@@ -48,7 +47,8 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.libcoreworker cimport CCoreWorker, CTaskOptions
+import ray
+from ray.includes.libcoreworker cimport CCoreWorker, CTaskOptions, ResourceMappingType
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError, ObjectStoreFullError
@@ -281,18 +281,7 @@ cdef class RayletClient:
             CObjectID c_id
 
         check_status(self.client.SubmitTask(
-            task_spec.task_spec.get()[0]))
-
-    def get_task(self):
-        cdef:
-            unique_ptr[CTaskSpec] task_spec
-
-        with nogil:
-            check_status(self.client.GetTask(&task_spec))
-        return TaskSpec.make(task_spec)
-
-    def task_done(self):
-        check_status(self.client.TaskDone())
+            task_spec.task_spec[0]))
 
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
@@ -300,27 +289,6 @@ cdef class RayletClient:
         cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
         check_status(self.client.FetchOrReconstruct(
             fetch_ids, fetch_only, current_task_id.native()))
-
-    def resource_ids(self):
-        cdef:
-            ResourceMappingType resource_mapping = (
-                self.client.GetResourceIDs())
-            unordered_map[
-                c_string, c_vector[pair[int64_t, double]]
-            ].iterator iterator = resource_mapping.begin()
-            c_vector[pair[int64_t, double]] c_value
-
-        resources_dict = {}
-        while iterator != resource_mapping.end():
-            key = decode(dereference(iterator).first)
-            c_value = dereference(iterator).second
-            ids_and_fractions = []
-            for i in range(c_value.size()):
-                ids_and_fractions.append(
-                    (c_value[i].first, c_value[i].second))
-            resources_dict[key] = ids_and_fractions
-            postincrement(iterator)
-        return resources_dict
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -403,6 +371,15 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
+cdef CRayStatus execute_task(const CRayFunction &ray_function,
+                         const c_vector[shared_ptr[CRayObject]] &args,
+                         int num_returns,
+                         const CTaskSpec &c_task_spec,
+                         c_vector[shared_ptr[CRayObject]] *returns) nogil:
+    with gil:
+        ray.worker.global_worker._wait_for_and_process_task(TaskSpec.make(c_task_spec))
+    
+    return CRayStatus.OK()
 
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
@@ -413,7 +390,7 @@ cdef class CoreWorker:
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], log_dir.encode("utf-8"), NULL, False))
+            gcs_options.native()[0], log_dir.encode("utf-8"), execute_task, False))
 
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "
@@ -422,6 +399,9 @@ cdef class CoreWorker:
     def disconnect(self):
         with nogil:
             self.core_worker.get().Disconnect()
+
+    def run_task_loop(self):
+        self.core_worker.get().Execution().Run()
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
@@ -620,3 +600,25 @@ cdef class CoreWorker:
             message = self.core_worker.get().Objects().MemoryUsageString()
 
         return message.decode("utf-8")
+
+    def resource_ids(self):
+        cdef:
+            ResourceMappingType resource_mapping = (
+                self.core_worker.get().Execution().GetResourceIDs())
+            unordered_map[
+                c_string, c_vector[pair[int64_t, double]]
+            ].iterator iterator = resource_mapping.begin()
+            c_vector[pair[int64_t, double]] c_value
+
+        resources_dict = {}
+        while iterator != resource_mapping.end():
+            key = decode(dereference(iterator).first)
+            c_value = dereference(iterator).second
+            ids_and_fractions = []
+            for i in range(c_value.size()):
+                ids_and_fractions.append(
+                    (c_value[i].first, c_value[i].second))
+            resources_dict[key] = ids_and_fractions
+            postincrement(iterator)
+
+        return resources_dict
