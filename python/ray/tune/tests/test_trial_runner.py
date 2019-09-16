@@ -1368,6 +1368,36 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
 
+    def testNestedValues(self):
+        trials = self.generate_trials({
+            "run": "PPO",
+            "config": {
+                "x": {
+                    "y": {
+                        "z": tune.sample_from(lambda spec: 1)
+                    }
+                },
+                "y": tune.sample_from(lambda spec: 12),
+                "z": tune.sample_from(lambda spec: spec.config.x.y.z * 100),
+            },
+        }, "nested_values")
+        trials = list(trials)
+        self.assertEqual(len(trials), 1)
+        self.assertEqual(trials[0].config, {
+            "x": {
+                "y": {
+                    "z": 1
+                }
+            },
+            "y": 12,
+            "z": 100
+        })
+        self.assertEqual(trials[0].evaluated_params, {
+            "x/y/z": 1,
+            "y": 12,
+            "z": 100
+        })
+
     def testLogUniform(self):
         sampler = tune.loguniform(1e-10, 1e-1).func
         results = [sampler(None) for i in range(1000)]
