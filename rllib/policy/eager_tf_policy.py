@@ -128,6 +128,14 @@ def traced_eager_policy(eager_policy_cls):
                 **kwargs,
             )
 
+        @override(Policy)
+        def compute_gradients(self, samples):
+            raise NotImplementedError("tracing not supported yet")
+
+        @override(Policy)
+        def apply_gradients(self, samples):
+            raise NotImplementedError("tracing not supported yet")
+
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
     return TracedEagerPolicy
