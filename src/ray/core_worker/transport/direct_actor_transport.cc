@@ -290,7 +290,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
 
         send_reply_callback(status, nullptr, nullptr);
       },
-      [this, send_reply_callback]() {
+      [send_reply_callback]() {
         send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
       });
 }
