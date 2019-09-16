@@ -50,7 +50,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 
 If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard HParams output:
 
-.. image:: images/tune-hparams-scatter.png
+.. image:: images/tune-hparams-coord.png
 
 Distributed Quick Start
 -----------------------
