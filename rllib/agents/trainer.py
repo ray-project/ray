@@ -337,8 +337,8 @@ class Trainer(Trainable):
 
         if tf and config.get("eager"):
             tf.enable_eager_execution()
-            logger.info("Executing eagerly, with tracing {}".format(
-                "ON" if config.get("eager_tracing") else "OFF"))
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                "True" if config.get("eager_tracing") else "False"))
 
         if tf and not tf.executing_eagerly():
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
