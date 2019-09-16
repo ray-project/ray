@@ -48,7 +48,8 @@ Building Ray from Source
 
 Installing from ``pip`` should be sufficient for most Ray users.
 
-However, should you need to build from source, follow instructions below for both Linux and MacOS.
+However, should you need to build from source, follow instructions below for
+both Linux and MacOS.
 
 Dependencies
 ~~~~~~~~~~~~
@@ -80,7 +81,6 @@ For MacOS, run the following commands:
 
   pip install cython==0.29.0
 
-
 If you are using Anaconda, you may also need to run the following.
 
 .. code-block:: bash
@@ -102,6 +102,22 @@ Ray can be built from the repository as follows.
 
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
+
+
+[Optional] Build the dashboard
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you would like to use the dashboard, you will additionally need to install
+`Node.js`_. Then you can build the dashboard as follows.
+
+.. _`Node.js`: https://nodejs.org/
+
+.. code-block:: bash
+
+  cd ray/python/ray/dashboard/client
+  npm install
+  npm run build
+
 
 Docker Source Images
 --------------------

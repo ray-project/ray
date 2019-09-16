@@ -4,8 +4,8 @@ from __future__ import print_function
 
 try:
     import aiohttp.web
-except ModuleNotFoundError:
-    print("The reporter requires aiohttp to run.")
+except ImportError:
+    print("The dashboard requires aiohttp to run.")
     import sys
     sys.exit(1)
 
@@ -20,9 +20,11 @@ import yaml
 
 from pathlib import Path
 from collections import Counter
+from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
 
+import ray
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -60,7 +62,9 @@ class Dashboard(object):
         self.temp_dir = temp_dir
         self.node_stats = NodeStats(redis_address, redis_password)
 
-        self.app = aiohttp.web.Application(middlewares=[self.auth_middleware])
+        self.is_dev = os.environ.get("RAY_DASHBOARD_ENV") == "development"
+        self.app = aiohttp.web.Application(
+            middlewares=[] if self.is_dev else [self.auth_middleware])
         self.setup_routes()
 
     @aiohttp.web.middleware
@@ -102,32 +106,25 @@ class Dashboard(object):
         async def get_index(req) -> aiohttp.web.Response:
             return aiohttp.web.FileResponse(
                 os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)), "index.html"))
-
-        async def get_resource(req) -> aiohttp.web.Response:
-            try:
-                path = req.match_info["x"]
-            except KeyError:
-                return forbidden()
-
-            if path not in ["main.css", "main.js"]:
-                return forbidden()
-
-            return aiohttp.web.FileResponse(
-                os.path.join(
                     os.path.dirname(os.path.abspath(__file__)),
-                    "res/{}".format(path)))
+                    "client/build/index.html"))
 
         async def json_response(result=None, error=None,
                                 ts=None) -> aiohttp.web.Response:
             if ts is None:
                 ts = datetime.datetime.utcnow()
 
-            return aiohttp.web.json_response({
-                "result": result,
-                "timestamp": to_unix_time(ts),
-                "error": error,
-            })
+            headers = None
+            if self.is_dev:
+                headers = {"Access-Control-Allow-Origin": "*"}
+
+            return aiohttp.web.json_response(
+                {
+                    "result": result,
+                    "timestamp": to_unix_time(ts),
+                    "error": error,
+                },
+                headers=headers)
 
         async def ray_config(_) -> aiohttp.web.Response:
             try:
@@ -163,9 +160,11 @@ class Dashboard(object):
             return await json_response(result=D, ts=now)
 
         self.app.router.add_get("/", get_index)
-        self.app.router.add_get("/index.html", get_index)
-        self.app.router.add_get("/index.htm", get_index)
-        self.app.router.add_get("/res/{x}", get_resource)
+        self.app.router.add_static(
+            "/static",
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "client/build/static"))
 
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/super_client_table", node_info)
@@ -193,6 +192,12 @@ class NodeStats(threading.Thread):
 
         self._node_stats = {}
         self._node_stats_lock = threading.Lock()
+
+        # Mapping from IP address to PID to list of log lines
+        self._logs = defaultdict(lambda: defaultdict(list))
+
+        ray.init(redis_address=redis_address, redis_password=redis_password)
+
         super().__init__()
 
     def calculate_totals(self) -> Dict:
@@ -263,18 +268,41 @@ class NodeStats(threading.Thread):
                 "totals": self.calculate_totals(),
                 "tasks": self.calculate_tasks(),
                 "clients": node_stats,
+                "logs": self._logs,
+                "errors": ray.errors(all_jobs=True),
             }
 
     def run(self):
         p = self.redis_client.pubsub(ignore_subscribe_messages=True)
+
         p.psubscribe(self.redis_key)
         logger.info("NodeStats: subscribed to {}".format(self.redis_key))
 
+        log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
+        p.subscribe(log_channel)
+        logger.info("NodeStats: subscribed to {}".format(log_channel))
+
+        # TODO(mitchellstern): Use this instead of `ray.errors(all_jobs=True)`.
+        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
+        p.subscribe(error_channel)
+        logger.info("NodeStats: subscribed to {}".format(error_channel))
+
         for x in p.listen():
             try:
-                D = json.loads(ray.utils.decode(x["data"]))
                 with self._node_stats_lock:
-                    self._node_stats[D["hostname"]] = D
+                    channel = ray.utils.decode(x["channel"])
+                    if channel == log_channel:
+                        D = json.loads(ray.utils.decode(x["data"]))
+                        self._logs[D["ip"]][D["pid"]].extend(D["lines"])
+                    elif channel == str(error_channel):
+                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(
+                            x["data"])
+                        error_data = ray.gcs_utils.ErrorTableData.FromString(
+                            gcs_entry.entries[0])
+                        print(error_data)
+                    else:
+                        D = json.loads(ray.utils.decode(x["data"]))
+                        self._node_stats[D["hostname"]] = D
             except Exception:
                 logger.exception(traceback.format_exc())
                 continue
