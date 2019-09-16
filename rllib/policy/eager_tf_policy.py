@@ -33,6 +33,8 @@ def _convert_to_tf(x):
 
 
 def _convert_to_numpy(x):
+    if x is None:
+        return x
     try:
         return x.numpy()
     except AttributeError:
@@ -76,10 +78,16 @@ def _disallow_var_creation(next_creator, **kw):
 
 
 def traced_eager_policy(eager_policy_cls):
+    """Wrapper that enables tracing for all eager policy methods.
+    
+    This is enabled by the --trace / "eager_tracing" config."""
+
     class TracedEagerPolicy(eager_policy_cls):
         def __init__(self, *args, **kwargs):
             self._traced_learn_on_batch = None
             self._traced_compute_actions = None
+            self._traced_compute_gradients = None
+            self._traced_apply_gradients = None
             super(TracedEagerPolicy, self).__init__(*args, **kwargs)
 
         @override(Policy)
@@ -129,12 +137,30 @@ def traced_eager_policy(eager_policy_cls):
             )
 
         @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
         def compute_gradients(self, samples):
-            raise NotImplementedError("tracing not supported yet")
+
+            if self._traced_compute_gradients is None:
+                self._traced_compute_gradients = tf.function(
+                    super(TracedEagerPolicy, self).compute_gradients,
+                    autograph=False,
+                )
+
+            return self._traced_compute_gradients(samples)
 
         @override(Policy)
-        def apply_gradients(self, samples):
-            raise NotImplementedError("tracing not supported yet")
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def apply_gradients(self, grads):
+
+            if self._traced_apply_gradients is None:
+                self._traced_apply_gradients = tf.function(
+                    super(TracedEagerPolicy, self).apply_gradients,
+                    autograph=False,
+                )
+
+            return self._traced_apply_gradients(grads)
 
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
@@ -257,15 +283,16 @@ def build_eager_tf_policy(name,
             return stats
 
         @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
         def compute_gradients(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             grads = [g for g, v in grads_and_vars]
-            grads = [(g.numpy() if g is not None else None) for g in grads]
             return grads, stats
 
         @override(Policy)
-        # @convert_eager_inputs
+        @convert_eager_inputs
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
