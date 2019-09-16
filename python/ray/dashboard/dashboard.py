@@ -167,7 +167,6 @@ class Dashboard(object):
                 "client/build/static"))
 
         self.app.router.add_get("/api/node_info", node_info)
-        self.app.router.add_get("/api/super_client_table", node_info)
         self.app.router.add_get("/api/ray_config", ray_config)
 
         self.app.router.add_get("/{_}", get_forbidden)
