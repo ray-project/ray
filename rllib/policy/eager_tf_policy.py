@@ -79,7 +79,7 @@ def _disallow_var_creation(next_creator, **kw):
 
 def traced_eager_policy(eager_policy_cls):
     """Wrapper that enables tracing for all eager policy methods.
-    
+
     This is enabled by the --trace / "eager_tracing" config."""
 
     class TracedEagerPolicy(eager_policy_cls):
