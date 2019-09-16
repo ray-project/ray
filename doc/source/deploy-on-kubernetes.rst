@@ -15,7 +15,9 @@ Deploying on Kubernetes
   `Questions or Issues?`_ section below.
 
 This document assumes that you have access to a Kubernetes cluster and have
-``kubectl`` installed locally and configured to access the cluster.
+``kubectl`` installed locally and configured to access the cluster. It will
+first walk you through how to deploy a Ray cluster on top of your existing
+cluster, then explore a few different ways to run programs on the Ray cluster.
 
 Creating a Ray Namespace
 ------------------------
@@ -37,16 +39,16 @@ A Ray cluster consists of a single head node and a set of worker nodes (the
 provided ``ray-cluster.yaml`` file will start 3 worker nodes). In the example
 Kubernetes configuration, this is implemented as:
 
-- A ``ray-head`` `Kubernetes Service`_ that enables the worker nodes to discover the head node when they start up.
+- A ``ray-head`` `Kubernetes Service`_ that enables the worker nodes to discover the location of the head node on start up.
 - A ``ray-head`` `Kubernetes Deployment`_ that backs the ``ray-head`` Service with a single head node pod (replica).
-- A ``ray-worker`` `Kubernetes Deployment`_ with multiple worker node pods (replicas) that connect to the ``ray-head`` pod using the ``ray-head`` Service..
+- A ``ray-worker`` `Kubernetes Deployment`_ with multiple worker node pods (replicas) that connect to the ``ray-head`` pod using the ``ray-head`` Service.
 
 Note that because the head and worker nodes are Deployments, Kubernetes will
 automatically restart pods that crash to maintain the correct number of
 replicas.
 
-- If a worker node goes down, a replacement pod will be started and it should join the cluster normally.
-- If the head node goes down, it will be restarted and effectively start a new cluster. Worker nodes that were connected to the old head node will crash due to losing connection to the original head node, and will subsequently be restarted and connect to the new head node.
+- If a worker node goes down, a replacement pod will be started and joined to the cluster.
+- If the head node goes down, it will be restarted. This will start a new Ray cluster. Worker nodes that were connected to the old head node will crash and be restarted, connecting to the new head node when they come back up.
 
 Try deploying a cluster with the provided Kubernetes config by running the
 following command:
@@ -55,9 +57,9 @@ following command:
 
   $ kubectl apply -f ray/doc/kubernetes/ray-cluster.yaml
 
-Vrify that the pods are running by running ``kubectl get pods -n ray``. You
-should see something like the following (you may have to wait up to a few
-minutes for the pods to enter the 'Running' state on the first run).
+Verify that the pods are running by running ``kubectl get pods -n ray``. You
+may have to wait up to a few minutes for the pods to enter the 'Running'
+state on the first run.
 
 .. code-block:: shell
 
@@ -99,7 +101,7 @@ the config as follows:
   ray-worker-5c49b7cc57-zzfg2   1/1     Running   0          0s
 
 To validate that the restart behavior is working properly, try killing pods
-checking that they are restarted by Kubernetes:
+and checking that they are restarted by Kubernetes:
 
 .. code-block:: shell
 
@@ -142,7 +144,11 @@ Running Ray Programs
 
 This section assumes that you have a running Ray cluster (if you don't, please
 refer to the section above to get started) and will walk you through three
-different options to run a Ray program on it.
+different options to run a Ray program on it:
+
+1. Using `kubectl exec` to run a Python script.
+2. Using `kubectl exec -it bash` to work interactively in a remote shell.
+3. Submitting a `Kubernetes Job`_.
 
 Running a program using 'kubectl exec'
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

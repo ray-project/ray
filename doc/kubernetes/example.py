@@ -51,5 +51,5 @@ if __name__ == "__main__":
     # use "localhost" here.
     # redis_host = "localhost"
     redis_host = os.environ["RAY_HEAD_SERVICE_HOST"]
-    ray.init(redis_address=redis_host + ":6379")
+    ray.init(address=redis_host + ":6379")
     main()
