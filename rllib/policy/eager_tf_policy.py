@@ -96,7 +96,7 @@ def traced_eager_policy(eager_policy_cls):
             return self._traced_learn_on_batch(samples)
 
         @override(Policy)
-        # @convert_eager_inputs
+        @convert_eager_inputs
         @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
@@ -490,8 +490,9 @@ def build_eager_tf_policy(name,
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
 
-    # TODO: added configurable flag for tracing
-    eager_policy_cls = traced_eager_policy(eager_policy_cls)
+        @classmethod
+        def with_tracing(cls):
+            return traced_eager_policy(cls)
 
     eager_policy_cls.__name__ = name + "_eager"
     eager_policy_cls.__qualname__ = name + "_eager"
