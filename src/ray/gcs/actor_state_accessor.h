@@ -3,6 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
+#include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -27,7 +28,7 @@ class ActorStateAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   Status AsyncGet(const ActorID &actor_id,
-                  const MultiItemCallback<ActorTableData> &callback);
+                  const OptionalItemCallback<ActorTableData> &callback);
 
   /// Register an actor to GCS asynchronously.
   ///
@@ -50,7 +51,7 @@ class ActorStateAccessor {
                      const std::shared_ptr<ActorTableData> &data_ptr,
                      const StatusCallback &callback);
 
-  /// Subscribe to any register operations of actors.
+  /// Subscribe to any register or update operations of actors.
   ///
   /// \param subscribe Callback that will be called each time when an actor is registered
   /// or updated.
@@ -60,8 +61,36 @@ class ActorStateAccessor {
   Status AsyncSubscribe(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
                         const StatusCallback &done);
 
+  /// Subscribe to any update operations of an actor.
+  ///
+  /// \param actor_id The ID of actor to be subscribed to.
+  /// \param subscribe Callback that will be called each time when the actor is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  Status AsyncSubscribe(const ActorID &actor_id,
+                        const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                        const StatusCallback &done);
+
+  /// Cancel subscription to an actor.
+  ///
+  /// \param actor_id The ID of the actor to be unsubscribed to.
+  /// \param done Callback that will be called when unsubscribe is complete.
+  /// \return Status
+  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done);
+
  private:
   RedisGcsClient &client_impl_;
+  // Use a random ClientID for actor subscription. Because:
+  // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
+  // Even we can filter out irrelevant updates, but there will be extra overhead.
+  // And because the new GCS Client will no longer hold the local ClientID, so we use
+  // random ClientID instead.
+  // TODO(micafan): Remove this random id, once GCS becomes a service.
+  ClientID node_id_{ClientID::FromRandom()};
+
+  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
+      ActorSubscriptionExecutor;
+  ActorSubscriptionExecutor actor_sub_executor_;
 };
 
 }  // namespace gcs

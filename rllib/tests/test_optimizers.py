@@ -26,7 +26,7 @@ class AsyncOptimizerTest(unittest.TestCase):
         ray.shutdown()
 
     def testBasic(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
         local = _MockWorker()
         remotes = ray.remote(_MockWorker)
         remote_workers = [remotes.remote() for i in range(5)]
@@ -41,7 +41,7 @@ class PPOCollectTest(unittest.TestCase):
         ray.shutdown()
 
     def testPPOSampleWaste(self):
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, object_store_memory=1000 * 1024 * 1024)
 
         # Check we at least collect the initial wave of samples
         ppo = PPOTrainer(
@@ -101,7 +101,7 @@ class AsyncSamplesOptimizerTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=8)
+        ray.init(num_cpus=8, object_store_memory=1000 * 1024 * 1024)
 
     def testSimple(self):
         local, remotes = self._make_envs()

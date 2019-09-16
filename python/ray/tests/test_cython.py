@@ -16,7 +16,7 @@ def get_ray_result(cython_func, *args):
 
 class CythonTest(unittest.TestCase):
     def setUp(self):
-        ray.init(object_store_memory=int(10**8))
+        ray.init(object_store_memory=int(150 * 1024 * 1024))
 
     def tearDown(self):
         ray.shutdown()

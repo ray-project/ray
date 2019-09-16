@@ -46,7 +46,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
     RAY_CHECK(local_java_task_executor);
     // convert RayFunction
     jobject ray_function_array_list =
-        NativeStringVectorToJavaStringList(env, ray_function.function_descriptor);
+        NativeStringVectorToJavaStringList(env, ray_function.GetFunctionDescriptor());
     // convert args
     // TODO (kfstorm): Avoid copying binary data from Java to C++
     jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
@@ -71,7 +71,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
   try {
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
-        native_raylet_socket, job_id, gcs_client_options, executor_func);
+        native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"", executor_func);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;
@@ -103,7 +103,9 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer) {
-  delete reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
+  auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
+  core_worker->Disconnect();
+  delete core_worker;
 }
 
 /*
@@ -127,6 +129,25 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
                                                                                 jclass) {
   ray::RayLog::ShutDownRayLog();
+}
+
+/*
+ * Class:     org_ray_runtime_RayNativeRuntime
+ * Method:    nativeSetResource
+ * Signature: (JLjava/lang/String;D[B)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(
+    JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jstring resourceName,
+    jdouble capacity, jbyteArray nodeId) {
+  const auto node_id = JavaByteArrayToId<ClientID>(env, nodeId);
+  const char *native_resource_name = env->GetStringUTFChars(resourceName, JNI_FALSE);
+
+  auto &raylet_client =
+      reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->GetRayletClient();
+  auto status = raylet_client.SetResource(native_resource_name,
+                                          static_cast<double>(capacity), node_id);
+  env->ReleaseStringUTFChars(resourceName, native_resource_name);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
 #ifdef __cplusplus

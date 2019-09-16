@@ -28,13 +28,14 @@ class CoreWorkerMemoryStore {
 
   /// Get a list of objects from the object store.
   ///
-  /// \param[in] object_ids IDs of the objects to get. Duplicates are allowed.
+  /// \param[in] object_ids IDs of the objects to get. Duplicates are not allowed.
+  /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] remove_after_get When to remove the objects from store after `Get`
   /// finishes.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &object_ids, int64_t timeout_ms,
+  Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Delete a list of objects from the object store.

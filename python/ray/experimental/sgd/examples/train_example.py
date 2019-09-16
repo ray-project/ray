@@ -1,3 +1,11 @@
+"""
+This file holds code for a Training guide for PytorchSGD in the documentation.
+
+It ignores yapf because yapf doesn't allow comments right after code blocks,
+but we put comments right after code blocks to prevent large white spaces
+in the documentation.
+"""
+
 # yapf: disable
 # __torch_train_example__
 from __future__ import absolute_import

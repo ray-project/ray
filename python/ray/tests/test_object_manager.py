@@ -28,7 +28,7 @@ def create_cluster(num_nodes):
     for i in range(num_nodes):
         cluster.add_node(resources={str(i): 100}, object_store_memory=10**9)
 
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
     return cluster
 
 
@@ -52,11 +52,11 @@ def test_object_broadcast(ray_start_cluster_with_resource):
     def f(x):
         return
 
-    x = np.zeros(10**8, dtype=np.uint8)
+    x = np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     @ray.remote
     def create_object():
-        return np.zeros(10**8, dtype=np.uint8)
+        return np.zeros(10 * 1024 * 1024, dtype=np.uint8)
 
     object_ids = []
 
@@ -219,14 +219,14 @@ def test_object_transfer_retry(ray_start_cluster):
         "object_manager_pull_timeout_ms": repeated_push_delay * 1000 / 4,
         "object_manager_default_chunk_size": 1000
     })
-    object_store_memory = 10**8
+    object_store_memory = 150 * 1024 * 1024
     cluster.add_node(
         object_store_memory=object_store_memory, _internal_config=config)
     cluster.add_node(
         num_gpus=1,
         object_store_memory=object_store_memory,
         _internal_config=config)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
 
     @ray.remote(num_gpus=1)
     def f(size):
@@ -237,8 +237,8 @@ def test_object_transfer_retry(ray_start_cluster):
 
     x_ids = [f.remote(10**i) for i in [1, 2, 3, 4]]
     assert not any(
-        ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+        ray.worker.global_worker.core_worker.object_exists(x_id)
+        for x_id in x_ids)
 
     # Get the objects locally to cause them to be transferred. This is the
     # first time the objects are getting transferred, so it should happen
@@ -257,8 +257,8 @@ def test_object_transfer_retry(ray_start_cluster):
     for _ in range(15):
         ray.put(x)
     assert not any(
-        ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+        ray.worker.global_worker.core_worker.object_exists(x_id)
+        for x_id in x_ids)
 
     end_time = time.time()
     # Make sure that the first time the objects get transferred, it happens
@@ -277,8 +277,8 @@ def test_object_transfer_retry(ray_start_cluster):
     for _ in range(15):
         ray.put(x)
     assert not any(
-        ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+        ray.worker.global_worker.core_worker.object_exists(x_id)
+        for x_id in x_ids)
 
     time.sleep(repeated_push_delay)
 

@@ -32,6 +32,7 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 from ray.rllib.utils.explained_variance import explained_variance
+from ray.rllib.utils.tf_ops import make_tf_callable
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -78,26 +79,19 @@ class CentralizedCriticModel(TFModelV2):
                 [obs, opponent_obs,
                  tf.one_hot(opponent_actions, 2)]), [-1])
 
+    def value_function(self):
+        return self.model.value_function()  # not used
+
 
 class CentralizedValueMixin(object):
-    """Add methods to evaluate the central value function from the model."""
+    """Add method to evaluate the central value function from the model."""
 
     def __init__(self):
-        self.central_value_function = self.model.central_value_function(
-            self.get_placeholder(SampleBatch.CUR_OBS),
-            self.get_placeholder(OPPONENT_OBS),
-            self.get_placeholder(OPPONENT_ACTION))
-
-    def compute_central_vf(self, obs, opponent_obs, opponent_actions):
-        feed_dict = {
-            self.get_placeholder(SampleBatch.CUR_OBS): obs,
-            self.get_placeholder(OPPONENT_OBS): opponent_obs,
-            self.get_placeholder(OPPONENT_ACTION): opponent_actions,
-        }
-        return self.get_session().run(self.central_value_function, feed_dict)
+        self.compute_central_vf = make_tf_callable(self.get_session())(
+            self.model.central_value_function)
 
 
-# Grabs the opponent obs/act and includes it in the experience batch,
+# Grabs the opponent obs/act and includes it in the experience train_batch,
 # and computes GAE using the central vf predictions.
 def centralized_critic_postprocessing(policy,
                                       sample_batch,
@@ -105,7 +99,7 @@ def centralized_critic_postprocessing(policy,
                                       episode=None):
     if policy.loss_initialized():
         assert sample_batch["dones"][-1], \
-            "Not implemented for batch_mode=truncate_episodes"
+            "Not implemented for train_batch_mode=truncate_episodes"
         assert other_agent_batches is not None
         [(_, opponent_batch)] = list(other_agent_batches.values())
 
@@ -126,33 +120,39 @@ def centralized_critic_postprocessing(policy,
         sample_batch[SampleBatch.VF_PREDS] = np.zeros_like(
             sample_batch[SampleBatch.ACTIONS], dtype=np.float32)
 
-    batch = compute_advantages(
+    train_batch = compute_advantages(
         sample_batch,
         0.0,
         policy.config["gamma"],
         policy.config["lambda"],
         use_gae=policy.config["use_gae"])
-    return batch
+    return train_batch
 
 
 # Copied from PPO but optimizing the central value function
-def loss_with_central_critic(policy, batch_tensors):
+def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
+
+    logits, state = model.from_batch(train_batch)
+    action_dist = dist_class(logits, model)
+    policy.central_value_out = policy.model.central_value_function(
+        train_batch[SampleBatch.CUR_OBS], train_batch[OPPONENT_OBS],
+        train_batch[OPPONENT_ACTION])
 
     policy.loss_obj = PPOLoss(
         policy.action_space,
-        policy.dist_class,
-        policy.model,
-        batch_tensors[Postprocessing.VALUE_TARGETS],
-        batch_tensors[Postprocessing.ADVANTAGES],
-        batch_tensors[SampleBatch.ACTIONS],
-        batch_tensors[BEHAVIOUR_LOGITS],
-        batch_tensors[ACTION_LOGP],
-        batch_tensors[SampleBatch.VF_PREDS],
-        policy.action_dist,
-        policy.central_value_function,
+        dist_class,
+        model,
+        train_batch[Postprocessing.VALUE_TARGETS],
+        train_batch[Postprocessing.ADVANTAGES],
+        train_batch[SampleBatch.ACTIONS],
+        train_batch[BEHAVIOUR_LOGITS],
+        train_batch[ACTION_LOGP],
+        train_batch[SampleBatch.VF_PREDS],
+        action_dist,
+        policy.central_value_out,
         policy.kl_coeff,
-        tf.ones_like(batch_tensors[Postprocessing.ADVANTAGES], dtype=tf.bool),
+        tf.ones_like(train_batch[Postprocessing.ADVANTAGES], dtype=tf.bool),
         entropy_coeff=policy.entropy_coeff,
         clip_param=policy.config["clip_param"],
         vf_clip_param=policy.config["vf_clip_param"],
@@ -169,17 +169,14 @@ def setup_mixins(policy, obs_space, action_space, config):
     EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
                                   config["entropy_coeff_schedule"])
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
-    # hack: put in a noop VF so some of the inherited PPO code runs
-    policy.value_function = tf.zeros(
-        tf.shape(policy.get_placeholder(SampleBatch.CUR_OBS))[0])
 
 
-def central_vf_stats(policy, batch_tensors, grads):
+def central_vf_stats(policy, train_batch, grads):
     # Report the explained variance of the central value function.
     return {
         "vf_explained_var": explained_variance(
-            batch_tensors[Postprocessing.VALUE_TARGETS],
-            policy.central_value_function),
+            train_batch[Postprocessing.VALUE_TARGETS],
+            policy.central_value_out),
     }
 
 
@@ -208,6 +205,7 @@ if __name__ == "__main__":
         config={
             "env": TwoStepGame,
             "batch_mode": "complete_episodes",
+            "eager": False,
             "num_workers": 0,
             "multiagent": {
                 "policies": {
@@ -216,8 +214,7 @@ if __name__ == "__main__":
                     "pol2": (None, TwoStepGame.observation_space,
                              TwoStepGame.action_space, {}),
                 },
-                "policy_mapping_fn": tune.function(
-                    lambda x: "pol1" if x == 0 else "pol2"),
+                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
             "model": {
                 "custom_model": "cc_model",

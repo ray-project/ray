@@ -3,11 +3,46 @@ RLlib Table of Contents
 
 Training APIs
 -------------
-* `Command-line <rllib-training.html>`__
-* `Configuration <rllib-training.html#configuration>`__
-* `Python API <rllib-training.html#python-api>`__
-* `Debugging <rllib-training.html#debugging>`__
-* `REST API <rllib-training.html#rest-api>`__
+*  `Command-line <rllib-training.html>`__
+*  `Configuration <rllib-training.html#configuration>`__
+
+   -  `Specifying Parameters <rllib-training.html#specifying-parameters>`__
+
+   -  `Specifying Resources <rllib-training.html#specifying-resources>`__
+
+   -  `Common Parameters <rllib-training.html#common-parameters>`__
+
+   -  `Tuned Examples <rllib-training.html#tuned-examples>`__
+
+*  `Python API <rllib-training.html#python-api>`__
+
+   -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
+
+   -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
+
+   -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
+
+   -  `Global Coordination <rllib-training.html#global-coordination>`__
+
+   -  `Callbacks and Custom Metrics <rllib-training.html#callbacks-and-custom-metrics>`__
+
+   -  `Rewriting Trajectories <rllib-training.html#rewriting-trajectories>`__
+
+   -  `Curriculum Learning <rllib-training.html#curriculum-learning>`__
+
+*  `Debugging <rllib-training.html#debugging>`__
+
+   -  `Gym Monitor <rllib-training.html#gym-monitor>`__
+
+   -  `Eager Mode <rllib-training.html#eager-mode>`__
+
+   -  `Episode Traces <rllib-training.html#episode-traces>`__
+
+   -  `Log Verbosity <rllib-training.html#log-verbosity>`__
+
+   -  `Stack Traces <rllib-training.html#stack-traces>`__
+
+*  `REST API <rllib-training.html#rest-api>`__
 
 Environments
 ------------

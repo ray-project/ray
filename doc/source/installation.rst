@@ -34,14 +34,14 @@ master branch). To install these wheels, run the following command:
 ===================  ===================
 
 
-.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp37-cp37m-manylinux1_x86_64.whl
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp37-cp37m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp37-cp37m-manylinux1_x86_64.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp35-cp35m-manylinux1_x86_64.whl
+.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp27-cp27mu-manylinux1_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp37-cp37m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp36-cp36m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp35-cp35m-macosx_10_6_intel.whl
+.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev4-cp27-cp27m-macosx_10_6_intel.whl
 
 Building Ray from Source
 ------------------------
@@ -102,37 +102,6 @@ Ray can be built from the repository as follows.
 
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
-
-Alternatively, Ray can be built from the repository without cloning using pip.
-
-.. code-block:: bash
-
-    pip install git+https://github.com/ray-project/ray.git#subdirectory=python
-
-Cleaning the source tree
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-The source tree can be cleaned by running
-
-.. code-block:: bash
-
-  git clean -f -f -x -d
-
-in the ``ray/`` directory. Warning: this command will delete all untracked files
-and directories and will reset the repository to its checked out state.
-For a shallower working directory cleanup, you may want to try:
-
-.. code-block:: bash
-
-  rm -rf ./build
-
-under ``ray/``. Incremental builds should work as follows:
-
-.. code-block:: bash
-
-  pushd ./build && make && popd
-
-under ``ray/``.
 
 Docker Source Images
 --------------------

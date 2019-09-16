@@ -11,6 +11,7 @@ import os
 import re
 import time
 import traceback
+import types
 
 import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
@@ -19,7 +20,6 @@ from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.sample import function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.util import warn_if_slow, flatten_dict
@@ -48,7 +48,7 @@ def _find_newest_ckpt(ckpt_dir):
 
 class _TuneFunctionEncoder(json.JSONEncoder):
     def default(self, obj):
-        if isinstance(obj, function):
+        if isinstance(obj, types.FunctionType):
             return self._to_cloudpickle(obj)
         try:
             return super(_TuneFunctionEncoder, self).default(obj)
@@ -240,17 +240,22 @@ class TrialRunner(object):
         else:
             logger.info("TrialRunner resumed, ignoring new add_experiment.")
 
-    def checkpoint(self):
+    def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
+
+        Args:
+            force (bool): Forces a checkpoint despite checkpoint_period.
         """
         if not self._local_checkpoint_dir:
             return
-        if time.time() - self._last_checkpoint_time < self._checkpoint_period:
+        now = time.time()
+        if now - self._last_checkpoint_time < self._checkpoint_period and (
+                not force):
             return
-        self._last_checkpoint_time = time.time()
+        self._last_checkpoint_time = now
         runner_state = {
             "checkpoints": list(
                 self.trial_executor.get_checkpoints().values()),
@@ -266,7 +271,10 @@ class TrialRunner(object):
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
         os.rename(tmp_file_name, self.checkpoint_file)
-        self._syncer.sync_up_if_needed()
+        if force:
+            self._syncer.sync_up()
+        else:
+            self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
     def resume(self):
@@ -454,8 +462,8 @@ class TrialRunner(object):
     def _memory_debug_string(self):
         try:
             import psutil
-            total_gb = psutil.virtual_memory().total / 1e9
-            used_gb = total_gb - psutil.virtual_memory().available / 1e9
+            total_gb = psutil.virtual_memory().total / (1024**3)
+            used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
             if used_gb > total_gb * 0.9:
                 warn = (": ***LOW MEMORY*** less than 10% of the memory on "
                         "this node is available for use. This can cause "
@@ -465,7 +473,7 @@ class TrialRunner(object):
                         "`object_store_memory` when calling `ray.init`.")
             else:
                 warn = ""
-            return "Memory usage on this node: {}/{} GB{}".format(
+            return "Memory usage on this node: {}/{} GiB{}".format(
                 round(used_gb, 1), round(total_gb, 1), warn)
         except ImportError:
             return ("Unknown memory usage. Please run `pip install psutil` "

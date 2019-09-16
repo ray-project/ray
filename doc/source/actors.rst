@@ -1,5 +1,5 @@
-How-to: Using Actors
-====================
+Using Actors
+============
 
 An actor is essentially a stateful worker (or a service). When a new actor is
 instantiated, a new worker is created, and methods of the actor are scheduled on
@@ -99,10 +99,27 @@ have these resources (see `configuration instructions
     lifetime, but every time it executes a method, it will need to acquire 1 CPU
     resource.
 
+
+.. code-block:: python
+
+  @ray.remote(resources={'Resource2': 1})
+  class GPUActor(object):
+      pass
+
+
 If you need to instantiate many copies of the same actor with varying resource
 requirements, you can do so as follows.
 
 .. code-block:: python
+
+  @ray.remote(num_cpus=4)
+  class Counter(object):
+      def __init__(self):
+          self.value = 0
+
+      def increment(self):
+          self.value += 1
+          return self.value
 
   a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
   a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
@@ -110,12 +127,6 @@ requirements, you can do so as follows.
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.
-
-.. code-block:: python
-
-  @ray.remote(resources={'Resource2': 1})
-  class GPUActor(object):
-      pass
 
 
 Terminating Actors

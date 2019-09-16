@@ -183,6 +183,8 @@ class ActorClass(object):
             task.
         _num_gpus: The default number of GPUs required by the actor creation
             task.
+        _memory: The heap memory quota for this actor.
+        _object_store_memory: The object store memory quota for this actor.
         _resources: The default resources required by the actor creation task.
         _actor_method_cpus: The number of CPUs required by actor method tasks.
         _last_export_session_and_job: A pair of the last exported session
@@ -202,14 +204,59 @@ class ActorClass(object):
             each actor method.
     """
 
-    def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, resources):
+    def __init__(cls, name, bases, attr):
+        """Prevents users from directly inheriting from an ActorClass.
+
+        This will be called when a class is defined with an ActorClass object
+        as one of its base classes. To intentionally construct an ActorClass,
+        use the '_from_modified_class' classmethod.
+
+        Raises:
+            TypeError: Always.
+        """
+        for base in bases:
+            if isinstance(base, ActorClass):
+                raise TypeError("Attempted to define subclass '{}' of actor "
+                                "class '{}'. Inheriting from actor classes is "
+                                "not currently supported. You can instead "
+                                "inherit from a non-actor base class and make "
+                                "the derived class an actor class (with "
+                                "@ray.remote).".format(name, base._class_name))
+
+        # This shouldn't be reached because one of the base classes must be
+        # an actor class if this was meant to be subclassed.
+        assert False, ("ActorClass.__init__ should not be called. Please use "
+                       "the @ray.remote decorator instead.")
+
+    def __call__(self, *args, **kwargs):
+        """Prevents users from directly instantiating an ActorClass.
+
+        This will be called instead of __init__ when 'ActorClass()' is executed
+        because an is an object rather than a metaobject. To properly
+        instantiated a remote actor, use 'ActorClass.remote()'.
+
+        Raises:
+            Exception: Always.
+        """
+        raise Exception("Actors cannot be instantiated directly. "
+                        "Instead of '{}()', use '{}.remote()'.".format(
+                            self._class_name, self._class_name))
+
+    @classmethod
+    def _from_modified_class(cls, modified_class, class_id,
+                             max_reconstructions, num_cpus, num_gpus, memory,
+                             object_store_memory, resources):
+        # Construct the base object.
+        self = cls.__new__(cls)
+
         self._modified_class = modified_class
         self._class_id = class_id
         self._class_name = modified_class.__name__
         self._max_reconstructions = max_reconstructions
         self._num_cpus = num_cpus
         self._num_gpus = num_gpus
+        self._memory = memory
+        self._object_store_memory = object_store_memory
         self._resources = resources
         self._last_export_session_and_job = None
 
@@ -258,10 +305,7 @@ class ActorClass(object):
                 self._method_decorators[method_name] = (
                     method.__ray_invocation_decorator__)
 
-    def __call__(self, *args, **kwargs):
-        raise Exception("Actors methods cannot be instantiated directly. "
-                        "Instead of running '{}()', try '{}.remote()'.".format(
-                            self._class_name, self._class_name))
+        return self
 
     def remote(self, *args, **kwargs):
         """Create an actor.
@@ -282,6 +326,8 @@ class ActorClass(object):
                 kwargs=None,
                 num_cpus=None,
                 num_gpus=None,
+                memory=None,
+                object_store_memory=None,
                 resources=None):
         """Create an actor.
 
@@ -294,6 +340,9 @@ class ActorClass(object):
             kwargs: The keyword arguments to forward to the actor constructor.
             num_cpus: The number of CPUs required by the actor creation task.
             num_gpus: The number of GPUs required by the actor creation task.
+            memory: Restrict the heap memory usage of this actor.
+            object_store_memory: Restrict the object store memory used by
+                this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
 
@@ -356,8 +405,9 @@ class ActorClass(object):
                     self._modified_class, self._actor_method_names)
 
             resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, self._num_gpus, self._resources, num_cpus,
-                num_gpus, resources)
+                cpus_to_use, self._num_gpus, self._memory,
+                self._object_store_memory, self._resources, num_cpus, num_gpus,
+                memory, object_store_memory, resources)
 
             # If the actor methods require CPU resources, then set the required
             # placement resources. If actor_placement_resources is empty, then
@@ -748,7 +798,8 @@ class ActorHandle(object):
         return self._deserialization_helper(state, False)
 
 
-def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
+def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
+               max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -795,10 +846,9 @@ def make_actor(cls, num_cpus, num_gpus, resources, max_reconstructions):
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    class_id = ActorClassID.from_random()
-
-    return ActorClass(Class, class_id, max_reconstructions, num_cpus, num_gpus,
-                      resources)
+    return ActorClass._from_modified_class(
+        Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
+        num_gpus, memory, object_store_memory, resources)
 
 
 def exit_actor():
@@ -812,10 +862,9 @@ def exit_actor():
     """
     worker = ray.worker.global_worker
     if worker.mode == ray.WORKER_MODE and not worker.actor_id.is_nil():
-        # Disconnect the worker from the raylet. The point of
-        # this is so that when the worker kills itself below, the
+        # Intentionally disconnect the core worker from the raylet so the
         # raylet won't push an error message to the driver.
-        worker.raylet_client.disconnect()
+        worker.core_worker.disconnect()
         ray.disconnect()
         # Disconnect global state from GCS.
         ray.state.state.disconnect()

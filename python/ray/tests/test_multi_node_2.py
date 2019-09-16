@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from flaky import flaky
 import logging
 import pytest
 import time
@@ -59,8 +60,8 @@ def test_internal_config(ray_start_cluster_head):
     assert ray.cluster_resources()["CPU"] == 1
 
 
-def setup_monitor(redis_address):
-    monitor = Monitor(redis_address, None)
+def setup_monitor(address):
+    monitor = Monitor(address, None)
     monitor.subscribe(ray.gcs_utils.XRAY_HEARTBEAT_BATCH_CHANNEL)
     monitor.subscribe(ray.gcs_utils.XRAY_JOB_CHANNEL)  # TODO: Remove?
     monitor.update_raylet_map(_append_port=True)
@@ -72,6 +73,15 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
     while True:
         monitor.process_messages()
         resource_usage = monitor.load_metrics.get_resource_usage()
+
+        if "memory" in resource_usage[1]:
+            del resource_usage[1]["memory"]
+        if "object_store_memory" in resource_usage[2]:
+            del resource_usage[1]["object_store_memory"]
+        if "memory" in resource_usage[2]:
+            del resource_usage[2]["memory"]
+        if "object_store_memory" in resource_usage[2]:
+            del resource_usage[2]["object_store_memory"]
 
         if expected_resource_usage is None:
             if all(x for x in resource_usage[1:]):
@@ -104,7 +114,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     """
     cluster = ray_start_cluster_head
     timeout = 5
-    monitor = setup_monitor(cluster.redis_address)
+    monitor = setup_monitor(cluster.address)
     total_cpus = ray.state.cluster_resources()["CPU"]
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": total_cpus}))
 
@@ -139,18 +149,19 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
 
+@flaky(max_runs=4)
 def test_heartbeats_cluster(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
     Test proper metrics.
     """
     cluster = ray_start_cluster_head
-    timeout = 5
-    num_workers_nodes = 4
+    timeout = 8
+    num_workers_nodes = 3
     num_nodes_total = int(num_workers_nodes + 1)
     [cluster.add_node() for i in range(num_workers_nodes)]
     cluster.wait_for_nodes()
-    monitor = setup_monitor(cluster.redis_address)
+    monitor = setup_monitor(cluster.address)
 
     verify_load_metrics(monitor, (0.0, {"CPU": 0.0}, {"CPU": num_nodes_total}))
 

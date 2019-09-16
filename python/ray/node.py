@@ -18,7 +18,8 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.services
-from ray.utils import try_to_create_directory
+from ray.resource_spec import ResourceSpec
+from ray.utils import try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -26,6 +27,7 @@ from ray.utils import try_to_create_directory
 logger = logging.getLogger(__name__)
 
 PY3 = sys.version_info.major >= 3
+SESSION_LATEST = "session_latest"
 
 
 class Node(object):
@@ -59,9 +61,12 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        if shutdown_at_exit and connect_only:
-            raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
-                             "be both true.")
+        if shutdown_at_exit:
+            if connect_only:
+                raise ValueError("'shutdown_at_exit' and 'connect_only' "
+                                 "cannot both be true.")
+            self._register_shutdown_hooks()
+
         self.head = head
         self.all_processes = {}
 
@@ -84,6 +89,7 @@ class Node(object):
                 os.path.dirname(os.path.abspath(__file__)),
                 "workers/default_worker.py"))
 
+        self._resource_spec = None
         self._ray_params = ray_params
         self._redis_address = ray_params.redis_address
         self._config = (json.loads(ray_params._internal_config)
@@ -149,9 +155,50 @@ class Node(object):
         if not connect_only:
             self.start_ray_processes()
 
-        if shutdown_at_exit:
-            atexit.register(lambda: self.kill_all_processes(
-                check_alive=False, allow_graceful=True))
+    def _register_shutdown_hooks(self):
+        # Make ourselves a process group session leader to ensure we can clean
+        # up child processes later without killing a process that started us.
+        try:
+            os.setpgrp()
+        except OSError as e:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+
+        # Clean up child process by first going through the normal
+        # kill_all_processes procedure (which should clean them all up
+        # under normal circumstances), then sending a SIGTERM to our
+        # process group to take care of any children that may have been
+        # spawned but not yet added to the list.
+        def clean_up_children(sigterm_handler):
+            self.kill_all_processes(check_alive=False, allow_graceful=True)
+            signal.signal(signal.SIGTERM, sigterm_handler)
+            try:
+                # SIGTERM our process group as a last resort in case there
+                # were processes that we spawned but didn't add to the list
+                # (could happen if interrupted just after spawning them).
+                # We could send SIGKILL here to be sure, but we're also
+                # sending it to ourselves.
+                os.killpg(0, signal.SIGTERM)
+            except OSError as e:
+                print("killpg failed, processes may not have "
+                      "been cleaned up properly: {}.".format(e))
+
+        # Register the a handler to be called during the normal python
+        # shutdown process. We pass an empty lambda to clean_up_children
+        # because after cleaning up the child processes, it should do
+        # nothing and return so that the shutdown process can continue.
+        def atexit_handler():
+            return clean_up_children(lambda *args, **kwargs: None)
+
+        atexit.register(atexit_handler)
+
+        # Register the a handler to be called if we get a SIGTERM.
+        # In this case, we want to exit with an error code (1) after
+        # cleaning up child processes.
+        def sigterm_handler():
+            return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -169,20 +216,39 @@ class Node(object):
         else:
             self._session_dir = ray.utils.decode(
                 redis_client.get("session_dir"))
+        session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
+        try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
         try_to_create_directory(self._sockets_dir, warn_if_exist=False)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
         try_to_create_directory(self._logs_dir, warn_if_exist=False)
+        old_logs_dir = os.path.join(self._logs_dir, "old")
+        try_to_create_directory(old_logs_dir, warn_if_exist=False)
+
+    def get_resource_spec(self):
+        """Resolve and return the current resource spec for the node."""
+        if not self._resource_spec:
+            self._resource_spec = ResourceSpec(
+                self._ray_params.num_cpus, self._ray_params.num_gpus,
+                self._ray_params.memory, self._ray_params.object_store_memory,
+                self._ray_params.resources,
+                self._ray_params.redis_max_memory).resolve(is_head=self.head)
+        return self._resource_spec
 
     @property
     def node_ip_address(self):
         """Get the cluster Redis address."""
         return self._node_ip_address
+
+    @property
+    def address(self):
+        """Get the cluster address."""
+        return self._redis_address
 
     @property
     def redis_address(self):
@@ -207,6 +273,12 @@ class Node(object):
     def plasma_store_socket_name(self):
         """Get the node's plasma store socket name."""
         return self._plasma_store_socket_name
+
+    @property
+    def unique_id(self):
+        """Get a unique identifier for this node."""
+        return "{}:{}".format(self.node_ip_address,
+                              self._plasma_store_socket_name)
 
     @property
     def webui_url(self):
@@ -344,14 +416,14 @@ class Node(object):
          process_infos) = ray.services.start_redis(
              self._node_ip_address,
              redis_log_files,
+             self.get_resource_spec(),
              port=self._ray_params.redis_port,
              redis_shard_ports=self._ray_params.redis_shard_ports,
              num_redis_shards=self._ray_params.num_redis_shards,
              redis_max_clients=self._ray_params.redis_max_clients,
              redirect_worker_output=True,
              password=self._ray_params.redis_password,
-             include_java=self._ray_params.include_java,
-             redis_max_memory=self._ray_params.redis_max_memory)
+             include_java=self._ray_params.include_java)
         assert (
             ray_constants.PROCESS_TYPE_REDIS_SERVER not in self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_REDIS_SERVER] = (
@@ -406,9 +478,9 @@ class Node(object):
         """Start the plasma store."""
         stdout_file, stderr_file = self.new_log_files("plasma_store")
         process_info = ray.services.start_plasma_store(
+            self.get_resource_spec(),
             stdout_file=stdout_file,
             stderr_file=stderr_file,
-            object_store_memory=self._ray_params.object_store_memory,
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
             plasma_store_socket_name=self._plasma_store_socket_name)
@@ -436,9 +508,7 @@ class Node(object):
             self._ray_params.worker_path,
             self._temp_dir,
             self._session_dir,
-            self._ray_params.num_cpus,
-            self._ray_params.num_gpus,
-            self._ray_params.resources,
+            self.get_resource_spec(),
             self._ray_params.object_manager_port,
             self._ray_params.node_manager_port,
             self._ray_params.redis_password,

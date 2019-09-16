@@ -7,6 +7,9 @@
 
 namespace ray {
 
+// Magic argument to signal to mock_worker we should check message order.
+int64_t SHOULD_CHECK_MESSAGE_ORDER = 123450000;
+
 /// Wait until the condition is met, or timeout is reached.
 ///
 /// \param[in] condition The condition to wait for.
@@ -19,8 +22,8 @@ bool WaitForCondition(std::function<bool()> condition, int timeout_ms) {
       return true;
     }
 
-    // sleep 100ms.
-    const int wait_interval_ms = 100;
+    // sleep 10ms.
+    const int wait_interval_ms = 10;
     usleep(wait_interval_ms * 1000);
     wait_time += wait_interval_ms;
     if (wait_time > timeout_ms) {

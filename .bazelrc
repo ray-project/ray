@@ -9,3 +9,4 @@ build --per_file_copt='\\.pb\\.cc$@-w'
 build --per_file_copt='external*@-w'
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
+build --http_timeout_scaling=5.0

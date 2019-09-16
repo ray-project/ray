@@ -221,6 +221,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
+        ":gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
@@ -412,6 +413,16 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":core_worker_test_lib",
+    ],
+)
+
+cc_test(
+    name = "scheduling_queue_test",
+    srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -640,6 +651,7 @@ cc_library(
     ],
 )
 
+# TODO(micafan) Replace cc_binary with cc_test for GCS test.
 cc_binary(
     name = "redis_gcs_client_test",
     testonly = 1,
@@ -655,6 +667,17 @@ cc_binary(
     name = "actor_state_accessor_test",
     testonly = 1,
     srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":gcs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_binary(
+    name = "subscription_executor_test",
+    testonly = 1,
+    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -709,7 +732,10 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"],
+    deps = [
+        "//:core_worker_lib",
+        "//:raylet_lib",
+    ],
 )
 
 cc_binary(

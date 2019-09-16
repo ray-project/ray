@@ -16,6 +16,7 @@ import glob
 import shutil
 import sys
 import os
+import urllib
 import shlex
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import (IncludeDirective, GalleryItemDirective,
@@ -71,8 +72,11 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
-    'sphinx_click.ext', 'sphinx_gallery.gen_gallery'
+    'sphinx.ext.autodoc',
+    'sphinx.ext.viewcode',
+    'sphinx.ext.napoleon',
+    'sphinx_click.ext',
+    'sphinx-jsonschema',
 ]
 
 sphinx_gallery_conf = {
@@ -359,14 +363,28 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = 'bysource'
 
-# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
+# Taken from https://github.com/edx/edx-documentation
+FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}&labels=docs&body={body}"
+
+
+def feedback_form_url(project, page):
+    """Create a URL for feedback on a particular page in a project."""
+    return FEEDBACK_FORM_FMT.format(
+        title=urllib.parse.quote(
+            "[docs] Issue on `{page}.rst`".format(page=page)),
+        body=urllib.parse.quote(
+            "# Documentation Problem/Question/Comment\n"
+            "<!-- Describe your issue/question/comment below. -->\n"
+            "<!-- If there are typos or errors in the docs, feel free to create a pull-request. -->\n"
+            "\n\n\n\n"
+            "(Created directly from the docs)\n"))
+
+
+def update_context(app, pagename, templatename, context, doctree):
+    """Update the page rendering context to include ``feedback_form_url``."""
+    context['feedback_form_url'] = feedback_form_url(app.config.project,
+                                                     pagename)
 
 
 def setup(app):
-    # Custom CSS
-    # app.add_stylesheet('css/pytorch_theme.css')
-    # app.add_stylesheet('https://fonts.googleapis.com/css?family=Lato')
-    # Custom directives
-    app.add_directive('includenodoc', IncludeDirective)
-    app.add_directive('galleryitem', GalleryItemDirective)
-    app.add_directive('customgalleryitem', CustomGalleryItemDirective)
+    app.connect('html-page-context', update_context)

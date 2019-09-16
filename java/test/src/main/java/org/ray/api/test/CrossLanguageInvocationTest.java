@@ -9,6 +9,7 @@ import org.apache.commons.io.FileUtils;
 import org.ray.api.Ray;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
+import org.ray.api.TestUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -45,8 +46,10 @@ public class CrossLanguageInvocationTest extends BaseMultiLanguageTest {
     Assert.assertEquals(res.get(), "Response from Python: hello".getBytes());
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testCallingPythonActor() {
+    // Python worker doesn't support direct call yet.
+    TestUtils.skipTestIfDirectActorCallEnabled();
     RayPyActor actor = Ray.createPyActor(PYTHON_MODULE, "Counter", "1".getBytes());
     RayObject res = Ray.callPy(actor, "increase", "1".getBytes());
     Assert.assertEquals(res.get(), "2".getBytes());

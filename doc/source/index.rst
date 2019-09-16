@@ -27,6 +27,8 @@ View the `codebase on GitHub`_.
 Quick Start
 -----------
 
+Execute Python functions in parallel.
+
 .. code-block:: python
 
     import ray
@@ -62,6 +64,7 @@ To use Ray's actor model:
     futures = [c.read.remote() for c in counters]
     print(ray.get(futures))
 
+Visit the `Walkthrough <walkthrough.html>`_ page a more comprehensive overview of Ray features.
 
 Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
 
@@ -72,7 +75,7 @@ Read more about `launching clusters <autoscaling.html>`_.
 Tune Quick Start
 ----------------
 
-`Tune`_ is a scalable framework for hyperparameter search built on top of Ray with a focus on deep learning and deep reinforcement learning.
+`Tune`_ is a library for hyperparameter tuning at any scale. With Tune, you can launch a multi-node distributed hyperparameter sweep in less than 10 lines of code. Tune supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
 
 .. note::
 
@@ -142,18 +145,38 @@ RLlib Quick Start
 
 .. _`RLlib`: rllib.html
 
-Contact
--------
-The following are good places to discuss Ray.
 
-1. `ray-dev@googlegroups.com`_: For discussions about development or any general
-   questions.
-2. `StackOverflow`_: For questions about how to use Ray.
-3. `GitHub Issues`_: For bug reports and feature requests.
+More Information
+----------------
+
+- `Tutorial`_
+- `Blog`_
+- `Ray paper`_
+- `Ray HotOS paper`_
+- `RLlib paper`_
+- `Tune paper`_
+
+.. _`Tutorial`: https://github.com/ray-project/tutorial
+.. _`Blog`: https://ray-project.github.io/
+.. _`Ray paper`: https://arxiv.org/abs/1712.05889
+.. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
+.. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`Tune paper`: https://arxiv.org/abs/1807.05118
+
+Getting Involved
+----------------
+
+- `ray-dev@googlegroups.com`_: For discussions about development or any general
+  questions.
+- `StackOverflow`_: For questions about how to use Ray.
+- `GitHub Issues`_: For reporting bugs and feature requests.
+- `Pull Requests`_: For submitting code contributions.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
+
 
 
 .. toctree::
@@ -169,14 +192,11 @@ The following are good places to discuss Ray.
    walkthrough.rst
    actors.rst
    using-ray-with-gpus.rst
-   user-profiling.rst
-   inspect.rst
-   object-store.rst
-   using-ray-with-tensorflow.rst
-   using-ray-with-pytorch.rst
+   serialization.rst
+   memory-management.rst
    configure.rst
-   advanced.rst
    troubleshooting.rst
+   advanced.rst
    package-ref.rst
 
 .. toctree::
@@ -224,7 +244,9 @@ The following are good places to discuss Ray.
    :caption: Experimental
 
    distributed_training.rst
+   tf_distributed_training.rst
    pandas_on_ray.rst
+   projects.rst
    signals.rst
    async_api.rst
 
@@ -232,15 +254,15 @@ The following are good places to discuss Ray.
    :maxdepth: -1
    :caption: Examples
 
-   auto_examples/overview.rst
-   auto_examples/plot_lbfgs.rst
-   auto_examples/plot_newsreader.rst
-   auto_examples/plot_hyperparameter.rst
-   auto_examples/plot_pong_example.rst
-   auto_examples/plot_resnet.rst
-   auto_examples/plot_streaming.rst
-   auto_examples/plot_parameter_server.rst
-   auto_examples/plot_example-a3c.rst
+   example-rl-pong.rst
+   example-parameter-server.rst
+   example-newsreader.rst
+   example-resnet.rst
+   example-a3c.rst
+   example-lbfgs.rst
+   example-streaming.rst
+   using-ray-with-tensorflow.rst
+   using-ray-with-pytorch.rst
 
 .. toctree::
    :maxdepth: -1
@@ -248,7 +270,6 @@ The following are good places to discuss Ray.
 
    development.rst
    profiling.rst
-   internals-overview.rst
    fault-tolerance.rst
    contrib.rst
 
