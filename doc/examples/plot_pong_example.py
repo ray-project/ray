@@ -57,7 +57,6 @@ D = 80 * 80  # The input dimensionality: 80x80 grid.
 learning_rate = 1e-4
 
 
-
 #############################################################################
 # Helper Functions
 # ----------------
@@ -67,8 +66,14 @@ learning_rate = 1e-4
 # 1. preprocessing: The ``preprocess`` function will
 # preprocess the original 210x160x3 uint8 frame into a one-dimensional 6400
 # float vector.
-# 2. Reward Processing: The ``process_rewards`` function will
 #
+# 2. Reward Processing: The ``process_rewards`` function will calculate
+# a discounted reward. This formula states that the "value" of a
+# sampled action is the weighted sum of all rewards afterwards,
+# but later rewards are exponentially less important.
+#
+# 3. Rollout: The ``rollout`` function plays an entire game of Pong (until
+# either the computer or the RL agent loses).
 
 
 def preprocess(img):
@@ -133,8 +138,7 @@ def rollout(model, env):
         # confused).
         dlogps.append(y - aprob)
 
-        observation, reward, done, info = self.env.step(action)
-        reward_sum += reward
+        observation, reward, done, info = env.step(action)
 
         # Record reward (has to be done after we call step() to get reward
         # for previous action).
@@ -185,7 +189,7 @@ class Model():
         return {"W1": dW1, "W2": dW2}
 
 
-    def update_model(self, grad_buffer, rmsprop_cache, lr, decay):
+    def update(self, grad_buffer, rmsprop_cache, lr, decay):
         """Applies the gradients to the model parameters with RMSProp."""
         for k, v in self.weights.items():
             g = grad_buffer[k]
@@ -196,18 +200,16 @@ class Model():
 
 def zero_grads(grad_buffer):
     """Reset the batch gradient buffer."""
-    for k in grad_buffer:
+    for k, v in grad_buffer.items():
         grad_buffer[k] = np.zeros_like(v)
 
 
 
 #############################################################################
-#
-# This example is easy to parallelize because the network can play ten games in
-# parallel and no information needs to be shared between the games.
-# We define an **actor** for the Pong environment, which includes a method for
-# performing a rollout and computing a gradient update.
-
+# Parallelizing Gradients
+# -----------------------
+# We define an **actor**, which is responsible for taking a model and an env
+# and performing a rollout + computing a gradient update.
 
 ray.init()
 
@@ -247,10 +249,15 @@ class RolloutWorker(object):
 
 
 #############################################################################
-# Run the reinforcement learning.
-# In the loop, the network repeatedly plays games of Pong and records a gradient from
-# each game. Every ten games, the gradients are combined together and used to
-# update the network.
+# Running
+# -------
+#
+# This example is easy to parallelize because the network can play ten games in
+# parallel and no information needs to be shared between the games.
+#
+# In the loop, the network repeatedly plays games of Pong and
+# records a gradient from each game. Every ten games, the gradients are
+# combined together and used to update the network.
 
 iterations = 20
 batch_size = 10
@@ -270,7 +277,7 @@ for i in range(1, 1 + iterations):
     gradient_ids = []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     start_time = time.time()
-    grad_id = [actor.compute_gradient.remote(model_id) for actor in actors]
+    gradient_ids = [actor.compute_gradient.remote(model_id) for actor in actors]
     for batch in range(batch_size):
         [grad_id], gradient_ids = ray.wait(gradient_ids)
         grad, reward_sum = ray.get(grad_id)
