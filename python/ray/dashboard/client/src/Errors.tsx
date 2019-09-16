@@ -117,7 +117,7 @@ class Component extends React.Component<
               errors.map(({ lines, timestamp }, index) => (
                 <div className={classes.error} key={index}>
                   <Typography className={classes.timestamp}>
-                    Error at {new Date(timestamp).toLocaleString()}
+                    Error at {new Date(timestamp * 1000).toLocaleString()}
                   </Typography>
                   <NumberedLines lines={lines} />
                 </div>
