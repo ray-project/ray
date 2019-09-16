@@ -803,6 +803,9 @@ filegroup(
         "python/ray/internal/*.py",
         "python/ray/projects/*.py",
         "python/ray/projects/schema.json",
+        "python/ray/projects/template/cluster_template.yaml",
+        "python/ray/projects/template/project_template.yaml",
+        "python/ray/projects/template/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )
