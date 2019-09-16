@@ -42,42 +42,6 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
 
 }  // namespace
 
-void ObjectDirectory::RegisterBackend() {
-  auto object_notification_callback =
-      [this](gcs::RedisGcsClient *client, const ObjectID &object_id,
-             const GcsChangeMode change_mode,
-             const std::vector<ObjectTableData> &location_updates) {
-        // Objects are added to this map in SubscribeObjectLocations.
-        auto it = listeners_.find(object_id);
-        // Do nothing for objects we are not listening for.
-        if (it == listeners_.end()) {
-          return;
-        }
-
-        // Once this flag is set to true, it should never go back to false.
-        it->second.subscribed = true;
-
-        // Update entries for this object.
-        UpdateObjectLocations(change_mode, location_updates, gcs_client_->client_table(),
-                              &it->second.current_object_locations);
-        // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-        // looping over the callbacks.
-        auto callbacks = it->second.callbacks;
-        // Call all callbacks associated with the object id locations we have
-        // received.  This notifies the client even if the list of locations is
-        // empty, since this may indicate that the objects have been evicted from
-        // all nodes.
-        for (const auto &callback_pair : callbacks) {
-          // It is safe to call the callback directly since this is already running
-          // in the subscription callback stack.
-          callback_pair.second(object_id, it->second.current_object_locations);
-        }
-      };
-  RAY_CHECK_OK(gcs_client_->object_table().Subscribe(
-      JobID::Nil(), gcs_client_->client_table().GetLocalClientId(),
-      object_notification_callback, nullptr));
-}
-
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
@@ -86,8 +50,7 @@ ray::Status ObjectDirectory::ReportObjectAdded(
   auto data = std::make_shared<ObjectTableData>();
   data->set_manager(client_id.Binary());
   data->set_object_size(object_info.data_size);
-  ray::Status status =
-      gcs_client_->object_table().Add(JobID::Nil(), object_id, data, nullptr);
+  ray::Status status = gcs_client_->Objects().AsyncAdd(object_id, data, nullptr);
   return status;
 }
 
@@ -99,8 +62,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
   auto data = std::make_shared<ObjectTableData>();
   data->set_manager(client_id.Binary());
   data->set_object_size(object_info.data_size);
-  ray::Status status =
-      gcs_client_->object_table().Remove(JobID::Nil(), object_id, data, nullptr);
+  ray::Status status = gcs_client_->Objects().AsyncDelete(object_id, data, nullptr);
   return status;
 };
 
@@ -158,9 +120,39 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
-    status = gcs_client_->object_table().RequestNotifications(
-        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId(),
-        /*done*/ nullptr);
+
+  auto object_notification_callback =
+      [this](const ObjectID &object_id, const ObjectNotification &object_notification) {
+        // Objects are added to this map in SubscribeObjectLocations.
+        auto it = listeners_.find(object_id);
+        // Do nothing for objects we are not listening for.
+        if (it == listeners_.end()) {
+          return;
+        }
+
+        // Once this flag is set to true, it should never go back to false.
+        it->second.subscribed = true;
+
+        // Update entries for this object.
+        UpdateObjectLocations(object_notification.change_mode_,
+                              object_notification.object_data_,
+                              gcs_client_->client_table(),
+                              &it->second.current_object_locations);
+        // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+        // looping over the callbacks.
+        auto callbacks = it->second.callbacks;
+        // Call all callbacks associated with the object id locations we have
+        // received.  This notifies the client even if the list of locations is
+        // empty, since this may indicate that the objects have been evicted from
+        // all nodes.
+        for (const auto &callback_pair : callbacks) {
+          // It is safe to call the callback directly since this is already running
+          // in the subscription callback stack.
+          callback_pair.second(object_id, it->second.current_object_locations);
+        }
+      };
+    status = gcs_client_->Objects().AsyncSubscribe(
+        object_id, object_notification_callback, /*done*/ nullptr);
   }
   auto &listener_state = it->second;
   // TODO(hme): Make this fatal after implementing Pull suppression.
@@ -187,9 +179,7 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    status = gcs_client_->object_table().CancelNotifications(
-        JobID::Nil(), object_id, gcs_client_->client_table().GetLocalClientId(),
-        /*done*/ nullptr);
+    status = gcs_client_->Objects().AsyncUnsubscribe(object_id, /*done*/ nullptr);
     listeners_.erase(entry);
   }
   return status;
@@ -211,10 +201,12 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // We do not have any locations cached due to a concurrent
     // SubscribeObjectLocations call, so look up the object's locations
     // directly from the GCS.
-    status = gcs_client_->object_table().Lookup(
-        JobID::Nil(), object_id,
-        [this, callback](gcs::RedisGcsClient *client, const ObjectID &object_id,
-                         const std::vector<ObjectTableData> &location_updates) {
+    status = gcs_client_->Objects().AsyncGet(
+        object_id,
+        [this, object_id, callback](
+            Status status, const std::vector<ObjectTableData> &location_updates) {
+          RAY_CHECK(status.ok()) << "Get object location from GCS failed "
+              << status.message();
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, location_updates,

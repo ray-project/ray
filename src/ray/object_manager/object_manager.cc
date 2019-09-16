@@ -37,8 +37,6 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
 
-void ObjectManager::RegisterGcs() { object_directory_->RegisterBackend(); }
-
 void ObjectManager::RunRpcService() { rpc_service_.run(); }
 
 void ObjectManager::StartRpcService() {

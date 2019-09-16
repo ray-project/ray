@@ -39,8 +39,10 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// Disconnect with GCS Service. Non-thread safe.
   void Disconnect();
 
-  // TODO: Some API for getting the error on the driver
+  /// Use method Objects() instead
   ObjectTable &object_table();
+
+  // TODO: Some API for getting the error on the driver
   raylet::TaskTable &raylet_task_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
