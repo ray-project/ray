@@ -72,11 +72,8 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon',
-    'sphinx_click.ext',
-    'sphinx-jsonschema',
+    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
+    'sphinx_click.ext', 'sphinx-jsonschema', 'sphinx_gallery.gen_gallery'
 ]
 
 sphinx_gallery_conf = {
@@ -384,7 +381,15 @@ def update_context(app, pagename, templatename, context, doctree):
     """Update the page rendering context to include ``feedback_form_url``."""
     context['feedback_form_url'] = feedback_form_url(app.config.project,
                                                      pagename)
+# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
 
 
 def setup(app):
     app.connect('html-page-context', update_context)
+    # Custom CSS
+    # app.add_stylesheet('css/pytorch_theme.css')
+    # app.add_stylesheet('https://fonts.googleapis.com/css?family=Lato')
+    # Custom directives
+    app.add_directive('includenodoc', IncludeDirective)
+    app.add_directive('galleryitem', GalleryItemDirective)
+    app.add_directive('customgalleryitem', CustomGalleryItemDirective)
