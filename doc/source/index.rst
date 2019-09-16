@@ -192,13 +192,11 @@ Getting Involved
    walkthrough.rst
    actors.rst
    using-ray-with-gpus.rst
-   user-profiling.rst
-   inspect.rst
-   object-store.rst
-   configure.rst
+   serialization.rst
    memory-management.rst
-   advanced.rst
+   configure.rst
    troubleshooting.rst
+   advanced.rst
    package-ref.rst
 
 .. toctree::
@@ -246,6 +244,7 @@ Getting Involved
    :caption: Experimental
 
    distributed_training.rst
+   tf_distributed_training.rst
    pandas_on_ray.rst
    projects.rst
    signals.rst
@@ -271,6 +270,5 @@ Getting Involved
 
    development.rst
    profiling.rst
-   internals-overview.rst
    fault-tolerance.rst
    contrib.rst

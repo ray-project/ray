@@ -31,7 +31,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def run_test_exp(self):
         self.ea = run(
             MyTrainableClass,
-            global_checkpoint_period=0,
             name=self.test_name,
             local_dir=self.test_dir,
             stop={"training_iteration": 1},
@@ -85,7 +84,6 @@ class ExperimentAnalysisSuite(unittest.TestCase):
     def testIgnoreOtherExperiment(self):
         analysis = run(
             MyTrainableClass,
-            global_checkpoint_period=0,
             name="test_example",
             local_dir=self.test_dir,
             return_trials=False,
@@ -111,7 +109,6 @@ class AnalysisSuite(unittest.TestCase):
 
     def run_test_exp(self, test_name=None):
         run(MyTrainableClass,
-            global_checkpoint_period=0,
             name=test_name,
             local_dir=self.test_dir,
             return_trials=False,

@@ -17,7 +17,7 @@ from ray.includes.unique_ids cimport (
     CTaskID,
 )
 
-cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc" nogil:
+cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass RpcTaskSpec "ray::rpc::TaskSpec":
         void CopyFrom(const RpcTaskSpec &value)
 
@@ -29,13 +29,13 @@ cdef extern from "ray/protobuf/common.pb.h" namespace "ray::rpc" nogil:
         RpcTaskSpec *mutable_task_spec()
 
 
-cdef extern from "ray/protobuf/gcs.pb.h" namespace "ray::rpc" nogil:
+cdef extern from "ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass TaskTableData "ray::rpc::TaskTableData":
         RpcTask *mutable_task()
         const c_string &SerializeAsString()
 
 
-cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CTaskSpec "ray::TaskSpecification":
         CTaskSpec(const RpcTaskSpec message)
         CTaskSpec(const c_string &serialized_binary)
@@ -54,8 +54,10 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         int ArgIdCount(uint64_t arg_index) const
         CObjectID ArgId(uint64_t arg_index, uint64_t id_index) const
         CObjectID ReturnId(uint64_t return_index) const
-        const uint8_t *ArgVal(uint64_t arg_index) const
-        size_t ArgValLength(uint64_t arg_index) const
+        const uint8_t *ArgData(uint64_t arg_index) const
+        size_t ArgDataSize(uint64_t arg_index) const
+        const uint8_t *ArgMetadata(uint64_t arg_index) const
+        size_t ArgMetadataSize(uint64_t arg_index) const
         double GetRequiredResource(const c_string &resource_name) const
         const ResourceSet GetRequiredResources() const
         const ResourceSet GetRequiredPlacementResources() const
@@ -75,34 +77,37 @@ cdef extern from "ray/common/task/task_spec.h" namespace "ray" nogil:
         c_vector[CActorHandleID] NewActorHandles() const
 
 
-cdef extern from "ray/common/task/task_util.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task_util.h" nogil:
     cdef cppclass TaskSpecBuilder "ray::TaskSpecBuilder":
         TaskSpecBuilder &SetCommonTaskSpec(
             const CTaskID &task_id, const CLanguage &language,
-            const c_vector[c_string] &function_descriptor, const CJobID &job_id,
-            const CTaskID &parent_task_id, uint64_t parent_counter,
-            uint64_t num_returns, const unordered_map[c_string, double] &required_resources,
-            const unordered_map[c_string, double] &required_placement_resources)
+            const c_vector[c_string] &function_descriptor,
+            const CJobID &job_id, const CTaskID &parent_task_id,
+            uint64_t parent_counter, uint64_t num_returns,
+            const unordered_map[c_string, double] &required_resources,
+            const unordered_map[c_string, double] &required_placement_resources)  # noqa: E501
 
         TaskSpecBuilder &AddByRefArg(const CObjectID &arg_id)
 
-        TaskSpecBuilder &AddByValueArg(const c_string &data)
+        TaskSpecBuilder &AddByValueArg(const c_string &data,
+                                       const c_string &metadata)
 
         TaskSpecBuilder &SetActorCreationTaskSpec(
             const CActorID &actor_id, uint64_t max_reconstructions,
-            const c_vector[c_string] &dynamic_worker_options)
+            const c_vector[c_string] &dynamic_worker_options,
+            c_bool is_direct_call)
 
         TaskSpecBuilder &SetActorTaskSpec(
             const CActorID &actor_id, const CActorHandleID &actor_handle_id,
             const CObjectID &actor_creation_dummy_object_id,
             const CObjectID &previous_actor_task_dummy_object_id,
             uint64_t actor_counter,
-            const c_vector[CActorHandleID] &new_handle_ids);
+            const c_vector[CActorHandleID] &new_handle_ids)
 
         RpcTaskSpec GetMessage()
 
 
-cdef extern from "ray/common/task/task_execution_spec.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task_execution_spec.h" nogil:
     cdef cppclass CTaskExecutionSpec "ray::TaskExecutionSpecification":
         CTaskExecutionSpec(RpcTaskExecutionSpec message)
         CTaskExecutionSpec(const c_string &serialized_binary)
@@ -110,6 +115,6 @@ cdef extern from "ray/common/task/task_execution_spec.h" namespace "ray" nogil:
         c_vector[CObjectID] ExecutionDependencies()
         uint64_t NumForwards()
 
-cdef extern from "ray/common/task/task.h" namespace "ray" nogil:
+cdef extern from "ray/common/task/task.h" nogil:
     cdef cppclass CTask "ray::Task":
         CTask(CTaskSpec task_spec, CTaskExecutionSpec task_execution_spec)

@@ -1,14 +1,16 @@
-Tune: Scalable Hyperparameter Tuning
-====================================
+Tune: A Scalable Hyperparameter Tuning Library
+==============================================
+
+.. important:: Take the 3 minute `2019 Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
 .. image:: images/tune.png
     :scale: 30%
     :align: center
 
-Tune is a library for hyperparameter tuning at any scale.
+Tune is a Python library for hyperparameter tuning at any scale. Core features:
 
   * Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
-  * Supports any deep learning framework, including PyTorch, TensorFlow, and Keras.
+  * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
   * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
   * Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
@@ -16,6 +18,7 @@ Tune is a library for hyperparameter tuning at any scale.
 .. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
 .. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
 .. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
+
 
 Quick Start
 -----------

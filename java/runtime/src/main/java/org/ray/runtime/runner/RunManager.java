@@ -320,10 +320,13 @@ public class RunManager {
       cmd.add("-Dray.redis.password=" + rayConfig.headRedisPassword);
     }
 
+    // Number of workers per Java worker process
+    cmd.add("-Dray.raylet.config.num_workers_per_process_java=RAY_WORKER_NUM_WORKERS_PLACEHOLDER");
+
     cmd.addAll(rayConfig.jvmParameters);
 
     // jvm options
-    cmd.add("RAY_WORKER_OPTION_0");
+    cmd.add("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0");
 
     // Main class
     cmd.add(WORKER_CLASS);

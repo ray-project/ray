@@ -111,7 +111,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
   std::unique_lock<std::mutex> lock(lock_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
-    return Status::KeyError("object already exists");
+    return Status::ObjectExists("object already exists in the memory store");
   }
 
   auto object_entry =

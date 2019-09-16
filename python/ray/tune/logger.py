@@ -136,6 +136,7 @@ class JsonLogger(Logger):
 
 
 def tf2_compat_logger(config, logdir):
+    """Chooses TensorBoard logger depending on imported TF version."""
     global tf
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
         logger.warning("Not importing TensorFlow for test purposes")
@@ -144,21 +145,35 @@ def tf2_compat_logger(config, logdir):
     else:
         import tensorflow as tf
         use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
-                       distutils.version.LooseVersion("1.14.0"))
+                       distutils.version.LooseVersion("2.0.0"))
         if use_tf2_api:
-            tf = tf.compat.v2  # setting this for 1.14
+            tf = tf.compat.v2  # setting this for TF2.0
             return TF2Logger(config, logdir)
         else:
             return TFLogger(config, logdir)
 
 
 class TF2Logger(Logger):
+    """TensorBoard Logger for TF version >= 1.14.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
     def _init(self):
-        self._file_writer = tf.summary.create_file_writer(self.logdir)
+        self._file_writer = None
 
     def on_result(self, result):
-        with tf.device("/CPU:0"):
-            with self._file_writer.as_default():
+        if self._file_writer is None:
+            from tensorflow.python.eager import context
+            self._context = context
+            self._file_writer = tf.summary.create_file_writer(self.logdir)
+        with tf.device("/CPU:0"), self._context.eager_mode():
+            with tf.summary.record_if(True), self._file_writer.as_default():
                 step = result.get(
                     TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
@@ -179,10 +194,12 @@ class TF2Logger(Logger):
         self._file_writer.flush()
 
     def flush(self):
-        self._file_writer.flush()
+        if self._file_writer is not None:
+            self._file_writer.flush()
 
     def close(self):
-        self._file_writer.close()
+        if self._file_writer is not None:
+            self._file_writer.close()
 
 
 def to_tf_values(result, path):
@@ -196,11 +213,19 @@ def to_tf_values(result, path):
 
 
 class TFLogger(Logger):
+    """TensorBoard Logger for TF version < 1.14.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    If you need to do more advanced logging, it is recommended
+    to use a Summary Writer in the Trainable yourself.
+    """
+
     def _init(self):
-        logger.info(
-            "Initializing TFLogger instead of TF2Logger. We recommend "
-            "migrating to TF2.0. This class will be removed in the future.")
-        self._file_writer = tf.summary.FileWriter(self.logdir)
+        logger.info("Initializing TFLogger instead of TF2Logger.")
+        self._file_writer = tf.compat.v1.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
         tmp = result.copy()
@@ -228,9 +253,17 @@ class TFLogger(Logger):
 
 
 class CSVLogger(Logger):
+    """Logs results to progress.csv under the trial directory.
+
+    Automatically flattens nested dicts in the result dict before writing
+    to csv:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+
+    """
+
     def _init(self):
         """CSV outputted with Headers as first set of results."""
-        # Note that we assume params.json was already created by JsonLogger
         progress_file = os.path.join(self.logdir, EXPR_PROGRESS_FILE)
         self._continuing = os.path.exists(progress_file)
         self._file = open(progress_file, "a")
