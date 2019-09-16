@@ -13,7 +13,6 @@
 /python/ray/ @ray-project/ray-core-python
 !/python/ray/tune/ @ray-project/ray-core-python
 !/python/ray/rllib/ @ray-project/ray-core-python
-!/python/ray/modin/ @ray-project/ray-core-python
 
 # Java worker.
 /java/ @ray-project/ray-core-java

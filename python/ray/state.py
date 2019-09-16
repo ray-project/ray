@@ -945,8 +945,9 @@ class GlobalState(object):
                 None, then this method retrieves the errors for all jobs.
 
         Returns:
-            A dictionary mapping driver ID to a list of the error messages for
-                that driver.
+            A list of the error messages for the specified driver if one was
+                given, or a dictionary mapping from job ID to a list of error
+                messages for that driver otherwise.
         """
         self._check_connected()
 
@@ -1002,67 +1003,55 @@ class DeprecatedGlobalState(object):
     """A class used to print errors when the old global state API is used."""
 
     def object_table(self, object_id=None):
-        logger.warning(
-            "ray.global_state.object_table() is deprecated and will be "
-            "removed in a subsequent release. Use ray.objects() instead.")
-        return ray.objects(object_id=object_id)
+        raise DeprecationWarning(
+            "ray.global_state.object_table() is deprecated. Use ray.objects() "
+            "instead.")
 
     def task_table(self, task_id=None):
-        logger.warning(
-            "ray.global_state.task_table() is deprecated and will be "
-            "removed in a subsequent release. Use ray.tasks() instead.")
-        return ray.tasks(task_id=task_id)
+        raise DeprecationWarning(
+            "ray.global_state.task_table() is deprecated. Use ray.tasks() "
+            "instead.")
 
     def function_table(self, function_id=None):
         raise DeprecationWarning(
             "ray.global_state.function_table() is deprecated.")
 
     def client_table(self):
-        logger.warning(
-            "ray.global_state.client_table() is deprecated and will be "
-            "removed in a subsequent release. Use ray.nodes() instead.")
-        return ray.nodes()
+        raise DeprecationWarning(
+            "ray.global_state.client_table() is deprecated. Use ray.nodes() "
+            "instead.")
 
     def profile_table(self):
         raise DeprecationWarning(
             "ray.global_state.profile_table() is deprecated.")
 
     def chrome_tracing_dump(self, filename=None):
-        logger.warning(
-            "ray.global_state.chrome_tracing_dump() is deprecated and will be "
-            "removed in a subsequent release. Use ray.timeline() instead.")
-        return ray.timeline(filename=filename)
+        raise DeprecationWarning(
+            "ray.global_state.chrome_tracing_dump() is deprecated. Use "
+            "ray.timeline() instead.")
 
     def chrome_tracing_object_transfer_dump(self, filename=None):
-        logger.warning(
+        raise DeprecationWarning(
             "ray.global_state.chrome_tracing_object_transfer_dump() is "
-            "deprecated and will be removed in a subsequent release. Use "
-            "ray.object_transfer_timeline() instead.")
-        return ray.object_transfer_timeline(filename=filename)
+            "deprecated. Use ray.object_transfer_timeline() instead.")
 
     def workers(self):
         raise DeprecationWarning("ray.global_state.workers() is deprecated.")
 
     def cluster_resources(self):
-        logger.warning(
-            "ray.global_state.cluster_resources() is deprecated and will be "
-            "removed in a subsequent release. Use ray.cluster_resources() "
-            "instead.")
-        return ray.cluster_resources()
+        raise DeprecationWarning(
+            "ray.global_state.cluster_resources() is deprecated. Use "
+            "ray.cluster_resources() instead.")
 
     def available_resources(self):
-        logger.warning(
-            "ray.global_state.available_resources() is deprecated and will be "
-            "removed in a subsequent release. Use ray.available_resources() "
-            "instead.")
-        return ray.available_resources()
+        raise DeprecationWarning(
+            "ray.global_state.available_resources() is deprecated. Use "
+            "ray.available_resources() instead.")
 
-    def error_messages(self, job_id=None):
-        logger.warning(
-            "ray.global_state.error_messages() is deprecated and will be "
-            "removed in a subsequent release. Use ray.errors() "
-            "instead.")
-        return ray.errors(job_id=job_id)
+    def error_messages(self, all_jobs=False):
+        raise DeprecationWarning(
+            "ray.global_state.error_messages() is deprecated. Use "
+            "ray.errors() instead.")
 
 
 state = GlobalState()
@@ -1185,19 +1174,22 @@ def available_resources():
     return state.available_resources()
 
 
-def errors(include_cluster_errors=True):
+def errors(all_jobs=False):
     """Get error messages from the cluster.
 
     Args:
-        include_cluster_errors: True if we should include error messages for
-            all drivers, and false if we should only include error messages for
-            this specific driver.
+        all_jobs: False if we should only include error messages for this
+            specific job, or True if we should include error messages for all
+            jobs.
 
     Returns:
-        Error messages pushed from the cluster.
+        Error messages pushed from the cluster. This will be a single list if
+            all_jobs is False, or a dictionary mapping from job ID to a list of
+            error messages for that job if all_jobs is True.
     """
-    worker = ray.worker.global_worker
-    error_messages = state.error_messages(job_id=worker.current_job_id)
-    if include_cluster_errors:
-        error_messages += state.error_messages(job_id=ray.JobID.nil())
+    if not all_jobs:
+        worker = ray.worker.global_worker
+        error_messages = state.error_messages(job_id=worker.current_job_id)
+    else:
+        error_messages = state.error_messages(job_id=None)
     return error_messages

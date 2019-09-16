@@ -128,12 +128,15 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
         task.GetTaskExecutionSpec().GetMessage());
     request.set_resource_ids(resource_id_set.Serialize());
 
-    auto status = rpc_client_->AssignTask(
-        request, [](Status status, const rpc::AssignTaskReply &reply) {
-          // Worker has finished this task. There's nothing to do here
-          // and assigning new task will be done when raylet receives
-          // `TaskDone` message.
-        });
+    auto status = rpc_client_->AssignTask(request, [](Status status,
+                                                      const rpc::AssignTaskReply &reply) {
+      if (!status.ok()) {
+        RAY_LOG(ERROR) << "Worker failed to finish executing task: " << status.ToString();
+      }
+      // Worker has finished this task. There's nothing to do here
+      // and assigning new task will be done when raylet receives
+      // `TaskDone` message.
+    });
     finish_assign_callback(status);
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()

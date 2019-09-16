@@ -26,8 +26,3 @@ echo "Python library will be built."
 fi
 
 unamestr="$(uname)"
-
-##############################################
-# modin
-##############################################
-bash "$TP_SCRIPT_DIR/build_modin.sh" $PYTHON_EXECUTABLE

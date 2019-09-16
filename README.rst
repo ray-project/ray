@@ -6,7 +6,7 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.7.1-blue.svg
+.. image:: https://img.shields.io/badge/pypi-0.7.4-blue.svg
     :target: https://pypi.org/project/ray/
 
 |
@@ -133,7 +133,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 RLlib Quick Start
 -----------------
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-stack.png
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-wide.jpg
 
 `RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
 

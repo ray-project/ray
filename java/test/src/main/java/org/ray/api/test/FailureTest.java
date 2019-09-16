@@ -76,14 +76,14 @@ public class FailureTest extends BaseTest {
     assertTaskFailedWithRayTaskException(Ray.call(FailureTest::badFunc));
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testActorCreationFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, true);
     assertTaskFailedWithRayTaskException(Ray.call(BadActor::badMethod, actor));
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testActorTaskFailure() {
     TestUtils.skipTestUnderSingleProcess();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
@@ -102,9 +102,12 @@ public class FailureTest extends BaseTest {
     }
   }
 
-  @Test
+  @Test(groups = {"directCall"})
   public void testActorProcessDying() {
     TestUtils.skipTestUnderSingleProcess();
+    // This test case hangs if the worker to worker connection is implemented with grpc.
+    // TODO (kfstorm): Should be fixed.
+    TestUtils.skipTestIfDirectActorCallEnabled();
     RayActor<BadActor> actor = Ray.createActor(BadActor::new, false);
     try {
       Ray.call(BadActor::badMethod2, actor).get();
@@ -127,6 +130,7 @@ public class FailureTest extends BaseTest {
     TestUtils.skipTestUnderSingleProcess();
     List<RayFunc0<Integer>> badFunctions = Arrays.asList(FailureTest::badFunc,
         FailureTest::badFunc2);
+    TestUtils.warmUpCluster();
     for (RayFunc0<Integer> badFunc : badFunctions) {
       RayObject<Integer> obj1 = Ray.call(badFunc);
       RayObject<Integer> obj2 = Ray.call(FailureTest::slowFunc);

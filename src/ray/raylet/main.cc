@@ -104,8 +104,6 @@ int main(int argc, char *argv[]) {
   node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
-  node_manager_config.num_workers_per_process =
-      RayConfig::instance().num_workers_per_process();
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
 
   if (!python_worker_command.empty()) {
