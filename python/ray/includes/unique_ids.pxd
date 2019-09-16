@@ -20,10 +20,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         c_bool IsNil() const
         c_bool operator==(const CBaseID &rhs) const
         c_bool operator!=(const CBaseID &rhs) const
-        const uint8_t *data() const;
+        const uint8_t *data() const
 
-        c_string Binary() const;
-        c_string Hex() const;
+        c_string Binary() const
+        c_string Hex() const
 
     cdef cppclass CUniqueID "ray::UniqueID"(CBaseID):
         CUniqueID()
@@ -65,8 +65,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         size_t Size()
 
         @staticmethod
-        CActorID Of(CJobID job_id, CTaskID parent_task_id, int64_t parent_task_counter)
-
+        CActorID Of(CJobID job_id, CTaskID parent_task_id,
+                    int64_t parent_task_counter)
 
     cdef cppclass CActorHandleID "ray::ActorHandleID"(CUniqueID):
 
@@ -123,10 +123,12 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CTaskID ForActorCreationTask(CActorID actor_id)
 
         @staticmethod
-        CTaskID ForActorTask(CJobID job_id, CTaskID parent_task_id, int64_t parent_task_counter, CActorID actor_id)
+        CTaskID ForActorTask(CJobID job_id, CTaskID parent_task_id,
+                             int64_t parent_task_counter, CActorID actor_id)
 
         @staticmethod
-        CTaskID ForNormalTask(CJobID job_id, CTaskID parent_task_id, int64_t parent_task_counter)
+        CTaskID ForNormalTask(CJobID job_id, CTaskID parent_task_id,
+                              int64_t parent_task_counter)
 
     cdef cppclass CObjectID" ray::ObjectID"(CBaseID[CObjectID]):
 
@@ -140,10 +142,11 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         const CObjectID Nil()
 
         @staticmethod
-        CObjectID ForPut(const CTaskID &task_id, int64_t index, int64_t transport_type);
+        CObjectID ForPut(const CTaskID &task_id, int64_t index,
+                         int64_t transport_type)
 
         @staticmethod
-        CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index);
+        CObjectID ForTaskReturn(const CTaskID &task_id, int64_t index)
 
         @staticmethod
         size_t Size()

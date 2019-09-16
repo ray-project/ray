@@ -271,7 +271,10 @@ class TrialRunner(object):
             json.dump(runner_state, f, indent=2, cls=_TuneFunctionEncoder)
 
         os.rename(tmp_file_name, self.checkpoint_file)
-        self._syncer.sync_up_if_needed()
+        if force:
+            self._syncer.sync_up()
+        else:
+            self._syncer.sync_up_if_needed()
         return self._local_checkpoint_dir
 
     def resume(self):
