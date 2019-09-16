@@ -36,27 +36,28 @@ def _convert_to_numpy(x):
     try:
         return x.numpy()
     except AttributeError:
-        raise TypeError((
-            "Object of type {} has no method to convert to numpy."
-        ).format(type(x)))
+        raise TypeError(
+            ("Object of type {} has no method to convert to numpy.").format(
+                type(x)))
 
 
 def convert_eager_inputs(func):
-
     @functools.wraps(func)
     def _func(*args, **kwargs):
         if tf.executing_eagerly():
             args = [_convert_to_tf(x) for x in args]
             # TODO(gehring): find a way to remove specific hacks
-            kwargs = {k: _convert_to_tf(v) for k, v in kwargs.items()
-                      if k not in {"info_batch", "episodes"}}
+            kwargs = {
+                k: _convert_to_tf(v)
+                for k, v in kwargs.items()
+                if k not in {"info_batch", "episodes"}
+            }
         return func(*args, **kwargs)
 
     return _func
 
 
 def convert_eager_outputs(func):
-
     @functools.wraps(func)
     def _func(*args, **kwargs):
         out = func(*args, **kwargs)
@@ -76,7 +77,6 @@ def _disallow_var_creation(next_creator, **kw):
 
 def traced_eager_policy(eager_policy_cls):
     class TracedEagerPolicy(eager_policy_cls):
-
         def __init__(self, *args, **kwargs):
             self._traced_learn_on_batch = None
             self._traced_compute_actions = None
@@ -290,8 +290,8 @@ def build_eager_tf_policy(name,
                 })
 
             with tf.variable_creator_scope(_disallow_var_creation):
-                model_out, state_out = self.model(
-                    input_dict, state_batches, seq_lens)
+                model_out, state_out = self.model(input_dict, state_batches,
+                                                  seq_lens)
 
             if self.dist_class:
                 action_dist = self.dist_class(model_out, self.model)
@@ -402,10 +402,9 @@ def build_eager_tf_policy(name,
             else:
                 fetches[LEARNER_STATS_KEY] = {}
             if extra_learn_fetches_fn:
-                fetches.update({
-                    k: v
-                    for k, v in extra_learn_fetches_fn(self).items()
-                })
+                fetches.update(
+                    {k: v
+                     for k, v in extra_learn_fetches_fn(self).items()})
             if grad_stats_fn:
                 fetches.update({
                     k: v
