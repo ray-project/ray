@@ -34,7 +34,7 @@ def _convert_to_tf(x):
 
 def _convert_to_numpy(x):
     if x is None:
-        return x
+        return None
     try:
         return x.numpy()
     except AttributeError:
