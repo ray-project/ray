@@ -14,6 +14,7 @@ along with ``ray.wait``.
 
 .. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
 """
+import os
 import numpy as np
 from filelock import FileLock
 
@@ -30,15 +31,17 @@ ray.init()
 # The number of sets of random hyperparameters to try.
 num_evaluations = 10
 
+
 # A function for generating random hyperparameters.
 def generate_hyperparameters():
-    return {"learning_rate": 10 ** np.random.uniform(-5, 5),
-            "batch_size": np.random.randint(1, 100),
-            "dropout": np.random.uniform(0, 1),
-            "stddev": 10 ** np.random.uniform(-5, 5)}
+    return {
+        "learning_rate": 10**np.random.uniform(-5, 1),
+        "batch_size": np.random.randint(1, 100),
+        "momentum": np.random.uniform(0, 1)
+    }
 
 
-def get_data_loaders():
+def get_data_loaders(batch_size):
     mnist_transforms = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.1307, ), (0.3081, ))])
@@ -46,18 +49,18 @@ def get_data_loaders():
     # We add FileLock here because multiple workers will want to
     # download data, and this may cause overwrites since
     # DataLoader is not threadsafe.
-    with FileLock("./data.lock"):
+    with FileLock(os.path.expanduser("~/data.lock")):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "./data",
+                "~/data",
                 train=True,
                 download=True,
                 transform=mnist_transforms),
-            batch_size=64,
+            batch_size=batch_size,
             shuffle=True)
     test_loader = torch.utils.data.DataLoader(
-        datasets.MNIST("./data", train=False, transform=mnist_transforms),
-        batch_size=64,
+        datasets.MNIST("~/data", train=False, transform=mnist_transforms),
+        batch_size=batch_size,
         shuffle=True)
     return train_loader, test_loader
 
@@ -78,7 +81,7 @@ class ConvNet(nn.Module):
 def train(model, optimizer, train_loader, device=torch.device("cpu")):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
-        if batch_idx * len(data) > EPOCH_SIZE:
+        if batch_idx * len(data) > 1024:
             return
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -94,7 +97,7 @@ def test(model, test_loader, device=torch.device("cpu")):
     total = 0
     with torch.no_grad():
         for batch_idx, (data, target) in enumerate(test_loader):
-            if batch_idx * len(data) > TEST_SIZE:
+            if batch_idx * len(data) > 512:
                 break
             data, target = data.to(device), target.to(device)
             outputs = model(data)
@@ -104,15 +107,17 @@ def test(model, test_loader, device=torch.device("cpu")):
 
     return correct / total
 
+
 @ray.remote
 def evaluate_hyperparameters(config):
     model = ConvNet()
-    train_loader, test_loader = get_data_loaders()
+    train_loader, test_loader = get_data_loaders(config["batch_size"])
     optimizer = optim.SGD(
-        model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        model.parameters(),
+        lr=config["learning_rate"],
+        momentum=config["momentum"])
     train(model, optimizer, train_loader)
     return test(model, test_loader)
-
 
 
 # Keep track of the best hyperparameters and the best accuracy.
@@ -126,9 +131,9 @@ remaining_ids = []
 hyperparameters_mapping = {}
 
 # Randomly generate some hyperparameters, and launch a task for each set.
-for i in range(trials):
+for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
-    accuracy_id = evaluate_hyperparameter.remote(hyperparameters)
+    accuracy_id = evaluate_hyperparameters.remote(hyperparameters)
     remaining_ids += [accuracy_id]
     # Keep track of which hyperparameters correspond to this experiment.
     hyperparameters_mapping[accuracy_id] = hyperparameters
@@ -139,17 +144,13 @@ while remaining_ids:
     [result_id], remaining_ids = ray.wait(remaining_ids)
     # Process the output of this task.
     hyperparameters = hyperparameters_mapping[result_id]
-    accuracy, _ = ray.get(result_id)
+    accuracy = ray.get(result_id)
     print("""We achieve accuracy {:.3}% with
         learning_rate: {:.2}
         batch_size: {}
-        dropout: {:.2}
-        stddev: {:.2}
-      """.format(100 * accuracy,
-                 hyperparameters["learning_rate"],
-                 hyperparameters["batch_size"],
-                 hyperparameters["dropout"],
-                 hyperparameters["stddev"]))
+        momentum: {:.2}
+      """.format(100 * accuracy, hyperparameters["learning_rate"],
+                 hyperparameters["batch_size"], hyperparameters["momentum"]))
     if accuracy > best_accuracy:
         best_hyperparameters = hyperparameters
         best_accuracy = accuracy
@@ -158,10 +159,8 @@ while remaining_ids:
 print("""Best accuracy over {} trials was {:.3} with
       learning_rate: {:.2}
       batch_size: {}
-      dropout: {:.2}
-      stddev: {:.2}
-      """.format(trials, 100 * best_accuracy,
+      momentum: {:.2}
+      """.format(num_evaluations, 100 * best_accuracy,
                  best_hyperparameters["learning_rate"],
                  best_hyperparameters["batch_size"],
-                 best_hyperparameters["dropout"],
-                 best_hyperparameters["stddev"]))
+                 best_hyperparameters["momentum"]))

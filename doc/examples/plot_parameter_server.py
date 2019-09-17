@@ -92,8 +92,10 @@ def evaluate(model, test_loader):
 # some helper functions for obtaining data, including getter/setter
 # methods for gradients and weights.
 
+
 class ConvNet(nn.Module):
     """Small ConvNet for MNIST."""
+
     def __init__(self):
         super(ConvNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
@@ -139,6 +141,7 @@ class ConvNet(nn.Module):
 # ParameterServer class and allows users to instantiate it as a
 # remote process or actor.
 
+
 @ray.remote
 class ParameterServer(object):
     def __init__(self, lr):
@@ -158,6 +161,7 @@ class ParameterServer(object):
     def get_weights(self):
         return self.model.get_weights()
 
+
 ###########################################################################
 # Defining the Worker
 # -------------------
@@ -165,6 +169,7 @@ class ParameterServer(object):
 # continuously evaluate data and send gradients
 # to the parameter server. The worker will synchronize its model with the
 # Parameter Server model weights.
+
 
 @ray.remote
 class DataWorker(object):
@@ -184,6 +189,7 @@ class DataWorker(object):
         loss = F.nll_loss(output, target)
         loss.backward()
         return self.model.get_gradients()
+
 
 ###########################################################################
 # Synchronous Parameter Server Training
@@ -216,8 +222,7 @@ print("Running Synchronous Parameter Server Training.")
 current_weights = ps.get_weights.remote()
 for i in range(iterations):
     gradients = [
-        worker.compute_gradients.remote(current_weights)
-        for worker in workers
+        worker.compute_gradients.remote(current_weights) for worker in workers
     ]
     # Calculate update after all gradients are available.
     current_weights = ps.apply_gradients.remote(*gradients)
@@ -239,13 +244,11 @@ ray.shutdown()
 # instantiate a process for the parameter server, along with multiple
 # workers.
 
-
 print("Running Asynchronous Parameter Server Training.")
 
 ray.init(ignore_reinit_error=True)
 ps = ParameterServer.remote(1e-2)
 workers = [DataWorker.remote() for i in range(num_workers)]
-
 
 ###########################################################################
 # Here, workers will asynchronously compute the gradients given its

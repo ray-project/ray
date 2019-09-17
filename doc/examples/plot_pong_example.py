@@ -51,11 +51,10 @@ import gym
 # Here we'll define a couple of the hyperparameters that are used.
 
 H = 200  # The number of hidden layer neurons.
-gamma = 0.99 # Discount factor for reward.
-decay_rate = 0.99 # The decay factor for RMSProp leaky sum of grad^2.
+gamma = 0.99  # Discount factor for reward.
+decay_rate = 0.99  # The decay factor for RMSProp leaky sum of grad^2.
 D = 80 * 80  # The input dimensionality: 80x80 grid.
 learning_rate = 1e-4
-
 
 #############################################################################
 # Helper Functions
@@ -145,6 +144,7 @@ def rollout(model, env):
         drs.append(reward)
     return xs, hs, dlogps, drs
 
+
 ##############################################################################
 # Neural Network
 # --------------
@@ -155,8 +155,10 @@ def rollout(model, env):
 # for calculating updates and computing the output of the neural network
 # given an input, which in our case is an observation.
 
+
 class Model():
     """This class holds the neural network weights."""
+
     def __init__(self):
         self.weights = {}
         self.weights["W1"] = np.random.randn(H, D) / np.sqrt(D)
@@ -170,7 +172,6 @@ class Model():
         p = 1.0 / (1.0 + np.exp(-logp))
         # Return probability of taking action 2, and hidden state.
         return p, h
-
 
     def policy_backward(self, eph, epx, epdlogp):
         """Backward pass to calculate gradients.
@@ -188,13 +189,11 @@ class Model():
         dW1 = np.dot(dh.T, epx)
         return {"W1": dW1, "W2": dW2}
 
-
     def update(self, grad_buffer, rmsprop_cache, lr, decay):
         """Applies the gradients to the model parameters with RMSProp."""
         for k, v in self.weights.items():
             g = grad_buffer[k]
-            rmsprop_cache[k] = (
-                decay * rmsprop_cache[k] + (1 - decay) * g**2)
+            rmsprop_cache[k] = (decay * rmsprop_cache[k] + (1 - decay) * g**2)
             self.weights[k] += lr * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
 
 
@@ -204,7 +203,6 @@ def zero_grads(grad_buffer):
         grad_buffer[k] = np.zeros_like(v)
 
 
-
 #############################################################################
 # Parallelizing Gradients
 # -----------------------
@@ -212,6 +210,7 @@ def zero_grads(grad_buffer):
 # and performing a rollout + computing a gradient update.
 
 ray.init()
+
 
 @ray.remote
 class RolloutWorker(object):
@@ -247,7 +246,6 @@ class RolloutWorker(object):
         return model.policy_backward(eph, epx, epdlogp), reward_sum
 
 
-
 #############################################################################
 # Running
 # -------
@@ -271,13 +269,14 @@ grad_buffer = {k: np.zeros_like(v) for k, v in model.weights.items()}
 # Update the rmsprop memory.
 rmsprop_cache = {k: np.zeros_like(v) for k, v in model.weights.items()}
 
-
 for i in range(1, 1 + iterations):
     model_id = ray.put(model)
     gradient_ids = []
     # Launch tasks to compute gradients from multiple rollouts in parallel.
     start_time = time.time()
-    gradient_ids = [actor.compute_gradient.remote(model_id) for actor in actors]
+    gradient_ids = [
+        actor.compute_gradient.remote(model_id) for actor in actors
+    ]
     for batch in range(batch_size):
         [grad_id], gradient_ids = ray.wait(gradient_ids)
         grad, reward_sum = ray.get(grad_id)
@@ -288,7 +287,7 @@ for i in range(1, 1 + iterations):
                           running_reward * 0.99 + reward_sum * 0.01)
     end_time = time.time()
     print("Batch {} computed {} rollouts in {} seconds, "
-          "running mean is {}".format(i, batch_size,
-                                      end_time - start_time, running_reward))
+          "running mean is {}".format(i, batch_size, end_time - start_time,
+                                      running_reward))
     model.update(grad_buffer, rmsprop_cache, learning_rate, decay_rate)
     zero_grads(grad_buffer)
