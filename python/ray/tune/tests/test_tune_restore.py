@@ -274,6 +274,12 @@ class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             mode="min")
         return search_alg, cost
 
+    def testWarmStart(self):
+        if ("SIGOPT_KEY" not in os.environ):
+            return
+
+        super().testWarmStart()
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
