@@ -1,5 +1,5 @@
-Contributing to Ray
-====================
+Getting Involved
+================
 
 We welcome (and encourage!) all forms of contributions to Ray, including and not limited to:
 
@@ -74,6 +74,27 @@ to participate in the code review of new contributions.
 A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
 There is currently no formal process, but active contributors to Ray will be
 solicited by current reviewers.
+
+
+More Resources for Getting Involved
+-----------------------------------
+
+- `ray-dev@googlegroups.com`_: For discussions about development or any general
+  questions.
+- `StackOverflow`_: For questions about how to use Ray.
+- `GitHub Issues`_: For reporting bugs and feature requests.
+- `Pull Requests`_: For submitting code contributions.
+- `Meetup Group`_: Join our meetup group.
+- `Community Slack`_: Join our Slack workspace.
+- `Twitter`_: Follow updates on Twitter.
+
+.. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
+.. _`GitHub Issues`: https://github.com/ray-project/ray/issues
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
+.. _`Pull Requests`: https://github.com/ray-project/ray/pulls
+.. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
+.. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+.. _`Twitter`: https://twitter.com/raydistributed
 
 
 .. note::
