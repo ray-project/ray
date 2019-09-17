@@ -14,7 +14,6 @@ from keras.utils.data_utils import get_file
 from keras.preprocessing.sequence import pad_sequences
 from functools import reduce
 from ray.tune import Trainable
-from ray.tune.integration.keras import TuneReporterCallback
 import argparse
 import tarfile
 import numpy as np
@@ -22,30 +21,30 @@ import re
 
 
 def tokenize(sent):
-    '''Return the tokens of a sentence including punctuation.
+    """Return the tokens of a sentence including punctuation.
 
-    >>> tokenize('Bob dropped the apple. Where is the apple?')
-    ['Bob', 'dropped', 'the', 'apple', '.', 'Where', 'is', 'the', 'apple', '?']
-    '''
-    return [x.strip() for x in re.split(r'(\W+)?', sent) if x and x.strip()]
+    >>> tokenize("Bob dropped the apple. Where is the apple?")
+    ["Bob", "dropped", "the", "apple", ".", "Where", "is", "the", "apple", "?"]
+    """
+    return [x.strip() for x in re.split(r"(\W+)?", sent) if x and x.strip()]
 
 
 def parse_stories(lines, only_supporting=False):
-    '''Parse stories provided in the bAbi tasks format
+    """Parse stories provided in the bAbi tasks format
 
     If only_supporting is true, only the sentences
     that support the answer are kept.
-    '''
+    """
     data = []
     story = []
     for line in lines:
-        line = line.decode('utf-8').strip()
-        nid, line = line.split(' ', 1)
+        line = line.decode("utf-8").strip()
+        nid, line = line.split(" ", 1)
         nid = int(nid)
         if nid == 1:
             story = []
-        if '\t' in line:
-            q, a, supporting = line.split('\t')
+        if "\t" in line:
+            q, a, supporting = line.split("\t")
             q = tokenize(q)
             if only_supporting:
                 # Only select the related substory
@@ -55,7 +54,7 @@ def parse_stories(lines, only_supporting=False):
                 # Provide all the substories
                 substory = [x for x in story if x]
             data.append((substory, q, a))
-            story.append('')
+            story.append("")
         else:
             sent = tokenize(line)
             story.append(sent)
@@ -63,13 +62,13 @@ def parse_stories(lines, only_supporting=False):
 
 
 def get_stories(f, only_supporting=False, max_length=None):
-    '''Given a file name, read the file,
+    """Given a file name, read the file,
     retrieve the stories,
     and then convert the sentences into a single story.
 
     If max_length is supplied,
     any stories longer than max_length tokens will be discarded.
-    '''
+    """
     data = parse_stories(f.readlines(), only_supporting=only_supporting)
     flatten = lambda data: reduce(lambda x, y: x + y, data)
     data = [(flatten(story), q, answer) for story, q, answer in data
@@ -84,41 +83,46 @@ def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
         queries.append([word_idx[w] for w in query])
         answers.append(word_idx[answer])
     return (pad_sequences(inputs, maxlen=story_maxlen),
-            pad_sequences(queries, maxlen=query_maxlen),
-            np.array(answers))
+            pad_sequences(queries, maxlen=query_maxlen), np.array(answers))
+
 
 class MemNNModel(Trainable):
     def _read_data(self):
         # Get the file
         try:
-            path = get_file('babi-tasks-v1-2.tar.gz',
-                            origin='https://s3.amazonaws.com/text-datasets/'
-                                'babi_tasks_1-20_v1-2.tar.gz')
+            path = get_file(
+                "babi-tasks-v1-2.tar.gz",
+                origin="https://s3.amazonaws.com/text-datasets/"
+                "babi_tasks_1-20_v1-2.tar.gz")
         except:
-            print('Error downloading dataset, please download it manually:\n'
-                '$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2'
-                '.tar.gz\n'
-                '$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz')
+            print(
+                "Error downloading dataset, please download it manually:\n"
+                "$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2"
+                ".tar.gz\n"
+                "$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz"
+            )
             raise
 
         # Choose challenge
         challenges = {
             # QA1 with 10,000 samples
-            'single_supporting_fact_10k': 'tasks_1-20_v1-2/en-10k/qa1_'
-                                        'single-supporting-fact_{}.txt',
+            "single_supporting_fact_10k": "tasks_1-20_v1-2/en-10k/qa1_"
+            "single-supporting-fact_{}.txt",
             # QA2 with 10,000 samples
-            'two_supporting_facts_10k': 'tasks_1-20_v1-2/en-10k/qa2_'
-                                        'two-supporting-facts_{}.txt',
+            "two_supporting_facts_10k": "tasks_1-20_v1-2/en-10k/qa2_"
+            "two-supporting-facts_{}.txt",
         }
-        challenge_type = 'single_supporting_fact_10k'
+        challenge_type = "single_supporting_fact_10k"
         challenge = challenges[challenge_type]
 
         with tarfile.open(path) as tar:
-            train_stories = get_stories(tar.extractfile(challenge.format('train')))
-            test_stories = get_stories(tar.extractfile(challenge.format('test')))
+            train_stories = get_stories(
+                tar.extractfile(challenge.format("train")))
+            test_stories = get_stories(
+                tar.extractfile(challenge.format("test")))
 
         return train_stories, test_stories
-    
+
     def _build_model(self, input_shape):
         vocab = set()
         for story, q, answer in self.train_stories + self.test_stories:
@@ -127,37 +131,43 @@ class MemNNModel(Trainable):
 
         # Reserve 0 for masking via pad_sequences
         vocab_size = len(vocab) + 1
-        story_maxlen = max(map(len, (x for x, _, _ in self.train_stories + self.test_stories)))
-        query_maxlen = max(map(len, (x for _, x, _ in self.train_stories + self.test_stories)))
+        story_maxlen = max(
+            map(len,
+                (x for x, _, _ in self.train_stories + self.test_stories)))
+        query_maxlen = max(
+            map(len,
+                (x for _, x, _ in self.train_stories + self.test_stories)))
 
         word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-        self.inputs_train, self.queries_train, self.answers_train = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.train_stories)
-        self.inputs_test, self.queries_test, self.answers_test = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.test_stories)
+        self.inputs_train, self.queries_train, self.answers_train = vectorize_stories(
+            word_idx, story_maxlen, query_maxlen, self.train_stories)
+        self.inputs_test, self.queries_test, self.answers_test = vectorize_stories(
+            word_idx, story_maxlen, query_maxlen, self.test_stories)
 
         # placeholders
-        input_sequence = Input((story_maxlen,))
-        question = Input((query_maxlen,))
+        input_sequence = Input((story_maxlen, ))
+        question = Input((query_maxlen, ))
 
         # encoders
         # embed the input sequence into a sequence of vectors
         input_encoder_m = Sequential()
-        input_encoder_m.add(Embedding(input_dim=vocab_size,
-                                    output_dim=64))
+        input_encoder_m.add(Embedding(input_dim=vocab_size, output_dim=64))
         input_encoder_m.add(Dropout(self.config.get("dropout", 0.3)))
         # output: (samples, story_maxlen, embedding_dim)
 
         # embed the input into a sequence of vectors of size query_maxlen
         input_encoder_c = Sequential()
-        input_encoder_c.add(Embedding(input_dim=vocab_size,
-                                    output_dim=query_maxlen))
+        input_encoder_c.add(
+            Embedding(input_dim=vocab_size, output_dim=query_maxlen))
         input_encoder_c.add(Dropout(0.3))
         # output: (samples, story_maxlen, query_maxlen)
 
         # embed the question into a sequence of vectors
         question_encoder = Sequential()
-        question_encoder.add(Embedding(input_dim=vocab_size,
-                                    output_dim=64,
-                                    input_length=query_maxlen))
+        question_encoder.add(
+            Embedding(
+                input_dim=vocab_size, output_dim=64,
+                input_length=query_maxlen))
         question_encoder.add(Dropout(self.config.get("dropout", 0.3)))
         # output: (samples, query_maxlen, embedding_dim)
 
@@ -167,15 +177,17 @@ class MemNNModel(Trainable):
         input_encoded_c = input_encoder_c(input_sequence)
         question_encoded = question_encoder(question)
 
-        # compute a 'match' between the first input vector sequence
+        # compute a "match" between the first input vector sequence
         # and the question vector sequence
         # shape: `(samples, story_maxlen, query_maxlen)`
         match = dot([input_encoded_m, question_encoded], axes=(2, 2))
-        match = Activation('softmax')(match)
+        match = Activation("softmax")(match)
 
         # add the match matrix with the second input vector sequence
-        response = add([match, input_encoded_c])  # (samples, story_maxlen, query_maxlen)
-        response = Permute((2, 1))(response)  # (samples, query_maxlen, story_maxlen)
+        response = add(
+            [match, input_encoded_c])  # (samples, story_maxlen, query_maxlen)
+        response = Permute(
+            (2, 1))(response)  # (samples, query_maxlen, story_maxlen)
 
         # concatenate the match matrix with the question vector sequence
         answer = concatenate([response, question_encoded])
@@ -188,17 +200,19 @@ class MemNNModel(Trainable):
         answer = Dropout(0.3)(answer)
         answer = Dense(vocab_size)(answer)  # (samples, vocab_size)
         # we output a probability distribution over the vocabulary
-        answer = Activation('softmax')(answer)
+        answer = Activation("softmax")(answer)
 
         # build the final model
         model = Model([input_sequence, question], answer)
         return model
-    
+
     def _setup(self, config):
         self.train_stories, self.test_stories = self._read_data()
-        model = self._build_model(None) # Shape not used
-        model.compile(optimizer='rmsprop', loss='sparse_categorical_crossentropy',
-                    metrics=['accuracy'])
+        model = self._build_model(None)  # Shape not used
+        model.compile(
+            optimizer="rmsprop",
+            loss="sparse_categorical_crossentropy",
+            metrics=["accuracy"])
         self.model = model
 
     def _train(self):
@@ -206,14 +220,17 @@ class MemNNModel(Trainable):
         epochs = 1
 
         # train
-        self.model.fit([self.inputs_train, self.queries_train], self.answers_train,
-                batch_size=batch_size,
-                epochs=epochs,
-                validation_data=None,
-                verbose=0)
-        _, accuracy = self.model.evaluate([self.inputs_test, self.queries_test], self.answers_test)
-        return {'mean_accuracy': accuracy}
-    
+        self.model.fit(
+            [self.inputs_train, self.queries_train],
+            self.answers_train,
+            batch_size=batch_size,
+            epochs=epochs,
+            validation_data=None,
+            verbose=0)
+        _, accuracy = self.model.evaluate(
+            [self.inputs_test, self.queries_test], self.answers_test)
+        return {"mean_accuracy": accuracy}
+
     def _save(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
@@ -231,7 +248,7 @@ class MemNNModel(Trainable):
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import ray
     from ray.tune import Trainable, run
     from ray.tune.schedulers import PopulationBasedTraining
@@ -247,16 +264,12 @@ if __name__ == '__main__':
         metric="mean_accuracy",
         mode="max",
         perturbation_interval=20,
-        hyperparam_mutations={
-            "dropout": lambda: np.random.uniform(0, 1)
-        })
-    
+        hyperparam_mutations={"dropout": lambda: np.random.uniform(0, 1)})
+
     run(MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
-        stop={
-            "training_iteration": 50
-        },
+        stop={"training_iteration": 50},
         num_samples=10,
         **{
             "config": {
