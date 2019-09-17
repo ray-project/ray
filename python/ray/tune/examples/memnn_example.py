@@ -5,7 +5,7 @@ References Keras and is based off of https://keras.io/examples/babi_memnn/.
 
 from __future__ import print_function
 
-from keras.models import Sequential, Model
+from keras.models import Sequential, Model, load_model
 from keras.layers.embeddings import Embedding
 from keras.layers import Input, Activation, Dense, Permute, Dropout
 from keras.layers import add, dot, concatenate
@@ -131,8 +131,8 @@ class MemNNModel(Trainable):
         query_maxlen = max(map(len, (x for _, x, _ in self.train_stories + self.test_stories)))
 
         word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-        inputs_train, queries_train, answers_train = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.train_stories)
-        inputs_test, queries_test, answers_test = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.test_stories)
+        self.inputs_train, self.queries_train, self.answers_train = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.train_stories)
+        self.inputs_test, self.queries_test, self.answers_test = vectorize_stories(word_idx, story_maxlen, query_maxlen, self.test_stories)
 
         # placeholders
         input_sequence = Input((story_maxlen,))
@@ -201,17 +201,17 @@ class MemNNModel(Trainable):
                     metrics=['accuracy'])
         self.model = model
 
-    def _train(config, reporter):
+    def _train(self):
         batch_size = 32
-        epochs = 120
+        epochs = 1
 
         # train
-        self.model.fit([inputs_train, queries_train], answers_train,
+        self.model.fit([self.inputs_train, self.queries_train], self.answers_train,
                 batch_size=batch_size,
                 epochs=epochs,
                 validation_data=None,
-                callbacks=[TuneReporterCallback(reporter)])
-        _, accuracy = self.model.evaluate([inputs_test, queries_test], answers_test)
+                verbose=0)
+        _, accuracy = self.model.evaluate([self.inputs_test, self.queries_test], self.answers_test)
         return {'mean_accuracy': accuracy}
     
     def _save(self, checkpoint_dir):
