@@ -260,7 +260,7 @@ class RolloutWorker(object):
 # combined together and used to update the network.
 
 iterations = 20
-batch_size = 10
+batch_size = 4
 model = Model()
 actors = [RolloutWorker.remote() for _ in range(batch_size)]
 

@@ -274,13 +274,3 @@ Getting Involved
    profiling.rst
    fault-tolerance.rst
    contrib.rst
-
-
-.. example-rl-pong.rst
-.. example-parameter-server.rst
-.. example-newsreader.rst
-.. example-resnet.rst
-.. example-a3c.rst
-.. example-lbfgs.rst
-.. example-streaming.rst
-.. using-ray-with-tensorflow.rst

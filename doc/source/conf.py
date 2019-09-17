@@ -386,9 +386,6 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
-    # Custom CSS
-    # app.add_stylesheet('css/pytorch_theme.css')
-    # app.add_stylesheet('https://fonts.googleapis.com/css?family=Lato')
     # Custom directives
     app.add_directive('includenodoc', IncludeDirective)
     app.add_directive('galleryitem', GalleryItemDirective)
