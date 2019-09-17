@@ -101,8 +101,7 @@ def traced_eager_policy(eager_policy_cls):
             if self._traced_learn_on_batch is None:
                 self._traced_learn_on_batch = tf.function(
                     super(TracedEagerPolicy, self).learn_on_batch,
-                    autograph=False,
-                )
+                    autograph=False)
 
             return self._traced_learn_on_batch(samples)
 
@@ -126,17 +125,11 @@ def traced_eager_policy(eager_policy_cls):
             if self._traced_compute_actions is None:
                 self._traced_compute_actions = tf.function(
                     super(TracedEagerPolicy, self).compute_actions,
-                    autograph=False,
-                )
+                    autograph=False)
 
             return self._traced_compute_actions(
-                obs_batch,
-                state_batches,
-                prev_action_batch,
-                prev_reward_batch,
-                info_batch,
-                episodes,
-                **kwargs)
+                obs_batch, state_batches, prev_action_batch, prev_reward_batch,
+                info_batch, episodes, **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
@@ -146,8 +139,7 @@ def traced_eager_policy(eager_policy_cls):
             if self._traced_compute_gradients is None:
                 self._traced_compute_gradients = tf.function(
                     super(TracedEagerPolicy, self).compute_gradients,
-                    autograph=False,
-                )
+                    autograph=False)
 
             return self._traced_compute_gradients(samples)
 
@@ -159,8 +151,7 @@ def traced_eager_policy(eager_policy_cls):
             if self._traced_apply_gradients is None:
                 self._traced_apply_gradients = tf.function(
                     super(TracedEagerPolicy, self).apply_gradients,
-                    autograph=False,
-                )
+                    autograph=False)
 
             return self._traced_apply_gradients(grads)
 
