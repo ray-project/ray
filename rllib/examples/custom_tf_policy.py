@@ -21,14 +21,14 @@ def policy_gradient_loss(policy, model, dist_class, train_batch):
     logits, _ = model.from_batch(train_batch)
     action_dist = dist_class(logits, model)
     return -tf.reduce_mean(
-        action_dist.logp(train_batch["actions"]) * train_batch["advantages"])
+        action_dist.logp(train_batch["actions"]) * train_batch["returns"])
 
 
 def calculate_advantages(policy,
                          sample_batch,
                          other_agent_batches=None,
                          episode=None):
-    sample_batch["advantages"] = discount(sample_batch["rewards"], 0.99)
+    sample_batch["returns"] = discount(sample_batch["rewards"], 0.99)
     return sample_batch
 
 

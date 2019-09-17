@@ -97,6 +97,10 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to attempt to enable TF eager execution.")
     parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Whether to attempt to enable tracing for eager mode.")
+    parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
@@ -146,6 +150,10 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
         if args.eager:
             exp["config"]["eager"] = True
+        if args.trace:
+            if not exp["config"].get("eager"):
+                raise ValueError("Must enable --eager to enable tracing.")
+            exp["config"]["eager_tracing"] = True
 
     if args.ray_num_nodes:
         cluster = Cluster()

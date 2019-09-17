@@ -25,7 +25,7 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0  # add --eager for eager execution
+  rllib train --run=PPO --env=CartPole-v0  # --eager [--trace] for eager execution
 
 .. code-block:: python
 
