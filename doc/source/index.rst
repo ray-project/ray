@@ -254,8 +254,6 @@ Getting Involved
    :maxdepth: -1
    :caption: Examples
 
-   using-ray-with-tensorflow.rst
-   using-ray-with-pytorch.rst
    auto_examples/overview.rst
    auto_examples/plot_lbfgs.rst
    auto_examples/plot_newsreader.rst
@@ -265,6 +263,8 @@ Getting Involved
    auto_examples/plot_streaming.rst
    auto_examples/plot_parameter_server.rst
    auto_examples/plot_example-a3c.rst
+   using-ray-with-tensorflow.rst
+   using-ray-with-pytorch.rst
 
 .. toctree::
    :maxdepth: -1

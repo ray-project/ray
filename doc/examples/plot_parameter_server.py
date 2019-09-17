@@ -283,6 +283,7 @@ print("Final accuracy is {:.1f}.".format(accuracy))
 # server with a few lines of code as part of a Python application.
 # As a result, this simplifies the deployment of applications that use
 # parameter servers and to modify the behavior of the parameter server.
+#
 # For example, sharding the parameter server, changing the update rule,
 # switch between asynchronous and synchronous updates, ignoring
 # straggler workers, or any number of other customizations,

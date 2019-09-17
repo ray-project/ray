@@ -8,8 +8,9 @@ tuning script that evaluates a set of hyperparameters in parallel.
 This script will demonstrate how to use the ``ray.remote`` API for functions
 along with ``ray.wait``.
 
-For a production-grade implementation of distributed hyperparameter tuning,
-use `Tune`_, a scalable hyperparameter tuning library built using Ray's Actor API.
+.. important:: For a production-grade implementation of distributed
+    hyperparameter tuning, use `Tune`_, a scalable hyperparameter
+    tuning library built using Ray's Actor API.
 
 .. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
 """
