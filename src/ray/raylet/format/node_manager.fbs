@@ -8,6 +8,7 @@ enum MessageType:int {
   // Task is submitted to the raylet. This is sent from a worker to a
   // raylet.
   SubmitTask = 1,
+  SubmitTaskReply,
   // Notify the raylet that a task has finished. This is sent from a
   // worker to a raylet.
   TaskDone,
@@ -95,6 +96,9 @@ table Task {
 
 table SubmitTaskRequest {
   task_specs: [string];
+}
+
+table SubmitTaskReply {
 }
 
 // This message describes a given resource that is reserved for a worker.

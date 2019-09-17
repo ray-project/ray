@@ -138,6 +138,7 @@ class CoreWorkerTaskInterface {
                           std::unique_ptr<RayletClient> &raylet_client,
                           CoreWorkerObjectInterface &object_interface,
                           boost::asio::io_service &io_service,
+                          boost::asio::io_service &raylet_io_service,
                           gcs::RedisGcsClient &gcs_client);
 
   /// Submit a normal task.
@@ -210,12 +211,11 @@ class CoreWorkerTaskInterface {
 
   /// Pending tasks for submission. Guarded by task_batch_lock_.
   std::vector<TaskSpecification> task_batch_;
+  boost::asio::io_service& raylet_io_service_;
 
   /// Protects task_batch_.
   std::recursive_mutex task_batch_lock_;
-
-  /// Timer for flushing the task batch.
-  boost::asio::deadline_timer batch_timer_;
+  bool flushing_ = false;
 
   friend class CoreWorkerTest;
 };

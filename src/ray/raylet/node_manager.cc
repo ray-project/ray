@@ -832,6 +832,17 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
+    flatbuffers::FlatBufferBuilder fbb;
+    flatbuffers::Offset<protocol::SubmitTaskReply> reply = protocol::CreateSubmitTaskReply(fbb);
+    fbb.Finish(reply);
+    auto status =
+        client->WriteMessage(static_cast<int64_t>(protocol::MessageType::SubmitTaskReply),
+                             fbb.GetSize(), fbb.GetBufferPointer());
+    if (!status.ok()) {
+      RAY_LOG(WARNING)
+          << "Failed to send WaitReply to client, so disconnecting client";
+      ProcessDisconnectClientMessage(client);
+    }
   } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
@@ -1125,13 +1136,13 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   if (tasks.size() == 1) {
     // Submit the task to the raylet. Since the task was submitted
     // locally, there is no uncommitted lineage.
-    auto start = current_sys_time_us();
+//    auto start = current_sys_time_us();
     const auto& task = Task(*tasks[0]);
-    RAY_LOG(INFO) << "copy submit task time " << (current_sys_time_us() - start);
+//    RAY_LOG(INFO) << "copy submit task time " << (current_sys_time_us() - start);
     SubmitTask(task, Lineage());
-    RAY_LOG(INFO) << "handle submit task time " << (current_sys_time_us() - start);
+//    RAY_LOG(INFO) << "handle submit task time " << (current_sys_time_us() - start);
   } else {
-    auto start = current_sys_time_us();
+//    auto start = current_sys_time_us();
     // Vector case.
     std::vector<TaskSpecification> task_specs;
     for (const auto &task : tasks) {
@@ -1141,7 +1152,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
     const auto& tb = Task(TaskExecutionSpecification(tasks[0]->task_execution_spec()), task_specs);
 //    RAY_LOG(INFO) << "construct submit2 task time " << (current_sys_time_us() - start);
     SubmitTask(tb, Lineage());
-    RAY_LOG(INFO) << "handle submit task time " << (current_sys_time_us() - start);
+//    RAY_LOG(INFO) << "handle submit task time " << (current_sys_time_us() - start);
   }
 }
 

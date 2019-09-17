@@ -101,8 +101,9 @@ void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
+    boost::asio::io_service &raylet_io_service,
     gcs::RedisGcsClient &gcs_client)
-    : worker_context_(worker_context), batch_timer_(io_service) {
+    : worker_context_(worker_context), raylet_io_service_(raylet_io_service) {
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
@@ -158,20 +159,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
 
   std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
   task_batch_.push_back(builder.Build());
-
-  if (task_batch_.size() >= MAX_TASK_BATCH_SIZE) {
-    FlushTaskBatch();
-  } else {
-    batch_timer_.expires_from_now(
-        boost::posix_time::milliseconds(TASK_SUBMIT_BATCH_MILLIS));
-    batch_timer_.async_wait([this](const boost::system::error_code &error) {
-      if (error == boost::asio::error::operation_aborted) {
-        return;  // time deadline was adjusted
-      }
-      RAY_LOG(INFO) << "Flushing task batch since timer expired";
-      FlushTaskBatch();
-    });
-  }
+  FlushTaskBatch();
   return Status::OK();
 }
 
@@ -254,10 +242,21 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
 
 void CoreWorkerTaskInterface::FlushTaskBatch() {
   std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
-  if (!task_batch_.empty()) {
-    task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(task_batch_);
-    task_batch_.clear();
-  }
+
+  if (task_batch_.empty()) return;
+  if (flushing_) return;
+
+  flushing_ = true;
+  auto copy = task_batch_;
+
+  raylet_io_service_.post([this, copy]() {
+    RAY_LOG(INFO) << "Flush task batch of size " << copy.size();
+    task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(copy);
+    std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
+    flushing_ = false;
+    FlushTaskBatch();
+  });
+  task_batch_.clear();
 }
 
 }  // namespace ray
