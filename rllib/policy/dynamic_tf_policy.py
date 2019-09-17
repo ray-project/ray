@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+"""Graph mode TF policy built using build_tf_policy()."""
 
 from collections import OrderedDict
 import logging

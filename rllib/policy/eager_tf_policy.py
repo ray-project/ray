@@ -1,8 +1,12 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+"""Eager mode TF policy built using build_tf_policy().
+
+It supports both traced and non-traced eager execution modes."""
 
 import logging
+import functools
 import numpy as np
 
 from ray.rllib.evaluation.episode import _flatten_action
@@ -19,11 +23,141 @@ tf = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
+def _convert_to_tf(x):
+    if isinstance(x, SampleBatch):
+        x = {k: v for k, v in x.items() if k != SampleBatch.INFOS}
+        return tf.nest.map_structure(_convert_to_tf, x)
+    if isinstance(x, Policy):
+        return x
+
+    if x is not None:
+        x = tf.nest.map_structure(tf.convert_to_tensor, x)
+    return x
+
+
+def _convert_to_numpy(x):
+    if x is None:
+        return None
+    try:
+        return x.numpy()
+    except AttributeError:
+        raise TypeError(
+            ("Object of type {} has no method to convert to numpy.").format(
+                type(x)))
+
+
+def convert_eager_inputs(func):
+    @functools.wraps(func)
+    def _func(*args, **kwargs):
+        if tf.executing_eagerly():
+            args = [_convert_to_tf(x) for x in args]
+            # TODO(gehring): find a way to remove specific hacks
+            kwargs = {
+                k: _convert_to_tf(v)
+                for k, v in kwargs.items()
+                if k not in {"info_batch", "episodes"}
+            }
+        return func(*args, **kwargs)
+
+    return _func
+
+
+def convert_eager_outputs(func):
+    @functools.wraps(func)
+    def _func(*args, **kwargs):
+        out = func(*args, **kwargs)
+        if tf.executing_eagerly():
+            out = tf.nest.map_structure(_convert_to_numpy, out)
+        return out
+
+    return _func
+
+
 def _disallow_var_creation(next_creator, **kw):
     v = next_creator(**kw)
     raise ValueError("Detected a variable being created during an eager "
                      "forward pass. Variables should only be created during "
                      "model initialization: {}".format(v.name))
+
+
+def traced_eager_policy(eager_policy_cls):
+    """Wrapper that enables tracing for all eager policy methods.
+
+    This is enabled by the --trace / "eager_tracing" config."""
+
+    class TracedEagerPolicy(eager_policy_cls):
+        def __init__(self, *args, **kwargs):
+            self._traced_learn_on_batch = None
+            self._traced_compute_actions = None
+            self._traced_compute_gradients = None
+            self._traced_apply_gradients = None
+            super(TracedEagerPolicy, self).__init__(*args, **kwargs)
+
+        @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def learn_on_batch(self, samples):
+
+            if self._traced_learn_on_batch is None:
+                self._traced_learn_on_batch = tf.function(
+                    super(TracedEagerPolicy, self).learn_on_batch,
+                    autograph=False)
+
+            return self._traced_learn_on_batch(samples)
+
+        @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def compute_actions(self,
+                            obs_batch,
+                            state_batches,
+                            prev_action_batch=None,
+                            prev_reward_batch=None,
+                            info_batch=None,
+                            episodes=None,
+                            **kwargs):
+
+            obs_batch = tf.convert_to_tensor(obs_batch)
+            state_batches = _convert_to_tf(state_batches)
+            prev_action_batch = _convert_to_tf(prev_action_batch)
+            prev_reward_batch = _convert_to_tf(prev_reward_batch)
+
+            if self._traced_compute_actions is None:
+                self._traced_compute_actions = tf.function(
+                    super(TracedEagerPolicy, self).compute_actions,
+                    autograph=False)
+
+            return self._traced_compute_actions(
+                obs_batch, state_batches, prev_action_batch, prev_reward_batch,
+                info_batch, episodes, **kwargs)
+
+        @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def compute_gradients(self, samples):
+
+            if self._traced_compute_gradients is None:
+                self._traced_compute_gradients = tf.function(
+                    super(TracedEagerPolicy, self).compute_gradients,
+                    autograph=False)
+
+            return self._traced_compute_gradients(samples)
+
+        @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def apply_gradients(self, grads):
+
+            if self._traced_apply_gradients is None:
+                self._traced_apply_gradients = tf.function(
+                    super(TracedEagerPolicy, self).apply_gradients,
+                    autograph=False)
+
+            return self._traced_apply_gradients(grads)
+
+    TracedEagerPolicy.__name__ = eager_policy_cls.__name__
+    TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
+    return TracedEagerPolicy
 
 
 def build_eager_tf_policy(name,
@@ -133,6 +267,8 @@ def build_eager_tf_policy(name,
                 return samples
 
         @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
         def learn_on_batch(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
@@ -140,14 +276,17 @@ def build_eager_tf_policy(name,
             return stats
 
         @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
         def compute_gradients(self, samples):
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, stats = self._compute_gradients(samples)
             grads = [g for g, v in grads_and_vars]
-            grads = [(g.numpy() if g is not None else None) for g in grads]
             return grads, stats
 
         @override(Policy)
+        @convert_eager_inputs
+        @convert_eager_outputs
         def compute_actions(self,
                             obs_batch,
                             state_batches,
@@ -157,41 +296,46 @@ def build_eager_tf_policy(name,
                             episodes=None,
                             **kwargs):
 
-            assert tf.executing_eagerly()
+            # TODO: remove python side effect to cull sources of bugs.
             self._is_training = False
+            self._state_in = state_batches
 
-            self._seq_lens = tf.ones(len(obs_batch))
-            self._input_dict = {
+            if tf.executing_eagerly():
+                n = len(obs_batch)
+            else:
+                n = obs_batch.shape[0]
+
+            seq_lens = tf.ones(n)
+            input_dict = {
                 SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch),
-                "is_training": tf.convert_to_tensor(False),
+                "is_training": tf.constant(False),
             }
             if obs_include_prev_action_reward:
-                self._input_dict.update({
+                input_dict.update({
                     SampleBatch.PREV_ACTIONS: tf.convert_to_tensor(
                         prev_action_batch),
                     SampleBatch.PREV_REWARDS: tf.convert_to_tensor(
                         prev_reward_batch),
                 })
-            self._state_in = state_batches
+
             with tf.variable_creator_scope(_disallow_var_creation):
-                model_out, state_out = self.model(
-                    self._input_dict, state_batches, self._seq_lens)
+                model_out, state_out = self.model(input_dict, state_batches,
+                                                  seq_lens)
 
             if self.dist_class:
                 action_dist = self.dist_class(model_out, self.model)
-                action = action_dist.sample().numpy()
+                action = action_dist.sample()
                 logp = action_dist.sampled_action_logp()
             else:
                 action, logp = action_sampler_fn(
-                    self, self.model, self._input_dict, self.observation_space,
+                    self, self.model, input_dict, self.observation_space,
                     self.action_space, self.config)
-                action = action.numpy()
 
             fetches = {}
             if logp is not None:
                 fetches.update({
-                    ACTION_PROB: tf.exp(logp).numpy(),
-                    ACTION_LOGP: logp.numpy(),
+                    ACTION_PROB: tf.exp(logp),
+                    ACTION_LOGP: logp,
                 })
             if extra_action_fetches_fn:
                 fetches.update(extra_action_fetches_fn(self))
@@ -248,14 +392,9 @@ def build_eager_tf_policy(name,
 
             self._is_training = True
 
-            samples = {
-                k: tf.convert_to_tensor(v)
-                for k, v in samples.items() if v.dtype != np.object
-            }
-
             with tf.GradientTape(persistent=gradients_fn is not None) as tape:
                 # TODO: set seq len and state in properly
-                self._seq_lens = tf.ones(len(samples[SampleBatch.CUR_OBS]))
+                self._seq_lens = tf.ones(samples[SampleBatch.CUR_OBS].shape[0])
                 self._state_in = []
                 model_out, _ = self.model(samples, self._state_in,
                                           self._seq_lens)
@@ -288,23 +427,22 @@ def build_eager_tf_policy(name,
             return grads_and_vars, stats
 
         def _stats(self, outputs, samples, grads):
-            assert tf.executing_eagerly()
+
             fetches = {}
             if stats_fn:
                 fetches[LEARNER_STATS_KEY] = {
-                    k: v.numpy()
+                    k: v
                     for k, v in stats_fn(outputs, samples).items()
                 }
             else:
                 fetches[LEARNER_STATS_KEY] = {}
             if extra_learn_fetches_fn:
-                fetches.update({
-                    k: v.numpy()
-                    for k, v in extra_learn_fetches_fn(self).items()
-                })
+                fetches.update(
+                    {k: v
+                     for k, v in extra_learn_fetches_fn(self).items()})
             if grad_stats_fn:
                 fetches.update({
-                    k: v.numpy()
+                    k: v
                     for k, v in grad_stats_fn(self, samples, grads).items()
                 })
             return fetches
@@ -379,6 +517,10 @@ def build_eager_tf_policy(name,
             loss_fn(self, self.model, self.dist_class, postprocessed_batch)
             if stats_fn:
                 stats_fn(self, postprocessed_batch)
+
+        @classmethod
+        def with_tracing(cls):
+            return traced_eager_policy(cls)
 
     eager_policy_cls.__name__ = name + "_eager"
     eager_policy_cls.__qualname__ = name + "_eager"
