@@ -382,7 +382,7 @@ cdef class Pickle5Writer:
             (<int32_t*>ptr)[0] = self.readonlys[i]
             (<int32_t*>ptr)[1] = self.ndims[i]
             (<int32_t*>ptr)[2] = self.format_offsets[i]
-            (<int32_t*>ptr)[2] = self.shape_stride_offsets[i]
+            (<int32_t*>ptr)[3] = self.shape_stride_offsets[i]
             ptr += sizeof(int32_t) * 4
         memcpy(ptr, self.shape_strides.data(), self.shape_strides.size() * sizeof(Py_ssize_t))
         ptr += self.shape_strides.size() * sizeof(Py_ssize_t)
@@ -409,7 +409,7 @@ def unpack_pickle5_buffers(Buffer buf):
         const uint8_t* format_entry
         const uint8_t* buffer_entry
         Py_buffer buffer
-        int32_t format_offset
+        int32_t format_offset, shape_offset
 
     if PY_VERSION_HEX < 0x03060000:
         raise ValueError("This function requires Python >=3.6 for pickle5 support.")
@@ -457,11 +457,12 @@ def unpack_pickle5_buffers(Buffer buf):
         buffer.readonly = (<int32_t*>buffer_meta_ptr)[0]
         buffer.ndim = (<int32_t*>buffer_meta_ptr)[1]
         format_offset = (<int32_t*>buffer_meta_ptr)[2]
+        shape_offset = (<int32_t*>buffer_meta_ptr)[3]
         if format_offset < 0:
             buffer.format = NULL
         else:
-            buffer.format = <char *>(format_entry + (<int32_t*>buffer_meta_ptr)[2])
-        buffer.shape = <Py_ssize_t *>(shape_stride_entry + (<int32_t*>buffer_meta_ptr)[3])
+            buffer.format = <char *>(format_entry + format_offset)
+        buffer.shape = <Py_ssize_t *>(shape_stride_entry + shape_offset)
         buffer.strides = buffer.shape + buffer.ndim
         buffer.internal = NULL
         buffer.suboffsets = NULL
