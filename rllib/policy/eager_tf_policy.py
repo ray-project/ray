@@ -136,8 +136,7 @@ def traced_eager_policy(eager_policy_cls):
                 prev_reward_batch,
                 info_batch,
                 episodes,
-                **kwargs,
-            )
+                **kwargs)
 
         @override(Policy)
         @convert_eager_inputs
