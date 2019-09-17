@@ -1,6 +1,6 @@
 """
-Parallel Asynchronous Hyperparameter Tuning
-===========================================
+Simple Parallel Model Selection
+===============================
 
 In this example, we'll demonstrate how to quickly write a hyperparameter
 tuning script that evaluates a set of hyperparameters in parallel.

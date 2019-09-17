@@ -1,12 +1,6 @@
 Examples Overview
 =================
 
-Below is a gallery of examples
-
-
-Getting Started
----------------
-
 .. customgalleryitem::
    :tooltip: Parallelize computations across processes and clusters of machines
    :description: :doc:`/auto_examples/plot_hyperparameter`
