@@ -74,12 +74,21 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
+// TODO(edoakes): remove this once Python core worker uses the task interfaces.
+void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
+
+// TODO(edoakes): remove this once Python core worker uses the task interfaces.
+void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
+  GetThreadContext().SetCurrentTaskId(task_id);
+}
+
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  current_job_id_ = task_spec.JobId();
+  SetCurrentJobId(task_spec.JobId());
   GetThreadContext().SetCurrentTask(task_spec);
   if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
+    current_actor_use_direct_call_ = task_spec.IsDirectCall();
   }
   if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
@@ -90,6 +99,10 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 }
 
 const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
+
+bool WorkerContext::CurrentActorUseDirectCall() const {
+  return current_actor_use_direct_call_;
+}
 
 WorkerThreadContext &WorkerContext::GetThreadContext() {
   if (thread_context_ == nullptr) {

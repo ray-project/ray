@@ -7,7 +7,7 @@ repo: https://github.com/huggingface/pytorch-transformers
 cluster: .rayproject/cluster.yaml
 
 environment:
-  requirements: requirements.txt
+  requirements: .rayproject/requirements.txt
 
 commands:
   - name: train

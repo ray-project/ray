@@ -7,42 +7,84 @@
 
 namespace ray {
 
-//
-// CoreWorkerMemoryStoreProvider functions
-//
 CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
     std::shared_ptr<CoreWorkerMemoryStore> store)
     : store_(store) {
   RAY_CHECK(store != nullptr);
 }
 
+Status CoreWorkerMemoryStoreProvider::SetClientOptions(std::string name,
+                                                       int64_t limit_bytes) {
+  return Status::NotImplemented(
+      "SetClientOptions() not implemented for in-memory store.");
+}
+
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  return store_->Put(object_id, object);
+  Status status = store_->Put(object_id, object);
+  if (status.IsObjectExists()) {
+    // Object already exists in store, treat it as ok.
+    return Status::OK();
+  }
+  return status;
+}
+
+Status CoreWorkerMemoryStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
+                                             const size_t data_size,
+                                             const ObjectID &object_id,
+                                             std::shared_ptr<Buffer> *data) {
+  return Status::NotImplemented(
+      "Create/Seal interface not implemented for in-memory store.");
+}
+
+Status CoreWorkerMemoryStoreProvider::Seal(const ObjectID &object_id) {
+  return Status::NotImplemented(
+      "Create/Seal interface not implemented for in-memory store.");
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(
-    const std::vector<ObjectID> &object_ids, int64_t timeout_ms, const TaskID &task_id,
-    std::vector<std::shared_ptr<RayObject>> *results) {
-  return store_->Get(object_ids, object_ids.size(), timeout_ms, true, results);
+    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const TaskID &task_id,
+    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    bool *got_exception) {
+  const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<std::shared_ptr<RayObject>> result_objects;
+  RAY_RETURN_NOT_OK(
+      store_->Get(id_vector, id_vector.size(), timeout_ms, true, &result_objects));
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i] != nullptr) {
+      (*results)[id_vector[i]] = result_objects[i];
+      if (result_objects[i]->IsException()) {
+        *got_exception = true;
+      }
+    }
+  }
+  return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Wait(const std::vector<ObjectID> &object_ids,
+Status CoreWorkerMemoryStoreProvider::Contains(const ObjectID &object_id,
+                                               bool *has_object) {
+  return Status::NotImplemented("Contains() not implemented for in-memory store.");
+}
+
+Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
-                                           std::vector<bool> *results) {
-  (*results).resize(object_ids.size(), false);
-
+                                           std::unordered_set<ObjectID> *ready) {
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
-  auto status = store_->Get(object_ids, num_objects, timeout_ms, false, &result_objects);
-  if (status.ok()) {
-    RAY_CHECK(result_objects.size() == object_ids.size());
-    for (size_t i = 0; i < object_ids.size(); i++) {
-      (*results)[i] = (result_objects[i] != nullptr);
+  RAY_CHECK(object_ids.size() == id_vector.size());
+  RAY_RETURN_NOT_OK(
+      store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects));
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i] != nullptr) {
+      ready->insert(id_vector[i]);
     }
   }
 
-  return status;
+  return Status::OK();
 }
 
 Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
@@ -51,5 +93,7 @@ Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object
   store_->Delete(object_ids);
   return Status::OK();
 }
+
+std::string CoreWorkerMemoryStoreProvider::MemoryUsageString() { return ""; }
 
 }  // namespace ray

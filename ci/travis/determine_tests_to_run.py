@@ -5,6 +5,9 @@ from __future__ import print_function
 
 import os
 import subprocess
+import sys
+from functools import partial
+from pprint import pformat
 
 
 def list_changed_files(commit_range):
@@ -30,6 +33,7 @@ if __name__ == "__main__":
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
@@ -39,6 +43,8 @@ if __name__ == "__main__":
 
         files = list_changed_files(os.environ["TRAVIS_COMMIT_RANGE"].replace(
             "...", ".."))
+
+        print(pformat(files), file=sys.stderr)
 
         skip_prefix_list = [
             "doc/", "examples/", "dev/", "docker/", "kubernetes/", "site/"
@@ -54,9 +60,14 @@ if __name__ == "__main__":
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/experimental/serve"):
+                RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -70,6 +81,7 @@ if __name__ == "__main__":
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -77,6 +89,7 @@ if __name__ == "__main__":
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -84,16 +97,22 @@ if __name__ == "__main__":
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
+        RAY_CI_SERVE_AFFECTED = 1
         RAY_CI_JAVA_AFFECTED = 1
         RAY_CI_PYTHON_AFFECTED = 1
         RAY_CI_LINUX_WHEELS_AFFECTED = 1
         RAY_CI_MACOS_WHEELS_AFFECTED = 1
 
-    print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
-    print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
-    print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
-    print("export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
-    print("export RAY_CI_LINUX_WHEELS_AFFECTED={}"
-          .format(RAY_CI_LINUX_WHEELS_AFFECTED))
-    print("export RAY_CI_MACOS_WHEELS_AFFECTED={}"
-          .format(RAY_CI_MACOS_WHEELS_AFFECTED))
+    # Log the modified environment variables visible in console.
+    for output_stream in [sys.stdout, sys.stderr]:
+        _print = partial(print, file=output_stream)
+        _print("export RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED))
+        _print("export RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED))
+        _print("export RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED))
+        _print("export RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED))
+        _print(
+            "export RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED))
+        _print("export RAY_CI_LINUX_WHEELS_AFFECTED={}"
+               .format(RAY_CI_LINUX_WHEELS_AFFECTED))
+        _print("export RAY_CI_MACOS_WHEELS_AFFECTED={}"
+               .format(RAY_CI_MACOS_WHEELS_AFFECTED))

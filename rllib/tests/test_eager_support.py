@@ -12,6 +12,11 @@ def check_support(alg, config):
     else:
         config["env"] = "CartPole-v0"
     a = get_agent_class(alg)
+
+    config["eager_tracing"] = False
+    tune.run(a, config=config, stop={"training_iteration": 0})
+
+    config["eager_tracing"] = True
     tune.run(a, config=config, stop={"training_iteration": 0})
 
 
@@ -49,30 +54,6 @@ class TestEagerSupport(unittest.TestCase):
     def testAPEX_DQN(self):
         check_support(
             "APEX", {
-                "num_workers": 2,
-                "learning_starts": 0,
-                "num_gpus": 0,
-                "min_iter_time_s": 1,
-                "timesteps_per_iteration": 100
-            })
-
-    def testDDPG(self):
-        check_support("DDPG", {
-            "num_workers": 0,
-            "learning_starts": 0,
-            "timesteps_per_iteration": 10
-        })
-
-    def testTD3(self):
-        check_support("TD3", {
-            "num_workers": 0,
-            "learning_starts": 0,
-            "timesteps_per_iteration": 10
-        })
-
-    def testAPEX_DDPG(self):
-        check_support(
-            "APEX_DDPG", {
                 "num_workers": 2,
                 "learning_starts": 0,
                 "num_gpus": 0,
