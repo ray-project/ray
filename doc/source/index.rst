@@ -271,4 +271,4 @@ Getting Involved
    development.rst
    profiling.rst
    fault-tolerance.rst
-   contrib.rst
+   getting-involved.rst
