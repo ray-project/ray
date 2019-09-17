@@ -248,15 +248,14 @@ if __name__ == '__main__':
         mode="max",
         perturbation_interval=20,
         hyperparam_mutations={
-            "dropout": lambda _: np.random.uniform(0, 1)
+            "dropout": lambda: np.random.uniform(0, 1)
         })
     
     run(MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
         stop={
-            "mean_accuracy": 0.98,
-            "training_iteration": 10000
+            "training_iteration": 50
         },
         num_samples=10,
         **{
