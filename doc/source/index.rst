@@ -254,6 +254,8 @@ Getting Involved
    :maxdepth: -1
    :caption: Examples
 
+   using-ray-with-tensorflow.rst
+   using-ray-with-pytorch.rst
    auto_examples/overview.rst
    auto_examples/plot_lbfgs.rst
    auto_examples/plot_newsreader.rst

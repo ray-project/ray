@@ -2,17 +2,21 @@
 Parameter Server
 ================
 
-Parameter servers are a core part of many machine learning applications.
-Their role is to store the parameters of a machine learning model (e.g.,
-the weights of a neural network) and to serve them to clients (
-clients are often workers that process data and compute updates to the
-parameters).
+The parameter server is a framework for distributed machine learning
 
-This document walks through how to implement simple synchronous and asynchronous
-parameter servers using actors.
+In the parameter server framework, a server (or a group of server nodes)
+maintains global shared parameters of a machine-learning model
+(e.g., a neural network). Meanwhile, the data and workload of calculating
+updates (i.e., gradient descent updates) is distributed over worker nodes.
 
-.. note:: This example is mainly a proof of concept and will not achieve
-    extremely high throughput.
+.. image:: ../images/param_actor.png
+    :align: center
+
+Parameter servers are a core part of many machine learning applications. This
+document walks through how to implement simple synchronous and asynchronous
+parameter servers using Ray actors.
+
+.. note:: This example is mainly a proof of concept.
 
 To run the application, first install some dependencies.
 
@@ -21,15 +25,8 @@ To run the application, first install some dependencies.
   pip install torch torchvision filelock
 
 
-What is a Parameter Server?
----------------------------
-
-A parameter server is a store used for training machine
-learning models on a cluster. It holds the parameters of a
-machine-learning model (e.g., a neural network).
-
-.. image:: ../images/param_actor.png
-    :align: center
+Setup: Dependencies
+-------------------
 
 Let's first define some helper functions and import some dependencies.
 
@@ -88,8 +85,8 @@ def evaluate(model, test_loader):
 
 
 #######################################################################
-# Defining the Neural Network
-# ---------------------------
+# Setup: Defining the Neural Network
+# ----------------------------------
 #
 # We define a small neural network to use in training. We provide
 # some helper functions for obtaining data, including getter/setter
@@ -130,13 +127,16 @@ class ConvNet(nn.Module):
 ###########################################################################
 # Defining the Parameter Server
 # -----------------------------
+#
 # The parameter server will hold a copy of the model.
 # During training, it will
-#   1. receive gradients and apply them to its model.
-#   2. Send the updated model back to the workers.
 #
-# The @ray.remote decorator defines a remote process. It wraps the
-# ParameterServer class and allows it to be instantiated as a
+# 1. receive gradients and apply them to its model.
+#
+# 2. Send the updated model back to the workers.
+#
+# The ``@ray.remote`` decorator defines a remote process. It wraps the
+# ParameterServer class and allows users to instantiate it as a
 # remote process or actor.
 
 @ray.remote
@@ -163,9 +163,8 @@ class ParameterServer(object):
 # -------------------
 # The worker will also hold a copy of the model. During training. it will
 # continuously evaluate data and send gradients
-# to the parameter server. The worker will update its model after sending
-# gradients to the parameter server.
-
+# to the parameter server. The worker will synchronize its model with the
+# Parameter Server model weights.
 
 @ray.remote
 class DataWorker(object):
@@ -177,7 +176,7 @@ class DataWorker(object):
         self.model.set_weights(weights)
         try:
             data, target = next(self.data_iterator)
-        except StopIteration:
+        except StopIteration:  # When the epoch ends, start a new epoch.
             self.data_iterator = iter(get_data_loader()[0])
             data, target = next(self.data_iterator)
         self.model.zero_grad()
@@ -208,9 +207,10 @@ model = ConvNet()
 test_loader = get_data_loader()[1]
 
 ###########################################################################
-# Training alternates between computing the gradients given the current weights
-# from the parameter server and updating the parameter server's weights with the
-# resulting gradients.
+# Training alternates between
+#
+# 1. Computing the gradients given the current weights from the server
+# 2. updating the parameter server's weights with the gradients.
 
 print("Running Synchronous Parameter Server Training.")
 current_weights = ps.get_weights.remote()
@@ -219,6 +219,7 @@ for i in range(iterations):
         worker.compute_gradients.remote(current_weights)
         for worker in workers
     ]
+    # Calculate update after all gradients are available.
     current_weights = ps.apply_gradients.remote(*gradients)
 
     if i % 10 == 0:
@@ -228,12 +229,12 @@ for i in range(iterations):
         print("Iter {}: \taccuracy is {:.1f}".format(i, accuracy))
 
 print("Final accuracy is {:.1f}.".format(accuracy))
-# We can
+# We can kill all existing Ray processes manually.
 ray.shutdown()
 
 ###########################################################################
-# Synchronous Parameter Server Training
-# -------------------------------------
+# Asynchronous Parameter Server Training
+# --------------------------------------
 # We'll now create a synchronous parameter server training scheme. We'll first
 # instantiate a process for the parameter server, along with multiple
 # workers.
@@ -250,7 +251,7 @@ workers = [DataWorker.remote() for i in range(num_workers)]
 # Here, workers will asynchronously compute the gradients given its
 # current weights, and send these gradients to the parameter server as
 # soon as it is ready. When the Parameter server finishes applying the
-# new gradient, it will send back a copy of the current weights to the
+# new gradient, the server will send back a copy of the current weights to the
 # worker. The worker will then update the weights and continue.
 
 current_weights = ps.get_weights.remote()
