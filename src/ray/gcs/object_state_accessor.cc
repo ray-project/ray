@@ -50,13 +50,6 @@ Status ObjectStateAccessor::AsyncDelete(const ObjectID &object_id,
   return object_table.Remove(JobID::Nil(), object_id, data_ptr, on_done);
 }
 
-Status ObjectStateAccessor::AsyncSubscribeAll(
-    const SubscribeCallback<ObjectID, ObjectNotification> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  return object_sub_executor_.AsyncSubscribe(node_id_, subscribe, done);
-}
-
 Status ObjectStateAccessor::AsyncSubscribe(
     const ObjectID &object_id,
     const SubscribeCallback<ObjectID, ObjectNotification> &subscribe,
