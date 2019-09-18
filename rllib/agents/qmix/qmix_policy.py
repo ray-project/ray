@@ -60,8 +60,6 @@ class QMixLoss(nn.Module):
             next_action_mask: Tensor of shape [B, T, n_agents, n_actions]
         """
 
-        B, T = obs.size(0), obs.size(1)
-
         # Calculate estimated Q-Values
         mac_out = _unroll_mac(self.model, obs)
 
@@ -452,13 +450,10 @@ def _unroll_mac(model, obs_tensor):
     n_agents = obs_tensor.size(2)
 
     mac_out = []
-    h = [
-        s.expand([B, n_agents, -1])
-        for s in model.get_initial_state()
-    ]
+    h = [s.expand([B, n_agents, -1]) for s in model.get_initial_state()]
     for t in range(T):
         q, h = _mac(model, obs_tensor[:, t], h)
         mac_out.append(q)
-    mac_out = th.stack(mac_out, dim=1) # Concat over time
+    mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
     return mac_out
