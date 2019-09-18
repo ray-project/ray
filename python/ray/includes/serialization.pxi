@@ -1,6 +1,5 @@
-from cpython cimport Py_buffer, PY_VERSION_HEX
+from cpython cimport PY_VERSION_HEX
 from libc.string cimport strlen, memcpy
-from ray.includes.common cimport PyMemoryView_FromBuffer
 from libc.stdint cimport uintptr_t
 from cython.parallel cimport prange
 
@@ -17,15 +16,83 @@ cdef int64_t padded_length(int64_t offset, int64_t alignment):
     return ((offset + alignment - 1) // alignment) * alignment
 
 
-cdef uint8_t* pointer_logical_and(const uint8_t*address, uintptr_t bits):
-    return <uint8_t*> ((<uintptr_t>address) & bits)
+cdef uint8_t* pointer_logical_and(const uint8_t *address, uintptr_t bits):
+    return <uint8_t*> ((<uintptr_t> address) & bits)
 
 
-cdef void parallel_memcopy(uint8_t*dst, const uint8_t*src, int64_t nbytes,
+cdef class SubBuffer:
+    cdef:
+        void *buf
+        Py_ssize_t len
+        int readonly
+        const char *format
+        int ndim
+        Py_ssize_t *shape
+        Py_ssize_t *strides
+        Py_ssize_t *suboffsets
+        Py_ssize_t itemsize
+        void *internal
+        object buffer
+
+    def __cinit__(self, Buffer buffer):
+        # Increase ref count.
+        self.buffer = buffer
+
+    def __len__(self):
+        return self.len // self.itemsize
+
+    @property
+    def nbytes(self):
+        """
+        The buffer size in bytes.
+        """
+        return self.len
+
+    def tobytes(self):
+        """
+        Return this buffer as a Python bytes object. Memory is copied.
+        """
+        return PyBytes_FromStringAndSize(
+            <const char*> self.buf, self.len)
+
+    def __getbuffer__(self, Py_buffer* buffer, int flags):
+        buffer.readonly = self.readonly
+        buffer.buf = self.buf
+        buffer.format = <char *>self.format
+        buffer.internal = NULL
+        buffer.itemsize = self.itemsize
+        buffer.len = self.len
+        buffer.ndim = self.ndim
+        buffer.obj = self
+        buffer.shape = self.shape
+        buffer.strides = self.strides
+        buffer.suboffsets = self.suboffsets
+
+    def __getsegcount__(self, Py_ssize_t *len_out):
+        if len_out != NULL:
+            len_out[0] = <Py_ssize_t> self.size
+        return 1
+
+    def __getreadbuffer__(self, Py_ssize_t idx, void ** p):
+        if idx != 0:
+            raise SystemError("accessing non-existent buffer segment")
+        if p != NULL:
+            p[0] = self.buf
+        return self.size
+
+    def __getwritebuffer__(self, Py_ssize_t idx, void ** p):
+        if idx != 0:
+            raise SystemError("accessing non-existent buffer segment")
+        if p != NULL:
+            p[0] = self.buf
+        return self.size
+
+
+cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
                            uintptr_t block_size, int num_threads):
     cdef:
-        uint8_t*left = pointer_logical_and(src + block_size - 1, ~(block_size - 1))
-        uint8_t*right = pointer_logical_and(src + nbytes, ~(block_size - 1))
+        uint8_t *left = pointer_logical_and(src + block_size - 1, ~(block_size - 1))
+        uint8_t *right = pointer_logical_and(src + nbytes, ~(block_size - 1))
         int64_t num_blocks = (right - left) // block_size
         size_t chunk_size
         int64_t prefix, suffix
@@ -72,11 +139,10 @@ def unpack_pickle5_buffers(Buffer buf):
         c_string meta_str
         int32_t n_buffers, buffer_meta_length, shape_stride_length, format_length
         int32_t buffer_meta_offset
-        const uint8_t*buffer_meta_ptr
-        const uint8_t*shape_stride_entry
-        const uint8_t*format_entry
-        const uint8_t*buffer_entry
-        Py_buffer buffer
+        const uint8_t *buffer_meta_ptr
+        const uint8_t *shape_stride_entry
+        const uint8_t *format_entry
+        const uint8_t *buffer_entry
         int32_t format_offset, shape_offset
 
     if PY_VERSION_HEX < 0x03060000:
@@ -118,6 +184,7 @@ def unpack_pickle5_buffers(Buffer buf):
     # Now read buffer meta
     for buffer_meta_offset in range(0, n_buffers):
         buffer_meta_ptr = data + buffer_meta_offset * buffer_meta_item_size
+        buffer = SubBuffer(buf)
         buffer.buf = <void*> (buffer_entry + (<int64_t*> buffer_meta_ptr)[0])
         buffer.len = (<int64_t*> buffer_meta_ptr)[1]
         buffer.itemsize = (<int64_t*> buffer_meta_ptr)[2]
@@ -129,12 +196,12 @@ def unpack_pickle5_buffers(Buffer buf):
         if format_offset < 0:
             buffer.format = NULL
         else:
-            buffer.format = <char *> (format_entry + format_offset)
+            buffer.format = <const char *> (format_entry + format_offset)
         buffer.shape = <Py_ssize_t *> (shape_stride_entry + shape_offset)
         buffer.strides = buffer.shape + buffer.ndim
         buffer.internal = NULL
         buffer.suboffsets = NULL
-        pickled_buffers.append(picklebuf_class(PyMemoryView_FromBuffer(&buffer)))
+        pickled_buffers.append(picklebuf_class(buffer))
     return meta_str, pickled_buffers
 
 
