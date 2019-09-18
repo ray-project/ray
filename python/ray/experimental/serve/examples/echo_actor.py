@@ -15,8 +15,8 @@ class EchoActor:
     def __init__(self, message):
         self.message = message
 
-    def __call__(self, context):
-        query_string_dict = urls.url_decode(context["query_string"])
+    def __call__(self, flask_request):
+        query_string_dict = flask_request.args
         message = ""
         message += query_string_dict.get("message", "")
         message += " "

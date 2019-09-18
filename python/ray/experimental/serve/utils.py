@@ -1,5 +1,6 @@
 import json
 import logging
+import io
 
 from pygments import formatters, highlight, lexers
 
@@ -29,6 +30,11 @@ class BytesEncoder(json.JSONEncoder):
     def default(self, o):  # pylint: disable=E0202
         if isinstance(o, bytes):
             return o.decode("utf-8")
+        import flask
+        if isinstance(o, flask.Request):
+            return o.__dict__
+        if isinstance(o, io.BytesIO):
+            return o.getvalue().decode("utf-8")
         return super().default(o)
 
 

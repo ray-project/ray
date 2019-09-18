@@ -1,13 +1,66 @@
 import asyncio
 import json
+from io import BytesIO
 
 import uvicorn
+from flask import Request
+import flask
 
 import ray
 from ray.experimental.async_api import _async_init, as_future
 from ray.experimental.serve.utils import BytesEncoder
 from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 
+
+def build_wsgi_environ(scope, body):
+    """
+    Builds a scope and request body into a WSGI environ object.
+
+    This code snippet is taken from https://github.com/django/asgiref/blob
+    /36c3e8dc70bf38fe2db87ac20b514f21aaf5ea9d/asgiref/wsgi.py#L52
+
+    This function helps translate ASGI scope and body into a flask request.
+    """
+    environ = {
+        "REQUEST_METHOD": scope["method"],
+        "SCRIPT_NAME": scope.get("root_path", ""),
+        "PATH_INFO": scope["path"],
+        "QUERY_STRING": scope["query_string"].decode("ascii"),
+        "SERVER_PROTOCOL": "HTTP/{}".format(scope["http_version"]),
+        "wsgi.version": (1, 0),
+        "wsgi.url_scheme": scope.get("scheme", "http"),
+        "wsgi.input": body,
+        "wsgi.errors": BytesIO(),
+        "wsgi.multithread": True,
+        "wsgi.multiprocess": True,
+        "wsgi.run_once": False,
+    }
+    # Get server name and port - required in WSGI, not in ASGI
+    if "server" in scope:
+        environ["SERVER_NAME"] = scope["server"][0]
+        environ["SERVER_PORT"] = str(scope["server"][1])
+    else:
+        environ["SERVER_NAME"] = "localhost"
+        environ["SERVER_PORT"] = "80"
+
+    if "client" in scope:
+        environ["REMOTE_ADDR"] = scope["client"][0]
+
+    # Go through headers and make them into environ entries
+    for name, value in scope.get("headers", []):
+        name = name.decode("latin1")
+        if name == "content-length":
+            corrected_name = "CONTENT_LENGTH"
+        elif name == "content-type":
+            corrected_name = "CONTENT_TYPE"
+        else:
+            corrected_name = "HTTP_%s" % name.upper().replace("-", "_")
+        # HTTPbis say only ASCII chars are allowed in headers, but we latin1 just in case
+        value = value.decode("latin1")
+        if corrected_name in environ:
+            value = environ[corrected_name] + "," + value
+        environ[corrected_name] = value
+    return environ
 
 class JSONResponse:
     """ASGI compliant response class.
@@ -28,6 +81,8 @@ class JSONResponse:
         self.body = self.render(content)
         self.status_code = status_code
         self.raw_headers = [[b"content-type", b"application/json"]]
+
+        ray.register_custom_serializer(flask.Request, use_pickle=True)
 
     def render(self, content):
         if content is None:
@@ -95,8 +150,18 @@ class HTTPProxy:
             await JSONResponse(self.route_table)(scope, receive, send)
         elif current_path in self.route_table:
             endpoint_name = self.route_table[current_path]
+
+            # TODO(simon): Parse body using a SpooledTemporaryFile like 
+            # https://github.com/django/asgiref/blob/master/asgiref/wsgi.py#37
+            flask_request = Request(build_wsgi_environ(scope, body=""))
+            print(flask_request)
+            import pickle
+            buffer = BytesIO()
+            pickle.dump(flask_request, buffer)
+            print("Pickle flask request V. len {}".format(len(buffer.getvalue())))
+
             result_object_id_bytes = await as_future(
-                self.router.enqueue_request.remote(endpoint_name, scope))
+                self.router.enqueue_request.remote(endpoint_name, flask_request))
             result = await as_future(ray.ObjectID(result_object_id_bytes))
 
             if isinstance(result, ray.exceptions.RayTaskError):

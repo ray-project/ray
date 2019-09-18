@@ -1,6 +1,7 @@
 import inspect
 
 import numpy as np
+import flask
 
 import ray
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
@@ -35,6 +36,8 @@ def init(blocking=False, object_store_memory=int(1e8)):
 
     if blocking:
         global_state.wait_until_http_ready()
+    
+    ray.register_custom_serializer(flask.Request, use_pickle=True)
 
 
 def create_endpoint(endpoint_name, route_expression, blocking=True):
