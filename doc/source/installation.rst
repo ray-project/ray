@@ -115,7 +115,7 @@ If you would like to use the dashboard, you will additionally need to install
 .. code-block:: bash
 
   cd ray/python/ray/dashboard/client
-  npm install
+  npm ci
   npm run build
 
 
