@@ -90,7 +90,6 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
             "ssh_private_key": (str, OPTIONAL),
-            "kubernetes_config": (dict, OPTIONAL),
         },
         OPTIONAL),
 

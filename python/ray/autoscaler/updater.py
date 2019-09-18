@@ -118,11 +118,9 @@ class KubernetesCommandRunner(object):
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
                            .format(e))
             self.process_runner.check_call(
-                [
-                    self.kubectl,
-                    "cp",
-                    source,
-                    "{}@{}:{}".format(self.node_id, target),
+                self.kubectl + [
+                    "cp", source, "{}/{}:{}".format(self.namespace,
+                                                    self.node_id, target)
                 ],
                 stdout=redirect,
                 stderr=redirect)
@@ -146,11 +144,9 @@ class KubernetesCommandRunner(object):
                            "rsync failed: '{}'. Falling back to 'kubectl cp'"
                            .format(e))
             self.process_runner.check_call(
-                [
-                    self.kubectl,
-                    "cp",
-                    "{}:{}".format(self.node_id, source),
-                    target,
+                self.kubectl + [
+                    "cp", "{}/{}:{}".format(self.namespace, self.node_id,
+                                            source), target
                 ],
                 stdout=redirect,
                 stderr=redirect)
