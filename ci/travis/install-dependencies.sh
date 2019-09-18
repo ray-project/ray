@@ -37,6 +37,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug
   # Install and use the latest version of Node.js in order to build the dashboard.
+  source $HOME/.nvm/nvm.sh
   nvm install node
   nvm use node
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
@@ -55,6 +56,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
     feather-format lxml openpyxl xlrd py-spy setproctitle pytest-timeout flaky networkx tabulate psutil aiohttp \
     uvicorn dataclasses pygments werkzeug
   # Install and use the latest version of Node.js in order to build the dashboard.
+  source $HOME/.nvm/nvm.sh
   nvm install node
   nvm use node
 elif [[ "$LINT" == "1" ]]; then
