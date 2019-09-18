@@ -42,6 +42,13 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
     /opt/python/${PYTHON}/bin/pip install -q numpy==${NUMPY_VERSION} cython==0.29.0
+    # Build the dashboard so its static assets can be included in the wheel.
+    pushd ray/dashboard/client
+      source $HOME/.nvm/nvm.sh
+      nvm use node
+      npm ci
+      npm run build
+    popd
     PATH=/opt/python/${PYTHON}/bin:$PATH /opt/python/${PYTHON}/bin/python setup.py bdist_wheel
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/

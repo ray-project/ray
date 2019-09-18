@@ -73,6 +73,13 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     $PIP_CMD install -q numpy==$NUMPY_VERSION cython==0.29.0
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
+    # Build the dashboard so its static assets can be included in the wheel.
+    pushd ray/dashboard/client
+      source $HOME/.nvm/nvm.sh
+      nvm use node
+      npm ci
+      npm run build
+    popd
     # Add the correct Python to the path and build the wheel. This is only
     # needed so that the installation finds the cython executable.
     PATH=$MACPYTHON_PY_PREFIX/$PY_MM/bin:$PATH $PYTHON_EXE setup.py bdist_wheel
