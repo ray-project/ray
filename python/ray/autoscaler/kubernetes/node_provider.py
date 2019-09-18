@@ -24,7 +24,7 @@ class KubernetesNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.cluster_name = cluster_name
-        self.namespace = provider_config["namespace"]["metadata"]["name"]
+        self.namespace = provider_config["namespace"]
 
     def non_terminated_nodes(self, tag_filters):
         # Match pods that are in the 'Pending' or 'Running' phase.
@@ -34,6 +34,7 @@ class KubernetesNodeProvider(NodeProvider):
             "status.phase!=Failed",
             "status.phase!=Unknown",
             "status.phase!=Succeeded",
+            "status.phase!=Terminating",
         ])
 
         tag_filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name

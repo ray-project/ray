@@ -77,7 +77,7 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
-            "namespace": (dict, OPTIONAL),  # k8s namespace, if using k8s
+            "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
 
             # k8s autoscaler permissions, if using k8s
             "autoscaler_service_account": (dict, OPTIONAL),

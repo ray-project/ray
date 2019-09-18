@@ -79,7 +79,7 @@ Test that it works by running the following commands from your local machine:
     $ kubectl -n ray get pods
 
     # Get a remote screen on the head node.
-    $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
+    $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
     $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
 
     # Tear down the cluster
