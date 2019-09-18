@@ -216,7 +216,7 @@ cdef class Pickle5Writer:
 
         c_vector[char] formats
         c_vector[int32_t] format_offsets
-        c_vector[void*] buffers
+        c_vector[Py_buffer] buffers
         int64_t buffer_bytes
         c_vector[int64_t] buffer_offsets
         c_vector[int64_t] buffer_lens
@@ -260,7 +260,7 @@ cdef class Pickle5Writer:
             self.buffer_bytes = padded_length(self.buffer_bytes, kMajorBufferAlign)
         self.buffer_offsets.push_back(self.buffer_bytes)
         self.buffer_bytes += view.len
-        self.buffers.push_back(view.buf)
+        self.buffers.push_back(view)
 
     def get_total_bytes(self, const c_string & meta):
         cdef int64_t total_bytes = 0
@@ -277,8 +277,7 @@ cdef class Pickle5Writer:
         return total_bytes
 
     cdef void write_to(self, const c_string & meta, shared_ptr[CBuffer] data, int memcopy_threads):
-        # TODO(suquark): Use flatbuffer instead; support memcopy threads
-        cdef uint8_t*ptr = data.get().Data()
+        cdef uint8_t *ptr = data.get().Data()
         cdef int i
         (<int64_t*> ptr)[0] = meta.length()
         ptr += sizeof(int64_t)
@@ -307,7 +306,10 @@ cdef class Pickle5Writer:
         ptr = <uint8_t*> padded_length(<int64_t> ptr, kMajorBufferAlign)
         for i in range(self.n_buffers):
             if memcopy_threads > 1 and self.buffer_lens[i] > kMemcopyDefaultThreshold:
-                parallel_memcopy(ptr + self.buffer_offsets[i], <const uint8_t*> self.buffers[i], self.buffer_lens[i],
+                parallel_memcopy(ptr + self.buffer_offsets[i],
+                                 <const uint8_t*> self.buffers[i].buf, self.buffer_lens[i],
                                  kMemcopyDefaultBlocksize, memcopy_threads)
             else:
-                memcpy(ptr + self.buffer_offsets[i], self.buffers[i], self.buffer_lens[i])
+                memcpy(ptr + self.buffer_offsets[i], self.buffers[i].buf, self.buffer_lens[i])
+            # We must release the buffer, or we could experience memory leaks.
+            cpython.PyBuffer_Release(&self.buffers[i])
