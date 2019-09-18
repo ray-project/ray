@@ -177,7 +177,7 @@ class QMixTorchPolicy(Policy):
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
             space_keys = set(agent_obs_space.spaces.keys())
-            if space_keys != {"obs", "action_mask"}:
+            if not {"obs", "action_mask"}.issubset(space_keys):
                 raise ValueError(
                     "Dict obs space for agent must have keyset "
                     "['obs', 'action_mask'], got {}".format(space_keys))
