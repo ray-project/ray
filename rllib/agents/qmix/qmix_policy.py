@@ -77,7 +77,7 @@ class QMixLoss(nn.Module):
         # Max over target Q-Values
         if self.double_q:
             # Double Q learning computes the target Q values by selecting the
-            # t+1 timestep action according to the "live" neural network and
+            # t+1 timestep action according to the "policy" neural network and
             # then estimating the Q-value of that action with the "target"
             # neural network
 
@@ -88,11 +88,11 @@ class QMixLoss(nn.Module):
             # mask out unallowed actions
             mac_out_tp1[ignore_action_tp1] = -np.inf
 
-            # obtain best actions at t+1 according to live NN
+            # obtain best actions at t+1 according to policy NN
             cur_max_actions = mac_out_tp1.max(dim=3, keepdim=True)[1]
 
-            # use the target network to estimate the Q-values of live network's
-            # selected actions
+            # use the target network to estimate the Q-values of policy
+            # network's selected actions
             target_max_qvals = th.gather(target_mac_out, 3,
                                          cur_max_actions).squeeze(3)
         else:
