@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils import try_import_tf
@@ -23,7 +25,7 @@ class FullyConnectedNetwork(TFModelV2):
         vf_share_layers = model_config.get("vf_share_layers")
 
         inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+            shape=(np.product(obs_space.shape), ), name="observations")
         last_layer = inputs
         i = 1
 
@@ -78,7 +80,10 @@ class FullyConnectedNetwork(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        model_out, self._value_out = self.base_model(input_dict["obs_flat"])
+        obs_flat = input_dict["obs_flat"]
+        if len(obs_flat.shape) > 2:
+            obs_flat = tf.reshape(obs_flat, [tf.shape(obs_flat)[0], -1])
+        model_out, self._value_out = self.base_model(obs_flat)
         return model_out, state
 
     def value_function(self):

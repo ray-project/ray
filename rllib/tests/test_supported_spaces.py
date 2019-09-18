@@ -31,6 +31,7 @@ ACTION_SPACES_TO_TEST = {
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
     "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
