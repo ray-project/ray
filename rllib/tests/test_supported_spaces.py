@@ -107,6 +107,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
 def check_support_multiagent(alg, config):
     register_env("multi_mountaincar", lambda _: MultiMountainCar(2))
     register_env("multi_cartpole", lambda _: MultiCartpole(2))
+    config["log_level"] = "ERROR"
     if "DDPG" in alg:
         a = get_agent_class(alg)(config=config, env="multi_mountaincar")
     else:

@@ -80,10 +80,7 @@ class FullyConnectedNetwork(TFModelV2):
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        obs_flat = input_dict["obs_flat"]
-        if len(obs_flat.shape) > 2:
-            obs_flat = tf.reshape(obs_flat, [tf.shape(obs_flat)[0], -1])
-        model_out, self._value_out = self.base_model(obs_flat)
+        model_out, self._value_out = self.base_model(input_dict["obs_flat"])
         return model_out, state
 
     def value_function(self):
