@@ -95,11 +95,31 @@ class QMixLoss(nn.Module):
 
         # Max over target Q-Values
         if self.double_q:
-            # Get actions that maximise live Q (for double q-learning)
-            ignore_action = (action_mask == 0) & (mask == 1).unsqueeze(-1)
-            mac_out = mac_out.clone()  # issue 4742
-            mac_out[ignore_action] = -np.inf
-            cur_max_actions = mac_out.max(dim=3, keepdim=True)[1]
+            # Double Q learning computes the target Q values by selecting the
+            # t+1 timestep action according to the "live" neural network and
+            # then estimating the Q-value of that action with the "target"
+            # neural network
+
+            # Compute the t+1 Q-values to be used in action selection
+            # using next_obs
+            mac_out_tp1 = []
+            h = [
+                s.expand([B, self.n_agents, -1])
+                for s in self.model.get_initial_state()
+            ]
+            for t in range(T):
+                live_q, live_h = _mac(self.model, next_obs[:, t], h)
+                mac_out_tp1.append(live_q)
+            mac_out_tp1 = th.stack(mac_out_tp1, dim=1)
+
+            # mask out unallowed actions
+            mac_out_tp1[ignore_action_tp1] = -np.inf
+
+            # obtain best actions at t+1 according to live NN
+            cur_max_actions = mac_out_tp1.max(dim=3, keepdim=True)[1]
+
+            # use the target network to estimate the Q-values of live network's
+            # selected actions
             target_max_qvals = th.gather(target_mac_out, 3,
                                          cur_max_actions).squeeze(3)
         else:
