@@ -233,14 +233,36 @@ class SessionRunner(object):
         Raises:
             click.ClickException: This exception is raised if any error occurs.
         """
-        if shell:
-            return command
+        try:
+            command, parsed_args, config = self.project_definition.get_command_info(
+                command=command, args=args)
+        except ValueError as e:
+            raise click.ClickException(e)
+
+        # Try to find a wildcard argument (i.e. one that has a list of values)
+        # and give an error if there is more than one (currently unsupported).
+        wildcard_arg = None
+        for key, val in parsed_args.items():
+            if isinstance(val, list):
+                if not wildcard_arg:
+                    wildcard_arg = key
+                else:
+                    raise click.ClickException("More than one wildcard is not supported at the moment")
+
+        if shell or not wildcard_arg:
+            commands = [command]
         else:
-            try:
-                return self.project_definition.get_command_to_run(
-                    command=command, args=args)
-            except ValueError as e:
-                raise click.ClickException(e)
+            commands = []
+            for val in parsed_args[wildcard_arg]:
+                cmd = command
+                parsed_args = parsed_args.copy()
+                parsed_args[wildcard_arg] = val
+
+                # Substitute arguments
+                for key, val in parsed_args.items():
+                    cmd = cmd.replace("{{" + key + "}}", str(val))
+
+        return commands
 
     def execute_command(self, cmd):
         """Execute a shell command in the session.
@@ -265,12 +287,16 @@ class SessionRunner(object):
 
 
 @session_cli.command(help="Attach to an existing cluster")
-def attach():
+@click.option(
+    "--tmux",
+    help="Attach to tmux session",
+    is_flag=True)
+def attach(tmux):
     project_definition = load_project_or_throw()
     attach_cluster(
         project_definition.cluster_yaml(),
         start=False,
-        use_tmux=False,
+        use_tmux=tmux,
         override_cluster_name=None,
         new=False,
     )
@@ -303,23 +329,25 @@ def stop(name):
 def session_start(command, args, shell, name):
     runner = SessionRunner(session_name=name)
     if shell or command:
-        # Get the actual command to run.
-        cmd = runner.format_command(command, args, shell)
+        # Get the actual command to run. This also validates the command,
+        # which should be done before the cluster is started.
+        commands = runner.format_command(command, args, shell)
         num_steps = 4
     else:
         num_steps = 3
 
-    logger.info("[1/{}] Creating cluster".format(num_steps))
-    runner.create_cluster()
-    logger.info("[2/{}] Syncing the project".format(num_steps))
-    runner.sync_files()
-    logger.info("[3/{}] Setting up environment".format(num_steps))
-    runner.setup_environment()
+    for cmd in commands:
+        logger.info("[1/{}] Creating cluster".format(num_steps))
+        runner.create_cluster()
+        logger.info("[2/{}] Syncing the project".format(num_steps))
+        runner.sync_files()
+        logger.info("[3/{}] Setting up environment".format(num_steps))
+        runner.setup_environment()
 
-    if shell or command:
-        # Run the actual command.
-        logger.info("[4/4] Running command")
-        runner.execute_command(cmd)
+        if shell or command:
+            # Run the actual command.
+            logger.info("[4/4] Running command")
+            runner.execute_command(cmd)
 
 
 @session_cli.command(
