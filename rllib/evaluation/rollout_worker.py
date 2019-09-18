@@ -752,6 +752,8 @@ class RolloutWorker(EvaluatorInterface):
             if tf and tf.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
+                    if policy_config["eager_tracing"]:
+                        cls = cls.with_tracing()
                 elif not issubclass(cls, TFPolicy):
                     pass  # could be some other type of policy
                 else:

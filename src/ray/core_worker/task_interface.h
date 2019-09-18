@@ -22,13 +22,13 @@ class CoreWorker;
 /// Options of a non-actor-creation task.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, const std::unordered_map<std::string, double> &resources)
+  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
       : num_returns(num_returns), resources(resources) {}
 
   /// Number of returns of this task.
-  const int num_returns = 1;
+  int num_returns = 1;
   /// Resources required by this task.
-  const std::unordered_map<std::string, double> resources;
+  std::unordered_map<std::string, double> resources;
 };
 
 /// Options of an actor creation task.

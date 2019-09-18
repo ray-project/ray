@@ -1,5 +1,5 @@
-Built-in Autoscaling
-=====================
+Automatic Cluster Setup
+=======================
 
 Ray comes with a built-in autoscaler that makes deploying a Ray cluster simple, just run ``ray up`` from your local machine to start or update a cluster in the cloud or on an on-premise cluster. Once the Ray cluster is running, you can manually SSH into it or use provided commands like ``ray attach``, ``ray rsync-up``, and ``ray-exec`` to access it and run Ray programs.
 
@@ -29,7 +29,7 @@ Test that it works by running the following commands from your local machine:
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/aws/example-full.yaml
     $ source activate tensorflow_p36
-    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
     # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/aws/example-full.yaml
@@ -52,7 +52,7 @@ Test that it works by running the following commands from your local machine:
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/gcp/example-full.yaml
     $ source activate tensorflow_p36
-    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
     # Tear down the cluster.
     $ ray down ray/python/ray/autoscaler/gcp/example-full.yaml
@@ -80,7 +80,7 @@ Test that it works by running the following commands from your local machine:
 
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
-    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
     # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/kubernetes/example-full.yaml
@@ -101,7 +101,7 @@ Test that it works by running the following commands from your local machine:
 
     # Get a remote screen on the head node.
     $ ray attach ray/python/ray/autoscaler/local/example-full.yaml
-    $ # Try running a Ray program with 'ray.init(address="localhost:6379")'.
+    $ # Try running a Ray program with 'ray.init(address="auto")'.
 
     # Tear down the cluster
     $ ray down ray/python/ray/autoscaler/local/example-full.yaml
@@ -156,7 +156,7 @@ If you don't want the update to restart services (e.g., because the changes don'
 Running commands on new and existing clusters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(address="localhost:6379")``.
+You can use ``ray exec`` to conveniently run commands on clusters. Note that scripts you run should connect to Ray via ``ray.init(address="auto")``.
 
 .. code-block:: bash
 
@@ -331,7 +331,7 @@ with GPU worker nodes instead.
 
 .. code-block:: yaml
 
-    min_workers: 1  # must have at least 1 GPU worker (issue #2106)
+    min_workers: 0  # NOTE: older Ray versions may need 1+ GPU workers (#2106)
     max_workers: 10
     head_node:
         InstanceType: m4.large
