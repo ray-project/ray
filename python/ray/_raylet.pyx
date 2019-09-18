@@ -477,7 +477,7 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
     def put_pickle5_buffers(self, ObjectID object_id, c_string meta, Pickle5Writer writer,
-                            int memcopy_threads=6):
+                            int memcopy_threads=2):
         cdef:
             shared_ptr[CBuffer] data
             c_string metadata_str = PICKLE5_BUFFER_METADATA

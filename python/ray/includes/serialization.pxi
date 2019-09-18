@@ -23,7 +23,6 @@ cdef uint8_t* pointer_logical_and(const uint8_t*address, uintptr_t bits):
 
 cdef void parallel_memcopy(uint8_t*dst, const uint8_t*src, int64_t nbytes,
                            uintptr_t block_size, int num_threads):
-    # XXX This function is really using `num_threads + 1` threads.
     cdef:
         uint8_t*left = pointer_logical_and(src + block_size - 1, ~(block_size - 1))
         uint8_t*right = pointer_logical_and(src + nbytes, ~(block_size - 1))
@@ -45,7 +44,7 @@ cdef void parallel_memcopy(uint8_t*dst, const uint8_t*src, int64_t nbytes,
     # | prefix | num_threads * chunk_size | suffix |.
     # Each thread gets a "chunk" of k blocks.
 
-    for i in prange(num_threads, nogil=True, schedule='static'):
+    for i in prange(num_threads, nogil=True, num_threads=num_threads, schedule='static', chunksize=1):
         memcpy(dst + prefix + i * chunk_size, left + i * chunk_size, chunk_size)
         if i == 0:
             memcpy(dst, src, prefix)
@@ -240,7 +239,7 @@ cdef class Pickle5Writer:
         ptr += self.formats.size()
         ptr = <uint8_t*> padded_length(<int64_t> ptr, kMajorBufferAlign)
         for i in range(self.n_buffers):
-            if self.buffer_lens[i] > kMemcopyDefaultThreshold:
+            if memcopy_threads > 1 and self.buffer_lens[i] > kMemcopyDefaultThreshold:
                 parallel_memcopy(ptr + self.buffer_offsets[i], <const uint8_t*> self.buffers[i], self.buffer_lens[i],
                                  kMemcopyDefaultBlocksize, memcopy_threads)
             else:
