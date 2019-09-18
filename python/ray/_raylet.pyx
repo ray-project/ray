@@ -390,7 +390,6 @@ cdef class Pickle5Writer:
         ptr += self.formats.size()
         ptr = <uint8_t*>padded_length(<int64_t>ptr, kMajorBufferAlign)
         for i in range(self.n_buffers):
-            print(<int64_t>(ptr + self.buffer_offsets[i]), <int64_t>(self.buffers[i]), self.buffer_lens[i])
             memcpy(ptr + self.buffer_offsets[i], self.buffers[i], self.buffer_lens[i])
 
 
@@ -691,7 +690,6 @@ cdef class CoreWorker:
             size_t data_size
 
         data_size = writer.get_total_bytes(meta)
-        print(data_size)
 
         with nogil:
             check_status(self.core_worker.get().Objects().Create(
