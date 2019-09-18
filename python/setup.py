@@ -36,12 +36,7 @@ generated_python_directories = [
     "ray/core/generated",
 ]
 
-optional_ray_files = [
-    "ray/dashboard/client/build/index.html",
-    *glob.glob("ray/dashboard/client/build/static/css/*"),
-    *glob.glob("ray/dashboard/client/build/static/js/*"),
-    *glob.glob("ray/dashboard/client/build/static/media/*"),
-]
+optional_ray_files = []
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
@@ -55,15 +50,23 @@ ray_project_files = [
     "ray/projects/templates/requirements.txt"
 ]
 
+ray_dashboard_files = [
+    "ray/dashboard/client/build/index.html",
+]
+for dirname in ["css", "js", "media"]:
+    ray_dashboard_files += glob.glob(
+        "ray/dashboard/client/build/static/{}/*".format(dirname))
+
+optional_ray_files += ray_autoscaler_files
+optional_ray_files += ray_project_files
+optional_ray_files += ray_dashboard_files
+
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
         "ray/core/src/credis/build/src/libmaster.so",
         "ray/core/src/credis/redis/src/redis-server"
     ]
-
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
 
 extras = {
     "rllib": [
