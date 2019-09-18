@@ -39,7 +39,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "linux" ]]; then
   # Install and use the latest version of Node.js in order to build the dashboard.
   source $HOME/.nvm/nvm.sh
   nvm install node
-  nvm use node
+  nvm alias default node
 elif [[ "$PYTHON" == "2.7" ]] && [[ "$platform" == "macosx" ]]; then
   # Install miniconda.
   wget https://repo.continuum.io/miniconda/Miniconda2-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
@@ -58,7 +58,7 @@ elif [[ "$PYTHON" == "3.5" ]] && [[ "$platform" == "macosx" ]]; then
   # Install and use the latest version of Node.js in order to build the dashboard.
   source $HOME/.nvm/nvm.sh
   nvm install node
-  nvm use node
+  nvm alias default node
 elif [[ "$LINT" == "1" ]]; then
   sudo apt-get update
   sudo apt-get install -y build-essential curl unzip
