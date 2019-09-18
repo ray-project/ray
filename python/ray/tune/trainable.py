@@ -72,17 +72,7 @@ class Trainable(object):
         self.config = config or {}
         log_sys_usage = self.config.get("log_sys_usage", False)
 
-        if logger_creator:
-            self._result_logger = logger_creator(self.config)
-            self._logdir = self._result_logger.logdir
-        else:
-            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
-            self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-            self._result_logger = UnifiedLogger(
-                self.config, self._logdir, loggers=None)
+        self.create_logger(logger_creator)
 
         self._iteration = 0
         self._time_total = 0.0
@@ -131,6 +121,20 @@ class Trainable(object):
         logger.warning("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
+
+    def create_logger(self, logger_creator):
+        if logger_creator:
+            self._result_logger = logger_creator(self.config)
+            self._logdir = self._result_logger.logdir
+        else:
+            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
+            if not os.path.exists(DEFAULT_RESULTS_DIR):
+                os.makedirs(DEFAULT_RESULTS_DIR)
+            self._logdir = tempfile.mkdtemp(
+                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            self._result_logger = UnifiedLogger(
+                self.config, self._logdir, loggers=None)
+        
 
     def train(self):
         """Runs one logical iteration of training.

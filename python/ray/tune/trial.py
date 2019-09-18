@@ -12,7 +12,7 @@ import tempfile
 import os
 import ray
 from ray.tune import TuneError
-from ray.tune.logger import pretty_print, UnifiedLogger
+from ray.tune.logger import pretty_print, UnifiedLogger, NoopLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -267,6 +267,17 @@ class Trial(object):
         self.close_logger()
         self.logdir = None
         self.init_logger()
+
+        remote_logdir = self.logdir
+        def logger_creator(config):
+            # Set the working dir in the remote process, for user file writes
+            if not os.path.exists(remote_logdir):
+                os.makedirs(remote_logdir)
+            if not ray.worker._mode() == ray.worker.LOCAL_MODE:
+                os.chdir(remote_logdir)
+            return NoopLogger(config, remote_logdir)
+
+        self.runner.create_logger.remote(logger_creator)
 
     def close_logger(self):
         """Close logger."""

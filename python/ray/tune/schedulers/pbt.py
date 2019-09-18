@@ -91,7 +91,7 @@ def make_experiment_tag(orig_tag, config, mutations):
     resolved_vars = {}
     for k in mutations.keys():
         resolved_vars[("config", k)] = config[k]
-    return "{}@perturbed[{}]".format(orig_tag, format_vars(resolved_vars))
+    return "{}@perturbed~{}".format(orig_tag, format_vars(resolved_vars))
 
 
 class PopulationBasedTraining(FIFOScheduler):

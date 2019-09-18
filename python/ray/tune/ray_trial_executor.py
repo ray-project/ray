@@ -286,7 +286,6 @@ class RayTrialExecutor(TrialExecutor):
         trial.config = new_config
         if reset_logger is True:
             trial.reset_logger()
-            new_config['logdir'] = trial.logdir
 
         trainable = trial.runner
         with warn_if_slow("reset_config"):
