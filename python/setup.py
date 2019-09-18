@@ -28,10 +28,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/raylet/raylet",
     "ray/dashboard/dashboard.py",
-    "ray/dashboard/client/build/index.html",
-    *glob.glob("ray/dashboard/client/build/static/css/*"),
-    *glob.glob("ray/dashboard/client/build/static/js/*"),
-    *glob.glob("ray/dashboard/client/build/static/media/*"),
 ]
 
 # These are the directories where automatically generated Python protobuf
@@ -40,7 +36,12 @@ generated_python_directories = [
     "ray/core/generated",
 ]
 
-optional_ray_files = []
+optional_ray_files = [
+    "ray/dashboard/client/build/index.html",
+    *glob.glob("ray/dashboard/client/build/static/css/*"),
+    *glob.glob("ray/dashboard/client/build/static/js/*"),
+    *glob.glob("ray/dashboard/client/build/static/media/*"),
+]
 
 ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
