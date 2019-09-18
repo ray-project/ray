@@ -24,6 +24,7 @@ class FullyConnectedNetwork(TFModelV2):
         no_final_linear = model_config.get("no_final_linear")
         vf_share_layers = model_config.get("vf_share_layers")
 
+        # we are using obs_flat, so take the flattened shape as input
         inputs = tf.keras.layers.Input(
             shape=(np.product(obs_space.shape), ), name="observations")
         last_layer = inputs
