@@ -10,38 +10,28 @@ import React from "react";
 
 const styles = (theme: Theme) =>
   createStyles({
+    root: {
+      overflowX: "auto"
+    },
     cell: {
       borderWidth: 0,
-      fontFamily: [
-        "Consolas",
-        "Andale Mono WT",
-        "Andale Mono",
-        "Lucida Console",
-        "Lucida Sans Typewriter",
-        "DejaVu Sans Mono",
-        "Bitstream Vera Sans Mono",
-        "Liberation Mono",
-        "Nimbus Mono L",
-        "Monaco",
-        "Courier New",
-        "Courier",
-        "monospace"
-      ]
-        .map(font => `"${font}"`)
-        .join(","),
+      fontFamily: "SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
       padding: 0,
       "&:last-child": {
         paddingRight: 0
       }
     },
-    number: {
+    lineNumber: {
       color: theme.palette.text.secondary,
+      paddingRight: theme.spacing(2),
       textAlign: "right",
       userSelect: "none",
-      width: "1%"
+      width: "1%",
+      "&::before": {
+        content: "attr(data-line-number)"
+      }
     },
     line: {
-      paddingLeft: theme.spacing(2),
       textAlign: "left",
       whiteSpace: "pre"
     }
@@ -55,20 +45,23 @@ class Component extends React.Component<Props & WithStyles<typeof styles>> {
   render() {
     const { classes, lines } = this.props;
     return (
-      <Table>
-        <TableBody>
-          {lines.map((line, index) => (
-            <TableRow key={index}>
-              <TableCell className={classNames(classes.cell, classes.number)}>
-                {index + 1}
-              </TableCell>
-              <TableCell className={classNames(classes.cell, classes.line)}>
-                {line}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <div className={classes.root}>
+        <Table>
+          <TableBody>
+            {lines.map((line, index) => (
+              <TableRow key={index}>
+                <TableCell
+                  className={classNames(classes.cell, classes.lineNumber)}
+                  data-line-number={index + 1}
+                />
+                <TableCell className={classNames(classes.cell, classes.line)}>
+                  {line}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     );
   }
 }
