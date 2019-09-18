@@ -22,6 +22,7 @@ else
 fi
 
 TEST_SCRIPT=$ROOT_DIR/../../python/ray/tests/test_microbenchmarks.py
+UI_TEST_SCRIPT=$ROOT_DIR/../../python/ray/tests/test_webui.py
 
 if [[ "$platform" == "linux" ]]; then
   # First test Python 2.7.
@@ -53,6 +54,10 @@ if [[ "$platform" == "linux" ]]; then
 
   # Run a simple test script to make sure that the wheel works.
   $HOME/miniconda3/bin/python $TEST_SCRIPT
+
+  # Run the UI test to make sure that the packaged UI works.
+  $HOME/miniconda3/bin/pip install aiohttp psutil requests
+  $HOME/miniconda3/bin/python $UI_TEST_SCRIPT
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../../.whl/*.whl | wc -l)
@@ -89,6 +94,10 @@ elif [[ "$platform" == "macosx" ]]; then
 
     # Run a simple test script to make sure that the wheel works.
     $PYTHON_EXE $TEST_SCRIPT
+
+    # Run the UI test to make sure that the packaged UI works.
+    $PIP_CMD install aiohttp psutil requests
+    $PYTHON_EXE $UI_TEST_SCRIPT
   done
 else
   echo "Unrecognized environment."
