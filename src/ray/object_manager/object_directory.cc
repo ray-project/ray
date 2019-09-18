@@ -121,36 +121,36 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
   if (it == listeners_.end()) {
     it = listeners_.emplace(object_id, LocationListenerState()).first;
 
-  auto object_notification_callback =
-      [this](const ObjectID &object_id, const ObjectNotification &object_notification) {
-        // Objects are added to this map in SubscribeObjectLocations.
-        auto it = listeners_.find(object_id);
-        // Do nothing for objects we are not listening for.
-        if (it == listeners_.end()) {
-          return;
-        }
+    auto object_notification_callback =
+        [this](const ObjectID &object_id,
+               const gcs::ObjectNotification &object_notification) {
+          // Objects are added to this map in SubscribeObjectLocations.
+          auto it = listeners_.find(object_id);
+          // Do nothing for objects we are not listening for.
+          if (it == listeners_.end()) {
+            return;
+          }
 
-        // Once this flag is set to true, it should never go back to false.
-        it->second.subscribed = true;
+          // Once this flag is set to true, it should never go back to false.
+          it->second.subscribed = true;
 
-        // Update entries for this object.
-        UpdateObjectLocations(object_notification.change_mode_,
-                              object_notification.object_data_,
-                              gcs_client_->client_table(),
-                              &it->second.current_object_locations);
-        // Copy the callbacks so that the callbacks can unsubscribe without interrupting
-        // looping over the callbacks.
-        auto callbacks = it->second.callbacks;
-        // Call all callbacks associated with the object id locations we have
-        // received.  This notifies the client even if the list of locations is
-        // empty, since this may indicate that the objects have been evicted from
-        // all nodes.
-        for (const auto &callback_pair : callbacks) {
-          // It is safe to call the callback directly since this is already running
-          // in the subscription callback stack.
-          callback_pair.second(object_id, it->second.current_object_locations);
-        }
-      };
+          // Update entries for this object.
+          UpdateObjectLocations(
+              object_notification.change_mode_, object_notification.object_data_,
+              gcs_client_->client_table(), &it->second.current_object_locations);
+          // Copy the callbacks so that the callbacks can unsubscribe without interrupting
+          // looping over the callbacks.
+          auto callbacks = it->second.callbacks;
+          // Call all callbacks associated with the object id locations we have
+          // received.  This notifies the client even if the list of locations is
+          // empty, since this may indicate that the objects have been evicted from
+          // all nodes.
+          for (const auto &callback_pair : callbacks) {
+            // It is safe to call the callback directly since this is already running
+            // in the subscription callback stack.
+            callback_pair.second(object_id, it->second.current_object_locations);
+          }
+        };
     status = gcs_client_->Objects().AsyncSubscribe(
         object_id, object_notification_callback, /*done*/ nullptr);
   }
@@ -205,8 +205,8 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
         object_id,
         [this, object_id, callback](
             Status status, const std::vector<ObjectTableData> &location_updates) {
-          RAY_CHECK(status.ok()) << "Get object location from GCS failed "
-              << status.message();
+          RAY_CHECK(status.ok())
+              << "Get object location from GCS failed " << status.message();
           // Build the set of current locations based on the entries in the log.
           std::unordered_set<ClientID> client_ids;
           UpdateObjectLocations(GcsChangeMode::APPEND_OR_ADD, location_updates,

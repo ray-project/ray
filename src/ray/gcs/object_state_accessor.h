@@ -3,7 +3,7 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/notification_def.h"
+#include "ray/gcs/notification.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
 
@@ -50,15 +50,6 @@ class ObjectStateAccessor {
   Status AsyncDelete(const ObjectID &object_id,
                      const std::shared_ptr<ObjectTableData> &data_ptr,
                      const StatusCallback &callback);
-
-  /// Subscribe to any update operations of objects.
-  ///
-  /// \param subscribe Callback that will be called each time when an object is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  Status AsyncSubscribeAll(
-      const SubscribeCallback<ObjectID, ObjectNotification> &subscribe,
-      const StatusCallback &done);
 
   /// Subscribe to any update operations of an object.
   ///

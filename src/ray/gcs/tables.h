@@ -12,6 +12,7 @@
 #include "ray/util/logging.h"
 
 #include "ray/gcs/callback.h"
+#include "ray/gcs/notification.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -93,9 +94,10 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
  public:
   using Callback = std::function<void(RedisGcsClient *client, const ID &id,
                                       const std::vector<Data> &data)>;
-  using NotificationCallback =
-      std::function<void(RedisGcsClient *client, const ID &id,
-                         const GcsChangeMode change_mode, const std::vector<Data> &data)>;
+
+  using NotificationCallback = std::function<void(
+      RedisGcsClient *client, const ID &id, const Notification<Data> &notification)>;
+
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
   /// The callback to call when a SUBSCRIBE call completes and we are ready to

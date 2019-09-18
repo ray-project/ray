@@ -134,6 +134,8 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
 
 template class SubscriptionExecutor<ActorID, ActorTableData, ActorTable>;
 
+template class SubscriptionExecutor<ObjectID, ObjectNotification, ObjectTable>;
+
 }  // namespace gcs
 
 }  // namespace ray
