@@ -145,26 +145,6 @@ def unpack_pickle5_buffers(Buffer buf):
         const uint8_t *buffer_entry
         int32_t format_offset, shape_offset
 
-    if PY_VERSION_HEX < 0x03060000:
-        raise ValueError("This function requires Python >=3.6 for pickle5 support.")
-
-    # NOTE: This part is modified from the numpy implementation.
-    # if the python version is below 3.8, the pickle module does not provide
-    # built-in support for protocol 5. We try importing the pickle5
-    # backport instead.
-    if PY_VERSION_HEX >= 0x03080000:
-        # we expect protocol 5 to be available in Python 3.8
-        import pickle as pickle_module
-    elif PY_VERSION_HEX >= 0x03060000:
-        try:
-            import pickle5 as pickle_module
-        except ImportError:
-            raise ImportError("Using pickle protocol 5 requires the "
-                              "pickle5 module for Python >=3.6 and <3.8")
-    else:
-        raise ValueError("pickle protocol 5 is not available for Python < 3.6")
-    picklebuf_class = pickle_module.PickleBuffer
-
     meta_length = (<int64_t*> data)[0]
     data += sizeof(int64_t)
     meta_str.append(<char*> data, <size_t> meta_length)
@@ -201,7 +181,7 @@ def unpack_pickle5_buffers(Buffer buf):
         buffer.strides = buffer.shape + buffer.ndim
         buffer.internal = NULL
         buffer.suboffsets = NULL
-        pickled_buffers.append(picklebuf_class(buffer))
+        pickled_buffers.append(buffer)
     return meta_str, pickled_buffers
 
 
