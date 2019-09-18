@@ -191,14 +191,15 @@ class Model(object):
 
 
 @DeveloperAPI
-def flatten(obs, tensorlib=tf):
-    if tensorlib == "tf":
+def flatten(obs, framework):
+    """Flatten the given tensor."""
+    if framework == "tf":
         return tf.layers.flatten(obs)
-    elif tensorlib == "torch":
+    elif framework == "torch":
         import torch
         return torch.flatten(obs, start_dim=1)
     else:
-        raise NotImplementedError("flatten", tensorlib)
+        raise NotImplementedError("flatten", framework)
 
 
 @DeveloperAPI
