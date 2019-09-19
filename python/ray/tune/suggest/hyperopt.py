@@ -173,13 +173,14 @@ class HyperOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to HyperOpt unless early terminated or errored.
+        """Passes the result to HyperOpt unless errored or the trial is early
+        terminated and should not be used.
 
         The result is internally negated when interacting with HyperOpt
         so that HyperOpt can "maximize" this value, as it minimizes on default.
         """
         ho_trial = self._get_hyperopt_trial(trial_id)
-        if ho_trial is None:
+        if ho_trial is None or early_terminated and self._use_early_terminated_trials is False:
             return
         ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
         if error:
