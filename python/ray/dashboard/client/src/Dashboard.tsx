@@ -2,13 +2,15 @@ import Link from "@material-ui/core/Link";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
-import SvgIcon, { SvgIconProps } from "@material-ui/core/SvgIcon";
 import Table from "@material-ui/core/Table";
 import TableBody from "@material-ui/core/TableBody";
 import TableCell from "@material-ui/core/TableCell";
 import TableHead from "@material-ui/core/TableHead";
 import TableRow from "@material-ui/core/TableRow";
 import Typography from "@material-ui/core/Typography";
+import AddIcon from "@material-ui/icons/Add";
+import RemoveIcon from "@material-ui/icons/Remove";
+import classNames from "classnames";
 import React from "react";
 import { Route } from "react-router";
 import { Link as RouterLink } from "react-router-dom";
@@ -47,18 +49,6 @@ const formatUptime = (bootTime: number) => {
   ].join(" ");
 };
 
-const PlusRegularIcon: React.FunctionComponent<SvgIconProps> = props => (
-  <SvgIcon {...props} viewBox="0 0 384 512">
-    <path d="M368 224H224V80c0-8.84-7.16-16-16-16h-32c-8.84 0-16 7.16-16 16v144H16c-8.84 0-16 7.16-16 16v32c0 8.84 7.16 16 16 16h144v144c0 8.84 7.16 16 16 16h32c8.84 0 16-7.16 16-16V288h144c8.84 0 16-7.16 16-16v-32c0-8.84-7.16-16-16-16z" />
-  </SvgIcon>
-);
-
-const MinusRegularIcon: React.FunctionComponent<SvgIconProps> = props => (
-  <SvgIcon {...props} viewBox="0 0 384 512">
-    <path d="M368 224H16c-8.84 0-16 7.16-16 16v32c0 8.84 7.16 16 16 16h352c8.84 0 16-7.16 16-16v-32c0-8.84-7.16-16-16-16z" />
-  </SvgIcon>
-);
-
 const styles = (theme: Theme) =>
   createStyles({
     root: {
@@ -75,11 +65,13 @@ const styles = (theme: Theme) =>
         paddingRight: theme.spacing(1)
       }
     },
-    expandIcon: {
+    expandCollapseCell: {
+      cursor: "pointer"
+    },
+    expandCollapseIcon: {
       color: theme.palette.text.secondary,
-      cursor: "pointer",
-      fontSize: "1rem",
-      verticalAlign: "text-top"
+      fontSize: "1.5em",
+      verticalAlign: "middle"
     },
     secondary: {
       color: theme.palette.text.secondary
@@ -304,13 +296,16 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                 <React.Fragment key={client.hostname}>
                   <TableRow hover>
                     <TableCell
-                      className={classes.cell}
+                      className={classNames(
+                        classes.cell,
+                        classes.expandCollapseCell
+                      )}
                       onClick={this.toggleExpand(client.hostname)}
                     >
-                      {expanded[client.hostname] ? (
-                        <MinusRegularIcon className={classes.expandIcon} />
+                      {!expanded[client.hostname] ? (
+                        <AddIcon className={classes.expandCollapseIcon} />
                       ) : (
-                        <PlusRegularIcon className={classes.expandIcon} />
+                        <RemoveIcon className={classes.expandCollapseIcon} />
                       )}
                     </TableCell>
                     <TableCell className={classes.cell}>
