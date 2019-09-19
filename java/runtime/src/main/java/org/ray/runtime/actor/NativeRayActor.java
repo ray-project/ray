@@ -51,6 +51,10 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
     return Language.forNumber(nativeGetLanguage(nativeActorHandle));
   }
 
+  public boolean isDirectCallActor() {
+    return nativeIsDirectCallActor(nativeActorHandle);
+  }
+
   @Override
   public String getModuleName() {
     Preconditions.checkState(getLanguage() == Language.PYTHON);
@@ -89,6 +93,8 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
   private static native byte[] nativeGetActorHandleId(long nativeActorHandle);
 
   private static native int nativeGetLanguage(long nativeActorHandle);
+
+  private static native boolean nativeIsDirectCallActor(long nativeActorHandle);
 
   private static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
       long nativeActorHandle);

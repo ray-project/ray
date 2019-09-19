@@ -83,7 +83,7 @@ class LocalModeManager(object):
         object_id.value = value
         return object_id
 
-    def get_object(self, object_ids):
+    def get_objects(self, object_ids):
         """Fetch objects from the emulated object store.
 
         Accepts only LocalModeObjectIDs and reads values directly from them.

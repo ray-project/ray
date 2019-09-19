@@ -21,18 +21,6 @@ def plasma_prefetch(object_id):
     local_sched_client.fetch_or_reconstruct([ray_obj_id], True)
 
 
-def plasma_get(object_id):
-    """Get an object directly from plasma without going through object table.
-
-    Precondition: plasma_prefetch(object_id) has been called before.
-    """
-    client = ray.worker.global_worker.plasma_client
-    plasma_id = ray.pyarrow.plasma.ObjectID(object_id)
-    while not client.contains(plasma_id):
-        pass
-    return client.get(plasma_id)
-
-
 # TODO: doing the timer in Python land is a bit slow
 class FlushThread(threading.Thread):
     """A thread that flushes periodically to plasma.
@@ -191,7 +179,8 @@ class BatchedQueue(object):
                self.read_batch_offset + self.prefetch_depth):
             plasma_prefetch(self._batch_id(self.prefetch_batch_offset))
             self.prefetch_batch_offset += 1
-        self.read_buffer = plasma_get(self._batch_id(self.read_batch_offset))
+        self.read_buffer = ray.get(
+            ray.ObjectID(self._batch_id(self.read_batch_offset)))
         self.read_batch_offset += 1
         logger.debug("[reader] Fetched batch {} offset {} size {}".format(
             self.read_batch_offset, self.read_item_offset,

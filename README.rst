@@ -6,7 +6,7 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.7.1-blue.svg
+.. image:: https://img.shields.io/badge/pypi-0.7.4-blue.svg
     :target: https://pypi.org/project/ray/
 
 |
@@ -133,7 +133,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 RLlib Quick Start
 -----------------
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-stack.png
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-wide.jpg
 
 `RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
 
@@ -204,8 +204,14 @@ Getting Involved
 - `StackOverflow`_: For questions about how to use Ray.
 - `GitHub Issues`_: For reporting bugs and feature requests.
 - `Pull Requests`_: For submitting code contributions.
+- `Meetup Group`_: Join our meetup group.
+- `Community Slack`_: Join our Slack workspace.
+- `Twitter`_: Follow updates on Twitter.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Pull Requests`: https://github.com/ray-project/ray/pulls
+.. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
+.. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+.. _`Twitter`: https://twitter.com/raydistributed

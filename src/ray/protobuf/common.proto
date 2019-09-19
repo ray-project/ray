@@ -74,6 +74,8 @@ message TaskArg {
   repeated bytes object_ids = 1;
   // Data for pass-by-value arguments.
   bytes data = 2;
+  // Metadata for pass-by-value arguments.
+  bytes metadata = 3;
 }
 
 // Task spec of an actor creation task.
@@ -85,9 +87,11 @@ message ActorCreationTaskSpec {
   uint64 max_actor_reconstructions = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
-  // the placeholder strings (`RAY_WORKER_OPTION_0`, `RAY_WORKER_OPTION_1`, etc) in the
-  // worker command.
+  // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
+  // `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1`, etc) in the worker command.
   repeated string dynamic_worker_options = 4;
+  // Whether direct actor call is used.
+  bool is_direct_call = 5;
 }
 
 // Task spec of an actor task.

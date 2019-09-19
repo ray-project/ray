@@ -131,8 +131,11 @@ const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
 }
 
 ResourceSet SchedulingQueue::GetResourceLoad() const {
-  // TODO(atumanov): consider other types of tasks as part of load.
-  return ready_queue_->GetCurrentResourceLoad();
+  auto load = ready_queue_->GetCurrentResourceLoad();
+  // Also take into account infeasible tasks so they show up for autoscaling.
+  load.AddResources(
+      task_queues_[static_cast<int>(TaskState::INFEASIBLE)]->GetCurrentResourceLoad());
+  return load;
 }
 
 const std::unordered_set<TaskID> &SchedulingQueue::GetBlockedTaskIds() const {

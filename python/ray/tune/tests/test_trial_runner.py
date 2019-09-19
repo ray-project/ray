@@ -1153,6 +1153,8 @@ class TestSyncFunctionality(unittest.TestCase):
         os.remove(test_file_path)
 
     def testNoSync(self):
+        """Sync should not run on a single node."""
+
         def sync_func(source, target):
             pass
 
@@ -1165,9 +1167,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "upload_dir": "test",
-                    "sync_to_driver": sync_func,
-                    "sync_to_cloud": sync_func
+                    "sync_to_driver": sync_func
                 }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
@@ -1530,6 +1530,14 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.PENDING)
         self.assertEqual(trials[3].status, Trial.PENDING)
+
+    def testResourceNumericalError(self):
+        resource = Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
+        small_resource = Resources(
+            cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
+        for i in range(3):
+            resource = Resources.subtract(resource, small_resource)
+        self.assertTrue(resource.is_nonnegative())
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
