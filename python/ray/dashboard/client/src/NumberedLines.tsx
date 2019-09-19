@@ -25,7 +25,7 @@ const styles = (theme: Theme) =>
       color: theme.palette.text.secondary,
       paddingRight: theme.spacing(2),
       textAlign: "right",
-      userSelect: "none",
+      verticalAlign: "top",
       width: "1%",
       // Use a ::before pseudo-element for the line number so that it won't
       // interact with user selections or searching.
@@ -35,7 +35,7 @@ const styles = (theme: Theme) =>
     },
     line: {
       textAlign: "left",
-      whiteSpace: "pre"
+      whiteSpace: "pre-wrap"
     }
   });
 
@@ -47,23 +47,21 @@ class Component extends React.Component<Props & WithStyles<typeof styles>> {
   render() {
     const { classes, lines } = this.props;
     return (
-      <div className={classes.root}>
-        <Table>
-          <TableBody>
-            {lines.map((line, index) => (
-              <TableRow key={index}>
-                <TableCell
-                  className={classNames(classes.cell, classes.lineNumber)}
-                  data-line-number={index + 1}
-                />
-                <TableCell className={classNames(classes.cell, classes.line)}>
-                  {line}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <Table>
+        <TableBody>
+          {lines.map((line, index) => (
+            <TableRow key={index}>
+              <TableCell
+                className={classNames(classes.cell, classes.lineNumber)}
+                data-line-number={index + 1}
+              />
+              <TableCell className={classNames(classes.cell, classes.line)}>
+                {line}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     );
   }
 }
