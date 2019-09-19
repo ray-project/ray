@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.models.model import restore_original_dimensions, flatten
 from ray.rllib.utils.annotations import PublicAPI
 
 
@@ -146,7 +146,10 @@ class ModelV2(object):
         restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
-        restored["obs_flat"] = input_dict["obs"]
+        if len(input_dict["obs"].shape) > 2:
+            restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
+        else:
+            restored["obs_flat"] = input_dict["obs"]
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
         if ((not isinstance(res, list) and not isinstance(res, tuple))

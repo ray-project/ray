@@ -191,6 +191,18 @@ class Model(object):
 
 
 @DeveloperAPI
+def flatten(obs, framework):
+    """Flatten the given tensor."""
+    if framework == "tf":
+        return tf.layers.flatten(obs)
+    elif framework == "torch":
+        import torch
+        return torch.flatten(obs, start_dim=1)
+    else:
+        raise NotImplementedError("flatten", framework)
+
+
+@DeveloperAPI
 def restore_original_dimensions(obs, obs_space, tensorlib=tf):
     """Unpacks Dict and Tuple space observations into their original form.
 
