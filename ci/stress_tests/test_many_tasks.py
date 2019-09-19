@@ -78,7 +78,7 @@ logger.info("Finished after %s seconds.", time.time() - start_time)
 # Submit a bunch of small tasks to each actor. (approximately 1070 seconds)
 start_time = time.time()
 logger.info("Submitting many small actor tasks.")
-for N in [100, 1000, 10000, 100000]:
+for N in [1000, 100000]:
     x_ids = []
     for i in range(N):
         x_ids = [a.method.remote(0) for a in actors]
