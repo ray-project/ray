@@ -73,6 +73,9 @@ const styles = (theme: Theme) =>
       fontSize: "1.5em",
       verticalAlign: "middle"
     },
+    cpuUsage: {
+      minWidth: 60
+    },
     secondary: {
       color: theme.palette.text.secondary
     }
@@ -318,7 +321,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                       {formatUptime(client.boot_time)}
                     </TableCell>
                     <TableCell className={classes.cell}>
-                      <div style={{ minWidth: 60 }}>
+                      <div className={classes.cpuUsage}>
                         <UsageBar
                           percent={client.cpu}
                           text={`${client.cpu.toFixed(1)}%`}
