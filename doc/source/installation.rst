@@ -100,25 +100,27 @@ Ray can be built from the repository as follows.
   # Install Bazel.
   ray/ci/travis/install-bazel.sh
 
+  # Optionally build the dashboard (requires Node.js, see below for more information).
+  pushd ray/python/ray/dashboard/client
+  npm ci
+  npm run build
+  popd
+
+  # Install Ray.
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
 
 
-[Optional] Build the dashboard
+[Optional] Dashboard support
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you would like to use the dashboard, you will additionally need to install
-`Node.js`_. Then you can build the dashboard as follows.
+`Node.js`_ and build the dashboard before installing Ray. The relevant build
+steps are included in the installation instructions above.
 
 .. _`Node.js`: https://nodejs.org/
 
-.. code-block:: bash
-
-  cd ray/python/ray/dashboard/client
-  npm ci
-  npm run build
-
-The dashboard requires Python 3, and can be activated by setting
+The dashboard requires Python 3, and can be enabled by setting
 ``include_webui=True`` during initialization, i.e.
 
 .. code-block:: python
