@@ -160,16 +160,11 @@ class Experiment(object):
 
         if isinstance(run_object, six.string_types):
             return run_object
-        elif isinstance(run_object, types.FunctionType):
-            if run_object.__name__ == "<lambda>":
-                logger.warning(
-                    "Not auto-registering lambdas - resolving as variant.")
-                return run_object
-            else:
-                name = run_object.__name__
-                register_trainable(name, run_object)
-                return name
-        elif isinstance(run_object, type):
+        elif run_object.__name__ == "<lambda>":
+            logger.warning(
+                "Not auto-registering lambdas - resolving as variant.")
+            return run_object
+        elif isinstance(run_object, type) or callable(run_object):
             name = run_object.__name__
             register_trainable(name, run_object)
             return name
