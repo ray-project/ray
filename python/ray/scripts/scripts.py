@@ -569,6 +569,8 @@ def monitor(cluster_config_file, lines, cluster_name):
     default=False,
     help="Start the cluster if needed.")
 @click.option(
+    "--screen", is_flag=True, default=False, help="Run the command in screen.")
+@click.option(
     "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
 @click.option(
     "--cluster-name",
@@ -578,8 +580,8 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--new", "-N", is_flag=True, help="Force creation of a new screen.")
-def attach(cluster_config_file, start, tmux, cluster_name, new):
-    attach_cluster(cluster_config_file, start, tmux, cluster_name, new)
+def attach(cluster_config_file, start, screen, tmux, cluster_name, new):
+    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new)
 
 
 @cli.command()

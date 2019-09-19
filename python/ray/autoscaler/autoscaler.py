@@ -77,6 +77,11 @@ CLUSTER_CONFIG_SCHEMA = {
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
             "extra_config": (dict, OPTIONAL),  # provider-specific config
+
+            # Whether to try to reuse previously stopped nodes instead of
+            # launching nodes. This will also cause the autoscaler to stop
+            # nodes instead of terminating them. Only implemented for AWS.
+            "cache_stopped_nodes": (bool, OPTIONAL),
         },
         REQUIRED),
 
