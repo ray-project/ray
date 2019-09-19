@@ -95,9 +95,11 @@ elif [[ "$platform" == "macosx" ]]; then
     # Run a simple test script to make sure that the wheel works.
     $PYTHON_EXE $TEST_SCRIPT
 
-    # Run the UI test to make sure that the packaged UI works.
-    $PIP_CMD install aiohttp psutil requests
-    $PYTHON_EXE $UI_TEST_SCRIPT
+    if (( $(echo "$PY_MM >= 3.0" | bc) )); then
+      # Run the UI test to make sure that the packaged UI works.
+      $PIP_CMD install aiohttp psutil requests
+      $PYTHON_EXE $UI_TEST_SCRIPT
+    fi
   done
 else
   echo "Unrecognized environment."
