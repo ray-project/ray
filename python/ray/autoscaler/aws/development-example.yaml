@@ -88,7 +88,7 @@ setup_commands:
     # Install basics.
     - sudo apt-get update
     - sudo apt-get install -y build-essential curl unzip
-    # Install Node (for the webui).
+    # Install Node.js in order to build the dashboard.
     - curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash
     - sudo apt-get install -y nodejs
     # Install Anaconda.
