@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <list>
 #include "ray/gcs/callback.h"
 #include "ray/gcs/tables.h"
 
