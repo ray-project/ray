@@ -99,12 +99,15 @@ elif [[ "$platform" == "macosx" ]]; then
 
     # Install the wheel.
     $PIP_CMD install -q "$PYTHON_WHEEL"
-    $PIP_CMD install aiohttp psutil requests
 
     # Run a simple test script to make sure that the wheel works.
     INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
-    $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$UI_TEST_SCRIPT"
+    if (( $(echo "$PY_MM >= 3.0" | bc) )); then
+      # Run the UI test to make sure that the packaged UI works.
+      $PIP_CMD install aiohttp psutil requests
+      $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$UI_TEST_SCRIPT"
+    fi
   done
 else
   echo "Unrecognized environment."
