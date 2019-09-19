@@ -473,7 +473,6 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
           path="/errors/:hostname/:pid?"
           render={props => <Errors {...props} errors={result.errors} />}
         />
-        {/*<pre>{JSON.stringify(result, null, 4)}</pre>*/}
       </div>
     );
   }
