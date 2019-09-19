@@ -978,10 +978,11 @@ def start_dashboard(redis_address,
     try:
         import aiohttp  # noqa: F401
         import psutil  # noqa: F401
+        import setproctitle  # noqa: F401
     except ImportError:
         raise ImportError(
             "Failed to start the dashboard. The dashboard requires Python 3 "
-            "as well as 'pip install aiohttp psutil'.")
+            "as well as 'pip install aiohttp psutil setproctitle'.")
 
     process_info = start_ray_process(
         command,
