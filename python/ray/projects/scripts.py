@@ -250,6 +250,8 @@ class SessionRunner(object):
                     raise click.ClickException("More than one wildcard is not supported at the moment")
 
         if shell or not wildcard_arg:
+            for key, val in parsed_args.items():
+                command = command.replace("{{" + key + "}}", str(val))
             commands = [command]
         else:
             commands = []
@@ -261,6 +263,7 @@ class SessionRunner(object):
                 # Substitute arguments
                 for key, val in parsed_args.items():
                     cmd = cmd.replace("{{" + key + "}}", str(val))
+                commands.append(cmd)
 
         return commands
 
@@ -366,5 +369,7 @@ def session_start(command, args, shell, name):
     "--name", help="Name of the session to run this command on", default=None)
 def session_execute(command, args, shell, name):
     runner = SessionRunner(session_name=name)
-    cmd = runner.format_command(command, args, shell)
-    runner.execute_command(cmd)
+    commands = runner.format_command(command, args, shell)
+    if len(commands) != 1:
+        raise click.ClickException("Cannot use command wildcards with execute")
+    runner.execute_command(commands[0])
