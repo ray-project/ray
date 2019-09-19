@@ -27,6 +27,8 @@ const styles = (theme: Theme) =>
       textAlign: "right",
       userSelect: "none",
       width: "1%",
+      // Use a ::before pseudo-element for the line number so that it won't
+      // interact with user selections or searching.
       "&::before": {
         content: "attr(data-line-number)"
       }
