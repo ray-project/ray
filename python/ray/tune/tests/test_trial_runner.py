@@ -1153,6 +1153,8 @@ class TestSyncFunctionality(unittest.TestCase):
         os.remove(test_file_path)
 
     def testNoSync(self):
+        """Sync should not run on a single node."""
+
         def sync_func(source, target):
             pass
 
@@ -1165,9 +1167,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "upload_dir": "test",
-                    "sync_to_driver": sync_func,
-                    "sync_to_cloud": sync_func
+                    "sync_to_driver": sync_func
                 }).trials
             self.assertEqual(mock_sync.call_count, 0)
 

@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -314,7 +315,7 @@ def start(node_ip_address, redis_address, address, redis_port,
             include_java=False,
         )
 
-        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
+        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=block)
         redis_address = node.redis_address
 
         logger.info(
@@ -384,13 +385,12 @@ def start(node_ip_address, redis_address, address, redis_port,
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
         ray_params.update(redis_address=redis_address)
-        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
+        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=block)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")
 
     if block:
-        import time
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
@@ -399,8 +399,8 @@ def start(node_ip_address, redis_address, address, redis_port,
                 for process_type, process in deceased:
                     logger.error("\t{} died with exit code {}".format(
                         process_type, process.returncode))
+                # shutdown_at_exit will handle cleanup.
                 logger.error("Killing remaining processes and exiting...")
-                node.kill_all_processes(check_alive=False, allow_graceful=True)
                 sys.exit(1)
 
 

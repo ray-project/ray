@@ -12,6 +12,11 @@ def check_support(alg, config):
     else:
         config["env"] = "CartPole-v0"
     a = get_agent_class(alg)
+
+    config["eager_tracing"] = False
+    tune.run(a, config=config, stop={"training_iteration": 0})
+
+    config["eager_tracing"] = True
     tune.run(a, config=config, stop={"training_iteration": 0})
 
 
