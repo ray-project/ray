@@ -16,8 +16,15 @@ Deploying on Kubernetes
 
 This document assumes that you have access to a Kubernetes cluster and have
 ``kubectl`` installed locally and configured to access the cluster. It will
-first walk you through how to deploy a Ray cluster on top of your existing
+first walk you through how to deploy a Ray cluster on your existing Kubernetes
 cluster, then explore a few different ways to run programs on the Ray cluster.
+
+The configuration ``yaml`` files here are provided as examples to get you
+started. At a minimum you will probably want to build and use your own
+container images, add more worker nodes to the cluster (or use the
+`Kubernetes Horizontal Pod Autoscaler`_), and change the resource requests for
+the head and worker nodes. Refer to the provided ``yaml`` files to be sure that
+you maintain important configuration options for Ray to function properly.
 
 Creating a Ray Namespace
 ------------------------
@@ -293,6 +300,7 @@ You can post questions or issues or feedback through the following channels:
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 
+.. _`Kubernetes Horizontal Pod Autoscaler`: https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/
 .. _`Kubernetes Namespace`: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
 .. _`Kubernetes Service`: https://kubernetes.io/docs/concepts/services-networking/service/
 .. _`Kubernetes Deployment`: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/
