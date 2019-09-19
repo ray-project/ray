@@ -112,7 +112,7 @@ Ray can be built from the repository as follows.
 
 
 [Optional] Dashboard support
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 If you would like to use the dashboard, you will additionally need to install
 `Node.js`_ and build the dashboard before installing Ray. The relevant build
