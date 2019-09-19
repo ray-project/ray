@@ -32,6 +32,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
       done(Status::OK());
     }
     return Status::OK();
+
   }
 
   // Registration to GCS is not finished yet, add the `done` callback to the pending list
@@ -100,16 +101,7 @@ template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     const ClientID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
-
-  {
-    std::unique_lock<std::mutex> lock(mutex_);
-    const auto it = id_to_callback_map_.find(id);
-    if (it != id_to_callback_map_.end()) {
-      RAY_LOG(DEBUG) << "Duplicate subscription to id " << id << " client_id "
-                     << client_id;
-      return Status::Invalid("Duplicate subscription to element!");
-    }
-  }
+  RAY_CHECK(client_id != ClientID::Nil());
 
   // NOTE(zhijunfu): `Subscribe` and other operations use different redis contexts,
   // thus we need to call `RequestNotifications` in the Subscribe callback to ensure
@@ -130,13 +122,24 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
       std::unique_lock<std::mutex> lock(mutex_);
       status = table_.RequestNotifications(JobID::Nil(), id, client_id,
                                            on_request_notification_done);
-      if (status.ok()) {
-        id_to_callback_map_[id] = subscribe;
+      if (!status.ok()) {
+        id_to_callback_map_.erase(id);
       }
     }
   };
 
-  return AsyncSubscribe(client_id, nullptr, on_subscribe_done);
+  RAY_RETURN_NOT_OK(AsyncSubscribe(client_id, nullptr, on_subscribe_done));
+
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    const auto it = id_to_callback_map_.find(id);
+    if (it != id_to_callback_map_.end()) {
+      RAY_LOG(DEBUG) << "Duplicate subscription to id " << id << " client_id "
+                     << client_id;
+      return Status::Invalid("Duplicate subscription to element!");
+    }
+    id_to_callback_map_[id] = subscribe;
+  }
 }
 
 template <typename ID, typename Data, typename Table>
