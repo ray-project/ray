@@ -67,8 +67,18 @@ class SubscriptionExecutor {
 
   std::mutex mutex_;
 
+  enum class RegistrationStatus : uint8_t {
+    NotRegistered,
+    Registering,
+    Registered,
+  };
+
   /// Whether successfully registered subscription to GCS.
-  bool registered_{false};
+  RegistrationStatus registration_status_{RegistrationStatus::NotRegistered};
+
+  /// List of subscriptions before registration to GCS is done, these callbacks
+  /// will be called when the registration to GCS finishes.
+  std::list<StatusCallback> pending_subscriptions_;
 
   /// Subscribe Callback of all elements.
   SubscribeCallback<ID, Data> subscribe_all_callback_{nullptr};
