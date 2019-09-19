@@ -118,6 +118,14 @@ If you would like to use the dashboard, you will additionally need to install
   npm ci
   npm run build
 
+The dashboard requires Python 3, and can be activated by setting
+``include_webui=True`` during initialization, i.e.
+
+.. code-block:: python
+
+  import ray
+  ray.init(include_webui=True)
+
 
 Docker Source Images
 --------------------
