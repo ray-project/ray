@@ -10,8 +10,12 @@ max_workers: 1
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-west-2
-    availability_zone: us-west-2a
+    region: us-east-1
+    availability_zone: us-east-1a
+
+head_node:
+  InstanceType: m5.xlarge
+  ImageId: ami-0d96d570269578cd7  # DLAMI 7/1/19
 
 # How Ray will authenticate with newly launched nodes.
 auth:

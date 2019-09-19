@@ -32,3 +32,12 @@ commands:
       - name: "dataset"
         help: "The GLUE dataset to fine-tune on"
         choices: ["CoLA", "SST-2", "MRPC", "STS-B", "QQP", "MNLI", "QNLI", "RTE", "WNLI"]
+
+# Pathnames for files and directories that should be saved in a snapshot but
+# that should not be synced with a session. Pathnames can be relative to the
+# project directory or absolute. Generally, this should be files that were
+# created by an active session, such as application checkpoints and logs.
+output_files: [
+  # For example, uncomment this to save the logs from the last ray job.
+  # "/tmp/ray/session_latest",
+]

@@ -217,6 +217,11 @@ class SessionRunner(object):
             for cmd in project_environment["shell"]:
                 self.execute_command(cmd)
 
+    def _substitute_args(self, command, parsed_args):
+        for key, val in parsed_args.items():
+            command = command.replace("{{" + key + "}}", str(val))
+        return command
+
     def format_command(self, command, args, shell):
         """Validate and format a session command.
 
@@ -228,11 +233,14 @@ class SessionRunner(object):
                 run directly.
 
         Returns:
-            The formatted shell command to run.
+            List of formatted shell commands to run.
 
         Raises:
             click.ClickException: This exception is raised if any error occurs.
         """
+        if shell:
+            return [command]
+
         try:
             command, parsed_args, config = self.project_definition.get_command_info(
                 command=command, args=args)
@@ -249,9 +257,8 @@ class SessionRunner(object):
                 else:
                     raise click.ClickException("More than one wildcard is not supported at the moment")
 
-        if shell or not wildcard_arg:
-            for key, val in parsed_args.items():
-                command = command.replace("{{" + key + "}}", str(val))
+        if not wildcard_arg:
+            command = self._substitute_args(command, parsed_args)
             commands = [command]
         else:
             commands = []
@@ -259,10 +266,7 @@ class SessionRunner(object):
                 cmd = command
                 parsed_args = parsed_args.copy()
                 parsed_args[wildcard_arg] = val
-
-                # Substitute arguments
-                for key, val in parsed_args.items():
-                    cmd = cmd.replace("{{" + key + "}}", str(val))
+                cmd = self._substitute_args(cmd, parsed_args)
                 commands.append(cmd)
 
         return commands
