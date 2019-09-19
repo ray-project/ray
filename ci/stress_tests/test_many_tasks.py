@@ -10,7 +10,7 @@ import time
 
 import ray
 
-logging.basicConfig()
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ray.init(address="localhost:6379")
