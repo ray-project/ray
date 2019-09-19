@@ -6,8 +6,6 @@ import argparse
 import numpy as np
 import keras
 from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
 
 from ray.tune.integration.keras import TuneReporterCallback
 from ray.tune.examples.utils import get_mnist_data, set_keras_threads
@@ -19,6 +17,8 @@ args, _ = parser.parse_known_args()
 
 
 def train_mnist(config, reporter):
+    from keras.models import Sequential
+    from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
     set_keras_threads(config["threads"])
     batch_size = 128
     num_classes = 10
