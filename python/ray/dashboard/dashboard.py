@@ -62,7 +62,13 @@ class Dashboard(object):
         self.temp_dir = temp_dir
         self.node_stats = NodeStats(redis_address, redis_password)
 
-        self.is_dev = os.environ.get("RAY_DASHBOARD_ENV") == "development"
+        # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
+        # security checks in the dashboard server to ease development while
+        # using the React dev server. Specifically, when this option is set, we
+        # disable the token-based authentication mechanism and allow
+        # cross-origin requests to be made.
+        self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
+
         self.app = aiohttp.web.Application(
             middlewares=[] if self.is_dev else [self.auth_middleware])
         self.setup_routes()
