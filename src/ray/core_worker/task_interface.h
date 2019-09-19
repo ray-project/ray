@@ -36,10 +36,12 @@ struct ActorCreationOptions {
   ActorCreationOptions() {}
   ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
                        const std::unordered_map<std::string, double> &resources,
+                       const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
         resources(resources),
+        placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options) {}
 
   /// Maximum number of times that the actor should be reconstructed when it dies
@@ -50,6 +52,8 @@ struct ActorCreationOptions {
   const bool is_direct_call = false;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
+  /// Resources required to place this actor.
+  const std::unordered_map<std::string, double> placement_resources;
   /// The dynamic options used in the worker command when starting a worker process for
   /// an actor creation task.
   const std::vector<std::string> dynamic_worker_options;
@@ -58,22 +62,31 @@ struct ActorCreationOptions {
 /// A handle to an actor.
 class ActorHandle {
  public:
+  /// Copy constructor.
+  ActorHandle(const ActorHandle &other)
+      : inner_(other.inner_), new_actor_handles_(other.new_actor_handles_) {}
+
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const Language actor_language, bool is_direct_call,
+              const JobID &job_id, const Language actor_language, bool is_direct_call,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
-  ActorHandle(const ActorHandle &other);
+  /// Constructs an ActorHandle by forking from parent. Note that this will modify
+  /// parent to account for the newly forked child handle.
+  ActorHandle(ActorHandle &parent, bool in_band);
 
-  /// ID of the actor.
+  /// Constructs an ActorHandle from a serialized string.
+  ActorHandle(const std::string &serialized, const TaskID &current_task_id);
+
   ray::ActorID ActorID() const;
 
-  /// ID of this actor handle.
   ray::ActorHandleID ActorHandleID() const;
 
-  /// Language of the actor.
+  /// ID of the job that created the actor (it is possible that the handle
+  /// exists on a job with a different job ID).
+  ray::JobID JobID() const;
+
   Language ActorLanguage() const;
 
-  // Function descriptor of actor creation task.
   std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
 
   /// The unique id of the last return of the last task.
@@ -87,24 +100,17 @@ class ActorHandle {
   /// It's used to make sure ids of actor handles are unique.
   int64_t NumForks() const;
 
-  /// Whether direct call is used. If this is true, then the tasks
-  /// are submitted directly to the actor without going through raylet.
   bool IsDirectCallActor() const;
-
-  ActorHandle Fork();
 
   void Serialize(std::string *output);
 
-  static ActorHandle Deserialize(const std::string &data);
+  int64_t IncreaseTaskCounter();
 
  private:
   ActorHandle();
 
   /// Set actor cursor.
   void SetActorCursor(const ObjectID &actor_cursor);
-
-  /// Increase task counter.
-  int64_t IncreaseTaskCounter();
 
   std::vector<ray::ActorHandleID> NewActorHandles() const;
 
@@ -119,7 +125,6 @@ class ActorHandle {
   /// necessary in the backend.
   std::vector<ray::ActorHandleID> new_actor_handles_;
 
-  /// Mutex to protect mutable fields.
   std::mutex mutex_;
 
   friend class CoreWorkerTaskInterface;
@@ -173,6 +178,7 @@ class CoreWorkerTaskInterface {
   /// Build common attributes of the task spec, and compute return ids.
   ///
   /// \param[in] builder Builder to build a `TaskSpec`.
+  /// \param[in] job_id The ID of the job submitting the task.
   /// \param[in] task_id The ID of this task.
   /// \param[in] task_index The task index used to build this task.
   /// \param[in] function The remote function to execute.
@@ -185,8 +191,9 @@ class CoreWorkerTaskInterface {
   /// \param[out] return_ids Return IDs.
   /// \return Void.
   void BuildCommonTaskSpec(
-      TaskSpecBuilder &builder, const TaskID &task_id, const int task_index,
-      const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+      TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+      const int task_index, const RayFunction &function, const std::vector<TaskArg> &args,
+      uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       TaskTransportType transport_type, std::vector<ObjectID> *return_ids);

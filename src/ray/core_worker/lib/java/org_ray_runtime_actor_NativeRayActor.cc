@@ -20,8 +20,7 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  auto new_actor_handle = GetActorHandle(nativeActorHandle).Fork();
-  return reinterpret_cast<jlong>(new ray::ActorHandle(new_actor_handle));
+  return reinterpret_cast<jlong>(new ray::ActorHandle(nativeActorHandle), true);
 }
 
 /*
@@ -62,7 +61,8 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
  * Method:    nativeIsDirectCallActor
  * Signature: (J)Z
  */
-JNIEXPORT jboolean JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
+JNIEXPORT jboolean JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return GetActorHandle(nativeActorHandle).IsDirectCallActor();
 }

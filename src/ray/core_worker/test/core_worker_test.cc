@@ -61,7 +61,8 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-  ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources, {}};
+  ActorCreationOptions actor_options{
+      max_reconstructions, is_direct_call, resources, resources, {}};
 
   // Create an actor.
   RAY_CHECK_OK(worker.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -645,10 +646,11 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
+  ActorCreationOptions actor_options{
+      0, /*is_direct_call*/ true, resources, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                           ActorHandleID::Nil(), function.GetLanguage(), true,
+                           ActorHandleID::Nil(), job_id, function.GetLanguage(), true,
                            function.GetFunctionDescriptor());
 
   // Manually create `num_tasks` task specs, and for each of them create a
@@ -708,7 +710,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
+  ActorCreationOptions actor_options{
+      0, /*is_direct_call*/ true, resources, resources, {}};
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
   // wait for actor creation finish.
@@ -773,12 +776,13 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
-  const auto job_id = NextJobId();
-  ActorHandle handle1(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                      ActorHandleID::FromRandom(), Language::JAVA, false,
+  const JobID job_id = NextJobId();
+  const TaskID task_id = TaskID::ForDriverTask(job_id);
+  ActorHandle handle1(ActorID::Of(job_id, task_id, 1), ActorHandleID::FromRandom(),
+                      job_id, Language::JAVA, false,
                       {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
-  auto forkedHandle1 = handle1.Fork();
+  ActorHandle forkedHandle1(handle1, true);
   ASSERT_EQ(1, handle1.NumForks());
   ASSERT_EQ(handle1.ActorID(), forkedHandle1.ActorID());
   ASSERT_NE(handle1.ActorHandleID(), forkedHandle1.ActorHandleID());
@@ -788,14 +792,14 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ASSERT_EQ(handle1.ActorCursor(), forkedHandle1.ActorCursor());
   ASSERT_EQ(0, forkedHandle1.TaskCounter());
   ASSERT_EQ(0, forkedHandle1.NumForks());
-  auto forkedHandle2 = handle1.Fork();
+  ActorHandle forkedHandle2(handle1, true);
   ASSERT_EQ(2, handle1.NumForks());
   ASSERT_EQ(0, forkedHandle2.TaskCounter());
   ASSERT_EQ(0, forkedHandle2.NumForks());
 
   std::string buffer;
   handle1.Serialize(&buffer);
-  auto handle2 = ActorHandle::Deserialize(buffer);
+  ActorHandle handle2(buffer, task_id);
   ASSERT_EQ(handle1.ActorID(), handle2.ActorID());
   ASSERT_EQ(handle1.ActorHandleID(), handle2.ActorHandleID());
   ASSERT_EQ(handle1.ActorLanguage(), handle2.ActorLanguage());

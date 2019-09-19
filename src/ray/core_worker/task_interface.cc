@@ -9,10 +9,11 @@ namespace ray {
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const class ActorHandleID &actor_handle_id,
-    const Language actor_language, bool is_direct_call,
+    const class JobID &job_id, const Language actor_language, bool is_direct_call,
     const std::vector<std::string> &actor_creation_task_function_descriptor) {
   inner_.set_actor_id(actor_id.Data(), actor_id.Size());
   inner_.set_actor_handle_id(actor_handle_id.Data(), actor_handle_id.Size());
+  inner_.set_job_id(job_id.Data(), job_id.Size());
   inner_.set_actor_language(actor_language);
   *inner_.mutable_actor_creation_task_function_descriptor() = {
       actor_creation_task_function_descriptor.begin(),
@@ -25,16 +26,63 @@ ActorHandle::ActorHandle(
   inner_.set_is_direct_call(is_direct_call);
 }
 
-ActorHandle::ActorHandle(const ActorHandle &other)
-    : inner_(other.inner_), new_actor_handles_(other.new_actor_handles_) {}
+ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
+  std::unique_lock<std::mutex> guard(parent.mutex_);
+  inner_ = parent.inner_;
+  class ActorHandleID new_actor_handle_id;
+  if (in_band) {
+    new_actor_handle_id = ComputeForkedActorHandleId(
+        ActorHandleID::FromBinary(parent.inner_.actor_handle_id()),
+        parent.inner_.num_forks());
+    // Notify the backend to expect this new actor handle. The backend will
+    // not release the cursor for any new handles until the first task for
+    // each of the new handles is submitted.
+    // NOTE(swang): There is currently no garbage collection for actor
+    // handles until the actor itself is removed.
+    new_actor_handles_.push_back(new_actor_handle_id);
+  } else {
+    // If this serialization is happening out-of-band, we set the actor handle ID.
+    // to nil to signal that it should be computed when the handle is deserialized.
+    new_actor_handle_id = ActorHandleID::Nil();
+    // The execution dependency for a pickled actor handle is never safe
+    // to release, since it could be unpickled and submit another
+    // dependent task at any time. Therefore, we notify the backend of a
+    // random handle ID that will never actually be used.
+    new_actor_handles_.push_back(ActorHandleID::FromRandom());
+  }
+  parent.inner_.set_num_forks(parent.inner_.num_forks() + 1);
+  guard.unlock();
 
-ray::ActorID ActorHandle::ActorID() const {
-  return ActorID::FromBinary(inner_.actor_id());
-};
+  inner_.set_actor_handle_id(new_actor_handle_id.Data(), new_actor_handle_id.Size());
+  inner_.set_task_counter(0);
+  inner_.set_num_forks(0);
+}
 
-ray::ActorHandleID ActorHandle::ActorHandleID() const {
+ActorHandle::ActorHandle(const std::string &serialized, const TaskID &current_task_id) {
+  inner_.ParseFromString(serialized);
+  // If the actor handle ID is nil, this serialized handle was created by an out-of-band
+  // mechanism (see fork constructor above), so we compute a new actor handle ID.
+  // TODO(pcm): This still leads to a lot of actor handles being
+  // created, there should be a better way to handle pickled
+  // actor handles.
+  // TODO(swang): Unpickling the same actor handle twice in the same
+  // task will break the application, and unpickling it twice in the
+  // same actor is likely a performance bug. We should consider
+  // logging a warning in these cases.
+  if (ActorHandleID::FromBinary(inner_.actor_handle_id()).IsNil()) {
+    const class ActorHandleID new_actor_handle_id = ComputeOutOfBandActorHandleId(
+        ActorHandleID::FromBinary(inner_.actor_handle_id()), current_task_id);
+    inner_.set_actor_handle_id(new_actor_handle_id.Data(), new_actor_handle_id.Size());
+  }
+}
+
+ActorID ActorHandle::ActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
+
+ActorHandleID ActorHandle::ActorHandleID() const {
   return ActorHandleID::FromBinary(inner_.actor_handle_id());
 };
+
+JobID ActorHandle::JobID() const { return JobID::FromBinary(inner_.job_id()); };
 
 Language ActorHandle::ActorLanguage() const { return inner_.actor_language(); };
 
@@ -52,32 +100,9 @@ int64_t ActorHandle::NumForks() const { return inner_.num_forks(); };
 
 bool ActorHandle::IsDirectCallActor() const { return inner_.is_direct_call(); }
 
-ActorHandle ActorHandle::Fork() {
-  ActorHandle new_handle;
-  std::unique_lock<std::mutex> guard(mutex_);
-  new_handle.inner_ = inner_;
-  inner_.set_num_forks(inner_.num_forks() + 1);
-  const auto next_actor_handle_id = ComputeNextActorHandleId(
-      ActorHandleID::FromBinary(inner_.actor_handle_id()), inner_.num_forks());
-  new_handle.inner_.set_actor_handle_id(next_actor_handle_id.Data(),
-                                        next_actor_handle_id.Size());
-  new_actor_handles_.push_back(next_actor_handle_id);
-  guard.unlock();
-
-  new_handle.inner_.set_task_counter(0);
-  new_handle.inner_.set_num_forks(0);
-  return new_handle;
-}
-
 void ActorHandle::Serialize(std::string *output) {
   std::unique_lock<std::mutex> guard(mutex_);
   inner_.SerializeToString(output);
-}
-
-ActorHandle ActorHandle::Deserialize(const std::string &data) {
-  ActorHandle ret;
-  ret.inner_.ParseFromString(data);
-  return ret;
 }
 
 ActorHandle::ActorHandle() {}
@@ -92,7 +117,7 @@ int64_t ActorHandle::IncreaseTaskCounter() {
   return old;
 }
 
-std::vector<ray::ActorHandleID> ActorHandle::NewActorHandles() const {
+std::vector<ActorHandleID> ActorHandle::NewActorHandles() const {
   return new_actor_handles_;
 }
 
@@ -115,16 +140,17 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
-    TaskSpecBuilder &builder, const TaskID &task_id, const int task_index,
-    const RayFunction &function, const std::vector<TaskArg> &args, uint64_t num_returns,
+    TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+    const int task_index, const RayFunction &function, const std::vector<TaskArg> &args,
+    uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(
-      task_id, function.GetLanguage(), function.GetFunctionDescriptor(),
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(), task_index,
-      num_returns, required_resources, required_placement_resources);
+  builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
+                            function.GetFunctionDescriptor(), job_id,
+                            worker_context_.GetCurrentTaskID(), task_index, num_returns,
+                            required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -152,9 +178,9 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-  BuildCommonTaskSpec(builder, task_id, next_task_index, function, args,
-                      task_options.num_returns, task_options.resources, {},
-                      TaskTransportType::RAYLET, return_ids);
+  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                      next_task_index, function, args, task_options.num_returns,
+                      task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
@@ -167,17 +193,19 @@ Status CoreWorkerTaskInterface::CreateActor(
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
                   next_task_index);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
+  const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, actor_creation_task_id, next_task_index, function, args, 1,
-                      actor_creation_options.resources, actor_creation_options.resources,
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, next_task_index, function,
+                      args, 1, actor_creation_options.resources,
+                      actor_creation_options.placement_resources,
                       TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-      actor_id, ActorHandleID::Nil(), function.GetLanguage(),
+      actor_id, ActorHandleID::Nil(), job_id, function.GetLanguage(),
       actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
   (*actor_handle)->IncreaseTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
@@ -203,9 +231,9 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   const auto actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle.ActorID());
-  BuildCommonTaskSpec(builder, actor_task_id, next_task_index, function, args,
-                      num_returns, task_options.resources, {}, transport_type,
-                      return_ids);
+  BuildCommonTaskSpec(builder, actor_handle.JobID(), actor_task_id, next_task_index,
+                      function, args, num_returns, task_options.resources, {},
+                      transport_type, return_ids);
 
   std::unique_lock<std::mutex> guard(actor_handle.mutex_);
   // Build actor task spec.

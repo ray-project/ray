@@ -41,10 +41,10 @@ cdef class TaskSpec:
 
         # Convert resource map to C++ unordered_map.
         if resource_map is not None:
-            required_resources = resource_map_from_dict(resource_map)
+            prepare_resources(resource_map, &required_resources)
         if placement_resource_map is not None:
-            required_placement_resources = (
-                resource_map_from_dict(placement_resource_map))
+            prepare_resources(placement_resource_map,
+                              &required_placement_resources)
 
         # Build common task spec.
         builder.SetCommonTaskSpec(
