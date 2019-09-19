@@ -51,8 +51,8 @@ ray_project_files = [
 ]
 
 ray_dashboard_files = [
-    "ray/dashboard/client/build/index.html",
     "ray/dashboard/client/build/favicon.ico",
+    "ray/dashboard/client/build/index.html",
 ]
 for dirname in ["css", "js", "media"]:
     ray_dashboard_files += glob.glob(
