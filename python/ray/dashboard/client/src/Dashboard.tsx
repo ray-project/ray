@@ -186,18 +186,18 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
     const { classes } = this.props;
     const { response, error, expanded } = this.state;
 
-    if (response === null) {
-      return (
-        <Typography className={classes.root} color="textSecondary">
-          Loading...
-        </Typography>
-      );
-    }
-
     if (error !== null) {
       return (
         <Typography className={classes.root} color="error">
           {error}
+        </Typography>
+      );
+    }
+
+    if (response === null) {
+      return (
+        <Typography className={classes.root} color="textSecondary">
+          Loading...
         </Typography>
       );
     }
