@@ -30,12 +30,17 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         Args:
             model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
-            data_creator (dict -> Dataset, Dataset):  see pytorch_trainer.py.
+            data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 see pytorch_trainer.py.
-            config (dict):  see pytorch_trainer.py.
-            batch_size (int): batch size used by one replica for an update.
-            backend (string):  see pytorch_trainer.py.
+            loss_creator (dict -> loss):
+                see pytorch_trainer.py.
+            train_function: (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion, optimizer -> train loss/accuracy):
+                see pytorch_trainer.py
+            validation_function (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion -> validation loss/accuracy):
+                see pytorch_trainer.py
+            config (dict): see pytorch_trainer.py.
+            batch_size (int): see pytorch_trainer.py.
         """
         super(DistributedPyTorchRunner, self).__init__(
             model_creator,

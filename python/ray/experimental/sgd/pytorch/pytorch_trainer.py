@@ -47,8 +47,14 @@ class PyTorchTrainer(object):
                 using the config.
             data_creator (dict -> Dataset, Dataset): creates the training
                 and validation data sets using the config.
-            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
+            optimizer_creator (torch.nn.Module, dict -> optimizer):
                 creates the loss and optimizer using the model and the config.
+            loss_creator (dict -> loss):
+                creates the loss function/criterion using loss args in config which could be empty.
+            train_function: (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion, optimizer -> train loss/accuracy):
+                trains a model for one epoch, returns training stats
+            validation_function (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion -> validation loss/accuracy):
+                runs validation, return validation stats
             config (dict): configuration passed to "model_creator",
                 "data_creator", and "optimizer_creator".
             num_replicas (int): the number of workers used in distributed
