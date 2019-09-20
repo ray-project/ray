@@ -43,7 +43,7 @@ def train(model, train_iterator, criterion, optimizer):
         optimizer.zero_grad()
     stats = {
         "train_loss": train_loss / total_num,
-        'train_acc': correct / total_num
+        "train_acc": correct / total_num
     }
     return stats
 
@@ -93,7 +93,7 @@ def train_example(num_replicas=1, use_gpu=False):
         backend="nccl")
     stats = trainer1.train()
     print(stats)
-    trainer1.train()
+    print(trainer1.train())
     trainer1.shutdown()
     print("success!")
 
@@ -149,7 +149,7 @@ if __name__ == "__main__":
 
     import ray
 
-    ray.init(address=args.ray_redis_address)
+    ray.init(address=args.ray_redis_address, log_to_driver=False)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
