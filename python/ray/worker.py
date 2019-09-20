@@ -90,9 +90,6 @@ try:
 except ImportError:
     setproctitle = None
 
-if USE_NEW_SERIALIZER:
-    from _pickle import PickleBuffer
-
 
 class ActorCheckpointInfo(object):
     """Information used to maintain actor checkpoints."""
@@ -515,7 +512,8 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
-            if USE_NEW_SERIALIZER and metadata == ray_constants.PICKLE5_BUFFER_METADATA:
+            if (USE_NEW_SERIALIZER
+                    and metadata == ray_constants.PICKLE5_BUFFER_METADATA):
                 in_band, buffers = unpack_pickle5_buffers(data)
                 return pickle.loads(in_band, buffers=buffers)
             # Check if the object should be returned as raw bytes.

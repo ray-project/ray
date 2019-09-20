@@ -3,9 +3,10 @@ from libc.string cimport strlen, memcpy
 from libc.stdint cimport uintptr_t
 from cython.parallel cimport prange
 
-# This is the default alignment value for len(buffer) < 2048
+# This is the default alignment value for len(buffer) < 2048.
 DEF kMinorBufferAlign = 8
-# This is the default alignment value for len(buffer) >= 2048. Arrow use it for possible SIMD acceleration.
+# This is the default alignment value for len(buffer) >= 2048.
+# Some projects like Arrow use it for possible SIMD acceleration.
 DEF kMajorBufferAlign = 64
 DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
@@ -91,7 +92,8 @@ cdef class SubBuffer:
 cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
                            uintptr_t block_size, int num_threads):
     cdef:
-        uint8_t *left = pointer_logical_and(src + block_size - 1, ~(block_size - 1))
+        uint8_t *left = pointer_logical_and(src + block_size - 1,
+                                            ~(block_size - 1))
         uint8_t *right = pointer_logical_and(src + nbytes, ~(block_size - 1))
         int64_t num_blocks = (right - left) // block_size
         size_t chunk_size
@@ -106,13 +108,17 @@ cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
     chunk_size = (right - left) // num_threads
     prefix = left - src
     suffix = src + nbytes - right
-    # Now the data layout is | prefix | k * num_threads * block_size | suffix |.
+    # Now the data layout is
+    # | prefix | k * num_threads * block_size | suffix |.
+    #
     # We have chunk_size = k * block_size, therefore the data layout is
     # | prefix | num_threads * chunk_size | suffix |.
     # Each thread gets a "chunk" of k blocks.
 
-    for i in prange(num_threads, nogil=True, num_threads=num_threads, schedule='static', chunksize=1):
-        memcpy(dst + prefix + i * chunk_size, left + i * chunk_size, chunk_size)
+    for i in prange(num_threads, nogil=True, num_threads=num_threads,
+                    schedule='static', chunksize=1):
+        memcpy(dst + prefix + i * chunk_size, left + i * chunk_size,
+               chunk_size)
         if i == 0:
             memcpy(dst, src, prefix)
         if i == num_threads - 1:
@@ -134,10 +140,12 @@ def unpack_pickle5_buffers(Buffer buf):
         shared_ptr[CBuffer] _buffer = buf.buffer
         const uint8_t*data = buf.buffer.get().Data()
         size_t size = _buffer.get().Size()
-        size_t buffer_meta_item_size = sizeof(int64_t) * 3 + sizeof(int32_t) * 4
+        size_t buffer_meta_item_size = \
+            sizeof(int64_t) * 3 + sizeof(int32_t) * 4
         int64_t meta_length
         c_string meta_str
-        int32_t n_buffers, buffer_meta_length, shape_stride_length, format_length
+        int32_t n_buffers, buffer_meta_length, \
+            shape_stride_length, format_length
         int32_t buffer_meta_offset
         const uint8_t *buffer_meta_ptr
         const uint8_t *shape_stride_entry
@@ -158,7 +166,8 @@ def unpack_pickle5_buffers(Buffer buf):
     # calculate entry offsets
     shape_stride_entry = data + buffer_meta_length
     format_entry = shape_stride_entry + shape_stride_length
-    buffer_entry = <const uint8_t *> padded_length(<int64_t> (format_entry + format_length), kMajorBufferAlign)
+    buffer_entry = <const uint8_t *> padded_length(<int64_t> (
+            format_entry + format_length), kMajorBufferAlign)
 
     pickled_buffers = []
     # Now read buffer meta
@@ -211,33 +220,40 @@ cdef class Pickle5Writer:
             Py_buffer view
             int64_t buf_len
             size_t format_len
-        cpython.PyObject_GetBuffer(pickle_buffer, &view, cpython.PyBUF_RECORDS_RO)
+        cpython.PyObject_GetBuffer(pickle_buffer, &view,
+                                   cpython.PyBUF_RECORDS_RO)
         self.n_buffers += 1
 
         self.ndims.push_back(view.ndim)
         self.readonlys.push_back(view.readonly)
-        ## => Shape & strides
-        self.shape_stride_offsets.push_back(self.shape_strides.size() * sizeof(Py_ssize_t))
-        self.shape_strides.insert(self.shape_strides.end(), view.shape, view.shape + view.ndim)
-        self.shape_strides.insert(self.shape_strides.end(), view.strides, view.strides + view.ndim)
+        # => Shape & strides
+        self.shape_stride_offsets.push_back(self.shape_strides.size() *
+                                            sizeof(Py_ssize_t))
+        self.shape_strides.insert(self.shape_strides.end(), view.shape,
+                                  view.shape + view.ndim)
+        self.shape_strides.insert(self.shape_strides.end(), view.strides,
+                                  view.strides + view.ndim)
 
-        ## => Format
+        # => Format
         if view.format:
             self.format_offsets.push_back(self.formats.size())
             format_len = strlen(view.format)
             # Also copy '\0'
-            self.formats.insert(self.formats.end(), view.format, view.format + format_len + 1)
+            self.formats.insert(self.formats.end(), view.format,
+                                view.format + format_len + 1)
         else:
             self.format_offsets.push_back(-1)
 
-        ## => Buffer
+        # => Buffer
         self.buffer_lens.push_back(view.len)
         self.itemsizes.push_back(view.itemsize)
 
         if view.len < kMajorBufferSize:
-            self.buffer_bytes = padded_length(self.buffer_bytes, kMinorBufferAlign)
+            self.buffer_bytes = padded_length(self.buffer_bytes,
+                                              kMinorBufferAlign)
         else:
-            self.buffer_bytes = padded_length(self.buffer_bytes, kMajorBufferAlign)
+            self.buffer_bytes = padded_length(self.buffer_bytes,
+                                              kMajorBufferAlign)
         self.buffer_offsets.push_back(self.buffer_bytes)
         self.buffer_bytes += view.len
         self.buffers.push_back(view)
@@ -246,17 +262,20 @@ cdef class Pickle5Writer:
         cdef int64_t total_bytes = 0
         total_bytes = sizeof(int64_t) + meta.length()  # len(meta),  meta
         total_bytes = padded_length(total_bytes, 4)  # align to 4
-        # i32 len(buffers), i32 len(buffer_meta), i32 len(shape_strides), i32 len(formats)
+        # i32 len(buffers), i32 len(buffer_meta),
+        # i32 len(shape_strides), i32 len(formats)
         total_bytes += sizeof(int32_t) * 4
         # buffer meta
-        total_bytes += self.n_buffers * (sizeof(int64_t) * 3 + sizeof(int32_t) * 4)
+        total_bytes += self.n_buffers * (
+                sizeof(int64_t) * 3 + sizeof(int32_t) * 4)
         total_bytes += self.shape_strides.size() * sizeof(Py_ssize_t)
         total_bytes += self.formats.size()
         total_bytes = padded_length(total_bytes, kMajorBufferAlign)
         total_bytes += self.buffer_bytes
         return total_bytes
 
-    cdef void write_to(self, const c_string & meta, shared_ptr[CBuffer] data, int memcopy_threads):
+    cdef void write_to(self, const c_string & meta, shared_ptr[CBuffer] data,
+                       int memcopy_threads):
         cdef uint8_t *ptr = data.get().Data()
         cdef int i
         (<int64_t*> ptr)[0] = meta.length()
@@ -265,8 +284,10 @@ cdef class Pickle5Writer:
         ptr += meta.length()
         ptr = <uint8_t*> padded_length(<int64_t> ptr, 4)
         (<int32_t*> ptr)[0] = self.n_buffers
-        (<int32_t*> ptr)[1] = <int32_t> (self.n_buffers * (sizeof(int64_t) * 3 + sizeof(int32_t) * 4))
-        (<int32_t*> ptr)[2] = <int32_t> (self.shape_strides.size() * sizeof(Py_ssize_t))
+        (<int32_t*> ptr)[1] = <int32_t> (
+                self.n_buffers * (sizeof(int64_t) * 3 + sizeof(int32_t) * 4))
+        (<int32_t*> ptr)[2] = <int32_t> (
+                self.shape_strides.size() * sizeof(Py_ssize_t))
         (<int32_t*> ptr)[3] = <int32_t> (self.formats.size())
         ptr += sizeof(int32_t) * 4
         for i in range(self.n_buffers):
@@ -279,17 +300,21 @@ cdef class Pickle5Writer:
             (<int32_t*> ptr)[2] = self.format_offsets[i]
             (<int32_t*> ptr)[3] = self.shape_stride_offsets[i]
             ptr += sizeof(int32_t) * 4
-        memcpy(ptr, self.shape_strides.data(), self.shape_strides.size() * sizeof(Py_ssize_t))
+        memcpy(ptr, self.shape_strides.data(),
+               self.shape_strides.size() * sizeof(Py_ssize_t))
         ptr += self.shape_strides.size() * sizeof(Py_ssize_t)
         memcpy(ptr, self.formats.data(), self.formats.size())
         ptr += self.formats.size()
         ptr = <uint8_t*> padded_length(<int64_t> ptr, kMajorBufferAlign)
         for i in range(self.n_buffers):
-            if memcopy_threads > 1 and self.buffer_lens[i] > kMemcopyDefaultThreshold:
+            if (memcopy_threads > 1 and
+                    self.buffer_lens[i] > kMemcopyDefaultThreshold):
                 parallel_memcopy(ptr + self.buffer_offsets[i],
-                                 <const uint8_t*> self.buffers[i].buf, self.buffer_lens[i],
+                                 <const uint8_t*> self.buffers[i].buf,
+                                 self.buffer_lens[i],
                                  kMemcopyDefaultBlocksize, memcopy_threads)
             else:
-                memcpy(ptr + self.buffer_offsets[i], self.buffers[i].buf, self.buffer_lens[i])
+                memcpy(ptr + self.buffer_offsets[i], self.buffers[i].buf,
+                       self.buffer_lens[i])
             # We must release the buffer, or we could experience memory leaks.
             cpython.PyBuffer_Release(&self.buffers[i])
