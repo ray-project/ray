@@ -85,7 +85,7 @@ test_impala(){
             RLLIB_DIR=../../python/ray/rllib/
             ray --logging-level=DEBUG up -y "$CLUSTER" &&
             ray rsync_up "$CLUSTER" $RLLIB_DIR/tuned_examples/ tuned_examples/ &&
-            sleep 1 &&
+            sleep 30 &&
             ray --logging-level=DEBUG exec "$CLUSTER" "source activate tensorflow_p36 && rllib train -f tuned_examples/atari-impala-large.yaml --ray-address='localhost:6379' --queue-trials" &&
             echo "PASS: IMPALA Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
         } || echo "FAIL: IMPALA Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
