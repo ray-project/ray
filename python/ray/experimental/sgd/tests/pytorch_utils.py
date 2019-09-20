@@ -72,7 +72,7 @@ def cifar_creator(config):
 
 def imagenet_creator(config):
     trainset = torchvision.datasets.ImageNet(
-            root='/data/imagenet',
+            root="/data/imagenet",
             transform=transforms.Compose([
                          transforms.RandomResizedCrop(224),
                          transforms.RandomHorizontalFlip(),
@@ -81,11 +81,11 @@ def imagenet_creator(config):
                          mean=(0.485, 0.456, 0.406),
                          std=(0.229, 0.224, 0.225))
             ]),
-            split='train'
+            split="train"
     )
     trainset = torch.utils.data.Subset(trainset, range(500*256))
     valset = torchvision.datasets.ImageNet(
-            root='/data/imagenet',
+            root="/data/imagenet",
             transform=transforms.Compose([
                          transforms.Resize(256),
                          transforms.CenterCrop(224),
@@ -94,6 +94,6 @@ def imagenet_creator(config):
                          mean=(0.485, 0.456, 0.406),
                          std=(0.229, 0.224, 0.225))
             ]),
-            split='val'
+            split="val"
     )
     return trainset, valset
