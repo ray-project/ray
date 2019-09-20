@@ -206,7 +206,8 @@ def remaining_processes_alive():
 def validate_redis_address(address, redis_address):
     """Validates redis address parameter and splits it into host/ip components.
 
-    We currently support both 'address' and 'redis_address', so both
+    We temporarily support both 'address' and 'redis_address', so both are
+    handled here.
 
     Returns:
         redis_address: string containing the full <host:port> address.
