@@ -94,13 +94,6 @@ def validate(model, val_iterator, criterion):
     return stats
 
 
-def find_free_port():
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind(("", 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
-
-
 class AverageMeter(object):
     """Computes and stores the average and current value."""
 
