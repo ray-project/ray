@@ -49,14 +49,16 @@ class ProjectDefinition:
         directory = os.path.join("~", self.config["name"], "")
         return directory
 
-    def get_command_info(self, command, args=tuple()):
+    def get_command_info(self, command_name, args=tuple(), wildcards=False):
         """Get the shell command, parsed arguments and config for a command.
 
         Args:
-            command (str): Name of the command to run. The command definition
+            command_name (str): Name of the command to run. The command definition
                 should be available in project.yaml.
             args (tuple): Tuple containing arguments to format the command
                 with.
+            wildcards (bool): If True, enable wildcards as arguments.
+
         Returns:
             The raw shell command to run with placeholders for the arguments.
             The parsed argument dictonary, parsed with argparse.
@@ -71,32 +73,33 @@ class ProjectDefinition:
         config = None
 
         for command_definition in self.config["commands"]:
-            if command_definition["name"] == command:
+            if command_definition["name"] == command_name:
                 command_to_run = command_definition["command"]
                 params = command_definition.get("params", [])
                 config = command_definition.get("config", {})
         if not command_to_run:
             raise ValueError(
-                "Cannot find the command '{}' in commmands section of the "
-                "project file.".format(command))
+                "Cannot find the command named '{}' in commmands section of the "
+                "project file.".format(command_name))
 
         # Build argument parser dynamically to parse parameter arguments.
-        parser = argparse.ArgumentParser(prog=command)
+        parser = argparse.ArgumentParser(prog=command_name)
         # For argparse arguments that have a 'choices' list associated
         # with them, save it in the following dictionary.
         choices = {}
         for param in params:
             name = param.pop("name")
-            if "choices" in param:
+            if wildcards and "choices" in param:
                 choices[name] = param["choices"].copy()
                 param["choices"] = param["choices"] + ["*"]
             parser.add_argument("--" + name, **param)
 
         parsed_args = parser.parse_args(list(args)).__dict__
 
-        for key, val in parsed_args.items():
-             if val == "*":
-                 parsed_args[key] = choices[key]
+        if wildcards:
+            for key, val in parsed_args.items():
+                if val == "*":
+                    parsed_args[key] = choices[key]
 
         return command_to_run, parsed_args, config
 

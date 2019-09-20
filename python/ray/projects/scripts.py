@@ -238,37 +238,15 @@ class SessionRunner(object):
             port_forward=None,
         )
 
-
-def _substitute_args(command, parsed_args):
-    for key, val in parsed_args.items():
-        command = command.replace("{{" + key + "}}", str(val))
-    return command
-
-def format_command(project_definition, command, args, shell):
-    """Validate and format a session command.
-
-    Args:
-        command (str, optional): Command from the project definition's
-            commands section to run, if any.
-        args (list): Arguments for the command to run.
-        shell (bool): If true, command is a shell command that should be
-            run directly.
-
-    Returns:
-        List of formatted shell commands to run.
-
-    Raises:
-        click.ClickException: This exception is raised if any error occurs.
-    """
+def format_command(command, parsed_args, shell):
     if shell:
-        return [command], {}
+        return command
+    else:
+        for key, val in parsed_args.items():
+            command = command.replace("{{" + key + "}}", str(val))
+        return command
 
-    try:
-        command, parsed_args, config = project_definition.get_command_info(
-            command=command, args=args)
-    except ValueError as e:
-        raise click.ClickException(e)
-
+def format_commands(command, parsed_args, shell):
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
     wildcard_arg = None
@@ -280,18 +258,14 @@ def format_command(project_definition, command, args, shell):
                 raise click.ClickException("More than one wildcard is not supported at the moment")
 
     if not wildcard_arg:
-        command = _substitute_args(command, parsed_args)
-        commands = [command]
+        return [format_command(command, parsed_args, shell)]
     else:
         commands = []
         for val in parsed_args[wildcard_arg]:
-            cmd = command
             parsed_args = parsed_args.copy()
             parsed_args[wildcard_arg] = val
-            cmd = _substitute_args(cmd, parsed_args)
-            commands.append(cmd)
-
-    return commands, config
+            commands.append(format_command(command, parsed_args, shell))
+        return commands
 
 
 @session_cli.command(help="Attach to an existing cluster")
@@ -340,9 +314,14 @@ def session_start(command, args, shell, name):
     if shell or command:
         # Get the actual command to run. This also validates the command,
         # which should be done before the cluster is started.
-        commands, config = format_command(project_definition, command, args, shell)
+        try:
+            command, parsed_args, config = project_definition.get_command_info(command, args, wildcards=True)
+        except ValueError as e:
+            raise click.ClickException(e)
+        commands = format_commands(command, parsed_args, shell)
         num_steps = 4
     else:
+        commands = [command]
         num_steps = 3
 
     for i, cmd in enumerate(commands):
@@ -375,8 +354,12 @@ def session_start(command, args, shell, name):
 @click.option(
     "--name", help="Name of the session to run this command on", default=None)
 def session_execute(command, args, shell, name):
+    project_definition = load_project_or_throw()
+    try:
+        command, parsed_args, config = project_definition.get_command_info(command, args, wildcards=False)
+    except ValueError as e:
+        raise click.ClickException(e)
+
     runner = SessionRunner(session_name=name)
-    commands, config = runner.format_command(command, args, shell)
-    if len(commands) != 1:
-        raise click.ClickException("Cannot use command wildcards with execute")
-    runner.execute_command(commands[0])
+    command = format_command(command, parsed_args, shell)
+    runner.execute_command(command)
