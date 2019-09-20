@@ -65,7 +65,7 @@ if [[ "$platform" == "linux" ]]; then
 
   # Run the UI test to make sure that the packaged UI works.
   $HOME/miniconda3/bin/pip install aiohttp psutil requests setproctitle
-  $HOME/miniconda3/bin/python $UI_TEST_SCRIPT
+  $HOME/miniconda3/bin/python -m pytest -v $UI_TEST_SCRIPT
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q "$ROOT_DIR"/../../.whl/*.whl | wc -l)
