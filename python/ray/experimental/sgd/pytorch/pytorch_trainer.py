@@ -12,9 +12,10 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.trial import Resources
-from sgd.pytorch.pytorch_runner import PyTorchRunner
-from sgd.pytorch.distributed_pytorch_runner import DistributedPyTorchRunner
-from sgd.pytorch import utils
+from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
+    DistributedPyTorchRunner)
+from ray.experimental.sgd import utils
+from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
 logger = logging.getLogger(__name__)
 
