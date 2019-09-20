@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import os
 import torch.distributed as dist
 import torch.utils.data
 
@@ -22,7 +21,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
                  loss_creator,
                  train_function=None,
                  validation_function=None,
-                 initialization_hook=None,
                  config=None,
                  batch_size=16,
                  backend="gloo"):
@@ -40,7 +38,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             validation_function (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion -> validation loss/accuracy):
                 see pytorch_trainer.py
             config (dict): see pytorch_trainer.py.
-            batch_size (int): see pytorch_trainer.py.
+            batch_size (int): batch size used by one replica for an update.
+            backend (string):  see pytorch_trainer.py.
         """
         super(DistributedPyTorchRunner, self).__init__(
             model_creator,
@@ -49,7 +48,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
             loss_creator,
             train_function=train_function,
             validation_function=validation_function,
-            initialization_hook=initialization_hook,
             config=config,
             batch_size=batch_size)
         self.backend = backend
@@ -90,7 +88,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         logger.debug("Creating optimizer.")
         self.optimizer = self.optimizer_creator(self.model, self.config)
-        self.criterion = self.loss_creator(**self.config.get("loss_kwargs", {}))
+        self.criterion = self.loss_creator(
+            **self.config.get("loss_kwargs", {}))
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
@@ -115,8 +114,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.validation_set,
             batch_size=self.batch_size,
             shuffle=(self.validation_sampler is None),
-            num_workers=4,
-            pin_memory=True,
+            num_workers=2,
+            pin_memory=False,
             sampler=self.validation_sampler)
 
     def step(self):

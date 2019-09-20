@@ -36,6 +36,7 @@ def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
+
 def mse_loss(*args):
     return nn.MSELoss()
 
@@ -70,30 +71,27 @@ def cifar_creator(config):
         root="~/data", train=False, download=False, transform=transform_test)
     return trainset, valset
 
+
 def imagenet_creator(config):
     trainset = torchvision.datasets.ImageNet(
-            root="/data/imagenet",
-            transform=transforms.Compose([
-                         transforms.RandomResizedCrop(224),
-                         transforms.RandomHorizontalFlip(),
-                         transforms.ToTensor(),
-                         transforms.Normalize(
-                         mean=(0.485, 0.456, 0.406),
-                         std=(0.229, 0.224, 0.225))
-            ]),
-            split="train"
-    )
-    trainset = torch.utils.data.Subset(trainset, range(500*256))
+        root="/data/imagenet",
+        transform=transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+        ]),
+        split="train")
+    trainset = torch.utils.data.Subset(trainset, range(500 * 256))
     valset = torchvision.datasets.ImageNet(
-            root="/data/imagenet",
-            transform=transforms.Compose([
-                         transforms.Resize(256),
-                         transforms.CenterCrop(224),
-                         transforms.ToTensor(),
-                         transforms.Normalize(
-                         mean=(0.485, 0.456, 0.406),
-                         std=(0.229, 0.224, 0.225))
-            ]),
-            split="val"
-    )
+        root="/data/imagenet",
+        transform=transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
+        ]),
+        split="val")
     return trainset, valset

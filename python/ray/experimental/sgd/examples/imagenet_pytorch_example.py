@@ -21,11 +21,14 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
 def initialization_hook(runner):
     print("NCCL DEBUG SET")
     # Need this for avoiding a connection restart issue
     os.environ["NCCL_SOCKET_IFNAME"] = "^docker0,lo"
     os.environ["NCCL_LL_THRESHOLD"] = "0"
+
+
 #    os.environ["NCCL_DEBUG"] = "INFO"
 
 
@@ -45,12 +48,16 @@ def train(model, train_iterator, criterion, optimizer):
         correct += predicted.eq(target).sum().item()
         optimizer.step()
         optimizer.zero_grad()
-    stats = {"train_loss": train_loss / total_num, 'train_acc': correct / total_num}
+    stats = {
+        "train_loss": train_loss / total_num,
+        'train_acc': correct / total_num
+    }
     return stats
 
 
 def train_example(use_gpu=False):
     import torchvision.models as models
+
     def create_trainer(num_replicas):
         return PyTorchTrainer(
             model_creator=models.resnet18,
@@ -62,8 +69,8 @@ def train_example(use_gpu=False):
             num_replicas=num_replicas,
             batch_size=256 * num_replicas,
             use_gpu=use_gpu,
-            backend="nccl"
-        )
+            backend="nccl")
+
     t = time.time()
     trainer = create_trainer(40)
     t = time.time() - t

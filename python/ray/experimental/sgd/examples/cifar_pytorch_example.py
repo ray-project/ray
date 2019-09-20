@@ -7,12 +7,14 @@ import torch
 import torch.nn as nn
 import argparse
 from ray import tune
-from sgd.pytorch.pytorch_trainer import (PyTorchTrainer, PyTorchTrainable)
+import torch.nn as nn
+import torch.utils.data
+import torchvision
+import torchvision.transforms as transforms
+from ray.experimental.sgd.pytorch import (PyTorchTrainer, PyTorchTrainable)
+from ray.experimental.sgd.pytorch.resnet import ResNet18
 
 import ray
-from ray.experimental.sgd.pytorch import PyTorchTrainer
-from ray.experimental.sgd.tests.pytorch_utils import (
-    resnet_creator, xe_optimizer_creator, cifar_creator)
 
 
 def initialization_hook(runner):
@@ -31,29 +33,63 @@ def train(model, train_iterator, criterion, optimizer):
         if torch.cuda.is_available():
             data, target = data.cuda(), target.cuda()
         output = model(data)
-        loss = criterion(output, target)  # / float(large_ratio)
+        loss = criterion(output, target)
         loss.backward()
-        train_loss += loss.item() * target.size(0)  # * float(large_ratio)
+        train_loss += loss.item() * target.size(0)
         total_num += target.size(0)
         _, predicted = output.max(1)
         correct += predicted.eq(target).sum().item()
         optimizer.step()
         optimizer.zero_grad()
-    stats = {"train_loss": train_loss / total_num, 'train_acc': correct / total_num}
+    stats = {
+        "train_loss": train_loss / total_num,
+        'train_acc': correct / total_num
+    }
     return stats
+
+
+def cifar_creator(config):
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
+    ])  # meanstd transformation
+
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465),
+                             (0.2023, 0.1994, 0.2010)),
+    ])
+    from filelock import FileLock
+    with FileLock(os.path.expanduser("~/data.lock")):
+        trainset = torchvision.datasets.CIFAR10(
+            root="~/data",
+            train=True,
+            download=True,
+            transform=transform_train)
+    valset = torchvision.datasets.CIFAR10(
+        root="~/data", train=False, download=False, transform=transform_test)
+    return trainset, valset
+
+
+def optimizer_creator(model, config):
+    """Returns optimizer"""
+    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer1 = PyTorchTrainer(
-        models.resnet50,
+        ResNet18,
         cifar_creator,
         optimizer_creator,
-        nn.MSELoss,
+        nn.CrossEntropyLoss,
         initialization_hook=initialization_hook,
         train_function=train,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
-        batch_size=2048,
+        batch_size=512,
         backend="nccl")
     stats = trainer1.train()
     print(stats)
@@ -64,14 +100,18 @@ def train_example(num_replicas=1, use_gpu=False):
 
 def tune_example(num_replicas=1, use_gpu=False):
     config = {
-        "model_creator": tune.function(models.resnet50),
-        "data_creator": tune.function(cifar_creator),
-        "optimizer_creator": tune.function(optimizer_creator),
-        "loss_creator": tune.function(nn.MSELoss),
+        "model_creator": ResNet18,
+        "data_creator": cifar_creator,
+        "optimizer_creator": optimizer_creator,
+        "loss_creator": nn.CrossEntropyLoss,
         "num_replicas": num_replicas,
+        "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
         "batch_size": 512,
-        "backend": "gloo"
+        "config": {
+            "lr": tune.choice([1e-4, 1e-3, 5e-3, 1e-2])
+        },
+        "backend": "nccl"
     }
 
     analysis = tune.run(
@@ -87,7 +127,7 @@ def tune_example(num_replicas=1, use_gpu=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--redis-address",
+        "--ray-redis-address",
         required=False,
         type=str,
         help="the address to use for Redis")
@@ -109,7 +149,7 @@ if __name__ == "__main__":
 
     import ray
 
-    ray.init(redis_address=args.redis_address)
+    ray.init(address=args.ray_redis_address)
 
     if args.tune:
         tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)

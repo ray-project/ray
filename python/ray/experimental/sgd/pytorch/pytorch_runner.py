@@ -7,7 +7,8 @@ import torch
 import torch.utils.data
 
 import ray
-from ray.experimental.sgd.pytorch import utils
+from ray.experimental.sgd.pytorch import utils as pytorch_utils
+from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,8 @@ class PyTorchRunner(object):
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.config = {} if config is None else config
-        self.train_function = train_function or utils.train
-        self.validation_function = validation_function or utils.validate
+        self.train_function = train_function or pytorch_utils.train
+        self.validation_function = validation_function or pytorch_utils.validate
         self.batch_size = batch_size
         self.verbose = True
 

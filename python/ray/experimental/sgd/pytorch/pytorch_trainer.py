@@ -209,13 +209,7 @@ class PyTorchTrainable(Trainable):
             extra_gpu=int(config["use_gpu"]) * config["num_replicas"])
 
     def _setup(self, config):
-        self._trainer = PyTorchTrainer(
-            model_creator=config["model_creator"],
-            data_creator=config["data_creator"],
-            optimizer_creator=config["optimizer_creator"],
-            config=config,
-            num_replicas=config["num_replicas"],
-            use_gpu=config["use_gpu"])
+        self._trainer = PyTorchTrainer(**config)
 
     def _train(self):
 

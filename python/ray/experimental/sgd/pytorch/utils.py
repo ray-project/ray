@@ -9,6 +9,7 @@ import time
 import torch
 import torch.nn as nn
 
+from ray.experimental.sgd.utils import TimerStat
 
 def train(model, train_iterator, criterion, optimizer):
     """Runs 1 training epoch"""
@@ -70,7 +71,8 @@ def validate(model, val_iterator, criterion):
 
     # switch to evaluate mode
     model.eval()
-
+    correct = 0
+    total = 0
     with torch.no_grad():
         end = time.time()
         for i, (features, target) in enumerate(val_iterator):
@@ -82,6 +84,9 @@ def validate(model, val_iterator, criterion):
             # compute output
             output = model(features)
             loss = criterion(output, target)
+            _, predicted = torch.max(output.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
 
             # measure accuracy and record loss
             losses.update(loss.item(), features.size(0))
@@ -91,6 +96,7 @@ def validate(model, val_iterator, criterion):
             end = time.time()
 
     stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
+    stats.update(mean_accuracy=correct / total)
     return stats
 
 
