@@ -78,7 +78,8 @@ class SigOptSearch(SuggestionAlgorithm):
                 "version of Tune. "
                 "Setting `metric={}` and `mode=max`.".format(reward_attr))
         if "use_early_terminated_trials" in kwargs:
-            logger.warning("`use_early_terminated_trials` is not used in SigOptSearch.")
+            logger.warning(
+                "`use_early_terminated_trials` is not used in SigOptSearch.")
 
         self._max_concurrent = max_concurrent
         self._metric = metric
