@@ -317,8 +317,9 @@ class Trainer(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent",
-        "custom_resources_per_worker", "evaluation_config"
+        "tf_session_args", "local_tf_session_args", "env_config", "model",
+        "optimizer", "multiagent", "custom_resources_per_worker",
+        "evaluation_config"
     ]
 
     @PublicAPI
