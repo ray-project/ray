@@ -40,11 +40,12 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
     sleep 5
   done
 
-  python trainer.py $redis_password 100 # Pass the total number of allocated CPUs
+  python -u trainer.py $redis_password 100 # Pass the total number of allocated CPUs
 
 .. code-block:: python
 
   # trainer.py
+  from collections import Counter
   import os
   import sys
   import time
@@ -57,10 +58,13 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
 
   @ray.remote
   def f():
-    time.sleep(1)
+      time.sleep(1)
+      return ray.services.get_node_ip_address()
 
   # The following takes one second (assuming that ray was able to access all of the allocated nodes).
-  start = time.time()
-  ray.get([f.remote() for _ in range(num_cpus)])
-  end = time.time()
-  print(end - start)
+  for i in range(60):
+      start = time.time()
+      ip_addresses = ray.get([f.remote() for _ in range(num_cpus)])
+      print(Counter(ip_addresses))
+      end = time.time()
+      print(end - start)
