@@ -74,9 +74,9 @@ test_impala(){
                 s/<<<RAY_COMMIT>>>/$RAY_COMMIT/;
                 s/<<<CLUSTER_NAME>>>/$TEST_NAME/;
                 s/<<<HEAD_TYPE>>>/p3.16xlarge/;
-                s/<<<WORKER_TYPE>>>/m5.24xlarge/;
-                s/<<<MIN_WORKERS>>>/5/;
-                s/<<<MAX_WORKERS>>>/5/;
+                s/<<<WORKER_TYPE>>>/m4.16xlarge/;
+                s/<<<MIN_WORKERS>>>/9/;
+                s/<<<MAX_WORKERS>>>/9/;
                 s/<<<PYTHON_VERSION>>>/$PYTHON_VERSION/;
                 s/<<<WHEEL_STR>>>/$WHEEL_STR/;" > "$CLUSTER"
 
@@ -86,9 +86,7 @@ test_impala(){
             ray --logging-level=DEBUG up -y "$CLUSTER" &&
             ray rsync_up "$CLUSTER" $RLLIB_DIR/tuned_examples/ tuned_examples/ &&
             sleep 1 &&
-            ray --logging-level=DEBUG exec "$CLUSTER" "rllib || true" &&
-            ray --logging-level=DEBUG exec "$CLUSTER" "
-                rllib train -f tuned_examples/atari-impala-large.yaml --ray-address='localhost:6379' --queue-trials" &&
+            ray --logging-level=DEBUG exec "$CLUSTER" "source activate tensorflow_p36 && rllib train -f tuned_examples/atari-impala-large.yaml --ray-address='localhost:6379' --queue-trials" &&
             echo "PASS: IMPALA Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
         } || echo "FAIL: IMPALA Test for" "$PYTHON_VERSION" >> "$RESULT_FILE"
 
