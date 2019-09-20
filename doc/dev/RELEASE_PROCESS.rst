@@ -3,7 +3,7 @@ Release Process
 
 This document describes the process for creating new releases.
 
-3. **Create a release branch:** Create the branch from the desired commit on master
+1. **Create a release branch:** Create the branch from the desired commit on master
    In order to create the branch, locally checkout the commit ID i.e.,
    ``git checkout <hash>``. Then checkout a new branch of the format
    ``releases/<release-version>``. Then push that branch to the ray repo:
