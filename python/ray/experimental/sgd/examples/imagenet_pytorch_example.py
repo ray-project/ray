@@ -29,22 +29,6 @@ def initialization_hook(runner):
 #    os.environ["NCCL_DEBUG"] = "INFO"
 
 
-def resize_cluster(target_gpus, blocking=True):
-    res = ray.cluster_resources()
-    logger.info("Assuming all machines are same in cluster.")
-    if res['GPU'] < target_gpus:
-        CPU_per_GPU = res['CPU'] / res['GPU']
-        target_cpus = math.ceil(CPU_per_GPU * target_gpus)
-        autoscaler.request_resources(num_cpus=target_cpus)
-        logger.info(f"Target CPUs: {target_cpus}")
-
-    total_gpus = ray.cluster_resources()["GPU"]
-    logger.info(f"Total GPUs / Required GPUs: {total_gpus}/{target_gpus}")
-    while total_gpus < target_gpus and blocking:
-        time.sleep(1)
-        logger.info(f"Total GPUs / Required GPUs: {total_gpus}/{target_gpus}")
-        total_gpus = ray.cluster_resources()["GPU"]
-
 def train(model, train_iterator, criterion, optimizer):
     model.train()
     train_loss, total_num, correct = 0, 0, 0
@@ -65,7 +49,7 @@ def train(model, train_iterator, criterion, optimizer):
     return stats
 
 
-def resizing_train_example(use_gpu=False):
+def train_example(use_gpu=False):
     import torchvision.models as models
     def create_trainer(num_replicas):
         return PyTorchTrainer(
@@ -86,25 +70,12 @@ def resizing_train_example(use_gpu=False):
     print('startup:', t)
     print('40 WORKERS')
 
-    for target in [40, 40]:
-        for i in range(20):
-            t = time.time()
-            stats = trainer.train()
-            t = time.time() - t
-            print('training:', t)
-
+    for i in range(20):
         t = time.time()
-        logger.info('Checkpoint and resize')
-        trainer.save('checkpoint.pth')
-        logger.info("Saved.")
-
-        resize_cluster(target)
-        trainer.shutdown()
-        trainer = create_trainer(target)
-        trainer.restore('checkpoint.pth')
+        stats = trainer.train()
         t = time.time() - t
-        print('resize:', t)
-        print(target, ' WORKERS')
+        print('training:', t)
+
     logger.info('finish training')
 
 
@@ -128,4 +99,4 @@ if __name__ == "__main__":
     import ray
 
     ray.init(redis_address=args.redis_address)
-    resizing_train_example(use_gpu=args.use_gpu)
+    train_example(use_gpu=args.use_gpu)
