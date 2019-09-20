@@ -165,6 +165,11 @@ def test_session_execute_default_project():
 
     assert expected_commands == commands_executed
 
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/project-pass", session_execute, ["--shell", "uptime"])
+    assert result.exit_code == 0
+
+
 
 def test_session_start_docker_fail():
     result, _, _ = run_test_project("session-tests/with-docker-fail",

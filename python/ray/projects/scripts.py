@@ -238,15 +238,12 @@ class SessionRunner(object):
             port_forward=None,
         )
 
-def format_command(command, parsed_args, shell):
-    if shell:
-        return command
-    else:
-        for key, val in parsed_args.items():
-            command = command.replace("{{" + key + "}}", str(val))
-        return command
+def format_command(command, parsed_args):
+    for key, val in parsed_args.items():
+        command = command.replace("{{" + key + "}}", str(val))
+    return command
 
-def format_commands(command, parsed_args, shell):
+def format_commands(command, parsed_args):
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
     wildcard_arg = None
@@ -258,13 +255,13 @@ def format_commands(command, parsed_args, shell):
                 raise click.ClickException("More than one wildcard is not supported at the moment")
 
     if not wildcard_arg:
-        return [format_command(command, parsed_args, shell)]
+        return [format_command(command, parsed_args)]
     else:
         commands = []
         for val in parsed_args[wildcard_arg]:
             parsed_args = parsed_args.copy()
             parsed_args[wildcard_arg] = val
-            commands.append(format_command(command, parsed_args, shell))
+            commands.append(format_command(command, parsed_args))
         return commands
 
 
@@ -311,14 +308,14 @@ def stop(name):
 def session_start(command, args, shell, name):
     project_definition = load_project_or_throw()
 
-    if shell or command:
+    if command:
         # Get the actual command to run. This also validates the command,
         # which should be done before the cluster is started.
         try:
-            command, parsed_args, config = project_definition.get_command_info(command, args, wildcards=True)
+            command, parsed_args, config = project_definition.get_command_info(command, args, shell, wildcards=True)
         except ValueError as e:
             raise click.ClickException(e)
-        commands = format_commands(command, parsed_args, shell)
+        commands = format_commands(command, parsed_args)
         num_steps = 4
     else:
         commands = [command]
@@ -333,7 +330,7 @@ def session_start(command, args, shell, name):
         logger.info("[3/{}] Setting up environment".format(num_steps))
         runner.setup_environment()
 
-        if shell or command:
+        if command:
             # Run the actual command.
             logger.info("[4/4] Running command")
             runner.execute_command(cmd, config)
@@ -356,10 +353,10 @@ def session_start(command, args, shell, name):
 def session_execute(command, args, shell, name):
     project_definition = load_project_or_throw()
     try:
-        command, parsed_args, config = project_definition.get_command_info(command, args, wildcards=False)
+        command, parsed_args, config = project_definition.get_command_info(command, args, shell, wildcards=False)
     except ValueError as e:
         raise click.ClickException(e)
 
     runner = SessionRunner(session_name=name)
-    command = format_command(command, parsed_args, shell)
+    command = format_command(command, parsed_args)
     runner.execute_command(command)

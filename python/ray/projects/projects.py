@@ -49,7 +49,7 @@ class ProjectDefinition:
         directory = os.path.join("~", self.config["name"], "")
         return directory
 
-    def get_command_info(self, command_name, args=tuple(), wildcards=False):
+    def get_command_info(self, command_name, args, shell, wildcards=False):
         """Get the shell command, parsed arguments and config for a command.
 
         Args:
@@ -68,6 +68,9 @@ class ProjectDefinition:
             ValueError: This exception is raised if the given command is not
                 found in project.yaml.
         """
+        if shell:
+            return command_name, {}, {}
+
         command_to_run = None
         params = None
         config = None
