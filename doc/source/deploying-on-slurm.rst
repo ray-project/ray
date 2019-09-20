@@ -26,20 +26,21 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   ip_prefix=$(srun --nodes=1 --ntasks=1 -w $node1 hostname --ip-address) # Making address
   suffix=':6379'
   ip_head=$ip_prefix$suffix
+  redis_password=$(python -u -c "import random; print(random.randrange(10**12))")
 
   export ip_head # Exporting for latter access by trainer.py
 
-  srun --nodes=1 --ntasks=1 -w $node1 ray start --block --head --redis-port=6379 & # Starting the head
+  srun --nodes=1 --ntasks=1 -w $node1 ray start --block --head --redis-port=6379 --redis-password=$redis_password & # Starting the head
   sleep 5
 
   for ((  i=1; i<=$worker_num; i++ ))
   do
     node2=${nodes_array[$i]}
-    srun --nodes=1 --ntasks=1 -w $node2 ray start --block --address=$ip_head & # Starting the workers
+    srun --nodes=1 --ntasks=1 -w $node2 ray start --block --address=$ip_head --redis-password=$redis_password & # Starting the workers
     sleep 5
   done
 
-  python trainer.py 100 # Pass the total number of allocated CPUs
+  python trainer.py $redis_password 100 # Pass the total number of allocated CPUs
 
 .. code-block:: python
 
@@ -48,16 +49,18 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   import sys
   import time
   import ray
-  
-  ray.init(address=os.environ["ip_head"])
- 
+
+  redis_password = sys.argv[1]
+  num_cpus = int(sys.argv[2])
+
+  ray.init(address=os.environ["ip_head"], redis_password=redis_password)
+
   @ray.remote
   def f():
     time.sleep(1)
 
   # The following takes one second (assuming that ray was able to access all of the allocated nodes).
   start = time.time()
-  num_cpus = int(sys.argv[1])
-  ray.get([f.remote() for _ in range(num_cpus)])  
+  ray.get([f.remote() for _ in range(num_cpus)])
   end = time.time()
   print(end - start)
