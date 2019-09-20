@@ -38,7 +38,7 @@ if [[ "$platform" == "linux" ]]; then
   $HOME/miniconda2/bin/pip install $PYTHON_WHEEL
 
   # Run a simple test script to make sure that the wheel works.
-  $HOME/miniconda2/bin/python $TEST_SCRIPT
+  $HOME/miniconda2/bin/python -m pytest -v $TEST_SCRIPT
 
   # Now test Python 3.6.
 
@@ -53,11 +53,11 @@ if [[ "$platform" == "linux" ]]; then
   $HOME/miniconda3/bin/pip install $PYTHON_WHEEL
 
   # Run a simple test script to make sure that the wheel works.
-  $HOME/miniconda3/bin/python $TEST_SCRIPT
+  $HOME/miniconda3/bin/python -m pytest -v $TEST_SCRIPT
 
   # Run the UI test to make sure that the packaged UI works.
   $HOME/miniconda3/bin/pip install aiohttp psutil requests setproctitle
-  $HOME/miniconda3/bin/python $UI_TEST_SCRIPT
+  $HOME/miniconda3/bin/python -m pytest -v $UI_TEST_SCRIPT
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../../.whl/*.whl | wc -l)
@@ -93,12 +93,12 @@ elif [[ "$platform" == "macosx" ]]; then
     $PIP_CMD install $PYTHON_WHEEL
 
     # Run a simple test script to make sure that the wheel works.
-    $PYTHON_EXE $TEST_SCRIPT
+    $PYTHON_EXE -m pytest -v $TEST_SCRIPT
 
     if (( $(echo "$PY_MM >= 3.0" | bc) )); then
       # Run the UI test to make sure that the packaged UI works.
       $PIP_CMD install aiohttp psutil requests setproctitle
-      $PYTHON_EXE $UI_TEST_SCRIPT
+      $PYTHON_EXE -m pytest -v $UI_TEST_SCRIPT
     fi
   done
 else
