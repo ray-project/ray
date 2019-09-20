@@ -12,6 +12,7 @@ spec:
       containers:
         - name: ray-head
           image: rayproject/autoscaler
+          imagePullPolicy: Always
           command: [ "/bin/bash", "-c", "--" ]
           args:
             - "wget https://raw.githubusercontent.com/ray-project/ray/master/doc/kubernetes/example.py &&
