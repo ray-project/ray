@@ -85,45 +85,45 @@ def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
     return (pad_sequences(inputs, maxlen=story_maxlen),
             pad_sequences(queries, maxlen=query_maxlen), np.array(answers))
 
+def read_data():
+    # Get the file
+    try:
+        path = get_file(
+            "babi-tasks-v1-2.tar.gz",
+            origin="https://s3.amazonaws.com/text-datasets/"
+            "babi_tasks_1-20_v1-2.tar.gz")
+    except:
+        print(
+            "Error downloading dataset, please download it manually:\n"
+            "$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2"
+            ".tar.gz\n"
+            "$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz"
+        )
+        raise
+
+    # Choose challenge
+    challenges = {
+        # QA1 with 10,000 samples
+        "single_supporting_fact_10k": "tasks_1-20_v1-2/en-10k/qa1_"
+        "single-supporting-fact_{}.txt",
+        # QA2 with 10,000 samples
+        "two_supporting_facts_10k": "tasks_1-20_v1-2/en-10k/qa2_"
+        "two-supporting-facts_{}.txt",
+    }
+    challenge_type = "single_supporting_fact_10k"
+    challenge = challenges[challenge_type]
+
+    with tarfile.open(path) as tar:
+        train_stories = get_stories(
+            tar.extractfile(challenge.format("train")))
+        test_stories = get_stories(
+            tar.extractfile(challenge.format("test")))
+
+    return train_stories, test_stories
 
 class MemNNModel(Trainable):
-    def _read_data(self):
-        # Get the file
-        try:
-            path = get_file(
-                "babi-tasks-v1-2.tar.gz",
-                origin="https://s3.amazonaws.com/text-datasets/"
-                "babi_tasks_1-20_v1-2.tar.gz")
-        except:
-            print(
-                "Error downloading dataset, please download it manually:\n"
-                "$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2"
-                ".tar.gz\n"
-                "$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz"
-            )
-            raise
-
-        # Choose challenge
-        challenges = {
-            # QA1 with 10,000 samples
-            "single_supporting_fact_10k": "tasks_1-20_v1-2/en-10k/qa1_"
-            "single-supporting-fact_{}.txt",
-            # QA2 with 10,000 samples
-            "two_supporting_facts_10k": "tasks_1-20_v1-2/en-10k/qa2_"
-            "two-supporting-facts_{}.txt",
-        }
-        challenge_type = "single_supporting_fact_10k"
-        challenge = challenges[challenge_type]
-
-        with tarfile.open(path) as tar:
-            train_stories = get_stories(
-                tar.extractfile(challenge.format("train")))
-            test_stories = get_stories(
-                tar.extractfile(challenge.format("test")))
-
-        return train_stories, test_stories
-
-    def _build_model(self, input_shape):
+    def build_model(self):
+        """Helper method for creating the model"""
         vocab = set()
         for story, q, answer in self.train_stories + self.test_stories:
             vocab |= set(story + q + [answer])
@@ -159,7 +159,7 @@ class MemNNModel(Trainable):
         input_encoder_c = Sequential()
         input_encoder_c.add(
             Embedding(input_dim=vocab_size, output_dim=query_maxlen))
-        input_encoder_c.add(Dropout(0.3))
+        input_encoder_c.add(Dropout(self.config.get("dropout", 0.3)))
         # output: (samples, story_maxlen, query_maxlen)
 
         # embed the question into a sequence of vectors
@@ -197,7 +197,7 @@ class MemNNModel(Trainable):
         answer = LSTM(32)(answer)  # (samples, 32)
 
         # one regularization layer -- more would probably be needed.
-        answer = Dropout(0.3)(answer)
+        answer = Dropout(self.config.get("dropout", 0.3))(answer)
         answer = Dense(vocab_size)(answer)  # (samples, vocab_size)
         # we output a probability distribution over the vocabulary
         answer = Activation("softmax")(answer)
@@ -207,8 +207,8 @@ class MemNNModel(Trainable):
         return model
 
     def _setup(self, config):
-        self.train_stories, self.test_stories = self._read_data()
-        model = self._build_model(None)  # Shape not used
+        self.train_stories, self.test_stories = read_data()
+        model = self.build_model()
         model.compile(
             optimizer="rmsprop",
             loss="sparse_categorical_crossentropy",
@@ -216,19 +216,17 @@ class MemNNModel(Trainable):
         self.model = model
 
     def _train(self):
-        batch_size = 32
-        epochs = 1
-
         # train
         self.model.fit(
             [self.inputs_train, self.queries_train],
             self.answers_train,
-            batch_size=batch_size,
-            epochs=epochs,
-            validation_data=None,
+            batch_size=self.config.get("batch_size", 32),
+            epochs=self.config.get("epochs", 1),
             verbose=0)
         _, accuracy = self.model.evaluate(
-            [self.inputs_test, self.queries_test], self.answers_test)
+            [self.inputs_test, self.queries_test], 
+            self.answers_test,
+            verbose=0)
         return {"mean_accuracy": accuracy}
 
     def _save(self, checkpoint_dir):
@@ -240,12 +238,6 @@ class MemNNModel(Trainable):
         # See https://stackoverflow.com/a/42763323
         del self.model
         self.model = load_model(path)
-
-    def _stop(self):
-        # If need, save your model when exit.
-        # saved_path = self.model.save(self.logdir)
-        # print("save model at: ", saved_path)
-        pass
 
 
 if __name__ == "__main__":
@@ -271,8 +263,8 @@ if __name__ == "__main__":
         scheduler=pbt,
         stop={"training_iteration": 50},
         num_samples=10,
-        **{
-            "config": {
-                "dropout": 0.3
-            },
+        config={
+            "batch_size": 32,
+            "epochs": 1,
+            "dropout": 0.3,
         })
