@@ -170,6 +170,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                             override_cluster_name):
     """Create the cluster head node, which in turn creates the workers."""
     provider = get_node_provider(config["provider"], config["cluster_name"])
+    config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
             TAG_RAY_NODE_TYPE: "head",
