@@ -32,7 +32,6 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
       done(Status::OK());
     }
     return Status::OK();
-
   }
 
   // Registration to GCS is not finished yet, add the `done` callback to the pending list
@@ -128,8 +127,6 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     }
   };
 
-  RAY_RETURN_NOT_OK(AsyncSubscribe(client_id, nullptr, on_subscribe_done));
-
   {
     std::unique_lock<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
@@ -140,6 +137,13 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     }
     id_to_callback_map_[id] = subscribe;
   }
+
+  auto status = AsyncSubscribe(client_id, nullptr, on_subscribe_done);
+  if (!status.ok()) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    id_to_callback_map_.erase(id);
+  }
+  return status;
 }
 
 template <typename ID, typename Data, typename Table>
