@@ -231,3 +231,9 @@ def test_session_create_multiple():
                 "echo \"Starting ray job with 1 and 1\"") == 1
             assert commands_executed.count(
                 "echo \"Starting ray job with 1 and 2\"") == 1
+
+    # Using multiple wildcards shouldn't work
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/commands-test", session_start,
+        ["first", "--a", "*", "--b", "*"])
+    assert result.exit_code == 1

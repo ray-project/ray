@@ -239,11 +239,32 @@ class SessionRunner(object):
         )
 
 def format_command(command, parsed_args):
+    """Substitute arguments into command.
+
+    Args:
+        command (str): Shell comand with argument placeholders.
+        parsed_args (dict): Dictionary that maps from argument names
+            to their value.
+
+    Returns:
+        Shell command with parameters from parsed_args substituted.
+    """
     for key, val in parsed_args.items():
         command = command.replace("{{" + key + "}}", str(val))
     return command
 
 def format_commands(command, parsed_args):
+    """Substitue arguments (possibly containing wildcards) into a command.
+
+    Args:
+        command (str): Shell command with argument placeholders.
+        parsed_args (dict): Dictionary that maps from argument names
+            to their values.
+
+    Returns:
+        List of shell commands with parameters from parsed_args substituted.
+        Will have one command for each wildcard substitution.
+    """
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
     wildcard_arg = None
@@ -320,6 +341,12 @@ def session_start(command, args, shell, name):
     else:
         commands = [command]
         num_steps = 3
+
+    if len(commands) > 1 and not config.get("tmux", False):
+        logging.info("Using wildcards with tmux = False would not create "
+                     "sessions in parallel, so we are overriding it with "
+                     "tmux = True.")
+        config["tmux"] = True
 
     for i, cmd in enumerate(commands):
         runner = SessionRunner(session_name="{}-{}".format(name, i))
