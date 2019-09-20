@@ -51,5 +51,8 @@ if __name__ == "__main__":
     # use "localhost" here.
     # redis_host = "localhost"
     redis_host = os.environ["RAY_HEAD_SERVICE_HOST"]
+    if redis_host == "":
+        raise ValueError("RAY_HEAD_SERVICE_HOST environment variable empty."
+                         "Is there a ray cluster running?")
     ray.init(address=redis_host + ":6379")
     main()
