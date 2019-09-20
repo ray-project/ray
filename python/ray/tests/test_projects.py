@@ -206,6 +206,7 @@ def test_session_create_command():
             found_command = True
     assert found_command
 
+
 def test_session_create_multiple():
     for args in [{"a": "*", "b": "2"}, {"a": "1", "b": "*"}]:
         result, mock_calls, test_dir = run_test_project(

@@ -238,6 +238,7 @@ class SessionRunner(object):
             port_forward=None,
         )
 
+
 def format_command(command, parsed_args):
     """Substitute arguments into command.
 
@@ -252,6 +253,7 @@ def format_command(command, parsed_args):
     for key, val in parsed_args.items():
         command = command.replace("{{" + key + "}}", str(val))
     return command
+
 
 def format_commands(command, parsed_args):
     """Substitue arguments (possibly containing wildcards) into a command.
@@ -273,7 +275,8 @@ def format_commands(command, parsed_args):
             if not wildcard_arg:
                 wildcard_arg = key
             else:
-                raise click.ClickException("More than one wildcard is not supported at the moment")
+                raise click.ClickException(
+                    "More than one wildcard is not supported at the moment")
 
     if not wildcard_arg:
         return [format_command(command, parsed_args)]
@@ -287,10 +290,7 @@ def format_commands(command, parsed_args):
 
 
 @session_cli.command(help="Attach to an existing cluster")
-@click.option(
-    "--tmux",
-    help="Attach to tmux session",
-    is_flag=True)
+@click.option("--tmux", help="Attach to tmux session", is_flag=True)
 def attach(tmux):
     project_definition = load_project_or_throw()
     attach_cluster(
@@ -333,7 +333,8 @@ def session_start(command, args, shell, name):
         # Get the actual command to run. This also validates the command,
         # which should be done before the cluster is started.
         try:
-            command, parsed_args, config = project_definition.get_command_info(command, args, shell, wildcards=True)
+            command, parsed_args, config = project_definition.get_command_info(
+                command, args, shell, wildcards=True)
         except ValueError as e:
             raise click.ClickException(e)
         commands = format_commands(command, parsed_args)
@@ -380,7 +381,8 @@ def session_start(command, args, shell, name):
 def session_execute(command, args, shell, name):
     project_definition = load_project_or_throw()
     try:
-        command, parsed_args, config = project_definition.get_command_info(command, args, shell, wildcards=False)
+        command, parsed_args, config = project_definition.get_command_info(
+            command, args, shell, wildcards=False)
     except ValueError as e:
         raise click.ClickException(e)
 
