@@ -10,6 +10,7 @@ from keras.layers.embeddings import Embedding
 from keras.layers import Input, Activation, Dense, Permute, Dropout
 from keras.layers import add, dot, concatenate
 from keras.layers import LSTM
+from keras.optimizers import RMSprop
 from keras.utils.data_utils import get_file
 from keras.preprocessing.sequence import pad_sequences
 from functools import reduce
@@ -209,8 +210,9 @@ class MemNNModel(Trainable):
     def _setup(self, config):
         self.train_stories, self.test_stories = read_data()
         model = self.build_model()
+        rmsprop = RMSprop(lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9))
         model.compile(
-            optimizer="rmsprop",
+            optimizer=rmsprop,
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy"])
         self.model = model
@@ -256,7 +258,11 @@ if __name__ == "__main__":
         metric="mean_accuracy",
         mode="max",
         perturbation_interval=20,
-        hyperparam_mutations={"dropout": lambda: np.random.uniform(0, 1)})
+        hyperparam_mutations={
+            "dropout": lambda: np.random.uniform(0, 1),
+            "lr": lambda: 10**np.random.randint(-10, 0),
+            "rho": lambda: np.random.uniform(0, 1)
+        })
 
     run(MemNNModel,
         name="pbt_babi_memnn",
@@ -267,4 +273,6 @@ if __name__ == "__main__":
             "batch_size": 32,
             "epochs": 1,
             "dropout": 0.3,
+            "lr": 1e-3,
+            "rho": 0.9
         })
