@@ -70,7 +70,7 @@ else
   exit 1
 fi
 
-if [[ "$PYTHON" == "3.5" ]] || [[ "$LINUX_WHEELS" == "1" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
+if [[ "$PYTHON" == "3.5" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
   # Install the latest version of Node.js in order to build the dashboard.
   source $HOME/.nvm/nvm.sh
   nvm install node
