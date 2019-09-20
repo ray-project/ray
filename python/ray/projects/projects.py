@@ -53,8 +53,8 @@ class ProjectDefinition:
         """Get the shell command, parsed arguments and config for a command.
 
         Args:
-            command_name (str): Name of the command to run. The command definition
-                should be available in project.yaml.
+            command_name (str): Name of the command to run. The command
+                definition should be available in project.yaml.
             args (tuple): Tuple containing arguments to format the command
                 with.
             wildcards (bool): If True, enable wildcards as arguments.
@@ -82,8 +82,8 @@ class ProjectDefinition:
                 config = command_definition.get("config", {})
         if not command_to_run:
             raise ValueError(
-                "Cannot find the command named '{}' in commmands section of the "
-                "project file.".format(command_name))
+                "Cannot find the command named '{}' in commmands section "
+                "of the project file.".format(command_name))
 
         # Build argument parser dynamically to parse parameter arguments.
         parser = argparse.ArgumentParser(prog=command_name)

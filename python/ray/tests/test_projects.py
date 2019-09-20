@@ -170,7 +170,6 @@ def test_session_execute_default_project():
     assert result.exit_code == 0
 
 
-
 def test_session_start_docker_fail():
     result, _, _ = run_test_project("session-tests/with-docker-fail",
                                     session_start, [])
