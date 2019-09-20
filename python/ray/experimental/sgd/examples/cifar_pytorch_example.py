@@ -10,8 +10,8 @@ from ray import tune
 from sgd.pytorch.pytorch_trainer import (PyTorchTrainer, PyTorchTrainable)
 
 import ray
-from sgd.pytorch import PyTorchTrainer
-from sgd.tests.pytorch_utils import (
+from ray.experimental.sgd.pytorch import PyTorchTrainer
+from ray.experimental.sgd.tests.pytorch_utils import (
     resnet_creator, xe_optimizer_creator, cifar_creator)
 
 

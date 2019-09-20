@@ -10,12 +10,12 @@ import torch.nn as nn
 import argparse
 import time
 from ray import tune
-from sgd.pytorch.pytorch_trainer import PyTorchTrainer, PyTorchTrainable
-from sgd.models.resnet import ResNet18
+from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer, PyTorchTrainable
+from ray.experimental.sgd.models.resnet import ResNet18
 
 import ray
 from ray.autoscaler import autoscaler
-from sgd.tests.pytorch_utils import optimizer_creator, cifar_creator, imagenet_creator
+from ray.experimental.sgd.tests.pytorch_utils import optimizer_creator, cifar_creator, imagenet_creator
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

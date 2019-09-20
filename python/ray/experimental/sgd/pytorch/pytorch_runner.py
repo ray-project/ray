@@ -7,7 +7,7 @@ import torch
 import torch.utils.data
 
 import ray
-from sgd.pytorch import utils
+from ray.experimental.sgd.pytorch import utils
 
 logger = logging.getLogger(__name__)
 
