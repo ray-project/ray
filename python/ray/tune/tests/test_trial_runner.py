@@ -236,7 +236,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         })
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
-        [trial] = tune.run(partial(dummy_fn, steps=steps))
+        [trial] = tune.run(partial(dummy_fn, steps=steps)).trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 

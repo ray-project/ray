@@ -172,7 +172,7 @@ class TF2Logger(Logger):
             from tensorflow.python.eager import context
             self._context = context
             self._file_writer = tf.summary.create_file_writer(self.logdir)
-        with tf.device("/CPU:0"), self._context.eager_mode():
+        with tf.device("/CPU:0"):
             with tf.summary.record_if(True), self._file_writer.as_default():
                 step = result.get(
                     TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
