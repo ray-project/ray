@@ -180,7 +180,8 @@ class HyperOptSearch(SuggestionAlgorithm):
         so that HyperOpt can "maximize" this value, as it minimizes on default.
         """
         ho_trial = self._get_hyperopt_trial(trial_id)
-        if ho_trial is None or early_terminated and self._use_early_terminated_trials is False:
+        if ho_trial is None or (
+            early_terminated and self._use_early_terminated_trials is False):
             return
         ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
         if error:
