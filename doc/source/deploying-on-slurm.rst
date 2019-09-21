@@ -26,7 +26,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   ip_prefix=$(srun --nodes=1 --ntasks=1 -w $node1 hostname --ip-address) # Making address
   suffix=':6379'
   ip_head=$ip_prefix$suffix
-  redis_password=$(python -u -c "import random; print(random.randrange(10**12))")
+  redis_password=$(uuidgen)
 
   export ip_head # Exporting for latter access by trainer.py
 
