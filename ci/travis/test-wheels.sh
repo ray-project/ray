@@ -40,7 +40,7 @@ if [[ "$platform" == "linux" ]]; then
   $PIP_CMD install -q "$PYTHON_WHEEL"
 
   # Run a simple test script to make sure that the wheel works.
-  INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -c "import ray; print(ray.__file__)")")
+  INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)")")
   $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
 
   # Now test Python 3.6.
@@ -59,7 +59,7 @@ if [[ "$platform" == "linux" ]]; then
   $PIP_CMD install -q "$PYTHON_WHEEL"
 
   # Run a simple test script to make sure that the wheel works.
-  INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -c "import ray; print(ray.__file__)" | tail -n1)")
+  INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
   $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
 
   # Check that the other wheels are present.
@@ -96,7 +96,7 @@ elif [[ "$platform" == "macosx" ]]; then
     $PIP_CMD install -q "$PYTHON_WHEEL"
 
     # Run a simple test script to make sure that the wheel works.
-    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -c "import ray; print(ray.__file__)" | tail -n1)")
+    INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
   done
 else
