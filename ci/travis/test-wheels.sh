@@ -37,8 +37,7 @@ if [[ "$platform" == "linux" ]]; then
   PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 '27')
 
   # Install the wheel.
-  $PIP_CMD install psutil setproctitle
-  $PIP_CMD install "$PYTHON_WHEEL"
+  $PIP_CMD install -q "$PYTHON_WHEEL"
 
   # Run a simple test script to make sure that the wheel works.
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -c "import ray; print(ray.__file__)")")
@@ -57,7 +56,7 @@ if [[ "$platform" == "linux" ]]; then
   PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 '36')
 
   # Install the wheel.
-  $PIP_CMD install "$PYTHON_WHEEL"
+  $PIP_CMD install -q "$PYTHON_WHEEL"
 
   # Run a simple test script to make sure that the wheel works.
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -c "import ray; print(ray.__file__)" | tail -n1)")
@@ -94,7 +93,7 @@ elif [[ "$platform" == "macosx" ]]; then
     PYTHON_WHEEL=$(find "$ROOT_DIR/../../.whl" -type f -maxdepth 1 -print | grep -m1 "$PY_WHEEL_VERSION")
 
     # Install the wheel.
-    $PIP_CMD install "$PYTHON_WHEEL"
+    $PIP_CMD install -q "$PYTHON_WHEEL"
 
     # Run a simple test script to make sure that the wheel works.
     INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -c "import ray; print(ray.__file__)" | tail -n1)")
