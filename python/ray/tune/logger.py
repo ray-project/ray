@@ -154,7 +154,7 @@ def tf2_compat_logger(config, logdir):
 
 
 class TF2Logger(Logger):
-    """TensorBoard Logger for TF version >= 1.14.
+    """TensorBoard Logger for TF version >= 2.0.0.
 
     Automatically flattens nested dicts to show on TensorBoard:
 
@@ -213,7 +213,7 @@ def to_tf_values(result, path):
 
 
 class TFLogger(Logger):
-    """TensorBoard Logger for TF version < 1.14.
+    """TensorBoard Logger for TF version < 2.0.0.
 
     Automatically flattens nested dicts to show on TensorBoard:
 
