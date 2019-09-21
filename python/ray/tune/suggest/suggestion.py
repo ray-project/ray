@@ -129,6 +129,12 @@ class SuggestionAlgorithm(SearchAlgorithm):
         """
         raise NotImplementedError
 
+    def save(self, checkpoint_dir):
+        raise NotImplementedError
+
+    def restore(self, checkpoint_dir):
+        raise NotImplementedError
+
 
 class _MockSuggestionAlgorithm(SuggestionAlgorithm):
     def __init__(self, max_concurrent=2, **kwargs):
