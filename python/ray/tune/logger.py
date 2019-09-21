@@ -38,9 +38,10 @@ class Logger(object):
         logdir: Directory for all logger creators to log to.
     """
 
-    def __init__(self, config, logdir):
+    def __init__(self, config, logdir, trial=None):
         self.config = config
         self.logdir = logdir
+        self.trial = trial
         self._init()
 
     def _init(self):
@@ -135,7 +136,7 @@ class JsonLogger(Logger):
             cloudpickle.dump(self.config, f)
 
 
-def tf2_compat_logger(config, logdir):
+def tf2_compat_logger(config, logdir, trial=None):
     """Chooses TensorBoard logger depending on imported TF version."""
     global tf
     if "RLLIB_TEST_NO_TF_IMPORT" in os.environ:
@@ -148,9 +149,9 @@ def tf2_compat_logger(config, logdir):
                        distutils.version.LooseVersion("2.0.0"))
         if use_tf2_api:
             tf = tf.compat.v2  # setting this for TF2.0
-            return TF2Logger(config, logdir)
+            return TF2Logger(config, logdir, trial)
         else:
-            return TFLogger(config, logdir)
+            return TFLogger(config, logdir, trial)
 
 
 class TF2Logger(Logger):
@@ -166,10 +167,12 @@ class TF2Logger(Logger):
 
     def _init(self):
         self._file_writer = None
+        self._hp_logged = False
 
     def on_result(self, result):
         if self._file_writer is None:
             from tensorflow.python.eager import context
+            from tensorboard.plugins.hparams import api as hp
             self._context = context
             self._file_writer = tf.summary.create_file_writer(self.logdir)
         with tf.device("/CPU:0"), self._context.eager_mode():
@@ -178,6 +181,16 @@ class TF2Logger(Logger):
                     TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
                 tmp = result.copy()
+                if not self._hp_logged:
+                    if self.trial and self.trial.evaluated_params:
+                        try:
+                            hp.hparams(
+                                self.trial.evaluated_params,
+                                trial_id=self.trial.trial_id)
+                        except Exception as exc:
+                            logger.error("HParams failed with %s", exc)
+                    self._hp_logged = True
+
                 for k in [
                         "config", "pid", "timestamp", TIME_TOTAL_S,
                         TRAINING_ITERATION
@@ -305,7 +318,12 @@ class UnifiedLogger(Logger):
             See ray/python/ray/tune/log_sync.py
     """
 
-    def __init__(self, config, logdir, loggers=None, sync_function=None):
+    def __init__(self,
+                 config,
+                 logdir,
+                 trial=None,
+                 loggers=None,
+                 sync_function=None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
@@ -313,13 +331,13 @@ class UnifiedLogger(Logger):
         self._sync_function = sync_function
         self._log_syncer = None
 
-        super(UnifiedLogger, self).__init__(config, logdir)
+        super(UnifiedLogger, self).__init__(config, logdir, trial)
 
     def _init(self):
         self._loggers = []
         for cls in self._logger_cls_list:
             try:
-                self._loggers.append(cls(self.config, self.logdir))
+                self._loggers.append(cls(self.config, self.logdir, self.trial))
             except Exception as exc:
                 logger.warning("Could not instantiate {}: {}.".format(
                     cls.__name__, str(exc)))
