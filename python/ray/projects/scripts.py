@@ -255,7 +255,7 @@ def format_command(command, parsed_args):
     return command
 
 
-def format_commands(command, parsed_args):
+def get_session_runs(name, command, parsed_args):
     """Substitue arguments (possibly containing wildcards) into a command.
 
     Args:
@@ -264,9 +264,13 @@ def format_commands(command, parsed_args):
             to their values.
 
     Returns:
-        List of shell commands with parameters from parsed_args substituted.
-        Will have one command for each wildcard substitution.
+        List of shell commands with parameters from parsed_args substituted,
+            it will have one command for each wildcard substitution.
+        The wildcard argument
     """
+    if not command:
+        return [{"name": name, command: None, "num_steps": 3}]
+
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
     wildcard_arg = None
@@ -279,14 +283,24 @@ def format_commands(command, parsed_args):
                     "More than one wildcard is not supported at the moment")
 
     if not wildcard_arg:
-        return [format_command(command, parsed_args)]
+        session_run = {
+            "name": name,
+            "command": format_command(command, parsed_args),
+            "num_steps": 4
+        }
+        return [session_run]
     else:
-        commands = []
+        session_runs = []
         for val in parsed_args[wildcard_arg]:
             parsed_args = parsed_args.copy()
             parsed_args[wildcard_arg] = val
-            commands.append(format_command(command, parsed_args))
-        return commands
+            session_run = {
+                "name": "{}-{}-{}".format(name, wildcard_arg, val),
+                "command": format_command(command, parsed_args),
+                "num_steps": 4
+            }
+            session_runs.append(session_run)
+        return session_runs
 
 
 @session_cli.command(help="Attach to an existing cluster")
@@ -329,39 +343,37 @@ def stop(name):
 def session_start(command, args, shell, name):
     project_definition = load_project_or_throw()
 
-    if command:
-        # Get the actual command to run. This also validates the command,
-        # which should be done before the cluster is started.
-        try:
-            command, parsed_args, config = project_definition.get_command_info(
-                command, args, shell, wildcards=True)
-        except ValueError as e:
-            raise click.ClickException(e)
-        commands = format_commands(command, parsed_args)
-        num_steps = 4
-    else:
-        commands = [command]
-        num_steps = 3
+    if not name:
+        name = project_definition.config["name"]
 
-    if len(commands) > 1 and not config.get("tmux", False):
+    # Get the actual command to run. This also validates the command,
+    # which should be done before the cluster is started.
+    try:
+        command, parsed_args, config = project_definition.get_command_info(
+            command, args, shell, wildcards=True)
+    except ValueError as e:
+        raise click.ClickException(e)
+    session_runs = get_session_runs(name, command, parsed_args)
+
+    if len(session_runs) > 1 and not config.get("tmux", False):
         logging.info("Using wildcards with tmux = False would not create "
                      "sessions in parallel, so we are overriding it with "
                      "tmux = True.")
         config["tmux"] = True
 
-    for i, cmd in enumerate(commands):
-        runner = SessionRunner(session_name="{}-{}".format(name, i))
-        logger.info("[1/{}] Creating cluster".format(num_steps))
+    for run in session_runs:
+        runner = SessionRunner(session_name=run["name"])
+        logger.info("[1/{}] Creating cluster".format(run["num_steps"]))
         runner.create_cluster()
-        logger.info("[2/{}] Syncing the project".format(num_steps))
+        logger.info("[2/{}] Syncing the project".format(run["num_steps"]))
         runner.sync_files()
-        logger.info("[3/{}] Setting up environment".format(num_steps))
+        logger.info("[3/{}] Setting up environment".format(run["num_steps"]))
         runner.setup_environment()
 
-        if command:
+        if run["command"]:
             # Run the actual command.
             logger.info("[4/4] Running command")
-            runner.execute_command(cmd, config)
+            runner.execute_command(run["command"], config)
 
 
 @session_cli.command(
