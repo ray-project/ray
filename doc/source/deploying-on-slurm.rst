@@ -8,15 +8,15 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   #!/bin/bash
 
   #SBATCH --job-name=test
-  #SBATCH --cpus-per-task=20
+  #SBATCH --cpus-per-task=5
   #SBATCH --mem-per-cpu=1GB
-  #SBATCH --nodes=5
+  #SBATCH --nodes=3
   #SBATCH --tasks-per-node 1
 
-  worker_num=4 # Must be one less that the total number of nodes
+  worker_num=2 # Must be one less that the total number of nodes
 
-  module load Langs/Python/3.6.4 # This will vary depending on your environment
-  source venv/bin/activate
+  # module load Langs/Python/3.6.4 # This will vary depending on your environment
+  # source venv/bin/activate
 
   nodes=$(scontrol show hostnames $SLURM_JOB_NODELIST) # Getting the node names
   nodes_array=( $nodes )
