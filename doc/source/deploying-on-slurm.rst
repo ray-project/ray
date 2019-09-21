@@ -40,7 +40,7 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
     sleep 5
   done
 
-  python -u trainer.py $redis_password 100 # Pass the total number of allocated CPUs
+  python -u trainer.py $redis_password 15 # Pass the total number of allocated CPUs
 
 .. code-block:: python
 
@@ -55,6 +55,9 @@ Clusters managed by Slurm may require that Ray is initialized as a part of the s
   num_cpus = int(sys.argv[2])
 
   ray.init(address=os.environ["ip_head"], redis_password=redis_password)
+
+  print("Nodes in the Ray cluster:")
+  print(ray.nodes())
 
   @ray.remote
   def f():
