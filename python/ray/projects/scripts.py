@@ -256,7 +256,7 @@ def format_command(command, parsed_args):
 
 
 def get_session_runs(name, command, parsed_args):
-    """Substitue arguments (possibly containing wildcards) into a command.
+    """Get a list of sessions to start.
 
     Args:
         command (str): Shell command with argument placeholders.
@@ -264,12 +264,13 @@ def get_session_runs(name, command, parsed_args):
             to their values.
 
     Returns:
-        List of shell commands with parameters from parsed_args substituted,
-            it will have one command for each wildcard substitution.
-        The wildcard argument
+        List of sessions to start, which are dictionaries with keys:
+            "name": Name of the session to start,
+            "command": Command to run after starting the session,
+            "num_steps": 4 if a command should be run, 3 if not.
     """
     if not command:
-        return [{"name": name, command: None, "num_steps": 3}]
+        return [{"name": name, "command": None, "num_steps": 3}]
 
     # Try to find a wildcard argument (i.e. one that has a list of values)
     # and give an error if there is more than one (currently unsupported).
