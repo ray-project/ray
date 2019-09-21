@@ -21,7 +21,7 @@ else
   exit 1
 fi
 
-TEST_SCRIPT=$ROOT_DIR/../../python/ray/tests/test_microbenchmarks.py
+TEST_SCRIPT="tests/test_microbenchmarks.py"
 
 if [[ "$platform" == "linux" ]]; then
   # First test Python 2.7.
@@ -37,7 +37,8 @@ if [[ "$platform" == "linux" ]]; then
   $HOME/miniconda2/bin/pip install $PYTHON_WHEEL
 
   # Run a simple test script to make sure that the wheel works.
-  $HOME/miniconda2/bin/python $TEST_SCRIPT
+  INSTALLED_RAY_DIRECTORY=$(dirname $(python -c "import ray; print(ray.__file__)"))
+  $HOME/miniconda2/bin/python -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
 
   # Now test Python 3.6.
 
@@ -52,7 +53,8 @@ if [[ "$platform" == "linux" ]]; then
   $HOME/miniconda3/bin/pip install $PYTHON_WHEEL
 
   # Run a simple test script to make sure that the wheel works.
-  $HOME/miniconda3/bin/python $TEST_SCRIPT
+  INSTALLED_RAY_DIRECTORY=$(dirname $(python -c "import ray; print(ray.__file__)"))
+  $HOME/miniconda3/bin/python -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
 
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q $ROOT_DIR/../../.whl/*.whl | wc -l)
@@ -88,7 +90,8 @@ elif [[ "$platform" == "macosx" ]]; then
     $PIP_CMD install $PYTHON_WHEEL
 
     # Run a simple test script to make sure that the wheel works.
-    $PYTHON_EXE $TEST_SCRIPT
+    INSTALLED_RAY_DIRECTORY=$(dirname $($PYTHON_EXE -c "import ray; print(ray.__file__)"))
+    $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
   done
 else
   echo "Unrecognized environment."
