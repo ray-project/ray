@@ -6,7 +6,6 @@ import copy
 import logging
 import os
 import six
-import types
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
