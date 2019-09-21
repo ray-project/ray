@@ -257,7 +257,7 @@ if __name__ == "__main__":
         time_attr="training_iteration",
         metric="mean_accuracy",
         mode="max",
-        perturbation_interval=20,
+        perturbation_interval=5,
         hyperparam_mutations={
             "dropout": lambda: np.random.uniform(0, 1),
             "lr": lambda: 10**np.random.randint(-10, 0),
@@ -266,13 +266,13 @@ if __name__ == "__main__":
 
     run(MemNNModel,
         name="pbt_babi_memnn",
-        scheduler=pbt,
-        stop={"training_iteration": 50},
+        # scheduler=pbt,
+        stop={"training_iteration": 100},
         num_samples=10,
         config={
             "batch_size": 32,
             "epochs": 1,
             "dropout": 0.3,
-            "lr": 1e-3,
+            "lr": 1e-3, # grid search over lr and rho
             "rho": 0.9
         })
