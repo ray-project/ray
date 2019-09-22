@@ -46,7 +46,8 @@ class QMixLoss(nn.Module):
         self.gamma = gamma
 
     def forward(self, rewards, actions, terminated, mask, obs, next_obs,
-                action_mask, next_action_mask):
+                action_mask, next_action_mask,
+                state=None, next_state=None):
         """Forward pass of the loss.
 
         Arguments:
@@ -58,7 +59,19 @@ class QMixLoss(nn.Module):
             next_obs: Tensor of shape [B, T, n_agents, obs_size]
             action_mask: Tensor of shape [B, T, n_agents, n_actions]
             next_action_mask: Tensor of shape [B, T, n_agents, n_actions]
+            state: Tensor of shape [B, T, state_dim] (optional)
+            next_state: Tensor of shape [B, T, state_dim] (optional)
         """
+
+        # Assert either none or both of state and next_state are given
+        if state is None and next_state is None:
+            state = obs # default to state being all observations stacked
+            next_state = next_obs
+        elif (state is None) != (next_state is None):
+            raise ValueError("Expected either neither or both of `state` and "
+                             "`next_state` to be given. Got: "
+                             "\n`state` = {}\n`next_state` = {}".format(
+                                 state, next_state))
 
         # Calculate estimated Q-Values
         mac_out = _unroll_mac(self.model, obs)
@@ -104,10 +117,8 @@ class QMixLoss(nn.Module):
 
         # Mix
         if self.mixer is not None:
-            # TODO(ekl) add support for handling global state? This is just
-            # treating the stacked agent obs as the state.
-            chosen_action_qvals = self.mixer(chosen_action_qvals, obs)
-            target_max_qvals = self.target_mixer(target_max_qvals, next_obs)
+            chosen_action_qvals = self.mixer(chosen_action_qvals, state)
+            target_max_qvals = self.target_mixer(target_max_qvals, next_state)
 
         # Calculate 1-step Q-Learning targets
         targets = rewards + self.gamma * (1 - terminated) * target_max_qvals
@@ -146,6 +157,7 @@ class QMixTorchPolicy(Policy):
         self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
+        self.has_state = False
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
@@ -160,6 +172,11 @@ class QMixTorchPolicy(Policy):
                     (self.n_actions, ), mask_shape))
             self.has_action_mask = True
             self.obs_size = _get_size(agent_obs_space.spaces["obs"])
+            if "state" in space_keys:
+                self.state_shape = _get_size(agent_obs_space.spaces["state"])
+                self.has_state = True
+            else:
+                self.state_shape = (self.obs_size, self.n_agents)
             # The real agent obs space is nested inside the dict
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
@@ -185,8 +202,6 @@ class QMixTorchPolicy(Policy):
             default_model=RNNModel)
 
         # Setup the mixer network.
-        # The global state is just the stacked agent observations for now.
-        self.state_shape = [self.obs_size, self.n_agents]
         if config["mixer"] is None:
             self.mixer = None
             self.target_mixer = None
@@ -226,7 +241,8 @@ class QMixTorchPolicy(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        obs_batch, action_mask = self._unpack_observation(obs_batch)
+        obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
+        # We need to ensure we do not use the state to compute actions
 
         # Compute actions
         with th.no_grad():
@@ -249,27 +265,37 @@ class QMixTorchPolicy(Policy):
 
     @override(Policy)
     def learn_on_batch(self, samples):
-        obs_batch, action_mask = self._unpack_observation(
+        obs_batch, action_mask, state = self._unpack_observation(
             samples[SampleBatch.CUR_OBS])
-        next_obs_batch, next_action_mask = self._unpack_observation(
+        next_obs_batch, next_action_mask, next_state = self._unpack_observation(
             samples[SampleBatch.NEXT_OBS])
         group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
-        # These will be padded to shape [B * T, ...]
-        [rew, action_mask, next_action_mask, act, dones, obs, next_obs], \
-            initial_states, seq_lens = \
+        input_list = [
+            group_rewards, action_mask, next_action_mask,
+            samples[SampleBatch.ACTIONS], samples[SampleBatch.DONES],
+            obs_batch, next_obs_batch
+        ]
+        if self.has_state:
+            input_list.extend([state, next_state])
+
+        output_list, initial_states, seq_lens = \
             chop_into_sequences(
                 samples[SampleBatch.EPS_ID],
                 samples[SampleBatch.UNROLL_ID],
-                samples[SampleBatch.AGENT_INDEX], [
-                    group_rewards, action_mask, next_action_mask,
-                    samples[SampleBatch.ACTIONS], samples[SampleBatch.DONES],
-                    obs_batch, next_obs_batch
-                ],
+                samples[SampleBatch.AGENT_INDEX],
+                input_list,
                 [samples["state_in_{}".format(k)]
                  for k in range(len(self.get_initial_state()))],
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
+        # These will be padded to shape [B * T, ...]
+        if self.has_state:
+            (rew, action_mask, next_action_mask, act, dones, obs, next_obs,
+             state, next_state) = output_list
+        else:
+            (rew, action_mask, next_action_mask, act, dones, obs, next_obs
+             ) = output_list
         B, T = len(seq_lens), max(seq_lens)
 
         def to_batches(arr):
@@ -284,6 +310,9 @@ class QMixTorchPolicy(Policy):
         next_obs = to_batches(next_obs).reshape(
             [B, T, self.n_agents, self.obs_size]).float()
         next_action_mask = to_batches(next_action_mask)
+        if self.has_state:
+            state = to_batches(state).float()
+            next_state = to_batches(next_state).float()
 
         # TODO(ekl) this treats group termination as individual termination
         terminated = to_batches(dones.astype(np.float32)).unsqueeze(2).expand(
@@ -297,7 +326,8 @@ class QMixTorchPolicy(Policy):
         # Compute loss
         loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
             self.loss(rewards, actions, terminated, mask, obs,
-                      next_obs, action_mask, next_action_mask)
+                      next_obs, action_mask, next_action_mask,
+                      state, next_state)
 
         # Optimise
         self.optimiser.zero_grad()
@@ -371,11 +401,14 @@ class QMixTorchPolicy(Policy):
         return group_rewards
 
     def _unpack_observation(self, obs_batch):
-        """Unpacks the action mask / tuple obs from agent grouping.
+        """Unpacks the observation, action mask, and state (if present)
+        from agent grouping.
 
         Returns:
             obs (Tensor): flattened obs tensor of shape [B, n_agents, obs_size]
             mask (Tensor): action mask, if any
+            state (Tensor or None): state tensor of shape [B, state_size]
+                or None if it is not in the batch
         """
         unpacked = _unpack_obs(
             np.array(obs_batch),
@@ -394,8 +427,12 @@ class QMixTorchPolicy(Policy):
                 axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.ones(
                 [len(obs_batch), self.n_agents, self.n_actions])
-        return obs, action_mask
 
+        if self.has_state:
+            state = unpacked[0]["state"]
+        else:
+            state = None
+        return obs, action_mask, state
 
 def _validate(obs_space, action_space):
     if not hasattr(obs_space, "original_space") or \
