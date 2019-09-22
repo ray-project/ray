@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils import try_import_tf
@@ -22,8 +24,9 @@ class FullyConnectedNetwork(TFModelV2):
         no_final_linear = model_config.get("no_final_linear")
         vf_share_layers = model_config.get("vf_share_layers")
 
+        # we are using obs_flat, so take the flattened shape as input
         inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+            shape=(np.product(obs_space.shape), ), name="observations")
         last_layer = inputs
         i = 1
 
