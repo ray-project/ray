@@ -280,7 +280,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             modifiers = ""
         print("To monitor auto-scaling activity, you can run:\n\n"
               "  ray exec {} {}{}{}\n".format(
-                  config_file, "--docker " if use_docker else " ",
+                  config_file, "--docker " if use_docker else "",
                   quote(monitor_str), modifiers))
         print("To open a console on the cluster:\n\n"
               "  ray attach {}{}\n".format(config_file, modifiers))
