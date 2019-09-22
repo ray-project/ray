@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import copy
 import json
 import jsonschema
 import os
@@ -93,7 +94,7 @@ class ProjectDefinition:
         for param in params:
             name = param.pop("name")
             if wildcards and "choices" in param:
-                choices[name] = param["choices"].copy()
+                choices[name] = copy.deepcopy(param["choices"])
                 param["choices"] = param["choices"] + ["*"]
             parser.add_argument("--" + name, **param)
 
