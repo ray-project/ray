@@ -405,9 +405,9 @@ class QMixTorchPolicy(Policy):
         from agent grouping.
 
         Returns:
-            obs (Tensor): flattened obs tensor of shape [B, n_agents, obs_size]
-            mask (Tensor): action mask, if any
-            state (Tensor or None): state tensor of shape [B, state_size]
+            obs (np.ndarray): obs tensor of shape [B, n_agents, obs_size]
+            mask (np.ndarray): action mask, if any
+            state (np.ndarray or None): state tensor of shape [B, state_size]
                 or None if it is not in the batch
         """
         unpacked = _unpack_obs(
