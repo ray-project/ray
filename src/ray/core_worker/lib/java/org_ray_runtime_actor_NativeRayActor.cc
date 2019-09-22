@@ -20,7 +20,8 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return reinterpret_cast<jlong>(new ray::ActorHandle(nativeActorHandle), true);
+  return reinterpret_cast<jlong>(
+      new ray::ActorHandle(GetActorHandle(nativeActorHandle), true));
 }
 
 /*
@@ -104,8 +105,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserial
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
-  return reinterpret_cast<jlong>(
-      new ray::ActorHandle(ray::ActorHandle::Deserialize(binary)));
+  return reinterpret_cast<jlong>(new ray::ActorHandle(binary, TaskID::Nil()));
 }
 
 /*
