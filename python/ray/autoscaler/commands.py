@@ -105,10 +105,10 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
         # Loop here to check that both the head and worker nodes are actually
         #   really gone
         A = remaining_nodes()
-        with LogTimer("teardown_cluster: Termination done."):
+        with LogTimer("teardown_cluster: done."):
             while A:
                 logger.info("teardown_cluster: "
-                            "Terminating {} nodes...".format(len(A)))
+                            "Shutting down {} nodes...".format(len(A)))
                 provider.terminate_nodes(A)
                 time.sleep(1)
                 A = remaining_nodes()
@@ -130,7 +130,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
     try:
         nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
         node = random.choice(nodes)
-        logger.info("kill_node: Terminating worker {}".format(node))
+        logger.info("kill_node: Shutdown worker {}".format(node))
         if hard:
             provider.terminate_node(node)
         else:
@@ -194,7 +194,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                         yes)
                 logger.info(
                     "get_or_create_head_node: "
-                    "Terminating outdated head node {}".format(head_node))
+                    "Shutting down outdated head node {}".format(head_node))
                 provider.terminate_node(head_node)
             logger.info("get_or_create_head_node: Launching new head node...")
             head_node_tags[TAG_RAY_LAUNCH_CONFIG] = launch_hash

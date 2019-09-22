@@ -301,11 +301,17 @@ class AWSNodeProvider(NodeProvider):
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
         if self.cache_stopped_nodes:
-            logger.info(
-                "AWSNodeProvider: stopping node {}. To terminate nodes "
-                "on stop, set 'cache_stopped_nodes: False' in the "
-                "provider config.".format(node_id))
-            node.stop()
+            if node.spot_instance_request_id:
+                logger.info(
+                    "AWSNodeProvider: terminating node {} (spot nodes cannot "
+                    "be stopped, only terminated)".format(node_id))
+                node.terminate()
+            else:
+                logger.info(
+                    "AWSNodeProvider: stopping node {}. To terminate nodes "
+                    "on stop, set 'cache_stopped_nodes: False' in the "
+                    "provider config.".format(node_id))
+                node.stop()
         else:
             node.terminate()
 
@@ -313,12 +319,22 @@ class AWSNodeProvider(NodeProvider):
         self.tag_cache_pending.pop(node_id, None)
 
     def terminate_nodes(self, node_ids):
+        if not node_ids:
+            return
+
+        node0 = self._get_cached_node(node_ids[0])
         if self.cache_stopped_nodes:
-            logger.info(
-                "AWSNodeProvider: stopping nodes {}. To terminate nodes "
-                "on stop, set 'cache_stopped_nodes: False' in the "
-                "provider config.".format(node_ids))
-            self.ec2.meta.client.stop_instances(InstanceIds=node_ids)
+            if node0.spot_instance_request_id:
+                logger.info(
+                    "AWSNodeProvider: terminating nodes {} (spot nodes cannot "
+                    "be stopped, only terminated)".format(node_ids))
+                self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+            else:
+                logger.info(
+                    "AWSNodeProvider: stopping nodes {}. To terminate nodes "
+                    "on stop, set 'cache_stopped_nodes: False' in the "
+                    "provider config.".format(node_ids))
+                self.ec2.meta.client.stop_instances(InstanceIds=node_ids)
         else:
             self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
 
