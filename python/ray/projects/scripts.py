@@ -163,7 +163,8 @@ class SessionRunner(object):
         self.session_name = session_name
 
         # Check for features we don't support right now
-        project_environment = self.project_definition.config["environment"]
+        project_environment = self.project_definition.config.get(
+            "environment", {})
         need_docker = ("dockerfile" in project_environment
                        or "dockerimage" in project_environment)
         if need_docker:
