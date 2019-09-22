@@ -5,8 +5,7 @@ Simple Parallel Model Selection
 In this example, we'll demonstrate how to quickly write a hyperparameter
 tuning script that evaluates a set of hyperparameters in parallel.
 
-This script will demonstrate how to use the ``ray.remote`` API for functions
-along with ``ray.wait``.
+This script will demonstrate how to use two important parts of the Ray API: using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for their results to be ready.
 
 .. important:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
@@ -66,6 +65,7 @@ def get_data_loaders(batch_size):
 
 
 class ConvNet(nn.Module):
+    """Simple two layer Convolutional Neural Network."""
     def __init__(self):
         super(ConvNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
@@ -79,6 +79,10 @@ class ConvNet(nn.Module):
 
 
 def train(model, optimizer, train_loader, device=torch.device("cpu")):
+    """Optimize the model with one pass over the data.
+
+    Cuts off at 1024 samples to simplify training.
+    """
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > 1024:
@@ -92,6 +96,10 @@ def train(model, optimizer, train_loader, device=torch.device("cpu")):
 
 
 def test(model, test_loader, device=torch.device("cpu")):
+    """Checks the validation accuracy of the model.
+
+    Cuts off at 512 samples for simplicity.
+    """
     model.eval()
     correct = 0
     total = 0
@@ -123,7 +131,7 @@ def evaluate_hyperparameters(config):
 # Keep track of the best hyperparameters and the best accuracy.
 best_hyperparameters = None
 best_accuracy = 0
-# This list holds the object IDs for all of the experiments that we have
+# A list holding the object IDs for all of the experiments that we have
 # launched and that have not yet been processed.
 remaining_ids = []
 # This is a dictionary mapping the object ID of an experiment to the
