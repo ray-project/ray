@@ -237,9 +237,10 @@ def start(node_ip_address, redis_address, address, redis_port,
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
 
-    (redis_address, redis_address_ip,
-     redis_address_port) = services.validate_redis_address(
-         address, redis_address)
+    if redis_address is not None or address is not None:
+        (redis_address, redis_address_ip,
+         redis_address_port) = services.validate_redis_address(
+             address, redis_address)
 
     try:
         resources = json.loads(resources)
