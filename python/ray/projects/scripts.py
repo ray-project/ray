@@ -195,7 +195,8 @@ class SessionRunner(object):
 
     def setup_environment(self):
         """Set up the environment of the session."""
-        project_environment = self.project_definition.config["environment"]
+        project_environment = self.project_definition.config.get(
+            "environment", {})
 
         if "requirements" in project_environment:
             requirements_txt = project_environment["requirements"]
