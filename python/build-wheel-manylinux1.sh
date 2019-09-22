@@ -41,20 +41,22 @@ source $HOME/.nvm/nvm.sh
 nvm install node
 nvm use node
 
-# Build the dashboard so its static assets can be included in the wheel.
-pushd python/ray/dashboard/client
-  npm ci
-  npm run build
-popd
-
 mkdir .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   PYTHON=${PYTHONS[i]}
   NUMPY_VERSION=${NUMPY_VERSIONS[i]}
+
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory.
   git clean -f -f -x -d -e .whl
+
+  # Build the dashboard so its static assets can be included in the wheel.
+  pushd python/ray/dashboard/client
+    npm ci
+    npm run build
+  popd
+
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
