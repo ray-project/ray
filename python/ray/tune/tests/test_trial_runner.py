@@ -214,11 +214,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
             pass
 
         register_trainable("foo", train)
+        Experiment("test", train)
         register_trainable("foo", B)
+        Experiment("test", B)
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
+        self.assertRaises(TuneError, lambda: Experiment("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
+        self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
-    def testRegisterTrainableCallable(self):
+    def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
             reporter(timesteps_total=steps, done=True)
 
@@ -230,6 +234,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "run": "test",
             }
         })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
+        [trial] = tune.run(partial(dummy_fn, steps=steps)).trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
