@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import click
+import copy
 import jsonschema
 import logging
 import os
@@ -293,7 +294,7 @@ def get_session_runs(name, command, parsed_args):
     else:
         session_runs = []
         for val in parsed_args[wildcard_arg]:
-            parsed_args = parsed_args.copy()
+            parsed_args = copy.deepcopy(parsed_args)
             parsed_args[wildcard_arg] = val
             session_run = {
                 "name": "{}-{}-{}".format(name, wildcard_arg, val),
