@@ -113,7 +113,8 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv 
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeShutdownHook(JNIEnv *,
                                                                                 jclass) {
-  ray::RayLog::ShutDownRayLog();
+  // TODO (kfstorm): JVM would crash if uninstall_signal_handlers was set to true.
+  ray::RayLog::ShutDownRayLog(/*uninstall_signal_handlers=*/false);
 }
 
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetResource(

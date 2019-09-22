@@ -190,9 +190,11 @@ void RayLog::UninstallSignalAction() {
 #endif
 }
 
-void RayLog::ShutDownRayLog() {
+void RayLog::ShutDownRayLog(bool uninstall_signal_handlers) {
 #ifdef RAY_USE_GLOG
-  UninstallSignalAction();
+  if (uninstall_signal_handlers) {
+    UninstallSignalAction();
+  }
   if (!log_dir_.empty()) {
     google::ShutdownGoogleLogging();
   }
