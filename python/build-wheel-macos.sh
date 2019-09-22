@@ -79,3 +79,5 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
     mv dist/*.whl ../.whl/
   popd
 done
+
+git clean -f -f -x -d -e .whl -e $DOWNLOAD_DIR
