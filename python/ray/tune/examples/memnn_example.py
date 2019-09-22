@@ -224,10 +224,11 @@ class MemNNModel(Trainable):
             self.answers_train,
             batch_size=self.config.get("batch_size", 32),
             epochs=self.config.get("epochs", 1),
+            validation_data=([self.inputs_test, self.queries_test], self.answers_test),
             verbose=0)
         _, accuracy = self.model.evaluate(
-            [self.inputs_test, self.queries_test], 
-            self.answers_test,
+            [self.inputs_train, self.queries_train],
+            self.answers_train,
             verbose=0)
         return {"mean_accuracy": accuracy}
 
@@ -266,13 +267,13 @@ if __name__ == "__main__":
 
     run(MemNNModel,
         name="pbt_babi_memnn",
-        # scheduler=pbt,
+        scheduler=pbt,
         stop={"training_iteration": 100},
         num_samples=10,
         config={
             "batch_size": 32,
             "epochs": 1,
             "dropout": 0.3,
-            "lr": 1e-3, # grid search over lr and rho
+            "lr": 0.01,
             "rho": 0.9
         })
