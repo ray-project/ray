@@ -48,9 +48,17 @@ class QMixLoss(nn.Module):
         self.double_q = double_q
         self.gamma = gamma
 
-    def forward(self, rewards, actions, terminated, mask, obs, next_obs,
-                action_mask, next_action_mask,
-                state=None, next_state=None):
+    def forward(self,
+                rewards,
+                actions,
+                terminated,
+                mask,
+                obs,
+                next_obs,
+                action_mask,
+                next_action_mask,
+                state=None,
+                next_state=None):
         """Forward pass of the loss.
 
         Arguments:
@@ -259,8 +267,9 @@ class QMixTorchPolicy(TorchPolicy):
                     self.model,
                     th.as_tensor(
                         obs_batch, dtype=th.float, device=self.device),
-                    [th.as_tensor(
-                        np.array(s), dtype=th.float, device=self.device)
+                    [
+                        th.as_tensor(
+                            np.array(s), dtype=th.float, device=self.device)
                         for s in state_batches
                     ])
                 avail = th.as_tensor(
@@ -314,9 +323,8 @@ class QMixTorchPolicy(TorchPolicy):
 
         def to_batches(arr, dtype):
             new_shape = [B, T] + list(arr.shape[1:])
-            return th.as_tensor(np.reshape(arr, new_shape),
-                                dtype=dtype,
-                                device=self.device)
+            return th.as_tensor(
+                np.reshape(arr, new_shape), dtype=dtype, device=self.device)
 
         rewards = to_batches(rew, th.float)
         actions = to_batches(act, th.long)
@@ -340,7 +348,7 @@ class QMixTorchPolicy(TorchPolicy):
             [B, T]) < np.expand_dims(seq_lens, 1)
         mask = th.as_tensor(
             filled, dtype=th.float, device=self.device).unsqueeze(2).expand(
-            B, T, self.n_agents)
+                B, T, self.n_agents)
 
         # Compute loss
         with self.lock:
@@ -431,8 +439,10 @@ class QMixTorchPolicy(TorchPolicy):
         return group_rewards
 
     def _device_dict(self, state_dict):
-        return {k: th.as_tensor(v, device=self.device)
-                for k, v in state_dict.items()}
+        return {
+            k: th.as_tensor(v, device=self.device)
+            for k, v in state_dict.items()
+        }
 
     @staticmethod
     def _cpu_dict(state_dict):
