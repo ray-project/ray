@@ -2,12 +2,12 @@
 Parameter Server
 ================
 
-The parameter server is a framework for distributed machine learning
+The parameter server is a framework for distributed machine learning training.
 
-In the parameter server framework, a server (or a group of server nodes)
+In the parameter server framework, a centralized server (or group of server nodes)
 maintains global shared parameters of a machine-learning model
-(e.g., a neural network). Meanwhile, the data and workload of calculating
-updates (i.e., gradient descent updates) is distributed over worker nodes.
+(e.g., a neural network) while the data and computation of calculating
+updates (i.e., gradient descent updates) are distributed over worker nodes.
 
 .. image:: ../images/param_actor.png
     :align: center
@@ -68,7 +68,7 @@ def get_data_loader():
 
 
 def evaluate(model, test_loader):
-    """Evaluates the validation dataset for validation accuracy."""
+    """Evaluates the accuracy of the model on a validation dataset."""
     model.eval()
     correct = 0
     total = 0
@@ -131,15 +131,15 @@ class ConvNet(nn.Module):
 # -----------------------------
 #
 # The parameter server will hold a copy of the model.
-# During training, it will
+# During training, it will:
 #
-# 1. receive gradients and apply them to its model.
+# 1. Receive gradients and apply them to its model.
 #
 # 2. Send the updated model back to the workers.
 #
 # The ``@ray.remote`` decorator defines a remote process. It wraps the
 # ParameterServer class and allows users to instantiate it as a
-# remote process or actor.
+# remote actor.
 
 
 @ray.remote
@@ -213,12 +213,12 @@ model = ConvNet()
 test_loader = get_data_loader()[1]
 
 ###########################################################################
-# Training alternates between
+# Training alternates between:
 #
 # 1. Computing the gradients given the current weights from the server
-# 2. updating the parameter server's weights with the gradients.
+# 2. Updating the parameter server's weights with the gradients.
 
-print("Running Synchronous Parameter Server Training.")
+print("Running synchronous parameter server training.")
 current_weights = ps.get_weights.remote()
 for i in range(iterations):
     gradients = [
@@ -234,7 +234,7 @@ for i in range(iterations):
         print("Iter {}: \taccuracy is {:.1f}".format(i, accuracy))
 
 print("Final accuracy is {:.1f}.".format(accuracy))
-# We can kill all existing Ray processes manually.
+# Clean up Ray resources and processes before the next example.
 ray.shutdown()
 
 ###########################################################################
@@ -252,10 +252,10 @@ workers = [DataWorker.remote() for i in range(num_workers)]
 
 ###########################################################################
 # Here, workers will asynchronously compute the gradients given its
-# current weights, and send these gradients to the parameter server as
-# soon as it is ready. When the Parameter server finishes applying the
+# current weights and send these gradients to the parameter server as
+# soon as they are ready. When the Parameter server finishes applying the
 # new gradient, the server will send back a copy of the current weights to the
-# worker. The worker will then update the weights and continue.
+# worker. The worker will then update the weights and repeat.
 
 current_weights = ps.get_weights.remote()
 gradients = {
@@ -271,7 +271,7 @@ for i in range(iterations * num_workers):
     gradients[worker.compute_gradients.remote(current_weights)] = worker
 
     if i % 10 == 0:
-        # Evaluate the current model.
+        # Evaluate the current model after every 10 updates.
         model.set_weights(ray.get(current_weights))
         accuracy = evaluate(model, test_loader)
         print("Iter {}: \taccuracy is {:.1f}".format(i, accuracy))
@@ -282,7 +282,7 @@ print("Final accuracy is {:.1f}.".format(accuracy))
 # Final Thoughts
 # --------------
 #
-# This approach is powerful because it enables users to implement a parameter
+# This approach is powerful because it enables you to implement a parameter
 # server with a few lines of code as part of a Python application.
 # As a result, this simplifies the deployment of applications that use
 # parameter servers and to modify the behavior of the parameter server.

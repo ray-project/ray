@@ -132,17 +132,17 @@ def evaluate_hyperparameters(config):
 best_hyperparameters = None
 best_accuracy = 0
 # A list holding the object IDs for all of the experiments that we have
-# launched and that have not yet been processed.
+# launched but have not yet been processed.
 remaining_ids = []
-# This is a dictionary mapping the object ID of an experiment to the
+# A dictionary mapping an experiment's object ID to its hyperparameters.
 # hyerparameters used for that experiment.
 hyperparameters_mapping = {}
 
-# Randomly generate some hyperparameters, and launch a task for each set.
+# Randomly generate sets of hyperparameters and launch a task to test each set.
 for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
     accuracy_id = evaluate_hyperparameters.remote(hyperparameters)
-    remaining_ids += [accuracy_id]
+    remaining_ids.append(accuracy_id)
     # Keep track of which hyperparameters correspond to this experiment.
     hyperparameters_mapping[accuracy_id] = hyperparameters
 

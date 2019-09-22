@@ -77,7 +77,7 @@ extensions = [
 ]
 
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples"],  # path to your example scripts
+    "examples_dirs": ["../examples"],  # path to example scripts
     "gallery_dirs": ["auto_examples"],  # path where to save generated examples
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
@@ -95,7 +95,7 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
     except OSError:
         pass
 
-    # Copy rst files from source dir to gallery dir
+    # Copy rst files from source dir to gallery dir.
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
         shutil.copy(f, gallery_dir)
 
