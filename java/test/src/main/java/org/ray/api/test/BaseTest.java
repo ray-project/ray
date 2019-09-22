@@ -14,7 +14,7 @@ public class BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTest.class);
 
-  private List<File> filesToDelete;
+  private List<File> filesToDelete = ImmutableList.of();
 
   @BeforeMethod
   public void setUpBase(Method method) {
@@ -37,10 +37,8 @@ public class BaseTest {
   @AfterMethod
   public void tearDownBase() {
     Ray.shutdown();
-    if (filesToDelete != null) {
-      for (File file : filesToDelete) {
-        file.delete();
-      }
+    for (File file : filesToDelete) {
+      file.delete();
     }
   }
 
