@@ -155,7 +155,7 @@ def tf2_compat_logger(config, logdir, trial=None):
 
 
 class TF2Logger(Logger):
-    """TensorBoard Logger for TF version >= 1.14.
+    """TensorBoard Logger for TF version >= 2.0.0.
 
     Automatically flattens nested dicts to show on TensorBoard:
 
@@ -175,7 +175,7 @@ class TF2Logger(Logger):
             from tensorboard.plugins.hparams import api as hp
             self._context = context
             self._file_writer = tf.summary.create_file_writer(self.logdir)
-        with tf.device("/CPU:0"), self._context.eager_mode():
+        with tf.device("/CPU:0"):
             with tf.summary.record_if(True), self._file_writer.as_default():
                 step = result.get(
                     TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
@@ -226,7 +226,7 @@ def to_tf_values(result, path):
 
 
 class TFLogger(Logger):
-    """TensorBoard Logger for TF version < 1.14.
+    """TensorBoard Logger for TF version < 2.0.0.
 
     Automatically flattens nested dicts to show on TensorBoard:
 
