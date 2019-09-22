@@ -3,7 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from gym.spaces import Tuple, Discrete, Dict
+import os
 import logging
+from threading import Lock
 import numpy as np
 import torch as th
 import torch.nn as nn
@@ -14,7 +16,8 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.policy import Policy, TupleActions
+from ray.rllib.policy.policy import TupleActions
+from ray.rllib.policy import TorchPolicy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
@@ -65,7 +68,7 @@ class QMixLoss(nn.Module):
 
         # Assert either none or both of state and next_state are given
         if state is None and next_state is None:
-            state = obs # default to state being all observations stacked
+            state = obs  # default to state being all agents' observations
             next_state = next_obs
         elif (state is None) != (next_state is None):
             raise ValueError("Expected either neither or both of `state` and "
@@ -136,7 +139,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-class QMixTorchPolicy(Policy):
+class QMixTorchPolicy(TorchPolicy):
     """QMix impl. Assumes homogeneous agents for now.
 
     You must use MultiAgentEnv.with_agent_groups() to group agents
@@ -158,6 +161,10 @@ class QMixTorchPolicy(Policy):
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_state = False
+        self.lock = Lock()
+        self.device = (th.device("cuda")
+                       if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
+                       else th.device("cpu"))
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
@@ -190,7 +197,7 @@ class QMixTorchPolicy(Policy):
             config["model"],
             framework="torch",
             name="model",
-            default_model=RNNModel)
+            default_model=RNNModel).to(self.device)
 
         self.target_model = ModelCatalog.get_model_v2(
             agent_obs_space,
@@ -199,7 +206,7 @@ class QMixTorchPolicy(Policy):
             config["model"],
             framework="torch",
             name="target_model",
-            default_model=RNNModel)
+            default_model=RNNModel).to(self.device)
 
         # Setup the mixer network.
         if config["mixer"] is None:
@@ -207,12 +214,13 @@ class QMixTorchPolicy(Policy):
             self.target_mixer = None
         elif config["mixer"] == "qmix":
             self.mixer = QMixer(self.n_agents, self.state_shape,
-                                config["mixing_embed_dim"])
+                                config["mixing_embed_dim"]).to(self.device)
             self.target_mixer = QMixer(self.n_agents, self.state_shape,
-                                       config["mixing_embed_dim"])
+                                       config["mixing_embed_dim"]).to(
+                                           self.device)
         elif config["mixer"] == "vdn":
-            self.mixer = VDNMixer()
-            self.target_mixer = VDNMixer()
+            self.mixer = VDNMixer().to(self.device)
+            self.target_mixer = VDNMixer().to(self.device)
         else:
             raise ValueError("Unknown mixer type {}".format(config["mixer"]))
 
@@ -232,7 +240,7 @@ class QMixTorchPolicy(Policy):
             alpha=config["optim_alpha"],
             eps=config["optim_eps"])
 
-    @override(Policy)
+    @override(TorchPolicy)
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -245,30 +253,37 @@ class QMixTorchPolicy(Policy):
         # We need to ensure we do not use the state to compute actions
 
         # Compute actions
-        with th.no_grad():
-            q_values, hiddens = _mac(
-                self.model, th.from_numpy(obs_batch),
-                [th.from_numpy(np.array(s)) for s in state_batches])
-            avail = th.from_numpy(action_mask).float()
-            masked_q_values = q_values.clone()
-            masked_q_values[avail == 0.0] = -float("inf")
-            # epsilon-greedy action selector
-            random_numbers = th.rand_like(q_values[:, :, 0])
-            pick_random = (random_numbers < self.cur_epsilon).long()
-            random_actions = Categorical(avail).sample().long()
-            actions = (pick_random * random_actions +
-                       (1 - pick_random) * masked_q_values.max(dim=2)[1])
-            actions = actions.numpy()
-            hiddens = [s.numpy() for s in hiddens]
+        with self.lock:
+            with th.no_grad():
+                q_values, hiddens = _mac(
+                    self.model,
+                    th.as_tensor(
+                        obs_batch, dtype=th.float, device=self.device),
+                    [th.as_tensor(
+                        np.array(s), dtype=th.float, device=self.device)
+                        for s in state_batches
+                    ])
+                avail = th.as_tensor(
+                    action_mask, dtype=th.float, device=self.device)
+                masked_q_values = q_values.clone()
+                masked_q_values[avail == 0.0] = -float("inf")
+                # epsilon-greedy action selector
+                random_numbers = th.rand_like(q_values[:, :, 0])
+                pick_random = (random_numbers < self.cur_epsilon).long()
+                random_actions = Categorical(avail).sample().long()
+                actions = (pick_random * random_actions +
+                           (1 - pick_random) * masked_q_values.max(dim=2)[1])
+                actions = actions.cpu().numpy()
+                hiddens = [s.cpu().numpy() for s in hiddens]
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
-    @override(Policy)
+    @override(TorchPolicy)
     def learn_on_batch(self, samples):
         obs_batch, action_mask, state = self._unpack_observation(
             samples[SampleBatch.CUR_OBS])
-        next_obs_batch, next_action_mask, next_state = self._unpack_observation(
-            samples[SampleBatch.NEXT_OBS])
+        (next_obs_batch, next_action_mask,
+         next_state) = self._unpack_observation(samples[SampleBatch.NEXT_OBS])
         group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
         input_list = [
@@ -279,14 +294,13 @@ class QMixTorchPolicy(Policy):
         if self.has_state:
             input_list.extend([state, next_state])
 
-        output_list, initial_states, seq_lens = \
+        output_list, _, seq_lens = \
             chop_into_sequences(
                 samples[SampleBatch.EPS_ID],
                 samples[SampleBatch.UNROLL_ID],
                 samples[SampleBatch.AGENT_INDEX],
                 input_list,
-                [samples["state_in_{}".format(k)]
-                 for k in range(len(self.get_initial_state()))],
+                [],
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
         # These will be padded to shape [B * T, ...]
@@ -294,95 +308,111 @@ class QMixTorchPolicy(Policy):
             (rew, action_mask, next_action_mask, act, dones, obs, next_obs,
              state, next_state) = output_list
         else:
-            (rew, action_mask, next_action_mask, act, dones, obs, next_obs
-             ) = output_list
+            (rew, action_mask, next_action_mask, act, dones, obs,
+             next_obs) = output_list
         B, T = len(seq_lens), max(seq_lens)
 
-        def to_batches(arr):
+        def to_batches(arr, dtype):
             new_shape = [B, T] + list(arr.shape[1:])
-            return th.from_numpy(np.reshape(arr, new_shape))
+            return th.as_tensor(np.reshape(arr, new_shape),
+                                dtype=dtype,
+                                device=self.device)
 
-        rewards = to_batches(rew).float()
-        actions = to_batches(act).long()
-        obs = to_batches(obs).reshape([B, T, self.n_agents,
-                                       self.obs_size]).float()
-        action_mask = to_batches(action_mask)
-        next_obs = to_batches(next_obs).reshape(
-            [B, T, self.n_agents, self.obs_size]).float()
-        next_action_mask = to_batches(next_action_mask)
+        rewards = to_batches(rew, th.float)
+        actions = to_batches(act, th.long)
+        obs = to_batches(obs, th.float).reshape(
+            [B, T, self.n_agents, self.obs_size])
+        action_mask = to_batches(action_mask, th.float)
+        next_obs = to_batches(next_obs, th.float).reshape(
+            [B, T, self.n_agents, self.obs_size])
+        next_action_mask = to_batches(next_action_mask, th.float)
         if self.has_state:
-            state = to_batches(state).float()
-            next_state = to_batches(next_state).float()
+            state = to_batches(state, th.float)
+            next_state = to_batches(next_state, th.float)
 
         # TODO(ekl) this treats group termination as individual termination
-        terminated = to_batches(dones.astype(np.float32)).unsqueeze(2).expand(
+        terminated = to_batches(dones, th.float).unsqueeze(2).expand(
             B, T, self.n_agents)
 
         # Create mask for where index is < unpadded sequence length
-        filled = (np.reshape(np.tile(np.arange(T), B), [B, T]) <
-                  np.expand_dims(seq_lens, 1)).astype(np.float32)
-        mask = th.from_numpy(filled).unsqueeze(2).expand(B, T, self.n_agents)
+        filled = np.reshape(
+            np.tile(np.arange(T, dtype=np.float32), B),
+            [B, T]) < np.expand_dims(seq_lens, 1)
+        mask = th.as_tensor(
+            filled, dtype=th.float, device=self.device).unsqueeze(2).expand(
+            B, T, self.n_agents)
 
         # Compute loss
-        loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-            self.loss(rewards, actions, terminated, mask, obs,
-                      next_obs, action_mask, next_action_mask,
-                      state, next_state)
+        with self.lock:
+            loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
+                self.loss(rewards, actions, terminated, mask, obs,
+                          next_obs, action_mask, next_action_mask,
+                          state, next_state)
 
-        # Optimise
-        self.optimiser.zero_grad()
-        loss_out.backward()
-        grad_norm = th.nn.utils.clip_grad_norm_(
-            self.params, self.config["grad_norm_clipping"])
-        self.optimiser.step()
+            # Optimise
+            self.optimiser.zero_grad()
+            loss_out.backward()
+            grad_norm = th.nn.utils.clip_grad_norm_(
+                self.params, self.config["grad_norm_clipping"])
+            self.optimiser.step()
 
-        mask_elems = mask.sum().item()
-        stats = {
-            "loss": loss_out.item(),
-            "grad_norm": grad_norm
-            if isinstance(grad_norm, float) else grad_norm.item(),
-            "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
-            "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
-            mask_elems,
-            "target_mean": (targets * mask).sum().item() / mask_elems,
-        }
-        return {LEARNER_STATS_KEY: stats}
+            mask_elems = mask.sum().item()
+            stats = {
+                "loss": loss_out.item(),
+                "grad_norm": grad_norm
+                if isinstance(grad_norm, float) else grad_norm.item(),
+                "td_error_abs": masked_td_error.abs().sum().item() /
+                mask_elems,
+                "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
+                mask_elems,
+                "target_mean": (targets * mask).sum().item() / mask_elems,
+            }
+            return {LEARNER_STATS_KEY: stats}
 
-    @override(Policy)
+    @override(TorchPolicy)
     def get_initial_state(self):
-        return [
-            s.expand([self.n_agents, -1]).numpy()
-            for s in self.model.get_initial_state()
-        ]
+        with self.lock:
+            return [
+                s.expand([self.n_agents, -1]).cpu().numpy()
+                for s in self.model.get_initial_state()
+            ]
 
-    @override(Policy)
+    @override(TorchPolicy)
     def get_weights(self):
-        return {"model": self.model.state_dict()}
+        with self.lock:
+            state_dict = self.model.state_dict()
+            return {"model": self._cpu_dict(state_dict)}
 
-    @override(Policy)
+    @override(TorchPolicy)
     def set_weights(self, weights):
-        self.model.load_state_dict(weights["model"])
+        with self.lock:
+            self.model.load_state_dict(self._device_dict(weights["model"]))
 
-    @override(Policy)
+    @override(TorchPolicy)
     def get_state(self):
-        return {
-            "model": self.model.state_dict(),
-            "target_model": self.target_model.state_dict(),
-            "mixer": self.mixer.state_dict() if self.mixer else None,
-            "target_mixer": self.target_mixer.state_dict()
-            if self.mixer else None,
-            "cur_epsilon": self.cur_epsilon,
-        }
+        with self.lock:
+            return {
+                "model": self._cpu_dict(self.model.state_dict()),
+                "target_model": self._cpu_dict(self.target_model.state_dict()),
+                "mixer": self._cpu_dict(self.mixer.state_dict())
+                if self.mixer else None,
+                "target_mixer": self._cpu_dict(self.target_mixer.state_dict())
+                if self.mixer else None,
+                "cur_epsilon": self.cur_epsilon,
+            }
 
-    @override(Policy)
+    @override(TorchPolicy)
     def set_state(self, state):
-        self.model.load_state_dict(state["model"])
-        self.target_model.load_state_dict(state["target_model"])
-        if state["mixer"] is not None:
-            self.mixer.load_state_dict(state["mixer"])
-            self.target_mixer.load_state_dict(state["target_mixer"])
-        self.set_epsilon(state["cur_epsilon"])
-        self.update_target()
+        with self.lock:
+            self.model.load_state_dict(self._device_dict(state["model"]))
+            self.target_model.load_state_dict(
+                self._device_dict(state["target_model"]))
+            if state["mixer"] is not None:
+                self.mixer.load_state_dict(self._device_dict(state["mixer"]))
+                self.target_mixer.load_state_dict(
+                    self._device_dict(state["target_mixer"]))
+            self.set_epsilon(state["cur_epsilon"])
+            self.update_target()
 
     def update_target(self):
         self.target_model.load_state_dict(self.model.state_dict())
@@ -400,6 +430,14 @@ class QMixTorchPolicy(Policy):
         ])
         return group_rewards
 
+    def _device_dict(self, state_dict):
+        return {k: th.as_tensor(v, device=self.device)
+                for k, v in state_dict.items()}
+
+    @staticmethod
+    def _cpu_dict(state_dict):
+        return {k: v.cpu().detach().numpy() for k, v in state_dict.items()}
+
     def _unpack_observation(self, obs_batch):
         """Unpacks the observation, action mask, and state (if present)
         from agent grouping.
@@ -411,7 +449,7 @@ class QMixTorchPolicy(Policy):
                 or None if it is not in the batch
         """
         unpacked = _unpack_obs(
-            np.array(obs_batch),
+            np.array(obs_batch, dtype=np.float32),
             self.observation_space.original_space,
             tensorlib=np)
         if self.has_action_mask:
@@ -426,13 +464,15 @@ class QMixTorchPolicy(Policy):
                 unpacked,
                 axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.ones(
-                [len(obs_batch), self.n_agents, self.n_actions])
+                [len(obs_batch), self.n_agents, self.n_actions],
+                dtype=np.float32)
 
         if self.has_state:
             state = unpacked[0]["state"]
         else:
             state = None
         return obs, action_mask, state
+
 
 def _validate(obs_space, action_space):
     if not hasattr(obs_space, "original_space") or \
