@@ -222,6 +222,12 @@ class NodeUpdater(object):
             ssh_ok = self.wait_for_ssh(deadline)
             assert ssh_ok, "Unable to SSH to node"
 
+        node_tags = self.provider.node_tags(self.node_id)
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+            logger.info("NodeUpdater: {} already up-to-date, skipping".format(
+                self.node_id))
+            return
+
         self.provider.set_node_tags(self.node_id,
                                     {TAG_RAY_NODE_STATUS: "syncing-files"})
         self.sync_file_mounts(self.rsync_up)
