@@ -143,6 +143,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 file_mounts=config["file_mounts"],
                 initialization_commands=[],
                 setup_commands=[],
+                ray_start_commands=[],
                 runtime_hash="")
 
             _exec(updater, "ray stop", False, False)
@@ -234,12 +235,14 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         })
 
         if restart_only:
-            init_commands = config["head_start_ray_commands"]
+            init_commands = []
+            ray_start_commands = config["head_start_ray_commands"]
         elif no_restart:
             init_commands = config["head_setup_commands"]
+            ray_start_commands = []
         else:
-            init_commands = (config["head_setup_commands"] +
-                             config["head_start_ray_commands"])
+            init_commands = config["head_setup_commands"]
+            ray_start_commands = config["head_start_ray_commands"]
 
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -250,6 +253,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             file_mounts=config["file_mounts"],
             initialization_commands=config["initialization_commands"],
             setup_commands=init_commands,
+            ray_start_commands=ray_start_commands,
             runtime_hash=runtime_hash,
         )
         updater.start()
@@ -362,6 +366,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             file_mounts=config["file_mounts"],
             initialization_commands=[],
             setup_commands=[],
+            ray_start_commands=[],
             runtime_hash="",
         )
 
@@ -455,6 +460,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
             file_mounts=config["file_mounts"],
             initialization_commands=[],
             setup_commands=[],
+            ray_start_commands=[],
             runtime_hash="",
         )
         if down:
