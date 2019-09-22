@@ -1,5 +1,10 @@
 #!/bin/bash
 
+set -x
+
+# Cause the script to exit if a single command fails.
+set -e
+
 cat << EOF > "/usr/bin/nproc"
 #!/bin/bash
 echo 10
@@ -47,6 +52,8 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     mv dist/*.whl ../.whl/
   popd
 done
+
+git clean -f -f -x -d -e .whl
 
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
 # hack, we should use auditwheel instead.
