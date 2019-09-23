@@ -24,10 +24,6 @@ To run the application, first install some dependencies.
 
   pip install torch torchvision filelock
 
-
-Setup: Dependencies
--------------------
-
 Let's first define some helper functions and import some dependencies.
 
 """
@@ -258,16 +254,18 @@ workers = [DataWorker.remote() for i in range(num_workers)]
 # worker. The worker will then update the weights and repeat.
 
 current_weights = ps.get_weights.remote()
-gradients = {
-    worker.compute_gradients.remote(current_weights): worker
-    for worker in workers
-}
+
+gradients = {}
+for worker in workers:
+    gradients[worker.compute_gradients.remote(current_weights)] = worker
+
 for i in range(iterations * num_workers):
-    [ready_gradient], _ = ray.wait(list(gradients))
-    worker = gradients.pop(ready_gradient)
+    ready_gradient_list, _ = ray.wait(list(gradients))
+    ready_gradient_id = ready_gradient_list[0]
+    worker = gradients.pop(ready_gradient_id)
 
     # Compute and apply gradients.
-    current_weights = ps.apply_gradients.remote(*[ready_gradient])
+    current_weights = ps.apply_gradients.remote(*[ready_gradient_id])
     gradients[worker.compute_gradients.remote(current_weights)] = worker
 
     if i % 10 == 0:

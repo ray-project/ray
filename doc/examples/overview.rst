@@ -10,15 +10,19 @@ Examples Overview
    :description: :doc:`/auto_examples/plot_pong_example`
 
 .. customgalleryitem::
+   :tooltip: An example and walkthrough of parallelizing the L-BFGS algorithm.
    :description: :doc:`/auto_examples/plot_lbfgs`
 
 .. customgalleryitem::
+   :tooltip: An example implementing a simple news reader using Ray.
    :description: :doc:`/auto_examples/plot_newsreader`
 
 .. customgalleryitem::
+   :tooltip: An example using Ray to train ResNet across multiple GPUs.
    :description: :doc:`/auto_examples/plot_resnet`
 
 .. customgalleryitem::
+   :tooltip: A walkthrough to implement a simple streaming application using Ray’s actor capabilities.
    :description: :doc:`/auto_examples/plot_streaming`
 
 .. customgalleryitem::

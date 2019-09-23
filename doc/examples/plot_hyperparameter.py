@@ -143,14 +143,15 @@ for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
     accuracy_id = evaluate_hyperparameters.remote(hyperparameters)
     remaining_ids.append(accuracy_id)
-    # Keep track of which hyperparameters correspond to this experiment.
     hyperparameters_mapping[accuracy_id] = hyperparameters
 
 # Fetch and print the results of the tasks in the order that they complete.
 while remaining_ids:
     # Use ray.wait to get the object ID of the first task that completes.
-    [result_id], remaining_ids = ray.wait(remaining_ids)
-    # Process the output of this task.
+    done_ids, remaining_ids = ray.wait(remaining_ids)
+    # There is only one return result by default.
+    result_id = result_id[0]
+
     hyperparameters = hyperparameters_mapping[result_id]
     accuracy = ray.get(result_id)
     print("""We achieve accuracy {:.3}% with

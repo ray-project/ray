@@ -54,7 +54,7 @@ H = 200  # The number of hidden layer neurons.
 gamma = 0.99  # The discount factor for reward.
 decay_rate = 0.99  # The decay factor for RMSProp leaky sum of grad^2.
 D = 80 * 80  # The input dimensionality: 80x80 grid.
-learning_rate = 1e-4
+learning_rate = 1e-4  # Magnitude of the update.
 
 #############################################################################
 # Helper Functions

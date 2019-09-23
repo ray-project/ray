@@ -19,8 +19,7 @@ import os
 import urllib
 import shlex
 sys.path.insert(0, os.path.abspath('.'))
-from custom_directives import (IncludeDirective, GalleryItemDirective,
-                               CustomGalleryItemDirective)
+from custom_directives import CustomGalleryItemDirective
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
@@ -387,6 +386,4 @@ def update_context(app, pagename, templatename, context, doctree):
 def setup(app):
     app.connect('html-page-context', update_context)
     # Custom directives
-    app.add_directive('includenodoc', IncludeDirective)
-    app.add_directive('galleryitem', GalleryItemDirective)
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)
