@@ -62,7 +62,9 @@ class CustomGalleryItemDirective(Directive):
     def run(self):
         # Cutoff the `tooltip` after 195 chars.
         if "tooltip" in self.options:
-            tooltip = self.options["tooltip"][:195] + "..."
+            tooltip = self.options["tooltip"]
+            if len(self.options["tooltip"]) > 195:
+                tooltip = tooltip[:195] + "..."
         else:
             raise ValueError(
                 "Need to provide :tooltip: under "
