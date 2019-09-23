@@ -33,7 +33,7 @@ ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
   if (in_band) {
     new_actor_handle_id = ComputeForkedActorHandleId(
         ActorHandleID::FromBinary(parent.inner_.actor_handle_id()),
-        parent.inner_.num_forks());
+        parent.IncrementNumForks());
     // Notify the backend to expect this new actor handle. The backend will
     // not release the cursor for any new handles until the first task for
     // each of the new handles is submitted.
@@ -50,7 +50,6 @@ ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
     // random handle ID that will never actually be used.
     new_actor_handles_.push_back(ActorHandleID::FromRandom());
   }
-  parent.inner_.set_num_forks(parent.inner_.num_forks() + 1);
   guard.unlock();
 
   inner_.set_actor_handle_id(new_actor_handle_id.Data(), new_actor_handle_id.Size());
@@ -96,7 +95,19 @@ ObjectID ActorHandle::ActorCursor() const {
 
 int64_t ActorHandle::TaskCounter() const { return inner_.task_counter(); };
 
+int64_t ActorHandle::IncrementTaskCounter() {
+  int64_t old = inner_.task_counter();
+  inner_.set_task_counter(old + 1);
+  return old;
+}
+
 int64_t ActorHandle::NumForks() const { return inner_.num_forks(); };
+
+int64_t ActorHandle::IncrementNumForks() {
+  int64_t old = inner_.num_forks();
+  inner_.set_num_forks(old + 1);
+  return old;
+}
 
 bool ActorHandle::IsDirectCallActor() const { return inner_.is_direct_call(); }
 
@@ -110,12 +121,6 @@ ActorHandle::ActorHandle() {}
 void ActorHandle::SetActorCursor(const ObjectID &actor_cursor) {
   inner_.set_actor_cursor(actor_cursor.Binary());
 };
-
-int64_t ActorHandle::IncreaseTaskCounter() {
-  int64_t old = inner_.task_counter();
-  inner_.set_task_counter(old + 1);
-  return old;
-}
 
 std::vector<ActorHandleID> ActorHandle::NewActorHandles() const {
   return new_actor_handles_;
@@ -207,7 +212,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
       actor_id, ActorHandleID::Nil(), job_id, function.GetLanguage(),
       actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
-  (*actor_handle)->IncreaseTaskCounter();
+  (*actor_handle)->IncrementTaskCounter();
   (*actor_handle)->SetActorCursor(return_ids[0]);
 
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
@@ -246,7 +251,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
       actor_handle.ActorID(), actor_handle.ActorHandleID(),
       actor_creation_dummy_object_id,
       /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
-      actor_handle.IncreaseTaskCounter(), actor_handle.NewActorHandles());
+      actor_handle.IncrementTaskCounter(), actor_handle.NewActorHandles());
 
   // Manipulate actor handle state.
   auto actor_cursor = (*return_ids).back();

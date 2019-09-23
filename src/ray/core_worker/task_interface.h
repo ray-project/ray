@@ -99,15 +99,19 @@ class ActorHandle {
   /// The number of tasks that have been invoked on this actor.
   int64_t TaskCounter() const;
 
+  /// Increment the task counter and return the previous value.
+  int64_t IncrementTaskCounter();
+
   /// The number of times that this actor handle has been forked.
   /// It's used to make sure ids of actor handles are unique.
   int64_t NumForks() const;
 
+  /// Increment the fork counter and return the previous value.
+  int64_t IncrementNumForks();
+
   bool IsDirectCallActor() const;
 
   void Serialize(std::string *output);
-
-  int64_t IncreaseTaskCounter();
 
  private:
   ActorHandle();
