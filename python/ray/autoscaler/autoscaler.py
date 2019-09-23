@@ -77,6 +77,11 @@ CLUSTER_CONFIG_SCHEMA = {
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
             "extra_config": (dict, OPTIONAL),  # provider-specific config
+
+            # Whether to try to reuse previously stopped nodes instead of
+            # launching nodes. This will also cause the autoscaler to stop
+            # nodes instead of terminating them. Only implemented for AWS.
+            "cache_stopped_nodes": (bool, OPTIONAL),
         },
         REQUIRED),
 
@@ -545,9 +550,9 @@ class StandardAutoscaler(object):
         T = [
             threading.Thread(
                 target=self.spawn_updater,
-                args=(node_id, commands),
-            ) for node_id, commands in (self.should_update(node_id)
-                                        for node_id in nodes)
+                args=(node_id, commands, ray_start),
+            ) for node_id, commands, ray_start in (self.should_update(node_id)
+                                                   for node_id in nodes)
             if node_id is not None
         ]
         for t in T:
@@ -648,7 +653,8 @@ class StandardAutoscaler(object):
             cluster_name=self.config["cluster_name"],
             file_mounts={},
             initialization_commands=[],
-            setup_commands=with_head_node_ip(
+            setup_commands=[],
+            ray_start_commands=with_head_node_ip(
                 self.config["worker_start_ray_commands"]),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
@@ -658,23 +664,25 @@ class StandardAutoscaler(object):
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return (None, None)
+            return (None, None, None)
 
         if self.files_up_to_date(node_id):
-            return (None, None)
+            return (None, None, None)
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = self.config["worker_start_ray_commands"]
+            init_commands = []
+            ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
             init_commands = self.config["worker_setup_commands"]
+            ray_commands = []
         else:
-            init_commands = (self.config["worker_setup_commands"] +
-                             self.config["worker_start_ray_commands"])
+            init_commands = self.config["worker_setup_commands"]
+            ray_commands = self.config["worker_start_ray_commands"]
 
-        return (node_id, init_commands)
+        return (node_id, init_commands, ray_commands)
 
-    def spawn_updater(self, node_id, init_commands):
+    def spawn_updater(self, node_id, init_commands, ray_start_commands):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -685,6 +693,7 @@ class StandardAutoscaler(object):
             initialization_commands=with_head_node_ip(
                 self.config["initialization_commands"]),
             setup_commands=with_head_node_ip(init_commands),
+            ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
