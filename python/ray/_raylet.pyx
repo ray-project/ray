@@ -261,6 +261,8 @@ cdef int prepare_resources(
     for key, value in resource_dict.items():
         if not (isinstance(value, int) or isinstance(value, float)):
             raise ValueError("Resource quantities may only be ints or floats.")
+        if value < 0:
+            raise ValueError("Resource quantities may not be negative.")
         if value > 0:
             if (value >= 1 and isinstance(value, float)
                     and not value.is_integer()):
