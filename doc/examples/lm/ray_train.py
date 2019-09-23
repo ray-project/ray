@@ -9,7 +9,6 @@ Train a new model on one or across multiple GPUs.
 
 import collections
 import math
-import random
 import copy
 import socket
 import time
@@ -29,11 +28,13 @@ def check_new_resources_availability(args):
     if args.cpu:
         n_cpus = int(ray.cluster_resources()["CPU"])
         if n_cpus > args.distributed_world_size:
-            raise Exception("New CPUs find (original %d CPUs, now %d CPUs)" % (args.distributed_world_size, n_cpus))
+            raise Exception("New CPUs find (original %d CPUs, now %d CPUs)"
+                            % (args.distributed_world_size, n_cpus))
     else:
         n_gpus = int(ray.cluster_resources().get("GPU", 0))
         if n_gpus > args.distributed_world_size:
-            raise Exception("New GPUs find (original %d GPUs, now %d GPUs)" % (args.distributed_world_size, n_gpus))
+            raise Exception("New GPUs find (original %d GPUs, now %d GPUs)"
+                            % (args.distributed_world_size, n_gpus))
 
 
 def main(args, init_distributed=False):
@@ -209,8 +210,9 @@ def add_ray_args(parser):
     group.add_argument('--ray-address', default="auto", type=str,
                        help='address for ray initialization')
     group.add_argument('--fix-batch-size', default=None, type=int,
-                       help='fix batch size (max_sentences * update_freq * n_GPUs) to be '
-                            'a fixed input value for different number of GPUs or CPUs')
+                       help='fix batch size (max_sentences * update_freq '
+                            '* n_GPUs) to be a fixed input value for different '
+                            'number of GPUs or CPUs')
     # fmt: on
     return group
 
@@ -234,15 +236,20 @@ def ray_main():
                 n_gpus = int(ray.cluster_resources().get("GPU", 0))
             args.distributed_world_size = n_gpus
         if args.fix_batch_size is not None:
-            args.update_freq = math.ceil(args.fix_batch_size / (args.max_sentences * args.distributed_world_size))
+            args.update_freq = math.ceil(
+                args.fix_batch_size / (args.max_sentences *
+                                       args.distributed_world_size))
             print("Training on %d GPUs, max_sentences=%d, update_freq=%d"
-                  % (args.distributed_world_size, args.max_sentences, args.fix_batch_size))
-        Actor = ray.remote(num_cpus=1, num_gpus=int(not args.cpu))(RayDistributedActor)
+                  % (args.distributed_world_size, args.max_sentences,
+                     args.fix_batch_size))
+        Actor = ray.remote(
+            num_cpus=1, num_gpus=int(not args.cpu))(RayDistributedActor)
         workers = [Actor.remote() for i in range(args.distributed_world_size)]
         ip = ray.get(workers[0].get_node_ip.remote())
         port = ray.get(workers[0].find_free_port.remote())
         address = "tcp://{ip}:{port}".format(ip=ip, port=port)
-        unfinished = [worker.run.remote(address, i, args)for i, worker in enumerate(workers)]
+        unfinished = [worker.run.remote(address, i, args)
+                      for i, worker in enumerate(workers)]
         try:
             while len(unfinished) > 0:
                 finished, unfinished = ray.wait(unfinished)
