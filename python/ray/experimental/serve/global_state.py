@@ -6,6 +6,7 @@ from ray.experimental.serve.kv_store_service import KVStoreProxyActor
 from ray.experimental.serve.queues import CentralizedQueuesActor
 from ray.experimental.serve.utils import logger
 from ray.experimental.serve.server import HTTPActor
+from ray.experimental.serve.monitor import MetricMonitor, start_monitor_loop
 
 # TODO(simon): Global state currently is designed to resides in the driver
 #     process. In the next iteration, we will move all mutable states into
@@ -26,7 +27,7 @@ class GlobalState:
 
     def __init__(self):
         #: holds all actor handles.
-        self.backend_actor_handles = []
+        self.backend_actor_handles = dict()
 
         #: actor handle to KV store actor
         self.kv_store_actor_handle = None
@@ -47,6 +48,21 @@ class GlobalState:
         #  In future iteration, HTTP server will be started on every node and
         #  use random/available port in a pre-defined port range. TODO(simon)
         self.http_address = ""
+
+        #: Mapping of backends -> callable to contruct new backends
+        self.backend_actor_facotry = dict()
+
+        #: Number of replicas for each backend
+        self.num_replicas = defaultdict(lambda: 0)
+
+        #: The unique id coutner for each backend
+        self.replica_id_counter = defaultdict(lambda: 0)
+
+        #: The set of replica actor handles for each backend
+        self.active_replicas = defaultdict(set)
+
+        #: Actor handle to the metric monitor actor
+        self.monitor_handle = None
 
     def init_api_server(self):
         logger.info(LOG_PREFIX + "Initalizing routing table")
@@ -82,3 +98,8 @@ class GlobalState:
                 raise Exception(
                     "HTTP server not ready after {} retries.".format(
                         num_retries))
+
+    def init_monitor(self):
+        logger.info(LOG_PREFIX + "Initializing monitor")
+        self.monitor_handle = MetricMonitor.remote()
+        start_monitor_loop.remote(self.monitor_handle)

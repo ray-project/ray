@@ -20,12 +20,14 @@ def test_runner_wraps_error():
     def echo(i):
         return i
 
-    assert wrap_to_ray_error(echo, 2) == 2
+    assert wrap_to_ray_error(echo, 2) == (2, False)
 
     def error(_):
         return 1 / 0
 
-    assert isinstance(wrap_to_ray_error(error, 1), ray.exceptions.RayTaskError)
+    result, has_erroed = wrap_to_ray_error(error, 1)
+    assert isinstance(result, ray.exceptions.RayTaskError)
+    assert has_erroed
 
 
 def test_runner_actor(serve_instance):
@@ -39,7 +41,7 @@ def test_runner_actor(serve_instance):
 
     runner = TaskRunnerActor.remote(echo)
 
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q)
+    runner._ray_serve_setup.remote(CONSUMER_NAME, q, 0)
     runner._ray_serve_main_loop.remote(runner)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)
@@ -69,7 +71,7 @@ def test_ray_serve_mixin(serve_instance):
 
     runner = CustomActor.remote(3)
 
-    runner._ray_serve_setup.remote(CONSUMER_NAME, q)
+    runner._ray_serve_setup.remote(CONSUMER_NAME, q, 0)
     runner._ray_serve_main_loop.remote(runner)
 
     q.link.remote(PRODUCER_NAME, CONSUMER_NAME)

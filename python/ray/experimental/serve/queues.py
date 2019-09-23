@@ -59,6 +59,8 @@ class CentralizedQueues:
     """
 
     def __init__(self):
+        # TODO(simon): remove service queues, enqueue into buffer queues
+        # at enqueue_request time
         # service_name -> request queue
         self.queues = defaultdict(deque)
 
@@ -68,13 +70,22 @@ class CentralizedQueues:
         # backend_name -> worker queue
         self.workers = defaultdict(deque)
 
-    def enqueue_request(self, service, request_data):
+        # backend_name -> work_buffer queue
+        self.buffer_queue = defaultdict(deque)
+
+        self.blacklisted_replicas = []
+
+    def enqueue_request(self, service, request_data=None):
         query = Query(request_data)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()
 
-    def dequeue_request(self, backend):
+    def dequeue_request(self, backend, replica_id=None):
+        if (backend, replica_id) in self.blacklisted_replicas:
+            # if the replica is blacklisted
+            #   return an object id that will never be fulfilled
+            return get_custom_object_id().binary()
         intention = WorkIntent()
         self.workers[backend].append(intention)
         self.flush()
@@ -90,6 +101,15 @@ class CentralizedQueues:
                      traffic_dict)
         self.traffic[service] = traffic_dict
         self.flush()
+
+    def black_list(self, backend_tag, replica_id):
+        self.blacklisted_replicas.append((backend_tag, replica_id))
+
+    def health_check(self):
+        return {
+            "router.buffer_queue_length.{}".format(k): len(v)
+            for k, v in (self.buffer_queue.items())
+        }
 
     def flush(self):
         """In the default case, flush calls ._flush.
@@ -108,38 +128,70 @@ class CentralizedQueues:
         return list(backends_in_policy.intersection(available_workers))
 
     def _flush(self):
+        # dispatch request to buffer queues
         for service, queue in self.queues.items():
+            while len(queue) and len(self.traffic[service]):
+                backend_names = list(self.traffic[service].keys())
+                backend_weights = list(self.traffic[service].values())
+                chosen_backend = np.random.choice(
+                    backend_names, p=backend_weights).squeeze()
+
+                request = queue.popleft()
+                # logger.error("Flushed %s -> %s", service, chosen_backend)
+                self.buffer_queue[chosen_backend].append(request)
+
+        # distach buffer queues to work queues
+        for service in self.queues.keys():
             ready_backends = self._get_available_backends(service)
+            for backend in ready_backends:
+                # no work available
+                if len(self.buffer_queue[backend]) == 0:
+                    continue
 
-            while len(queue) and len(ready_backends):
-                # Fast path, only one backend available.
-                if len(ready_backends) == 1:
-                    backend = ready_backends[0]
-                    request, work = (queue.popleft(),
-                                     self.workers[backend].popleft())
-                    ray.worker.global_worker.put_object(
-                        work.work_object_id, request)
-
-                # We have more than one backend available.
-                # We will roll a dice among the multiple backends.
-                else:
-                    backend_weights = np.array([
-                        self.traffic[service][backend_name]
-                        for backend_name in ready_backends
-                    ])
-                    # Normalize the weights to 1.
-                    backend_weights /= backend_weights.sum()
-                    chosen_backend = np.random.choice(
-                        ready_backends, p=backend_weights).squeeze()
-
+                buffer_queue = self.buffer_queue[backend]
+                work_queue = self.workers[backend]
+                while len(buffer_queue) and len(work_queue):
                     request, work = (
-                        queue.popleft(),
-                        self.workers[chosen_backend].popleft(),
+                        buffer_queue.popleft(),
+                        work_queue.popleft(),
                     )
+                    # logger.error("flushed one work item from %s", backend)
                     ray.worker.global_worker.put_object(
                         work.work_object_id, request)
 
-                ready_backends = self._get_available_backends(service)
+    # def _flush(self):
+    #     for service, queue in self.queues.items():
+    #         ready_backends = self._get_available_backends(service)
+
+    #         while len(queue) and len(ready_backends):
+    #             # Fast path, only one backend available.
+    #             if len(ready_backends) == 1:
+    #                 backend = ready_backends[0]
+    #                 request, work = (queue.popleft(),
+    #                                  self.workers[backend].popleft())
+    #                 ray.worker.global_worker.put_object(
+    #                     work.work_object_id, request)
+
+    #             # We have more than one backend available.
+    #             # We will roll a dice among the multiple backends.
+    #             else:
+    #                 backend_weights = np.array([
+    #                     self.traffic[service][backend_name]
+    #                     for backend_name in ready_backends
+    #                 ])
+    #                 # Normalize the weights to 1.
+    #                 backend_weights /= backend_weights.sum()
+    #                 chosen_backend = np.random.choice(
+    #                     ready_backends, p=backend_weights).squeeze()
+
+    #                 request, work = (
+    #                     queue.popleft(),
+    #                     self.workers[chosen_backend].popleft(),
+    #                 )
+    #                 ray.worker.global_worker.put_object(
+    #                     work.work_object_id, request)
+
+    #             ready_backends = self._get_available_backends(service)
 
 
 @ray.remote

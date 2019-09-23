@@ -7,13 +7,16 @@ import ray
 from ray.experimental import serve
 
 
-def delay_rerun(*_):
-    time.sleep(1)
-    return True
+def make_sleep_function(sleep_s):
+    def sleep_for(*_):
+        time.sleep(sleep_s)
+        return True
+
+    return sleep_for
 
 
 # flaky test because the routing table might not be populated
-@flaky(rerun_filter=delay_rerun)
+@flaky(rerun_filter=make_sleep_function(1))
 def test_e2e(serve_instance):
     serve.create_endpoint("endpoint", "/api")
     result = ray.get(
@@ -31,3 +34,9 @@ def test_e2e(serve_instance):
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
     assert resp["path"] == "/api"
     assert resp["method"] == "GET"
+
+
+@flaky(rerun_filter=make_sleep_function(2))
+def test_metric(serve_instance):
+    # Test metric aggregation is inplace
+    assert len(serve.stat()) > 0
