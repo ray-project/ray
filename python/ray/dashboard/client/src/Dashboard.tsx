@@ -365,7 +365,10 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                         >
                           View all logs (
                           {logCounts[client.hostname].total.toLocaleString()}{" "}
-                          lines)
+                          {logCounts[client.hostname].total === 1
+                            ? "line"
+                            : "lines"}
+                          )
                         </Link>
                       )}
                     </TableCell>
@@ -434,7 +437,12 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                               {logCounts[client.hostname].perWorker[
                                 worker.pid
                               ].toLocaleString()}{" "}
-                              lines)
+                              {logCounts[client.hostname].perWorker[
+                                worker.pid
+                              ] === 1
+                                ? "line"
+                                : "lines"}
+                              )
                             </Link>
                           )}
                         </TableCell>
