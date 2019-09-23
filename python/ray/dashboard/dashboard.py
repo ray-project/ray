@@ -166,11 +166,15 @@ class Dashboard(object):
             return await json_response(result=D, ts=now)
 
         self.app.router.add_get("/", get_index)
-        self.app.router.add_static(
-            "/static",
-            os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                "client/build/static"))
+
+        static_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "client/build/static")
+        if not os.path.isdir(static_dir):
+            raise ValueError(
+                "Dashboard static asset directory not found at '{}'. If "
+                "installing from source, please follow the additional steps "
+                "required to build the dashboard.".format(static_dir))
+        self.app.router.add_static("/static", static_dir)
 
         self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/ray_config", ray_config)
@@ -349,15 +353,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.utils.setup_logger(args.logging_level, args.logging_format)
 
-    dashboard = Dashboard(
-        args.redis_address,
-        args.http_port,
-        args.token,
-        args.temp_dir,
-        redis_password=args.redis_password,
-    )
-
     try:
+        dashboard = Dashboard(
+            args.redis_address,
+            args.http_port,
+            args.token,
+            args.temp_dir,
+            redis_password=args.redis_password,
+        )
         dashboard.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
