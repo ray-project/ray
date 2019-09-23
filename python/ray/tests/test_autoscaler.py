@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from flaky import flaky
 import shutil
 import tempfile
 import threading
@@ -342,11 +341,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(0)
         autoscaler.request_resources({"CPU": cores_per_node * 10})
-        for _ in range(3):  # Maximum launch batch is 5
+        for _ in range(5):  # Maximum launch batch is 5
+            time.sleep(0.01)
             autoscaler.update()
         self.waitForNodes(10)
         autoscaler.request_resources({"CPU": cores_per_node * 30})
         for _ in range(4):  # Maximum launch batch is 5
+            time.sleep(0.01)
             autoscaler.update()
         self.waitForNodes(30)
 
@@ -841,7 +842,6 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         assert len(self.provider.non_terminated_nodes({})) == 0
 
-    @flaky(max_runs=4)
     def testRecoverUnhealthyWorkers(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
@@ -861,8 +861,13 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
 
         # Mark a node as unhealthy
-        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+        for _ in range(5):
+            if autoscaler.updaters:
+                time.sleep(0.05)
+                autoscaler.update()
+        assert not autoscaler.updaters
         num_calls = len(runner.calls)
+        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
         autoscaler.update()
         self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
 
