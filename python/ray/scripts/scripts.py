@@ -236,15 +236,11 @@ def start(node_ip_address, redis_address, address, redis_port,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
-    if redis_address is not None:
-        redis_address = services.address_to_ip(redis_address)
-    if address:
-        if redis_address:
-            raise ValueError(
-                "You should specify address instead of redis_address.")
-        if address == "auto":
-            address = services.find_redis_address_or_die()
-        redis_address = address
+
+    if redis_address is not None or address is not None:
+        (redis_address, redis_address_ip,
+         redis_address_port) = services.validate_redis_address(
+             address, redis_address)
 
     try:
         resources = json.loads(resources)
@@ -339,10 +335,10 @@ def start(node_ip_address, redis_address, address, redis_port,
         # Start Ray on a non-head node.
         if redis_port is not None:
             raise Exception("If --head is not passed in, --redis-port is not "
-                            "allowed")
+                            "allowed.")
         if redis_shard_ports is not None:
             raise Exception("If --head is not passed in, --redis-shard-ports "
-                            "is not allowed")
+                            "is not allowed.")
         if redis_address is None:
             raise Exception("If --head is not passed in, --redis-address must "
                             "be provided.")
@@ -359,12 +355,10 @@ def start(node_ip_address, redis_address, address, redis_port,
             raise ValueError("--include-java should only be set for the head "
                              "node.")
 
-        redis_ip_address, redis_port = redis_address.split(":")
-
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
         services.wait_for_redis_to_start(
-            redis_ip_address, int(redis_port), password=redis_password)
+            redis_address_ip, redis_address_port, password=redis_password)
 
         # Create a Redis client.
         redis_client = services.create_redis_client(
