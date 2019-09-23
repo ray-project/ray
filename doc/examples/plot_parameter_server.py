@@ -16,8 +16,6 @@ Parameter servers are a core part of many machine learning applications. This
 document walks through how to implement simple synchronous and asynchronous
 parameter servers using Ray actors.
 
-.. note:: This example is mainly a proof of concept.
-
 To run the application, first install some dependencies.
 
 .. code-block:: bash

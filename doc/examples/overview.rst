@@ -2,6 +2,14 @@ Examples Overview
 =================
 
 .. customgalleryitem::
+   :tooltip: Build a simple parameter server using Ray. Seamlessly toggle between async and sync.
+   :description: :doc:`/auto_examples/plot_parameter_server`
+
+.. customgalleryitem::
+   :tooltip: Build a simple Asynchronous Advantage Actor Critic agent using Ray.
+   :description: :doc:`/auto_examples/plot_example-a3c`
+
+.. customgalleryitem::
    :tooltip: Simple parallel asynchronous hyperparameter evaluation.
    :description: :doc:`/auto_examples/plot_hyperparameter`
 
@@ -24,11 +32,3 @@ Examples Overview
 .. customgalleryitem::
    :tooltip: A walkthrough to implement a simple streaming application using Ray’s actor capabilities.
    :description: :doc:`/auto_examples/plot_streaming`
-
-.. customgalleryitem::
-   :tooltip: Build a simple parameter server using Ray. Seamlessly toggle between async and sync.
-   :description: :doc:`/auto_examples/plot_parameter_server`
-
-.. customgalleryitem::
-   :tooltip: Build a simple Asynchronous Advantage Actor Critic agent using Ray.
-   :description: :doc:`/auto_examples/plot_example-a3c`
