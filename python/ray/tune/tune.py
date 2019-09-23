@@ -81,9 +81,10 @@ def run(run_or_experiment,
             Experiment.spec.
         name (str): Name of experiment.
         stop (dict|func): The stopping criteria. If dict, the keys may be
-            any field in the return result of 'train()', whichever is reached
-            first. If function, must take (result) as argument and return
-            a boolean (True if trial should be stopped, False otherwise).
+            any field in the return result of 'train()', whichever is
+            reached first. If function, it must take (trial_id, result) as
+            arguments and return a boolean (True if trial should be stopped,
+            False otherwise).
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.

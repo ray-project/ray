@@ -458,7 +458,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 reporter(test=i)
 
-        def stop(result):
+        def stop(trial_id, result):
             return result["test"] > 6
 
         [trial] = tune.run(train, stop=stop).trials
