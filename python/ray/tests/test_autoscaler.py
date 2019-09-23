@@ -263,646 +263,666 @@ class AutoscalingTest(unittest.TestCase):
             f.write(yaml.dump(config))
         return path
 
-    def testInvalidConfig(self):
-        invalid_config = "/dev/null"
-        with pytest.raises(ValueError):
-            StandardAutoscaler(
-                invalid_config, LoadMetrics(), update_interval_s=0)
+#    def testInvalidConfig(self):
+#        invalid_config = "/dev/null"
+#        with pytest.raises(ValueError):
+#            StandardAutoscaler(
+#                invalid_config, LoadMetrics(), update_interval_s=0)
+#
+#    def testValidation(self):
+#        """Ensures that schema validation is working."""
+#        config = copy.deepcopy(SMALL_CLUSTER)
+#        try:
+#            validate_config(config)
+#        except Exception:
+#            self.fail("Test config did not pass validation test!")
+#
+#        config["blah"] = "blah"
+#        with pytest.raises(ValueError):
+#            validate_config(config)
+#        del config["blah"]
+#
+#        config["provider"]["blah"] = "blah"
+#        with pytest.raises(ValueError):
+#            validate_config(config)
+#        del config["provider"]["blah"]
+#
+#        del config["provider"]
+#        with pytest.raises(ValueError):
+#            validate_config(config)
+#
+#    def testValidateDefaultConfig(self):
+#        config = {}
+#        config["provider"] = {
+#            "type": "aws",
+#            "region": "us-east-1",
+#            "availability_zone": "us-east-1a",
+#        }
+#        config = fillout_defaults(config)
+#        try:
+#            validate_config(config)
+#        except Exception:
+#            self.fail("Default config did not pass validation test!")
+#
+#    def testScaleUp(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#
+#    def testManualAutoscaling(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 0
+#        config["max_workers"] = 50
+#        cores_per_node = 2
+#        config["worker_nodes"] = {"Resources": {"CPU": cores_per_node}}
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=5,
+#            max_concurrent_launches=5,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#        autoscaler.update()
+#        self.waitForNodes(0)
+#        autoscaler.request_resources({"CPU": cores_per_node * 10})
+#        for _ in range(5):  # Maximum launch batch is 5
+#            time.sleep(0.01)
+#            autoscaler.update()
+#        self.waitForNodes(10)
+#        autoscaler.request_resources({"CPU": cores_per_node * 30})
+#        for _ in range(4):  # Maximum launch batch is 5
+#            time.sleep(0.01)
+#            autoscaler.update()
+#        self.waitForNodes(30)
+#
+#    def testTerminateOutdatedNodesGracefully(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 5
+#        config["max_workers"] = 5
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        self.waitForNodes(10)
+#
+#        # Gradually scales down to meet target size, never going too low
+#        for _ in range(10):
+#            autoscaler.update()
+#            self.waitForNodes(5, comparison=self.assertLessEqual)
+#            self.waitForNodes(4, comparison=self.assertGreaterEqual)
+#
+#        # Eventually reaches steady state
+#        self.waitForNodes(5)
+#
+#    def testDynamicScaling(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=5,
+#            max_concurrent_launches=5,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        self.waitForNodes(0)
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#
+#        # Update the config to reduce the cluster size
+#        new_config = SMALL_CLUSTER.copy()
+#        new_config["max_workers"] = 1
+#        self.write_config(new_config)
+#        autoscaler.update()
+#        self.waitForNodes(1)
+#
+#        # Update the config to reduce the cluster size
+#        new_config["min_workers"] = 10
+#        new_config["max_workers"] = 10
+#        self.write_config(new_config)
+#        autoscaler.update()
+#        self.waitForNodes(6)
+#        autoscaler.update()
+#        self.waitForNodes(10)
+#
+#    def testInitialWorkers(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 0
+#        config["max_workers"] = 20
+#        config["initial_workers"] = 10
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=5,
+#            max_concurrent_launches=5,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        self.waitForNodes(0)
+#        autoscaler.update()
+#        self.waitForNodes(5)  # expected due to batch sizes and concurrency
+#        autoscaler.update()
+#        self.waitForNodes(10)
+#        autoscaler.update()
+#
+#    def testAggressiveAutoscaling(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 0
+#        config["max_workers"] = 20
+#        config["initial_workers"] = 10
+#        config["idle_timeout_minutes"] = 0
+#        config["autoscaling_mode"] = "aggressive"
+#        config_path = self.write_config(config)
+#
+#        self.provider = MockProvider()
+#        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
+#        head_ip = self.provider.non_terminated_node_ips(
+#            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
+#        runner = MockProcessRunner()
+#
+#        lm = LoadMetrics()
+#        lm.local_ip = head_ip
+#
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            lm,
+#            max_launch_batch=5,
+#            max_concurrent_launches=5,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#
+#        self.waitForNodes(1)
+#        autoscaler.update()
+#        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+#        autoscaler.update()
+#        self.waitForNodes(11)
+#
+#        # Connect the head and workers to end the bringup phase
+#        addrs = self.provider.non_terminated_node_ips(
+#            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
+#        addrs += head_ip
+#        for addr in addrs:
+#            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
+#            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
+#        assert autoscaler.bringup
+#        autoscaler.update()
+#
+#        assert not autoscaler.bringup
+#        autoscaler.update()
+#        self.waitForNodes(1)
+#
+#        # All of the nodes are down. Simulate some load on the head node
+#        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
+#
+#        autoscaler.update()
+#        self.waitForNodes(6)  # expected due to batch sizes and concurrency
+#        autoscaler.update()
+#        self.waitForNodes(11)
+#
+#    def testDelayedLaunch(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=5,
+#            max_concurrent_launches=5,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#
+#        # Update will try to create, but will block until we set the flag
+#        self.provider.ready_to_create.clear()
+#        autoscaler.update()
+#        assert autoscaler.num_launches_pending.value == 2
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#
+#        # Set the flag, check it updates
+#        self.provider.ready_to_create.set()
+#        self.waitForNodes(2)
+#        assert autoscaler.num_launches_pending.value == 0
+#
+#        # Update the config to reduce the cluster size
+#        new_config = SMALL_CLUSTER.copy()
+#        new_config["max_workers"] = 1
+#        self.write_config(new_config)
+#        autoscaler.update()
+#        assert len(self.provider.non_terminated_nodes({})) == 1
+#
+#    def testDelayedLaunchWithFailure(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 10
+#        config["max_workers"] = 10
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=5,
+#            max_concurrent_launches=8,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#
+#        # update() should launch a wave of 5 nodes (max_launch_batch)
+#        # Force this first wave to block.
+#        rtc1 = self.provider.ready_to_create
+#        rtc1.clear()
+#        autoscaler.update()
+#        # Synchronization: wait for launchy thread to be blocked on rtc1
+#        if hasattr(rtc1, "_cond"):  # Python 3.5
+#            waiters = rtc1._cond._waiters
+#        else:  # Python 2.7
+#            waiters = rtc1._Event__cond._Condition__waiters
+#        self.waitFor(lambda: len(waiters) == 1)
+#        assert autoscaler.num_launches_pending.value == 5
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#
+#        # Call update() to launch a second wave of 3 nodes,
+#        # as 5 + 3 = 8 = max_concurrent_launches.
+#        # Make this wave complete immediately.
+#        rtc2 = threading.Event()
+#        self.provider.ready_to_create = rtc2
+#        rtc2.set()
+#        autoscaler.update()
+#        self.waitForNodes(3)
+#        assert autoscaler.num_launches_pending.value == 5
+#
+#        # The first wave of 5 will now tragically fail
+#        self.provider.fail_creates = True
+#        rtc1.set()
+#        self.waitFor(lambda: autoscaler.num_launches_pending.value == 0)
+#        assert len(self.provider.non_terminated_nodes({})) == 3
+#
+#        # Retry the first wave, allowing it to succeed this time
+#        self.provider.fail_creates = False
+#        autoscaler.update()
+#        self.waitForNodes(8)
+#        assert autoscaler.num_launches_pending.value == 0
+#
+#        # Final wave of 2 nodes
+#        autoscaler.update()
+#        self.waitForNodes(10)
+#        assert autoscaler.num_launches_pending.value == 0
+#
+#    def testUpdateThrottling(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=5,
+#            max_concurrent_launches=5,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=10)
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        assert autoscaler.num_launches_pending.value == 0
+#        new_config = SMALL_CLUSTER.copy()
+#        new_config["max_workers"] = 1
+#        self.write_config(new_config)
+#        autoscaler.update()
+#        # not updated yet
+#        # note that node termination happens in the main thread, so
+#        # we do not need to add any delay here before checking
+#        assert len(self.provider.non_terminated_nodes({})) == 2
+#        assert autoscaler.num_launches_pending.value == 0
+#
+#    def testLaunchConfigChange(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        autoscaler = StandardAutoscaler(
+#            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#
+#        # Update the config to change the node type
+#        new_config = SMALL_CLUSTER.copy()
+#        new_config["worker_nodes"]["InstanceType"] = "updated"
+#        self.write_config(new_config)
+#        self.provider.ready_to_create.clear()
+#        for _ in range(5):
+#            autoscaler.update()
+#        self.waitForNodes(0)
+#        self.provider.ready_to_create.set()
+#        self.waitForNodes(2)
+#
+#    def testIgnoresCorruptedConfig(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_launch_batch=10,
+#            max_concurrent_launches=10,
+#            process_runner=runner,
+#            max_failures=0,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#
+#        # Write a corrupted config
+#        self.write_config("asdf")
+#        for _ in range(10):
+#            autoscaler.update()
+#        time.sleep(0.1)
+#        assert autoscaler.num_launches_pending.value == 0
+#        assert len(self.provider.non_terminated_nodes({})) == 2
+#
+#        # New a good config again
+#        new_config = SMALL_CLUSTER.copy()
+#        new_config["min_workers"] = 10
+#        new_config["max_workers"] = 10
+#        self.write_config(new_config)
+#        autoscaler.update()
+#        self.waitForNodes(10)
+#
+#    def testMaxFailures(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        self.provider.throw = True
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=2,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        autoscaler.update()
+#        with pytest.raises(Exception):
+#            autoscaler.update()
+#
+#    def testLaunchNewNodeOnOutOfBandTerminate(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        for node in self.provider.mock_nodes.values():
+#            node.state = "terminated"
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#
+#    def testConfiguresNewNodes(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        for node in self.provider.mock_nodes.values():
+#            node.state = "running"
+#        autoscaler.update()
+#        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
+#
+#    def testReportsConfigFailures(self):
+#        config = copy.deepcopy(SMALL_CLUSTER)
+#        config["provider"]["type"] = "external"
+#        config = fillout_defaults(config)
+#        config["provider"]["type"] = "mock"
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner(fail_cmds=["cmd1"])
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        for node in self.provider.mock_nodes.values():
+#            node.state = "running"
+#        autoscaler.update()
+#        self.waitForNodes(
+#            2, tag_filters={TAG_RAY_NODE_STATUS: "update-failed"})
+#
+#    def testConfiguresOutdatedNodes(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            LoadMetrics(),
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        for node in self.provider.mock_nodes.values():
+#            node.state = "running"
+#        autoscaler.update()
+#        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
+#        runner.calls = []
+#        new_config = SMALL_CLUSTER.copy()
+#        new_config["worker_setup_commands"] = ["cmdX", "cmdY"]
+#        self.write_config(new_config)
+#        autoscaler.update()
+#        autoscaler.update()
+#        self.waitFor(lambda: len(runner.calls) > 0)
+#
+#    def testScaleUpBasedOnLoad(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 1
+#        config["max_workers"] = 10
+#        config["target_utilization_fraction"] = 0.5
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        lm = LoadMetrics()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            lm,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#        autoscaler.update()
+#        self.waitForNodes(1)
+#        autoscaler.update()
+#        assert autoscaler.num_launches_pending.value == 0
+#        assert len(self.provider.non_terminated_nodes({})) == 1
+#
+#        # Scales up as nodes are reported as used
+#        local_ip = services.get_node_ip_address()
+#        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
+#        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
+#        autoscaler.update()
+#        self.waitForNodes(3)
+#        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
+#        autoscaler.update()
+#        self.waitForNodes(5)
+#
+#        # Holds steady when load is removed
+#        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
+#        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
+#        autoscaler.update()
+#        assert autoscaler.num_launches_pending.value == 0
+#        assert len(self.provider.non_terminated_nodes({})) == 5
+#
+#        # Scales down as nodes become unused
+#        lm.last_used_time_by_ip["172.0.0.0"] = 0
+#        lm.last_used_time_by_ip["172.0.0.1"] = 0
+#        autoscaler.update()
+#        assert autoscaler.num_launches_pending.value == 0
+#        assert len(self.provider.non_terminated_nodes({})) == 3
+#        lm.last_used_time_by_ip["172.0.0.2"] = 0
+#        lm.last_used_time_by_ip["172.0.0.3"] = 0
+#        autoscaler.update()
+#        assert autoscaler.num_launches_pending.value == 0
+#        assert len(self.provider.non_terminated_nodes({})) == 1
+#
+#    def testDontScaleBelowTarget(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["min_workers"] = 0
+#        config["max_workers"] = 2
+#        config["target_utilization_fraction"] = 0.5
+#        config_path = self.write_config(config)
+#        self.provider = MockProvider()
+#        lm = LoadMetrics()
+#        runner = MockProcessRunner()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            lm,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#        autoscaler.update()
+#        assert autoscaler.num_launches_pending.value == 0
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#
+#        # Scales up as nodes are reported as used
+#        local_ip = services.get_node_ip_address()
+#        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
+#        # 1.0 nodes used => target nodes = 2 => target workers = 1
+#        autoscaler.update()
+#        self.waitForNodes(1)
+#
+#        # Make new node idle, and never used.
+#        # Should hold steady as target is still 2.
+#        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
+#        lm.last_used_time_by_ip["172.0.0.0"] = 0
+#        autoscaler.update()
+#        assert len(self.provider.non_terminated_nodes({})) == 1
+#
+#        # Reduce load on head => target nodes = 1 => target workers = 0
+#        lm.update(local_ip, {"CPU": 2}, {"CPU": 1}, {})
+#        autoscaler.update()
+#        assert len(self.provider.non_terminated_nodes({})) == 0
+#
+#    def testRecoverUnhealthyWorkers(self):
+#        config_path = self.write_config(SMALL_CLUSTER)
+#        self.provider = MockProvider()
+#        runner = MockProcessRunner()
+#        lm = LoadMetrics()
+#        autoscaler = StandardAutoscaler(
+#            config_path,
+#            lm,
+#            max_failures=0,
+#            process_runner=runner,
+#            update_interval_s=0)
+#        autoscaler.update()
+#        self.waitForNodes(2)
+#        for node in self.provider.mock_nodes.values():
+#            node.state = "running"
+#        autoscaler.update()
+#        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
+#
+#        # Mark a node as unhealthy
+#        for _ in range(5):
+#            if autoscaler.updaters:
+#                time.sleep(0.05)
+#                autoscaler.update()
+#        assert not autoscaler.updaters
+#        num_calls = len(runner.calls)
+#        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
+#        autoscaler.update()
+#        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
+#
+#    def testExternalNodeScaler(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["provider"] = {
+#            "type": "external",
+#            "module": "ray.autoscaler.node_provider.NodeProvider",
+#        }
+#        config_path = self.write_config(config)
+#        autoscaler = StandardAutoscaler(
+#            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
+#        assert isinstance(autoscaler.provider, NodeProvider)
+#
+#    def testExternalNodeScalerWrongImport(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["provider"] = {
+#            "type": "external",
+#            "module": "mymodule.provider_class",
+#        }
+#        invalid_provider = self.write_config(config)
+#        with pytest.raises(ImportError):
+#            StandardAutoscaler(
+#                invalid_provider, LoadMetrics(), update_interval_s=0)
+#
+#    def testExternalNodeScalerWrongModuleFormat(self):
+#        config = SMALL_CLUSTER.copy()
+#        config["provider"] = {
+#            "type": "external",
+#            "module": "does-not-exist",
+#        }
+#        invalid_provider = self.write_config(config)
+#        with pytest.raises(ValueError):
+#            StandardAutoscaler(
+#                invalid_provider, LoadMetrics(), update_interval_s=0)
 
-    def testValidation(self):
-        """Ensures that schema validation is working."""
-        config = copy.deepcopy(SMALL_CLUSTER)
-        try:
-            validate_config(config)
-        except Exception:
-            self.fail("Test config did not pass validation test!")
-
-        config["blah"] = "blah"
-        with pytest.raises(ValueError):
-            validate_config(config)
-        del config["blah"]
-
-        config["provider"]["blah"] = "blah"
-        with pytest.raises(ValueError):
-            validate_config(config)
-        del config["provider"]["blah"]
-
-        del config["provider"]
-        with pytest.raises(ValueError):
-            validate_config(config)
-
-    def testValidateDefaultConfig(self):
-        config = {}
-        config["provider"] = {
-            "type": "aws",
-            "region": "us-east-1",
-            "availability_zone": "us-east-1a",
-        }
-        config = fillout_defaults(config)
-        try:
-            validate_config(config)
-        except Exception:
-            self.fail("Default config did not pass validation test!")
-
-    def testScaleUp(self):
+    def testCacheStoppedNodes(self):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(2)
-        autoscaler.update()
-        self.waitForNodes(2)
-
-    def testManualAutoscaling(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 50
-        cores_per_node = 2
-        config["worker_nodes"] = {"Resources": {"CPU": cores_per_node}}
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(0)
-        autoscaler.request_resources({"CPU": cores_per_node * 10})
-        for _ in range(5):  # Maximum launch batch is 5
-            time.sleep(0.01)
-            autoscaler.update()
-        self.waitForNodes(10)
-        autoscaler.request_resources({"CPU": cores_per_node * 30})
-        for _ in range(4):  # Maximum launch batch is 5
-            time.sleep(0.01)
-            autoscaler.update()
-        self.waitForNodes(30)
-
-    def testTerminateOutdatedNodesGracefully(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 5
-        config["max_workers"] = 5
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "worker"}, 10)
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        self.waitForNodes(10)
-
-        # Gradually scales down to meet target size, never going too low
-        for _ in range(10):
-            autoscaler.update()
-            self.waitForNodes(5, comparison=self.assertLessEqual)
-            self.waitForNodes(4, comparison=self.assertGreaterEqual)
-
-        # Eventually reaches steady state
-        self.waitForNodes(5)
-
-    def testDynamicScaling(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        self.waitForNodes(0)
-        autoscaler.update()
-        self.waitForNodes(2)
-
-        # Update the config to reduce the cluster size
-        new_config = SMALL_CLUSTER.copy()
-        new_config["max_workers"] = 1
-        self.write_config(new_config)
-        autoscaler.update()
-        self.waitForNodes(1)
-
-        # Update the config to reduce the cluster size
-        new_config["min_workers"] = 10
-        new_config["max_workers"] = 10
-        self.write_config(new_config)
-        autoscaler.update()
-        self.waitForNodes(6)
-        autoscaler.update()
-        self.waitForNodes(10)
-
-    def testInitialWorkers(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 20
-        config["initial_workers"] = 10
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        self.waitForNodes(0)
-        autoscaler.update()
-        self.waitForNodes(5)  # expected due to batch sizes and concurrency
-        autoscaler.update()
-        self.waitForNodes(10)
-        autoscaler.update()
-
-    def testAggressiveAutoscaling(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 20
-        config["initial_workers"] = 10
-        config["idle_timeout_minutes"] = 0
-        config["autoscaling_mode"] = "aggressive"
-        config_path = self.write_config(config)
-
-        self.provider = MockProvider()
-        self.provider.create_node({}, {TAG_RAY_NODE_TYPE: "head"}, 1)
-        head_ip = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "head"}, )[0]
-        runner = MockProcessRunner()
-
         lm = LoadMetrics()
-        lm.local_ip = head_ip
-
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
-            max_launch_batch=5,
-            max_concurrent_launches=5,
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
-
-        self.waitForNodes(1)
-        autoscaler.update()
-        self.waitForNodes(6)  # expected due to batch sizes and concurrency
-        autoscaler.update()
-        self.waitForNodes(11)
-
-        # Connect the head and workers to end the bringup phase
-        addrs = self.provider.non_terminated_node_ips(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"}, )
-        addrs += head_ip
-        for addr in addrs:
-            lm.update(addr, {"CPU": 2}, {"CPU": 0}, {})
-            lm.update(addr, {"CPU": 2}, {"CPU": 2}, {})
-        assert autoscaler.bringup
-        autoscaler.update()
-
-        assert not autoscaler.bringup
-        autoscaler.update()
-        self.waitForNodes(1)
-
-        # All of the nodes are down. Simulate some load on the head node
-        lm.update(head_ip, {"CPU": 2}, {"CPU": 0}, {})
-
-        autoscaler.update()
-        self.waitForNodes(6)  # expected due to batch sizes and concurrency
-        autoscaler.update()
-        self.waitForNodes(11)
-
-    def testDelayedLaunch(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # Update will try to create, but will block until we set the flag
-        self.provider.ready_to_create.clear()
-        autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 2
-        assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # Set the flag, check it updates
-        self.provider.ready_to_create.set()
-        self.waitForNodes(2)
-        assert autoscaler.num_launches_pending.value == 0
-
-        # Update the config to reduce the cluster size
-        new_config = SMALL_CLUSTER.copy()
-        new_config["max_workers"] = 1
-        self.write_config(new_config)
-        autoscaler.update()
-        assert len(self.provider.non_terminated_nodes({})) == 1
-
-    def testDelayedLaunchWithFailure(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 10
-        config["max_workers"] = 10
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=8,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # update() should launch a wave of 5 nodes (max_launch_batch)
-        # Force this first wave to block.
-        rtc1 = self.provider.ready_to_create
-        rtc1.clear()
-        autoscaler.update()
-        # Synchronization: wait for launchy thread to be blocked on rtc1
-        if hasattr(rtc1, "_cond"):  # Python 3.5
-            waiters = rtc1._cond._waiters
-        else:  # Python 2.7
-            waiters = rtc1._Event__cond._Condition__waiters
-        self.waitFor(lambda: len(waiters) == 1)
-        assert autoscaler.num_launches_pending.value == 5
-        assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # Call update() to launch a second wave of 3 nodes,
-        # as 5 + 3 = 8 = max_concurrent_launches.
-        # Make this wave complete immediately.
-        rtc2 = threading.Event()
-        self.provider.ready_to_create = rtc2
-        rtc2.set()
-        autoscaler.update()
-        self.waitForNodes(3)
-        assert autoscaler.num_launches_pending.value == 5
-
-        # The first wave of 5 will now tragically fail
-        self.provider.fail_creates = True
-        rtc1.set()
-        self.waitFor(lambda: autoscaler.num_launches_pending.value == 0)
-        assert len(self.provider.non_terminated_nodes({})) == 3
-
-        # Retry the first wave, allowing it to succeed this time
-        self.provider.fail_creates = False
-        autoscaler.update()
-        self.waitForNodes(8)
-        assert autoscaler.num_launches_pending.value == 0
-
-        # Final wave of 2 nodes
-        autoscaler.update()
-        self.waitForNodes(10)
-        assert autoscaler.num_launches_pending.value == 0
-
-    def testUpdateThrottling(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=5,
-            max_concurrent_launches=5,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=10)
-        autoscaler.update()
-        self.waitForNodes(2)
-        assert autoscaler.num_launches_pending.value == 0
-        new_config = SMALL_CLUSTER.copy()
-        new_config["max_workers"] = 1
-        self.write_config(new_config)
-        autoscaler.update()
-        # not updated yet
-        # note that node termination happens in the main thread, so
-        # we do not need to add any delay here before checking
-        assert len(self.provider.non_terminated_nodes({})) == 2
-        assert autoscaler.num_launches_pending.value == 0
-
-    def testLaunchConfigChange(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        autoscaler = StandardAutoscaler(
-            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
-        autoscaler.update()
-        self.waitForNodes(2)
-
-        # Update the config to change the node type
-        new_config = SMALL_CLUSTER.copy()
-        new_config["worker_nodes"]["InstanceType"] = "updated"
-        self.write_config(new_config)
-        self.provider.ready_to_create.clear()
-        for _ in range(5):
-            autoscaler.update()
-        self.waitForNodes(0)
-        self.provider.ready_to_create.set()
-        self.waitForNodes(2)
-
-    def testIgnoresCorruptedConfig(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_launch_batch=10,
-            max_concurrent_launches=10,
-            process_runner=runner,
-            max_failures=0,
-            update_interval_s=0)
-        autoscaler.update()
-        self.waitForNodes(2)
-
-        # Write a corrupted config
-        self.write_config("asdf")
-        for _ in range(10):
-            autoscaler.update()
-        time.sleep(0.1)
-        assert autoscaler.num_launches_pending.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 2
-
-        # New a good config again
-        new_config = SMALL_CLUSTER.copy()
-        new_config["min_workers"] = 10
-        new_config["max_workers"] = 10
-        self.write_config(new_config)
-        autoscaler.update()
-        self.waitForNodes(10)
-
-    def testMaxFailures(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        self.provider.throw = True
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=2,
-            process_runner=runner,
-            update_interval_s=0)
-        autoscaler.update()
-        autoscaler.update()
-        with pytest.raises(Exception):
-            autoscaler.update()
-
-    def testLaunchNewNodeOnOutOfBandTerminate(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        autoscaler.update()
-        autoscaler.update()
-        self.waitForNodes(2)
-        for node in self.provider.mock_nodes.values():
-            node.state = "terminated"
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(2)
-
-    def testConfiguresNewNodes(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
         for node in self.provider.mock_nodes.values():
             node.state = "running"
         autoscaler.update()
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
-
-    def testReportsConfigFailures(self):
-        config = copy.deepcopy(SMALL_CLUSTER)
-        config["provider"]["type"] = "external"
-        config = fillout_defaults(config)
-        config["provider"]["type"] = "mock"
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        runner = MockProcessRunner(fail_cmds=["cmd1"])
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        autoscaler.update()
-        autoscaler.update()
-        self.waitForNodes(2)
-        for node in self.provider.mock_nodes.values():
-            node.state = "running"
-        autoscaler.update()
-        self.waitForNodes(
-            2, tag_filters={TAG_RAY_NODE_STATUS: "update-failed"})
-
-    def testConfiguresOutdatedNodes(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            LoadMetrics(),
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        autoscaler.update()
-        autoscaler.update()
-        self.waitForNodes(2)
-        for node in self.provider.mock_nodes.values():
-            node.state = "running"
-        autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
-        runner.calls = []
-        new_config = SMALL_CLUSTER.copy()
-        new_config["worker_setup_commands"] = ["cmdX", "cmdY"]
-        self.write_config(new_config)
-        autoscaler.update()
-        autoscaler.update()
-        self.waitFor(lambda: len(runner.calls) > 0)
-
-    def testScaleUpBasedOnLoad(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 1
-        config["max_workers"] = 10
-        config["target_utilization_fraction"] = 0.5
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        lm = LoadMetrics()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            lm,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        self.waitForNodes(1)
-        autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 1
-
-        # Scales up as nodes are reported as used
-        local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 0}, {})  # worker 1
-        autoscaler.update()
-        self.waitForNodes(3)
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 0}, {})
-        autoscaler.update()
-        self.waitForNodes(5)
-
-        # Holds steady when load is removed
-        lm.update("172.0.0.0", {"CPU": 2}, {"CPU": 2}, {})
-        lm.update("172.0.0.1", {"CPU": 2}, {"CPU": 2}, {})
-        autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 5
-
-        # Scales down as nodes become unused
-        lm.last_used_time_by_ip["172.0.0.0"] = 0
-        lm.last_used_time_by_ip["172.0.0.1"] = 0
-        autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 3
-        lm.last_used_time_by_ip["172.0.0.2"] = 0
-        lm.last_used_time_by_ip["172.0.0.3"] = 0
-        autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 1
-
-    def testDontScaleBelowTarget(self):
-        config = SMALL_CLUSTER.copy()
-        config["min_workers"] = 0
-        config["max_workers"] = 2
-        config["target_utilization_fraction"] = 0.5
-        config_path = self.write_config(config)
-        self.provider = MockProvider()
-        lm = LoadMetrics()
-        runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            lm,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        assert len(self.provider.non_terminated_nodes({})) == 0
-        autoscaler.update()
-        assert autoscaler.num_launches_pending.value == 0
-        assert len(self.provider.non_terminated_nodes({})) == 0
-
-        # Scales up as nodes are reported as used
-        local_ip = services.get_node_ip_address()
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 0}, {})  # head
-        # 1.0 nodes used => target nodes = 2 => target workers = 1
-        autoscaler.update()
-        self.waitForNodes(1)
-
-        # Make new node idle, and never used.
-        # Should hold steady as target is still 2.
-        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
-        lm.last_used_time_by_ip["172.0.0.0"] = 0
-        autoscaler.update()
-        assert len(self.provider.non_terminated_nodes({})) == 1
-
-        # Reduce load on head => target nodes = 1 => target workers = 0
-        lm.update(local_ip, {"CPU": 2}, {"CPU": 1}, {})
-        autoscaler.update()
-        assert len(self.provider.non_terminated_nodes({})) == 0
-
-    def testRecoverUnhealthyWorkers(self):
-        config_path = self.write_config(SMALL_CLUSTER)
-        self.provider = MockProvider()
-        runner = MockProcessRunner()
-        lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
-            config_path,
-            lm,
-            max_failures=0,
-            process_runner=runner,
-            update_interval_s=0)
-        autoscaler.update()
-        self.waitForNodes(2)
-        for node in self.provider.mock_nodes.values():
-            node.state = "running"
-        autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: "up-to-date"})
-
-        # Mark a node as unhealthy
-        for _ in range(5):
-            if autoscaler.updaters:
-                time.sleep(0.05)
-                autoscaler.update()
-        assert not autoscaler.updaters
-        num_calls = len(runner.calls)
-        lm.last_heartbeat_time_by_ip["172.0.0.0"] = 0
-        autoscaler.update()
-        self.waitFor(lambda: len(runner.calls) > num_calls, num_retries=150)
-
-    def testExternalNodeScaler(self):
-        config = SMALL_CLUSTER.copy()
-        config["provider"] = {
-            "type": "external",
-            "module": "ray.autoscaler.node_provider.NodeProvider",
-        }
-        config_path = self.write_config(config)
-        autoscaler = StandardAutoscaler(
-            config_path, LoadMetrics(), max_failures=0, update_interval_s=0)
-        assert isinstance(autoscaler.provider, NodeProvider)
-
-    def testExternalNodeScalerWrongImport(self):
-        config = SMALL_CLUSTER.copy()
-        config["provider"] = {
-            "type": "external",
-            "module": "mymodule.provider_class",
-        }
-        invalid_provider = self.write_config(config)
-        with pytest.raises(ImportError):
-            StandardAutoscaler(
-                invalid_provider, LoadMetrics(), update_interval_s=0)
-
-    def testExternalNodeScalerWrongModuleFormat(self):
-        config = SMALL_CLUSTER.copy()
-        config["provider"] = {
-            "type": "external",
-            "module": "does-not-exist",
-        }
-        invalid_provider = self.write_config(config)
-        with pytest.raises(ValueError):
-            StandardAutoscaler(
-                invalid_provider, LoadMetrics(), update_interval_s=0)
+        for c in runner.calls:
+            print(c)
 
 
 if __name__ == "__main__":
