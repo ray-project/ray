@@ -1,0 +1,31 @@
+name: long-running-tests
+description: "Ray's long running stress tests"
+
+cluster: .rayproject/cluster.yaml
+
+commands:
+  - name: run
+    command: |
+      # Install nightly Ray wheels.
+      source activate tensorflow_p36 && pip install -U {{wheel}}
+      source activate tensorflow_p36 && pip install ray[rllib] ray[debug] gym[atari]
+      source activate tensorflow_p36 && pip install ray[debug]
+      source activate tensorflow_p36 && python workloads/{{workload}}.py
+    params:
+      - name: wheel
+        help: "URL to the ray wheel to test"
+      - name: workload
+        help: "Name of the workload to run"
+        choices: ["actor_deaths", "apex"]
+    config:
+      tmux: true
+
+  - name: check
+    command: if [ "{{load}}" == "True" ]; then uptime; else tmux capture-pane -p; fi
+    params:
+      - name: load
+        action: store_true
+        required: false
+      - name: logs
+        action: store_true
+        required: false
