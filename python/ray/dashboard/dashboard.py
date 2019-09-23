@@ -287,11 +287,6 @@ class NodeStats(threading.Thread):
         p.subscribe(log_channel)
         logger.info("NodeStats: subscribed to {}".format(log_channel))
 
-        # TODO(mitchellstern): Use this instead of `ray.errors(all_jobs=True)`.
-        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
-        p.subscribe(error_channel)
-        logger.info("NodeStats: subscribed to {}".format(error_channel))
-
         for x in p.listen():
             try:
                 with self._node_stats_lock:
@@ -299,12 +294,6 @@ class NodeStats(threading.Thread):
                     if channel == log_channel:
                         D = json.loads(ray.utils.decode(x["data"]))
                         self._logs[D["ip"]][D["pid"]].extend(D["lines"])
-                    elif channel == str(error_channel):
-                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(
-                            x["data"])
-                        error_data = ray.gcs_utils.ErrorTableData.FromString(
-                            gcs_entry.entries[0])
-                        print(error_data)
                     else:
                         D = json.loads(ray.utils.decode(x["data"]))
                         self._node_stats[D["hostname"]] = D
