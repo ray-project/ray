@@ -92,7 +92,7 @@ class Experiment(object):
         if not isinstance(stop, dict) and not callable(stop):
             raise ValueError("Invalid stop criteria: {}. Must be a callable "
                              "or dict".format(stop))
-        if callable(stop) and len(inspect.signature(stop).parameters) != 2:
+        if callable(stop) and len(inspect.getargspec(stop).args) != 2:
             raise ValueError("Invalid stop criteria: {}. Callable criteria "
                              "must take exactly 2 parameters.".format(stop))
 
