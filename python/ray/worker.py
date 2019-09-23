@@ -40,7 +40,6 @@ import ray.signature
 import ray.state
 
 from ray import (
-    ActorHandleID,
     ActorID,
     WorkerID,
     JobID,
