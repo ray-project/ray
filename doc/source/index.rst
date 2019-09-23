@@ -249,6 +249,7 @@ Getting Involved
    projects.rst
    signals.rst
    async_api.rst
+   serve.rst
 
 .. toctree::
    :maxdepth: -1
