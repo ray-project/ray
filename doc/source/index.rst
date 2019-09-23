@@ -258,6 +258,7 @@ Getting Involved
    example-parameter-server.rst
    example-newsreader.rst
    example-resnet.rst
+   example-lm.rst
    example-a3c.rst
    example-lbfgs.rst
    example-streaming.rst
