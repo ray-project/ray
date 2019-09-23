@@ -259,7 +259,6 @@ cdef int prepare_resources(
         raise ValueError("Must provide resource map.")
 
     for key, value in resource_dict.items():
-        assert (isinstance(value, int) or isinstance(value, float))
         if not (isinstance(value, int) or isinstance(value, float)):
             raise ValueError("Resource quantities may only be ints or floats.")
         if value > 0:
@@ -467,6 +466,9 @@ cdef class CoreWorker:
 
         with nogil:
             self.core_worker.get().SetCurrentTaskId(c_task_id)
+
+    def get_current_task_id(self):
+        return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
 
     def set_current_job_id(self, JobID job_id):
         cdef:
