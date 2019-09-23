@@ -17,7 +17,6 @@ import shutil
 import sys
 import os
 import urllib
-import shlex
 sys.path.insert(0, os.path.abspath('.'))
 from custom_directives import CustomGalleryItemDirective
 

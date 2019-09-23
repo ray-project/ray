@@ -3,7 +3,6 @@
 from docutils.parsers.rst import Directive, directives
 from docutils.statemachine import StringList
 from docutils import nodes
-import re
 import os
 import sphinx_gallery
 
@@ -39,7 +38,7 @@ class CustomGalleryItemDirective(Directive):
     Example usage:
 
     .. customgalleryitem::
-        :tooltip: I am writing this tutorial to focus specifically on NLP for people who have never written code in any deep learning framework
+        :tooltip: I am writing this tutorial to focus specifically on NLP.
         :figure: /_static/img/thumbnails/babel.jpg
         :description: :doc:`/beginner/deep_learning_nlp_tutorial`
 

@@ -150,7 +150,7 @@ while remaining_ids:
     # Use ray.wait to get the object ID of the first task that completes.
     done_ids, remaining_ids = ray.wait(remaining_ids)
     # There is only one return result by default.
-    result_id = result_id[0]
+    result_id = done_ids[0]
 
     hyperparameters = hyperparameters_mapping[result_id]
     accuracy = ray.get(result_id)
