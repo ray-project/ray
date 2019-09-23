@@ -72,6 +72,9 @@ class ActorHandle {
 
   /// Constructs an ActorHandle by forking from parent. Note that this will modify
   /// parent to account for the newly forked child handle.
+  /// in_band should be set to indicate whether the fork is due to an in-band operation
+  /// (e.g., passing the parent actor handle into a remote function) or not, as these
+  /// must be treated differently.
   ActorHandle(ActorHandle &parent, bool in_band);
 
   /// Constructs an ActorHandle from a serialized string.
