@@ -203,6 +203,51 @@ def remaining_processes_alive():
     return ray.worker._global_node.remaining_processes_alive()
 
 
+def validate_redis_address(address, redis_address):
+    """Validates redis address parameter and splits it into host/ip components.
+
+    We temporarily support both 'address' and 'redis_address', so both are
+    handled here.
+
+    Returns:
+        redis_address: string containing the full <host:port> address.
+        redis_ip: string representing the host portion of the address.
+        redis_port: integer representing the port portion of the address.
+
+    Raises:
+        ValueError: if both address and redis_address were specified or the
+            address was malformed.
+    """
+
+    if redis_address == "auto":
+        raise ValueError("auto address resolution not supported for "
+                         "redis_address parameter. Please use address.")
+
+    if address:
+        if redis_address:
+            raise ValueError(
+                "Both address and redis_address specified. Use only address.")
+        if address == "auto":
+            address = find_redis_address_or_die()
+        redis_address = address
+
+    redis_address = address_to_ip(redis_address)
+
+    redis_address_parts = redis_address.split(":")
+    if len(redis_address_parts) != 2:
+        raise ValueError("Malformed address. Expected '<host>:<port>'.")
+    redis_ip = redis_address_parts[0]
+    try:
+        redis_port = int(redis_address_parts[1])
+    except ValueError:
+        raise ValueError("Malformed address port. Must be an integer.")
+    if redis_port < 1024 or redis_port > 65535:
+        raise ValueError("Invalid address port. Must "
+                         "be between 1024 and 65535.")
+
+    return redis_address, redis_ip, redis_port
+
+
 def address_to_ip(address):
     """Convert a hostname to a numerical IP addresses in an address.
 

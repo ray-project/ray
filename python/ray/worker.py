@@ -1405,13 +1405,9 @@ def init(address=None,
             arguments is passed in.
     """
 
-    if address:
-        if redis_address:
-            raise ValueError(
-                "You should specify address instead of redis_address.")
-        if address == "auto":
-            address = services.find_redis_address_or_die()
-        redis_address = address
+    if redis_address is not None or address is not None:
+        redis_address, _, _ = services.validate_redis_address(
+            address, redis_address)
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1441,8 +1437,6 @@ def init(address=None,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
-    if redis_address is not None:
-        redis_address = services.address_to_ip(redis_address)
 
     global _global_node
     if driver_mode == LOCAL_MODE:
