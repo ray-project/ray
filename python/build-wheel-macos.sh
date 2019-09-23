@@ -38,6 +38,10 @@ NUMPY_VERSIONS=("1.14.5"
 mkdir -p $DOWNLOAD_DIR
 mkdir -p .whl
 
+# Use the latest version of Node.js in order to build the dashboard.
+source $HOME/.nvm/nvm.sh
+nvm use node
+
 for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PY_VERSION=${PY_VERSIONS[i]}
   PY_INST=${PY_INSTS[i]}
@@ -58,8 +62,14 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
   PIP_CMD="$(dirname $PYTHON_EXE)/pip$PY_MM"
 
   pushd /tmp
-    # Install latest version of pip to avoid brownouts
+    # Install latest version of pip to avoid brownouts.
     curl https://bootstrap.pypa.io/get-pip.py | $PYTHON_EXE
+  popd
+
+  # Build the dashboard so its static assets can be included in the wheel.
+  pushd python/ray/dashboard/client
+    npm ci
+    npm run build
   popd
 
   pushd python
