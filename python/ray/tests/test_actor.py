@@ -1319,37 +1319,66 @@ def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
     ray.init(
-        num_cpus=10, num_gpus=10, object_store_memory=int(150 * 1024 * 1024))
+        num_cpus=5, num_gpus=4, object_store_memory=int(150 * 1024 * 1024))
+
+    # The point of this actor is to record which GPU IDs have been seen. We
+    # can't just return them from the tasks, because the tasks don't return
+    # for a long time in order to make sure the GPU is not released
+    # prematurely.
+    @ray.remote
+    class RecordGPUs(object):
+        def __init__(self):
+            self.gpu_ids_seen = []
+            self.num_calls = 0
+
+        def add_ids(self, gpu_ids):
+            self.gpu_ids_seen += gpu_ids
+            self.num_calls += 1
+
+        def get_gpu_ids_and_calls(self):
+            return self.gpu_ids_seen, self.num_calls
 
     @ray.remote(num_gpus=1)
-    def f():
-        time.sleep(5)
+    def f(record_gpu_actor):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
-        return gpu_ids[0]
+        record_gpu_actor.add_ids.remote(gpu_ids)
+        # Sleep for a long time so that the GPU never gets released. This task
+        # will be killed by ray.shutdown() before it actually finishes.
+        time.sleep(1000)
 
     @ray.remote(num_gpus=1)
     class Actor(object):
-        def __init__(self):
+        def __init__(self, record_gpu_actor):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
+            record_gpu_actor.add_ids.remote(self.gpu_ids)
 
-        def get_gpu_id(self):
+        def check_gpu_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return self.gpu_ids[0]
 
-    results = []
+    record_gpu_actor = RecordGPUs.remote()
+
     actors = []
-    for _ in range(5):
-        results.append(f.remote())
-        a = Actor.remote()
-        results.append(a.get_gpu_id.remote())
+    actor_results = []
+    for _ in range(2):
+        f.remote(record_gpu_actor)
+        a = Actor.remote(record_gpu_actor)
+        actor_results.append(a.check_gpu_ids.remote())
         # Prevent the actor handle from going out of scope so that its GPU
         # resources don't get released.
         actors.append(a)
 
-    gpu_ids = ray.get(results)
-    assert set(gpu_ids) == set(range(10))
+    # Make sure that the actor method calls succeeded.
+    ray.get(actor_results)
+
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        seen_gpu_ids, num_calls = ray.get(
+            record_gpu_actor.get_gpu_ids_and_calls.remote())
+        if num_calls == 4:
+            break
+    assert set(seen_gpu_ids) == set(range(4))
 
 
 def test_blocking_actor_task(shutdown_only):
