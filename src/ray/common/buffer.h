@@ -39,6 +39,11 @@ class LocalMemoryBuffer : public Buffer {
  public:
   /// Constructor.
   ///
+  /// By default when initializing a LocalMemoryBuffer with a data pointer and a length,
+  /// it just assigns the pointer and length without coping the data content. This is
+  /// for performance reasons. In this case the buffer cannot ensure data validity. It
+  /// instead relies on the lifetime passed in data pointer.
+  ///
   /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,

@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import json
 import os
-import pyarrow.plasma as plasma
 import pytest
 import sys
 import tempfile
@@ -767,7 +766,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
         "object_store_memory": 10**8
     }],
     indirect=True)
-def test_fill_plasma_exception(ray_start_cluster_head):
+def test_fill_object_store_exception(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor(object):
         def some_expensive_task(self):
@@ -782,5 +781,5 @@ def test_fill_plasma_exception(ray_start_cluster_head):
     # Make sure actor does not die
     ray.get(actor.test.remote())
 
-    with pytest.raises(plasma.PlasmaStoreFull):
+    with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
