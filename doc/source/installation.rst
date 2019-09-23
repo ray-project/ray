@@ -48,7 +48,8 @@ Building Ray from Source
 
 Installing from ``pip`` should be sufficient for most Ray users.
 
-However, should you need to build from source, follow instructions below for both Linux and MacOS.
+However, should you need to build from source, follow instructions below for
+both Linux and MacOS.
 
 Dependencies
 ~~~~~~~~~~~~
@@ -80,7 +81,6 @@ For MacOS, run the following commands:
 
   pip install cython==0.29.0
 
-
 If you are using Anaconda, you may also need to run the following.
 
 .. code-block:: bash
@@ -100,8 +100,34 @@ Ray can be built from the repository as follows.
   # Install Bazel.
   ray/ci/travis/install-bazel.sh
 
+  # Optionally build the dashboard (requires Node.js, see below for more information).
+  pushd ray/python/ray/dashboard/client
+  npm ci
+  npm run build
+  popd
+
+  # Install Ray.
   cd ray/python
   pip install -e . --verbose  # Add --user if you see a permission denied error.
+
+
+[Optional] Dashboard support
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you would like to use the dashboard, you will additionally need to install
+`Node.js`_ and build the dashboard before installing Ray. The relevant build
+steps are included in the installation instructions above.
+
+.. _`Node.js`: https://nodejs.org/
+
+The dashboard requires Python 3, and can be enabled by setting
+``include_webui=True`` during initialization, i.e.
+
+.. code-block:: python
+
+  import ray
+  ray.init(include_webui=True)
+
 
 Docker Source Images
 --------------------

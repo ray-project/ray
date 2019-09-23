@@ -22,6 +22,7 @@ else
 fi
 
 TEST_SCRIPT="tests/test_microbenchmarks.py"
+UI_TEST_SCRIPT="tests/test_webui.py"
 
 if [[ "$platform" == "linux" ]]; then
   # First test Python 2.7.
@@ -62,6 +63,10 @@ if [[ "$platform" == "linux" ]]; then
   INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
   $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
 
+  # Run the UI test to make sure that the packaged UI works.
+  $PIP_CMD install -q aiohttp psutil requests setproctitle
+  $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$UI_TEST_SCRIPT"
+
   # Check that the other wheels are present.
   NUMBER_OF_WHEELS=$(ls -1q "$ROOT_DIR"/../../.whl/*.whl | wc -l)
   if [[ "$NUMBER_OF_WHEELS" != "4" ]]; then
@@ -98,6 +103,12 @@ elif [[ "$platform" == "macosx" ]]; then
     # Run a simple test script to make sure that the wheel works.
     INSTALLED_RAY_DIRECTORY=$(dirname "$($PYTHON_EXE -u -c "import ray; print(ray.__file__)" | tail -n1)")
     $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$TEST_SCRIPT"
+
+    if (( $(echo "$PY_MM >= 3.0" | bc) )); then
+      # Run the UI test to make sure that the packaged UI works.
+      $PIP_CMD install -q aiohttp psutil requests setproctitle
+      $PYTHON_EXE -m pytest -v "$INSTALLED_RAY_DIRECTORY/$UI_TEST_SCRIPT"
+    fi
   done
 else
   echo "Unrecognized environment."
