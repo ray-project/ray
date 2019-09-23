@@ -60,40 +60,34 @@ class CustomGalleryItemDirective(Directive):
     add_index = False
 
     def run(self):
-        try:
-            if "tooltip" in self.options:
-                tooltip = self.options["tooltip"][:195] + "..."
-            else:
-                raise ValueError("tooltip not found")
+        # Cutoff the `tooltip` after 195 chars.
+        if "tooltip" in self.options:
+            tooltip = self.options["tooltip"][:195] + "..."
+        else:
+            raise ValueError(
+                "Need to provide :tooltip: under "
+                "`.. customgalleryitem::`.")
 
-            if "figure" in self.options:
-                env = self.state.document.settings.env
-                rel_figname, figname = env.relfn2path(self.options["figure"])
-                thumbnail = os.path.join("_static/thumbs/",
-                                         os.path.basename(figname))
+        # Generate `thumbnail` used in the gallery.
+        if "figure" in self.options:
+            env = self.state.document.settings.env
+            rel_figname, figname = env.relfn2path(self.options["figure"])
+            thumbnail = os.path.join("_static/thumbs/",
+                                     os.path.basename(figname))
 
-                try:
-                    os.makedirs("_static/thumbs")
-                except FileExistsError:
-                    pass
+            os.makedirs("_static/thumbs", exist_ok=True)
 
-                sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400,
-                                                   280)
-            else:
-                thumbnail = "/_static/img/thumbnails/default.png"
+            sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400,
+                                               280)
+        else:
+            thumbnail = "/_static/img/thumbnails/default.png"
 
-            if "description" in self.options:
-                description = self.options["description"]
-            else:
-                raise ValueError("description not doc found")
-
-        except FileNotFoundError as e:
-            print(e)
-            return []
-        except ValueError as e:
-            print(e)
-            raise
-            return []
+        if "description" in self.options:
+            description = self.options["description"]
+        else:
+            raise ValueError(
+                "Need to provide :description: under "
+                "`customgalleryitem::`.")
 
         thumbnail_rst = GALLERY_TEMPLATE.format(
             tooltip=tooltip, thumbnail=thumbnail, description=description)
