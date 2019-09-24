@@ -5,7 +5,9 @@ Simple Parallel Model Selection
 In this example, we'll demonstrate how to quickly write a hyperparameter
 tuning script that evaluates a set of hyperparameters in parallel.
 
-This script will demonstrate how to use two important parts of the Ray API: using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for their results to be ready.
+This script will demonstrate how to use two important parts of the Ray API:
+using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for
+their results to be ready.
 
 .. important:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
@@ -66,6 +68,7 @@ def get_data_loaders(batch_size):
 
 class ConvNet(nn.Module):
     """Simple two layer Convolutional Neural Network."""
+
     def __init__(self):
         super(ConvNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)

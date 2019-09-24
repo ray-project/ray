@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Learning to Play Pong
 =====================
@@ -36,7 +37,6 @@ depends on how well the policy is doing. For example, a really bad policy will
 lose very quickly. As the policy learns, we should expect these numbers to
 increase.
 """
-import argparse
 import numpy as np
 import os
 import ray
@@ -250,8 +250,8 @@ class RolloutWorker(object):
 # Running
 # -------
 #
-# This example is easy to parallelize because the network can play ten games in
-# parallel and no information needs to be shared between the games.
+# This example is easy to parallelize because the network can play ten games
+# in parallel and no information needs to be shared between the games.
 #
 # In the loop, the network repeatedly plays games of Pong and
 # records a gradient from each game. Every ten games, the gradients are

@@ -4,8 +4,8 @@ Parameter Server
 
 The parameter server is a framework for distributed machine learning training.
 
-In the parameter server framework, a centralized server (or group of server nodes)
-maintains global shared parameters of a machine-learning model
+In the parameter server framework, a centralized server (or group of server
+nodes) maintains global shared parameters of a machine-learning model
 (e.g., a neural network) while the data and computation of calculating
 updates (i.e., gradient descent updates) are distributed over worker nodes.
 

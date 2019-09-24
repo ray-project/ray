@@ -97,8 +97,6 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
         shutil.copy(f, gallery_dir)
 
-
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
@@ -379,6 +377,8 @@ def update_context(app, pagename, templatename, context, doctree):
     """Update the page rendering context to include ``feedback_form_url``."""
     context['feedback_form_url'] = feedback_form_url(app.config.project,
                                                      pagename)
+
+
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
 
 

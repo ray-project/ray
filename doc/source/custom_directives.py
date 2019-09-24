@@ -11,7 +11,6 @@ try:
 except NameError:
     FileNotFoundError = IOError
 
-
 GALLERY_TEMPLATE = """
 .. raw:: html
 
@@ -65,9 +64,8 @@ class CustomGalleryItemDirective(Directive):
             if len(self.options["tooltip"]) > 195:
                 tooltip = tooltip[:195] + "..."
         else:
-            raise ValueError(
-                "Need to provide :tooltip: under "
-                "`.. customgalleryitem::`.")
+            raise ValueError("Need to provide :tooltip: under "
+                             "`.. customgalleryitem::`.")
 
         # Generate `thumbnail` used in the gallery.
         if "figure" in self.options:
@@ -78,17 +76,15 @@ class CustomGalleryItemDirective(Directive):
 
             os.makedirs("_static/thumbs", exist_ok=True)
 
-            sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400,
-                                               280)
+            sphinx_gallery.gen_rst.scale_image(figname, thumbnail, 400, 280)
         else:
             thumbnail = "/_static/img/thumbnails/default.png"
 
         if "description" in self.options:
             description = self.options["description"]
         else:
-            raise ValueError(
-                "Need to provide :description: under "
-                "`customgalleryitem::`.")
+            raise ValueError("Need to provide :description: under "
+                             "`customgalleryitem::`.")
 
         thumbnail_rst = GALLERY_TEMPLATE.format(
             tooltip=tooltip, thumbnail=thumbnail, description=description)
