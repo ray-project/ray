@@ -276,7 +276,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
         for (size_t i = 0; i < results.size(); i++) {
-          auto return_object = (*reply).add_return_objects();
+          auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));

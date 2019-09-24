@@ -77,6 +77,7 @@ include "includes/common.pxi"
 
 
 logger = logging.getLogger(__name__)
+idle_profiling_context = None
 
 
 if cpython.PY_MAJOR_VERSION >= 3:
@@ -377,8 +378,12 @@ cdef CRayStatus execute_task(const CRayFunction &ray_function,
                          const CTaskSpec &c_task_spec,
                          c_vector[shared_ptr[CRayObject]] *returns) nogil:
     with gil:
+        global idle_profiling_context
+        idle_profiling_context.__exit__(None, None, None)
         ray.worker.global_worker._wait_for_and_process_task(TaskSpec.make(c_task_spec))
-    
+        idle_profiling_context = ray.profiling.profile("worker_idle")
+        idle_profiling_context.__enter__()
+
     return CRayStatus.OK()
 
 cdef class CoreWorker:
@@ -401,6 +406,9 @@ cdef class CoreWorker:
             self.core_worker.get().Disconnect()
 
     def run_task_loop(self):
+        global idle_profiling_context
+        idle_profiling_context = ray.profiling.profile("worker_idle")
+        idle_profiling_context.__enter__()
         self.core_worker.get().Execution().Run()
 
     def get_objects(self, object_ids, TaskID current_task_id):

@@ -1235,6 +1235,9 @@ def test_profiling_api(ray_start_2_cpus):
                for expected_type in expected_types):
             break
 
+        # The profiling information only flushes once every second.
+        time.sleep(1.1)
+
 
 def test_wait_cluster(ray_start_cluster):
     cluster = ray_start_cluster
