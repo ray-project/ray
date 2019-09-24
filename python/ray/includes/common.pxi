@@ -35,11 +35,12 @@ cdef class ActorHandle:
                  JobID job_id, list creation_function_descriptor):
         cdef:
             c_vector[c_string] c_descriptor
+            ObjectID cursor = ObjectID.from_random()
 
         c_descriptor = string_vector_from_list(creation_function_descriptor)
         self.inner.reset(new CActorHandle(
             actor_id.native(), actor_handle_id.native(), job_id.native(),
-            LANGUAGE_PYTHON, False, c_descriptor))
+            cursor.native(), LANGUAGE_PYTHON, False, c_descriptor))
 
     @staticmethod
     cdef from_fork(CActorHandle &other, c_bool in_band):

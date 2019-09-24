@@ -62,12 +62,10 @@ struct ActorCreationOptions {
 /// A handle to an actor.
 class ActorHandle {
  public:
-  /// Copy constructor.
-  ActorHandle(const ActorHandle &other)
-      : inner_(other.inner_), new_actor_handles_(other.new_actor_handles_) {}
-
+  // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const JobID &job_id, const Language actor_language, bool is_direct_call,
+              const JobID &job_id, const ObjectID &initial_cursor,
+              const Language actor_language, bool is_direct_call,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   /// Constructs an ActorHandle by forking from parent. Note that this will modify
@@ -92,6 +90,9 @@ class ActorHandle {
 
   std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
 
+  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
+                        const ObjectID new_cursor);
+
   /// The unique id of the last return of the last task.
   /// It's used as a dependency for the next task.
   ObjectID ActorCursor() const;
@@ -113,15 +114,15 @@ class ActorHandle {
 
   void Serialize(std::string *output);
 
+  std::vector<ray::ActorHandleID> NewActorHandles() const;
+
+  void ClearNewActorHandles();
+
  private:
   ActorHandle();
 
   /// Set actor cursor.
   void SetActorCursor(const ObjectID &actor_cursor);
-
-  std::vector<ray::ActorHandleID> NewActorHandles() const;
-
-  void ClearNewActorHandles();
 
  private:
   /// Protobuf defined ActorHandle.
@@ -133,8 +134,6 @@ class ActorHandle {
   std::vector<ray::ActorHandleID> new_actor_handles_;
 
   std::mutex mutex_;
-
-  friend class CoreWorkerTaskInterface;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task

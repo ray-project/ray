@@ -9,7 +9,8 @@ namespace ray {
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const class ActorHandleID &actor_handle_id,
-    const class JobID &job_id, const Language actor_language, bool is_direct_call,
+    const class JobID &job_id, const ObjectID &initial_cursor,
+    const Language actor_language, bool is_direct_call,
     const std::vector<std::string> &actor_creation_task_function_descriptor) {
   inner_.set_actor_id(actor_id.Data(), actor_id.Size());
   inner_.set_actor_handle_id(actor_handle_id.Data(), actor_handle_id.Size());
@@ -24,6 +25,8 @@ ActorHandle::ActorHandle(
   inner_.set_actor_cursor(actor_creation_dummy_object_id.Data(),
                           actor_creation_dummy_object_id.Size());
   inner_.set_is_direct_call(is_direct_call);
+  IncrementTaskCounter();
+  SetActorCursor(initial_cursor);
 }
 
 ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
@@ -88,6 +91,23 @@ Language ActorHandle::ActorLanguage() const { return inner_.actor_language(); };
 std::vector<std::string> ActorHandle::ActorCreationTaskFunctionDescriptor() const {
   return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
 };
+
+void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
+                                   const TaskTransportType transport_type,
+                                   const ObjectID new_cursor) {
+  std::unique_lock<std::mutex> guard(mutex_);
+  // Build actor task spec.
+  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(ActorID());
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
+                              /*transport_type=*/static_cast<int>(transport_type));
+  builder.SetActorTaskSpec(ActorID(), ActorHandleID(), actor_creation_dummy_object_id,
+                           /*previous_actor_task_dummy_object_id=*/ActorCursor(),
+                           IncrementTaskCounter(), NewActorHandles());
+
+  SetActorCursor(new_cursor);
+  ClearNewActorHandles();
+}
 
 ObjectID ActorHandle::ActorCursor() const {
   return ObjectID::FromBinary(inner_.actor_cursor());
@@ -210,10 +230,9 @@ Status CoreWorkerTaskInterface::CreateActor(
                                    actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-      actor_id, ActorHandleID::Nil(), job_id, function.GetLanguage(),
-      actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
-  (*actor_handle)->IncrementTaskCounter();
-  (*actor_handle)->SetActorCursor(return_ids[0]);
+      actor_id, ActorHandleID::Nil(), job_id, /*actor_cursor=*/return_ids[0],
+      function.GetLanguage(), actor_creation_options.is_direct_call,
+      function.GetFunctionDescriptor()));
 
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
@@ -224,41 +243,24 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                                                 const TaskOptions &task_options,
                                                 std::vector<ObjectID> *return_ids) {
   // Add one for actor cursor object id for tasks.
-  const auto num_returns = task_options.num_returns + 1;
+  const int num_returns = task_options.num_returns + 1;
 
   const bool is_direct_call = actor_handle.IsDirectCallActor();
-  const auto transport_type =
+  const TaskTransportType transport_type =
       is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
 
   // Build common task spec.
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
-  const auto actor_task_id = TaskID::ForActorTask(
+  const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle.ActorID());
   BuildCommonTaskSpec(builder, actor_handle.JobID(), actor_task_id, next_task_index,
                       function, args, num_returns, task_options.resources, {},
                       transport_type, return_ids);
 
-  std::unique_lock<std::mutex> guard(actor_handle.mutex_);
-  // Build actor task spec.
-  const auto actor_creation_task_id =
-      TaskID::ForActorCreationTask(actor_handle.ActorID());
-  const auto actor_creation_dummy_object_id =
-      ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
-                              /*transport_type=*/static_cast<int>(transport_type));
-  builder.SetActorTaskSpec(
-      actor_handle.ActorID(), actor_handle.ActorHandleID(),
-      actor_creation_dummy_object_id,
-      /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(),
-      actor_handle.IncrementTaskCounter(), actor_handle.NewActorHandles());
-
-  // Manipulate actor handle state.
-  auto actor_cursor = (*return_ids).back();
-  actor_handle.SetActorCursor(actor_cursor);
-  actor_handle.ClearNewActorHandles();
-
-  guard.unlock();
+  const ObjectID new_cursor = return_ids->back();
+  actor_handle.SetActorTaskSpec(builder, transport_type, new_cursor);
 
   // Submit task.
   auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());
