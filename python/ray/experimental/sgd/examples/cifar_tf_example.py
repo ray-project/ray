@@ -162,8 +162,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=64,
-        help="Sets number of replicas for training.")
+        default=32,
+        help="Sets batch size.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
