@@ -42,7 +42,7 @@ cdef class ActorHandle:
             LANGUAGE_PYTHON, False, c_descriptor))
 
     @staticmethod
-    cdef from_fork(CActorHandle other, c_bool in_band):
+    cdef from_fork(CActorHandle &other, c_bool in_band):
         cdef:
             ActorHandle self = ActorHandle.__new__(ActorHandle)
         self.inner.reset(new CActorHandle(other, in_band))

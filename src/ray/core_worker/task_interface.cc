@@ -39,7 +39,7 @@ ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
     // each of the new handles is submitted.
     // NOTE(swang): There is currently no garbage collection for actor
     // handles until the actor itself is removed.
-    new_actor_handles_.push_back(new_actor_handle_id);
+    parent.new_actor_handles_.push_back(new_actor_handle_id);
   } else {
     // If this serialization is happening out-of-band, we set the actor handle ID.
     // to nil to signal that it should be computed when the handle is deserialized.
@@ -48,7 +48,7 @@ ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
     // to release, since it could be unpickled and submit another
     // dependent task at any time. Therefore, we notify the backend of a
     // random handle ID that will never actually be used.
-    new_actor_handles_.push_back(ActorHandleID::FromRandom());
+    parent.new_actor_handles_.push_back(ActorHandleID::FromRandom());
   }
   guard.unlock();
 
