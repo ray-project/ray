@@ -37,10 +37,12 @@ class TwoStepGame(MultiAgentEnv):
         # MADDPG emits action logits instead of actual discrete actions
         self.actions_are_logits = env_config.get("actions_are_logits", False)
 
-        if env_config.get("ddpg_observations", False):
+        self.one_hot_state_encoding = env_config.get(
+            "one_hot_state_encoding", False)
+
+        if not self.one_hot_state_encoding:
             self.observation_space = Discrete(6)
             self.with_state = False
-            self.ddpg_observations = True
         else:
             # Each agent gets the full state (one-hot encoding of which of the
             # three states are active) as input with the receiving agent's
@@ -109,16 +111,16 @@ class TwoStepGame(MultiAgentEnv):
                     self.agent_2: self.agent_2_obs()}
 
     def agent_1_obs(self):
-        if self.ddpg_observations:
-            return np.flatnonzero(self.state)[0]
-        else:
+        if self.one_hot_state_encoding:
             return np.concatenate([self.state, [1]])
+        else:
+            return np.flatnonzero(self.state)[0]
 
     def agent_2_obs(self):
-        if self.ddpg_observations:
-            return np.flatnonzero(self.state)[0] + 3
-        else:
+        if self.one_hot_state_encoding:
             return np.concatenate([self.state, [2]])
+        else:
+            return np.flatnonzero(self.state)[0] + 3
 
 
 if __name__ == "__main__":
@@ -155,7 +157,6 @@ if __name__ == "__main__":
             "learning_starts": 100,
             "env_config": {
                 "actions_are_logits": True,
-                "ddpg_observations": True,
             },
             "multiagent": {
                 "policies": {
@@ -174,14 +175,16 @@ if __name__ == "__main__":
         group = False
     elif args.run == "QMIX":
         config = {
-            "num_gpus": .3,
             "sample_batch_size": 4,
             "train_batch_size": 32,
             "exploration_fraction": .4,
             "exploration_final_eps": 0.0,
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
-            "env_config": {"separate_state_space": True},
+            "env_config": {
+                "separate_state_space": True,
+                "one_hot_state_encoding": True
+            },
         }
         group = True
     elif args.run == "APEX_QMIX":
@@ -198,7 +201,10 @@ if __name__ == "__main__":
             "sample_batch_size": 32,
             "target_network_update_freq": 500,
             "timesteps_per_iteration": 1000,
-            "env_config": {"separate_state_space": True},
+            "env_config": {
+                "separate_state_space": True,
+                "one_hot_state_encoding": True
+            },
         }
         group = True
     else:
