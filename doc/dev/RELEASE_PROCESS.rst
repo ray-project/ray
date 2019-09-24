@@ -154,7 +154,7 @@ This document describes the process for creating new releases.
         --curr-branch="ray-0.7.2"
 
     Run `ray microbenchmark` to get the latest microbenchmark numbers, and
-    include them in the release notes.
+    update their numbers in `profiling.rst`.
 
     .. code-block:: bash
 

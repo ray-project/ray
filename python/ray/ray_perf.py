@@ -54,17 +54,17 @@ def main():
     def get_small():
         ray.get(value)
 
-    timeit("get calls", get_small)
+    timeit("single core get calls", get_small)
 
     def put_small():
         ray.put(0)
 
-    timeit("put calls", put_small)
+    timeit("single core put calls", put_small)
 
     def put_large():
         ray.put(arr)
 
-    timeit("put gigabytes", put_large, 8 * 0.1)
+    timeit("single core put gigabytes", put_large, 8 * 0.1)
 
     @ray.remote
     def do_put_small():
@@ -94,7 +94,7 @@ def main():
     def small_task_async():
         ray.get([small_value.remote() for _ in range(1000)])
 
-    timeit("single core tasks async", small_task, 1000)
+    timeit("single core tasks async", small_task_async, 1000)
 
     n = 10000
     m = 4
