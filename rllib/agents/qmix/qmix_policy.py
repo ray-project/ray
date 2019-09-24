@@ -16,8 +16,7 @@ import ray
 from ray.rllib.agents.qmix.mixers import VDNMixer, QMixer
 from ray.rllib.agents.qmix.model import RNNModel, _get_size
 from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.policy import TupleActions
-from ray.rllib.policy import TorchPolicy
+from ray.rllib.policy.policy import TupleActions, Policy
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.models.catalog import ModelCatalog
@@ -26,6 +25,10 @@ from ray.rllib.env.constants import GROUP_REWARDS
 from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
+
+
+# if the obs space is Dict type, look for the global state under this key
+ENV_STATE = "state"
 
 
 class QMixLoss(nn.Module):
@@ -147,7 +150,7 @@ class QMixLoss(nn.Module):
         return loss, mask, masked_td_error, chosen_action_qvals, targets
 
 
-class QMixTorchPolicy(TorchPolicy):
+class QMixTorchPolicy(Policy):
     """QMix impl. Assumes homogeneous agents for now.
 
     You must use MultiAgentEnv.with_agent_groups() to group agents
@@ -168,7 +171,7 @@ class QMixTorchPolicy(TorchPolicy):
         self.n_agents = len(obs_space.original_space.spaces)
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
-        self.has_state = False
+        self.has_env_global_state = False
         self.lock = Lock()
         self.device = (th.device("cuda")
                        if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
@@ -187,11 +190,12 @@ class QMixTorchPolicy(TorchPolicy):
                     (self.n_actions, ), mask_shape))
             self.has_action_mask = True
             self.obs_size = _get_size(agent_obs_space.spaces["obs"])
-            if "state" in space_keys:
-                self.state_shape = _get_size(agent_obs_space.spaces["state"])
-                self.has_state = True
+            if ENV_STATE in space_keys:
+                self.env_global_state_shape = _get_size(
+                    agent_obs_space.spaces[ENV_STATE])
+                self.has_env_global_state = True
             else:
-                self.state_shape = (self.obs_size, self.n_agents)
+                self.env_global_state_shape = (self.obs_size, self.n_agents)
             # The real agent obs space is nested inside the dict
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
@@ -221,9 +225,10 @@ class QMixTorchPolicy(TorchPolicy):
             self.mixer = None
             self.target_mixer = None
         elif config["mixer"] == "qmix":
-            self.mixer = QMixer(self.n_agents, self.state_shape,
+            self.mixer = QMixer(self.n_agents, self.env_global_state_shape,
                                 config["mixing_embed_dim"]).to(self.device)
-            self.target_mixer = QMixer(self.n_agents, self.state_shape,
+            self.target_mixer = QMixer(self.n_agents,
+                                       self.env_global_state_shape,
                                        config["mixing_embed_dim"]).to(
                                            self.device)
         elif config["mixer"] == "vdn":
@@ -248,7 +253,7 @@ class QMixTorchPolicy(TorchPolicy):
             alpha=config["optim_alpha"],
             eps=config["optim_eps"])
 
-    @override(TorchPolicy)
+    @override(Policy)
     def compute_actions(self,
                         obs_batch,
                         state_batches=None,
@@ -258,7 +263,8 @@ class QMixTorchPolicy(TorchPolicy):
                         episodes=None,
                         **kwargs):
         obs_batch, action_mask, _ = self._unpack_observation(obs_batch)
-        # We need to ensure we do not use the state to compute actions
+        # We need to ensure we do not use the env global state
+        # to compute actions
 
         # Compute actions
         with self.lock:
@@ -287,12 +293,13 @@ class QMixTorchPolicy(TorchPolicy):
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
-    @override(TorchPolicy)
+    @override(Policy)
     def learn_on_batch(self, samples):
-        obs_batch, action_mask, state = self._unpack_observation(
+        obs_batch, action_mask, env_global_state = self._unpack_observation(
             samples[SampleBatch.CUR_OBS])
         (next_obs_batch, next_action_mask,
-         next_state) = self._unpack_observation(samples[SampleBatch.NEXT_OBS])
+         next_env_global_state) = self._unpack_observation(
+             samples[SampleBatch.NEXT_OBS])
         group_rewards = self._get_group_rewards(samples[SampleBatch.INFOS])
 
         input_list = [
@@ -300,8 +307,8 @@ class QMixTorchPolicy(TorchPolicy):
             samples[SampleBatch.ACTIONS], samples[SampleBatch.DONES],
             obs_batch, next_obs_batch
         ]
-        if self.has_state:
-            input_list.extend([state, next_state])
+        if self.has_env_global_state:
+            input_list.extend([env_global_state, next_env_global_state])
 
         output_list, _, seq_lens = \
             chop_into_sequences(
@@ -309,13 +316,13 @@ class QMixTorchPolicy(TorchPolicy):
                 samples[SampleBatch.UNROLL_ID],
                 samples[SampleBatch.AGENT_INDEX],
                 input_list,
-                [],
+                [],  # RNN states not used here
                 max_seq_len=self.config["model"]["max_seq_len"],
                 dynamic_max=True)
         # These will be padded to shape [B * T, ...]
-        if self.has_state:
+        if self.has_env_global_state:
             (rew, action_mask, next_action_mask, act, dones, obs, next_obs,
-             state, next_state) = output_list
+             env_global_state, next_env_global_state) = output_list
         else:
             (rew, action_mask, next_action_mask, act, dones, obs,
              next_obs) = output_list
@@ -334,9 +341,9 @@ class QMixTorchPolicy(TorchPolicy):
         next_obs = to_batches(next_obs, th.float).reshape(
             [B, T, self.n_agents, self.obs_size])
         next_action_mask = to_batches(next_action_mask, th.float)
-        if self.has_state:
-            state = to_batches(state, th.float)
-            next_state = to_batches(next_state, th.float)
+        if self.has_env_global_state:
+            env_global_state = to_batches(env_global_state, th.float)
+            next_env_global_state = to_batches(next_env_global_state, th.float)
 
         # TODO(ekl) this treats group termination as individual termination
         terminated = to_batches(dones, th.float).unsqueeze(2).expand(
@@ -355,7 +362,7 @@ class QMixTorchPolicy(TorchPolicy):
             loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
                 self.loss(rewards, actions, terminated, mask, obs,
                           next_obs, action_mask, next_action_mask,
-                          state, next_state)
+                          env_global_state, next_env_global_state)
 
             # Optimise
             self.optimiser.zero_grad()
@@ -377,26 +384,26 @@ class QMixTorchPolicy(TorchPolicy):
             }
             return {LEARNER_STATS_KEY: stats}
 
-    @override(TorchPolicy)
-    def get_initial_state(self):
+    @override(Policy)
+    def get_initial_state(self):  # initial RNN state
         with self.lock:
             return [
                 s.expand([self.n_agents, -1]).cpu().numpy()
                 for s in self.model.get_initial_state()
             ]
 
-    @override(TorchPolicy)
+    @override(Policy)
     def get_weights(self):
         with self.lock:
             state_dict = self.model.state_dict()
             return {"model": self._cpu_dict(state_dict)}
 
-    @override(TorchPolicy)
+    @override(Policy)
     def set_weights(self, weights):
         with self.lock:
             self.model.load_state_dict(self._device_dict(weights["model"]))
 
-    @override(TorchPolicy)
+    @override(Policy)
     def get_state(self):
         with self.lock:
             return {
@@ -409,7 +416,7 @@ class QMixTorchPolicy(TorchPolicy):
                 "cur_epsilon": self.cur_epsilon,
             }
 
-    @override(TorchPolicy)
+    @override(Policy)
     def set_state(self, state):
         with self.lock:
             self.model.load_state_dict(self._device_dict(state["model"]))
@@ -477,7 +484,7 @@ class QMixTorchPolicy(TorchPolicy):
                 [len(obs_batch), self.n_agents, self.n_actions],
                 dtype=np.float32)
 
-        if self.has_state:
+        if self.has_env_global_state:
             state = unpacked[0]["state"]
         else:
             state = None
