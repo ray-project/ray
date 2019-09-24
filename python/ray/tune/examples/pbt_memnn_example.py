@@ -277,9 +277,3 @@ if __name__ == "__main__":
             "lr": 0.01,
             "rho": 0.9
         })
-
-    logdir = results.get_best_logdir("mean_accuracy", mode="max")
-    print("logdir: ", logdir)
-    # To open tensorboard, run `tensorboard --logdir {logdir}` on the command line
-    # Replace {logdir} with the printed logdir above (without the curly braces)
-    # `pip install tensorflow` if tensorflow has not been installed yet.
