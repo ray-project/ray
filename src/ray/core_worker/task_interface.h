@@ -8,6 +8,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
@@ -16,8 +17,6 @@
 #include "ray/protobuf/core_worker.pb.h"
 
 namespace ray {
-
-class CoreWorker;
 
 /// Options of a non-actor-creation task.
 struct TaskOptions {
@@ -57,83 +56,6 @@ struct ActorCreationOptions {
   /// The dynamic options used in the worker command when starting a worker process for
   /// an actor creation task.
   const std::vector<std::string> dynamic_worker_options;
-};
-
-/// A handle to an actor.
-class ActorHandle {
- public:
-  // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-              const JobID &job_id, const ObjectID &initial_cursor,
-              const Language actor_language, bool is_direct_call,
-              const std::vector<std::string> &actor_creation_task_function_descriptor);
-
-  /// Constructs an ActorHandle by forking from parent. Note that this will modify
-  /// parent to account for the newly forked child handle.
-  /// in_band should be set to indicate whether the fork is due to an in-band operation
-  /// (e.g., passing the parent actor handle into a remote function) or not, as these
-  /// must be treated differently.
-  ActorHandle(ActorHandle &parent, bool in_band);
-
-  /// Constructs an ActorHandle from a serialized string.
-  ActorHandle(const std::string &serialized, const TaskID &current_task_id);
-
-  ray::ActorID ActorID() const;
-
-  ray::ActorHandleID ActorHandleID() const;
-
-  /// ID of the job that created the actor (it is possible that the handle
-  /// exists on a job with a different job ID).
-  ray::JobID JobID() const;
-
-  Language ActorLanguage() const;
-
-  std::vector<std::string> ActorCreationTaskFunctionDescriptor() const;
-
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
-                        const ObjectID new_cursor);
-
-  /// The unique id of the last return of the last task.
-  /// It's used as a dependency for the next task.
-  ObjectID ActorCursor() const;
-
-  /// The number of tasks that have been invoked on this actor.
-  int64_t TaskCounter() const;
-
-  /// Increment the task counter and return the previous value.
-  int64_t IncrementTaskCounter();
-
-  /// The number of times that this actor handle has been forked.
-  /// It's used to make sure ids of actor handles are unique.
-  int64_t NumForks() const;
-
-  /// Increment the fork counter and return the previous value.
-  int64_t IncrementNumForks();
-
-  bool IsDirectCallActor() const;
-
-  void Serialize(std::string *output);
-
-  std::vector<ray::ActorHandleID> NewActorHandles() const;
-
-  void ClearNewActorHandles();
-
- private:
-  ActorHandle();
-
-  /// Set actor cursor.
-  void SetActorCursor(const ObjectID &actor_cursor);
-
- private:
-  /// Protobuf defined ActorHandle.
-  ray::rpc::ActorHandle inner_;
-  /// The new actor handles that were created from this handle
-  /// since the last task on this handle was submitted. This is
-  /// used to garbage-collect dummy objects that are no longer
-  /// necessary in the backend.
-  std::vector<ray::ActorHandleID> new_actor_handles_;
-
-  std::mutex mutex_;
 };
 
 /// The interface that contains all `CoreWorker` methods that are related to task
