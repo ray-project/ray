@@ -26,7 +26,6 @@ from ray.rllib.utils.annotations import override
 
 logger = logging.getLogger(__name__)
 
-
 # if the obs space is Dict type, look for the global state under this key
 ENV_STATE = "state"
 
@@ -228,10 +227,9 @@ class QMixTorchPolicy(Policy):
         elif config["mixer"] == "qmix":
             self.mixer = QMixer(self.n_agents, self.env_global_state_shape,
                                 config["mixing_embed_dim"]).to(self.device)
-            self.target_mixer = QMixer(self.n_agents,
-                                       self.env_global_state_shape,
-                                       config["mixing_embed_dim"]).to(
-                                           self.device)
+            self.target_mixer = QMixer(
+                self.n_agents, self.env_global_state_shape,
+                config["mixing_embed_dim"]).to(self.device)
         elif config["mixer"] == "vdn":
             self.mixer = VDNMixer().to(self.device)
             self.target_mixer = VDNMixer().to(self.device)

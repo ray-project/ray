@@ -210,10 +210,8 @@ if __name__ == "__main__":
             "num_workers": 0,
             "multiagent": {
                 "policies": {
-                    "pol1": (None, Discrete(6),
-                             TwoStepGame.action_space, {}),
-                    "pol2": (None, Discrete(6),
-                             TwoStepGame.action_space, {}),
+                    "pol1": (None, Discrete(6), TwoStepGame.action_space, {}),
+                    "pol2": (None, Discrete(6), TwoStepGame.action_space, {}),
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },

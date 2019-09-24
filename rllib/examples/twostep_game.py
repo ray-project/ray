@@ -36,9 +36,9 @@ class TwoStepGame(MultiAgentEnv):
         self.agent_2 = 1
         # MADDPG emits action logits instead of actual discrete actions
         self.actions_are_logits = env_config.get("actions_are_logits", False)
-
-        self.one_hot_state_encoding = env_config.get(
-            "one_hot_state_encoding", False)
+        self.one_hot_state_encoding = env_config.get("one_hot_state_encoding",
+                                                     False)
+        self.with_state = env_config.get("separate_state_space", False)
 
         if not self.one_hot_state_encoding:
             self.observation_space = Discrete(6)
@@ -47,13 +47,12 @@ class TwoStepGame(MultiAgentEnv):
             # Each agent gets the full state (one-hot encoding of which of the
             # three states are active) as input with the receiving agent's
             # ID (1 or 2) concatenated onto the end.
-            if env_config.get("separate_state_space", False):
-                self.with_state = True
-                self.observation_space = Dict(
-                    {"obs": MultiDiscrete([2, 2, 2, 3]),
-                    "state": MultiDiscrete([2, 2, 2])})
+            if self.with_state:
+                self.observation_space = Dict({
+                    "obs": MultiDiscrete([2, 2, 2, 3]),
+                    "state": MultiDiscrete([2, 2, 2])
+                })
             else:
-                self.with_state = False
                 self.observation_space = MultiDiscrete([2, 2, 2, 3])
 
     def reset(self):
@@ -102,13 +101,21 @@ class TwoStepGame(MultiAgentEnv):
 
     def _obs(self):
         if self.with_state:
-            return {self.agent_1: {"obs": self.agent_1_obs(),
-                                   "state": self.state},
-                    self.agent_2: {"obs": self.agent_2_obs(),
-                                   "state": self.state}}
+            return {
+                self.agent_1: {
+                    "obs": self.agent_1_obs(),
+                    "state": self.state
+                },
+                self.agent_2: {
+                    "obs": self.agent_2_obs(),
+                    "state": self.state
+                }
+            }
         else:
-            return {self.agent_1: self.agent_1_obs(),
-                    self.agent_2: self.agent_2_obs()}
+            return {
+                self.agent_1: self.agent_1_obs(),
+                self.agent_2: self.agent_2_obs()
+            }
 
     def agent_1_obs(self):
         if self.one_hot_state_encoding:
@@ -130,10 +137,14 @@ if __name__ == "__main__":
         "group_1": [0, 1],
     }
     obs_space = Tuple([
-        Dict({"obs": MultiDiscrete([2, 2, 2, 3]),
-              "state": MultiDiscrete([2, 2, 2])}),
-        Dict({"obs": MultiDiscrete([2, 2, 2, 3]),
-              "state": MultiDiscrete([2, 2, 2])}),
+        Dict({
+            "obs": MultiDiscrete([2, 2, 2, 3]),
+            "state": MultiDiscrete([2, 2, 2])
+        }),
+        Dict({
+            "obs": MultiDiscrete([2, 2, 2, 3]),
+            "state": MultiDiscrete([2, 2, 2])
+        }),
     ])
     act_space = Tuple([
         TwoStepGame.action_space,
@@ -160,14 +171,12 @@ if __name__ == "__main__":
             },
             "multiagent": {
                 "policies": {
-                    "pol1": (None, Discrete(6),
-                             TwoStepGame.action_space, {
-                                 "agent_id": 0,
-                             }),
-                    "pol2": (None, Discrete(6),
-                             TwoStepGame.action_space, {
-                                 "agent_id": 1,
-                             }),
+                    "pol1": (None, Discrete(6), TwoStepGame.action_space, {
+                        "agent_id": 0,
+                    }),
+                    "pol2": (None, Discrete(6), TwoStepGame.action_space, {
+                        "agent_id": 1,
+                    }),
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
