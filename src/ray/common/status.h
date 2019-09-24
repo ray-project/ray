@@ -75,9 +75,10 @@ enum class StatusCode : char {
   Invalid = 4,
   IOError = 5,
   ObjectExists = 6,
+  ObjectStoreFull = 7,
   UnknownError = 9,
   NotImplemented = 10,
-  RedisError = 11
+  RedisError = 11,
 };
 
 #if defined(__clang__)
@@ -129,12 +130,16 @@ class RAY_EXPORT Status {
     return Status(StatusCode::IOError, msg);
   }
 
-  static Status RedisError(const std::string &msg) {
-    return Status(StatusCode::RedisError, msg);
-  }
-
   static Status ObjectExists(const std::string &msg) {
     return Status(StatusCode::ObjectExists, msg);
+  }
+
+  static Status ObjectStoreFull(const std::string &msg) {
+    return Status(StatusCode::ObjectStoreFull, msg);
+  }
+
+  static Status RedisError(const std::string &msg) {
+    return Status(StatusCode::RedisError, msg);
   }
 
   // Returns true iff the status indicates success.
@@ -144,11 +149,12 @@ class RAY_EXPORT Status {
   bool IsKeyError() const { return code() == StatusCode::KeyError; }
   bool IsInvalid() const { return code() == StatusCode::Invalid; }
   bool IsIOError() const { return code() == StatusCode::IOError; }
+  bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
+  bool IsObjectStoreFull() const { return code() == StatusCode::ObjectStoreFull; }
   bool IsTypeError() const { return code() == StatusCode::TypeError; }
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
-  bool IsObjectExists() const { return code() == StatusCode::ObjectExists; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

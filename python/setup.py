@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import os
 import re
 import shutil
@@ -27,9 +28,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/raylet/raylet",
     "ray/dashboard/dashboard.py",
-    "ray/dashboard/index.html",
-    "ray/dashboard/res/main.css",
-    "ray/dashboard/res/main.js",
 ]
 
 # These are the directories where automatically generated Python protobuf
@@ -47,10 +45,22 @@ ray_autoscaler_files = [
 ]
 
 ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/template/cluster_template.yaml",
-    "ray/projects/template/project_template.yaml",
-    "ray/projects/template/requirements.txt"
+    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
+    "ray/projects/templates/project_template.yaml",
+    "ray/projects/templates/requirements.txt"
 ]
+
+ray_dashboard_files = [
+    "ray/dashboard/client/build/favicon.ico",
+    "ray/dashboard/client/build/index.html",
+]
+for dirname in ["css", "js", "media"]:
+    ray_dashboard_files += glob.glob(
+        "ray/dashboard/client/build/static/{}/*".format(dirname))
+
+optional_ray_files += ray_autoscaler_files
+optional_ray_files += ray_project_files
+optional_ray_files += ray_dashboard_files
 
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
@@ -59,15 +69,13 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
         "ray/core/src/credis/redis/src/redis-server"
     ]
 
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
-
 extras = {
     "rllib": [
         "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
     ],
-    "debug": ["psutil", "setproctitle", "py-spy"],
-    "dashboard": ["psutil", "aiohttp"],
+    "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
+    "dashboard": ["aiohttp", "psutil", "setproctitle"],
+    "serve": ["uvicorn", "pygments", "werkzeug"],
 }
 
 

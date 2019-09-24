@@ -116,6 +116,9 @@ behind a firewall, this feature is useful for instances exposed to the internet
 where configuring a firewall is not possible. Because Redis is
 very fast at serving queries, the chosen password should be long.
 
+
+.. note:: The Redis passwords provided below may not contain spaces.
+
 Redis authentication is only supported on the raylet code path.
 
 To add authentication via the Python API, start Ray using:
