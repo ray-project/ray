@@ -427,7 +427,6 @@ class QMixTorchPolicy(Policy):
                 self.target_mixer.load_state_dict(
                     self._device_dict(state["target_mixer"]))
             self.set_epsilon(state["cur_epsilon"])
-            self.update_target()
 
     def update_target(self):
         self.target_model.load_state_dict(self.model.state_dict())
