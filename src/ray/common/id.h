@@ -383,8 +383,8 @@ const ActorHandleID ComputeForkedActorHandleId(const ActorHandleID &actor_handle
 /// \param actor_handle_id The actor handle ID of the existing actor handle.
 /// \param current_task_id The current task ID.
 /// \return Generated actor handle ID.
-const ActorHandleID ComputeOutOfBandActorHandleId(const ActorHandleID &actor_handle_id,
-                                                  const TaskID &current_task_id);
+const ActorHandleID ComputeSerializedActorHandleId(const ActorHandleID &actor_handle_id,
+                                                   const TaskID &current_task_id);
 
 template <typename T>
 BaseID<T>::BaseID() {

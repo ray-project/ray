@@ -779,65 +779,65 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
                      {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
   // Test in-band forking logic.
-  ActorHandle forkedHandle1(parent, true);
+  std::unique_ptr<ActorHandle> forkedHandle1 = parent.Fork();
   ASSERT_EQ(1, parent.num_forks_);
-  ASSERT_EQ(parent.ActorID(), forkedHandle1.ActorID());
-  ASSERT_NE(parent.ActorHandleID(), forkedHandle1.ActorHandleID());
-  ASSERT_EQ(parent.ActorLanguage(), forkedHandle1.ActorLanguage());
+  ASSERT_EQ(parent.ActorID(), forkedHandle1->ActorID());
+  ASSERT_NE(parent.ActorHandleID(), forkedHandle1->ActorHandleID());
+  ASSERT_EQ(parent.ActorLanguage(), forkedHandle1->ActorLanguage());
   ASSERT_EQ(parent.ActorCreationTaskFunctionDescriptor(),
-            forkedHandle1.ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(parent.ActorCursor(), forkedHandle1.ActorCursor());
-  ASSERT_EQ(0, forkedHandle1.task_counter_);
-  ASSERT_EQ(0, forkedHandle1.num_forks_);
+            forkedHandle1->ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(parent.ActorCursor(), forkedHandle1->ActorCursor());
+  ASSERT_EQ(0, forkedHandle1->task_counter_);
+  ASSERT_EQ(0, forkedHandle1->num_forks_);
   ASSERT_EQ(parent.new_actor_handles_.size(), 1);
-  ASSERT_EQ(parent.new_actor_handles_.back(), forkedHandle1.ActorHandleID());
+  ASSERT_EQ(parent.new_actor_handles_.back(), forkedHandle1->ActorHandleID());
   parent.new_actor_handles_.clear();
 
-  ActorHandle forkedHandle2(parent, true);
+  std::unique_ptr<ActorHandle> forkedHandle2 = parent.Fork();
   ASSERT_EQ(2, parent.num_forks_);
-  ASSERT_EQ(0, forkedHandle2.task_counter_);
-  ASSERT_EQ(0, forkedHandle2.num_forks_);
+  ASSERT_EQ(0, forkedHandle2->task_counter_);
+  ASSERT_EQ(0, forkedHandle2->num_forks_);
   ASSERT_EQ(parent.new_actor_handles_.size(), 1);
-  ASSERT_EQ(parent.new_actor_handles_.back(), forkedHandle2.ActorHandleID());
+  ASSERT_EQ(parent.new_actor_handles_.back(), forkedHandle2->ActorHandleID());
   parent.new_actor_handles_.clear();
 
   // Test serialization and deserialization for in-band fork.
   std::string buffer1;
-  forkedHandle2.Serialize(&buffer1);
+  forkedHandle2->Serialize(&buffer1);
   ActorHandle deserializedHandle1(buffer1, task_id);
-  ASSERT_EQ(forkedHandle2.ActorID(), deserializedHandle1.ActorID());
-  ASSERT_EQ(forkedHandle2.ActorHandleID(), deserializedHandle1.ActorHandleID());
-  ASSERT_EQ(forkedHandle2.ActorLanguage(), deserializedHandle1.ActorLanguage());
-  ASSERT_EQ(forkedHandle2.ActorCreationTaskFunctionDescriptor(),
+  ASSERT_EQ(forkedHandle2->ActorID(), deserializedHandle1.ActorID());
+  ASSERT_EQ(forkedHandle2->ActorHandleID(), deserializedHandle1.ActorHandleID());
+  ASSERT_EQ(forkedHandle2->ActorLanguage(), deserializedHandle1.ActorLanguage());
+  ASSERT_EQ(forkedHandle2->ActorCreationTaskFunctionDescriptor(),
             deserializedHandle1.ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(forkedHandle2.ActorCursor(), deserializedHandle1.ActorCursor());
+  ASSERT_EQ(forkedHandle2->ActorCursor(), deserializedHandle1.ActorCursor());
 
   // Test out-of-band forking logic.
-  ActorHandle forkedHandle3(parent, false);
+  std::unique_ptr<ActorHandle> forkedHandle3 = parent.ForkForSerialization();
   ASSERT_EQ(2, parent.num_forks_);
-  ASSERT_EQ(parent.ActorID(), forkedHandle3.ActorID());
-  ASSERT_NE(parent.ActorHandleID(), forkedHandle3.ActorHandleID());
-  ASSERT_NE(forkedHandle2.ActorHandleID(), forkedHandle3.ActorHandleID());
-  ASSERT_EQ(parent.ActorLanguage(), forkedHandle3.ActorLanguage());
+  ASSERT_EQ(parent.ActorID(), forkedHandle3->ActorID());
+  ASSERT_NE(parent.ActorHandleID(), forkedHandle3->ActorHandleID());
+  ASSERT_NE(forkedHandle2->ActorHandleID(), forkedHandle3->ActorHandleID());
+  ASSERT_EQ(parent.ActorLanguage(), forkedHandle3->ActorLanguage());
   ASSERT_EQ(parent.ActorCreationTaskFunctionDescriptor(),
-            forkedHandle3.ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(parent.ActorCursor(), forkedHandle3.ActorCursor());
-  ASSERT_EQ(0, forkedHandle3.task_counter_);
-  ASSERT_EQ(0, forkedHandle3.num_forks_);
+            forkedHandle3->ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(parent.ActorCursor(), forkedHandle3->ActorCursor());
+  ASSERT_EQ(0, forkedHandle3->task_counter_);
+  ASSERT_EQ(0, forkedHandle3->num_forks_);
   ASSERT_EQ(parent.new_actor_handles_.size(), 1);
-  ASSERT_NE(parent.new_actor_handles_.back(), forkedHandle3.ActorHandleID());
+  ASSERT_NE(parent.new_actor_handles_.back(), forkedHandle3->ActorHandleID());
   parent.new_actor_handles_.clear();
 
   // Test serialization and deserialization for out-of-band fork.
   std::string buffer2;
-  forkedHandle3.Serialize(&buffer2);
+  forkedHandle3->Serialize(&buffer2);
   ActorHandle deserializedHandle2(buffer2, task_id);
-  ASSERT_EQ(forkedHandle3.ActorID(), deserializedHandle2.ActorID());
-  ASSERT_NE(forkedHandle3.ActorHandleID(), deserializedHandle2.ActorHandleID());
-  ASSERT_EQ(forkedHandle3.ActorLanguage(), deserializedHandle2.ActorLanguage());
-  ASSERT_EQ(forkedHandle3.ActorCreationTaskFunctionDescriptor(),
+  ASSERT_EQ(forkedHandle3->ActorID(), deserializedHandle2.ActorID());
+  ASSERT_NE(forkedHandle3->ActorHandleID(), deserializedHandle2.ActorHandleID());
+  ASSERT_EQ(forkedHandle3->ActorLanguage(), deserializedHandle2.ActorLanguage());
+  ASSERT_EQ(forkedHandle3->ActorCreationTaskFunctionDescriptor(),
             deserializedHandle2.ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(forkedHandle3.ActorCursor(), deserializedHandle2.ActorCursor());
+  ASSERT_EQ(forkedHandle3->ActorCursor(), deserializedHandle2.ActorCursor());
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {

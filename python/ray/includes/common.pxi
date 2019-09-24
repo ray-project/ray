@@ -42,12 +42,14 @@ cdef class ActorHandle:
             actor_id.native(), actor_handle_id.native(), job_id.native(),
             cursor.native(), LANGUAGE_PYTHON, False, c_descriptor))
 
-    @staticmethod
-    cdef from_fork(CActorHandle &other, c_bool in_band):
+    def fork(self, c_bool ray_forking):
         cdef:
-            ActorHandle self = ActorHandle.__new__(ActorHandle)
-        self.inner.reset(new CActorHandle(other, in_band))
-        return self
+            ActorHandle other = ActorHandle.__new__(ActorHandle)
+        if ray_forking:
+            other.inner = self.inner.get().Fork()
+        else:
+            other.inner = self.inner.get().ForkForSerialization()
+        return other
 
     @staticmethod
     def from_bytes(c_string bytes, TaskID current_task_id):
@@ -62,9 +64,6 @@ cdef class ActorHandle:
 
         self.inner.get().Serialize(&output)
         return output
-
-    def fork(self, c_bool in_band):
-        return ActorHandle.from_fork(self.inner.get()[0], in_band)
 
     def actor_id(self):
         return ActorID(self.inner.get().ActorID().Binary())

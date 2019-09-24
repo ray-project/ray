@@ -362,8 +362,8 @@ const ActorHandleID ComputeForkedActorHandleId(const ActorHandleID &actor_handle
   return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
-const ActorHandleID ComputeOutOfBandActorHandleId(const ActorHandleID &actor_handle_id,
-                                                  const TaskID &current_task_id) {
+const ActorHandleID ComputeSerializedActorHandleId(const ActorHandleID &actor_handle_id,
+                                                   const TaskID &current_task_id) {
   // Compute hashes.
   SHA256_CTX ctx;
   sha256_init(&ctx);

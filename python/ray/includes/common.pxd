@@ -1,5 +1,5 @@
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
 from libc.stdint cimport uint8_t, uint64_t, int64_t
@@ -188,9 +188,11 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
         CActorHandle(
             const c_string &serialized, const CTaskID &current_task_id)
 
-        void Serialize(c_string *output)
         CActorID ActorID() const
         CActorHandleID ActorHandleID() const
+        unique_ptr[CActorHandle] Fork()
+        unique_ptr[CActorHandle] ForkForSerialization()
+        void Serialize(c_string *output)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
