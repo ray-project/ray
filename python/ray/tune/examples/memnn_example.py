@@ -265,11 +265,11 @@ if __name__ == "__main__":
             "rho": lambda: np.random.uniform(0, 1)
         })
 
-    run(MemNNModel,
+    results = run(MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
-        stop={"training_iteration": 100},
-        num_samples=10,
+        stop={"training_iteration": 20 if args.smoke_test else 100},
+        num_samples=4,
         config={
             "batch_size": 32,
             "epochs": 1,
@@ -277,3 +277,9 @@ if __name__ == "__main__":
             "lr": 0.01,
             "rho": 0.9
         })
+
+    logdir = results.get_best_logdir("mean_accuracy", mode="max")
+    print("logdir: ", logdir)
+    # To open tensorboard, run `tensorboard --logdir {logdir}` on the command line
+    # Replace {logdir} with the printed logdir above (without the curly braces)
+    # `pip install tensorflow` if tensorflow has not been installed yet.
