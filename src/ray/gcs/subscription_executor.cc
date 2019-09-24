@@ -17,7 +17,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     return Status::Invalid("Duplicate subscription!");
   }
 
-  if (registration_status_ != RegistrationStatus::NotRegistered) {
+  if (registration_status_ != RegistrationStatus::kNotRegistered) {
     if (subscribe != nullptr) {
       RAY_LOG(DEBUG) << "Duplicate subscription! Already subscribed to specific elements"
                         ", can't subscribe to all elements.";
@@ -25,7 +25,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     }
   }
 
-  if (registration_status_ == RegistrationStatus::Registered) {
+  if (registration_status_ == RegistrationStatus::kRegistered) {
     // Already registered to GCS, just invoke the `done` callback.
     lock.unlock();
     if (done != nullptr) {
@@ -42,7 +42,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 
   // If there's another registration request that's already on-going, then wait for it
   // to finish.
-  if (registration_status_ == RegistrationStatus::Registering) {
+  if (registration_status_ == RegistrationStatus::kRegistering) {
     return Status::OK();
   }
 
@@ -77,7 +77,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     std::list<StatusCallback> pending_callbacks;
     {
       std::unique_lock<std::mutex> lock(mutex_);
-      registration_status_ = RegistrationStatus::Registered;
+      registration_status_ = RegistrationStatus::kRegistered;
       pending_callbacks.swap(pending_subscriptions_);
       RAY_CHECK(pending_subscriptions_.empty());
     }
@@ -89,7 +89,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 
   Status status = table_.Subscribe(JobID::Nil(), client_id, on_subscribe, on_done);
   if (status.ok()) {
-    registration_status_ = RegistrationStatus::Registering;
+    registration_status_ = RegistrationStatus::kRegistering;
     subscribe_all_callback_ = subscribe;
   }
 
