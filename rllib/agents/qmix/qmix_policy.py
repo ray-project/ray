@@ -5,7 +5,7 @@ from __future__ import print_function
 from gym.spaces import Tuple, Discrete, Dict
 import os
 import logging
-from threading import Lock
+from threading import RLock
 import numpy as np
 import torch as th
 import torch.nn as nn
@@ -172,7 +172,7 @@ class QMixTorchPolicy(Policy):
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
-        self.lock = Lock()
+        self.lock = RLock()
         self.device = (th.device("cuda")
                        if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
                        else th.device("cpu"))
@@ -395,17 +395,6 @@ class QMixTorchPolicy(Policy):
     @override(Policy)
     def get_weights(self):
         with self.lock:
-            state_dict = self.model.state_dict()
-            return {"model": self._cpu_dict(state_dict)}
-
-    @override(Policy)
-    def set_weights(self, weights):
-        with self.lock:
-            self.model.load_state_dict(self._device_dict(weights["model"]))
-
-    @override(Policy)
-    def get_state(self):
-        with self.lock:
             return {
                 "model": self._cpu_dict(self.model.state_dict()),
                 "target_model": self._cpu_dict(self.target_model.state_dict()),
@@ -413,19 +402,29 @@ class QMixTorchPolicy(Policy):
                 if self.mixer else None,
                 "target_mixer": self._cpu_dict(self.target_mixer.state_dict())
                 if self.mixer else None,
-                "cur_epsilon": self.cur_epsilon,
             }
+
+    @override(Policy)
+    def set_weights(self, weights):
+        with self.lock:
+            self.model.load_state_dict(self._device_dict(weights["model"]))
+            self.target_model.load_state_dict(
+                self._device_dict(weights["target_model"]))
+            if weights["mixer"] is not None:
+                self.mixer.load_state_dict(self._device_dict(weights["mixer"]))
+                self.target_mixer.load_state_dict(
+                    self._device_dict(weights["target_mixer"]))
+
+    @override(Policy)
+    def get_state(self):
+        with self.lock:
+            state = self.get_weights()
+            state["cur_epsilon"] = self.cur_epsilon
 
     @override(Policy)
     def set_state(self, state):
         with self.lock:
-            self.model.load_state_dict(self._device_dict(state["model"]))
-            self.target_model.load_state_dict(
-                self._device_dict(state["target_model"]))
-            if state["mixer"] is not None:
-                self.mixer.load_state_dict(self._device_dict(state["mixer"]))
-                self.target_mixer.load_state_dict(
-                    self._device_dict(state["target_mixer"]))
+            self.set_weights(state)
             self.set_epsilon(state["cur_epsilon"])
 
     def update_target(self):
