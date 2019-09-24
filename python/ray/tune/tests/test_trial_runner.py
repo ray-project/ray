@@ -453,6 +453,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
+    def testStoppingFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        def stop(trial_id, result):
+            return result["test"] > 6
+
+        [trial] = tune.run(train, stop=stop).trials
+        self.assertEqual(trial.last_result["training_iteration"], 8)
+
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)
