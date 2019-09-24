@@ -1,9 +1,4 @@
 #include "ray/core_worker/actor_handle.h"
-#include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/task_interface.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/raylet_transport.h"
 
 namespace ray {
 
@@ -31,8 +26,7 @@ ActorHandle::ActorHandle(ActorHandle &parent, bool in_band) {
   class ActorHandleID new_actor_handle_id;
   if (in_band) {
     new_actor_handle_id = ComputeForkedActorHandleId(
-        ActorHandleID::FromBinary(parent.inner_.actor_handle_id()),
-        parent.num_forks_++);
+        ActorHandleID::FromBinary(parent.inner_.actor_handle_id()), parent.num_forks_++);
     // Notify the backend to expect this new actor handle. The backend will
     // not release the cursor for any new handles until the first task for
     // each of the new handles is submitted.

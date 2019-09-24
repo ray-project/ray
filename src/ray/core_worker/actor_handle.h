@@ -3,18 +3,10 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "ray/common/buffer.h"
-#include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/status.h"
-#include "ray/common/task/task.h"
-#include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/protobuf/core_worker.pb.h"
 
 namespace ray {
@@ -37,9 +29,7 @@ class ActorHandle {
   /// Constructs an ActorHandle from a serialized string.
   ActorHandle(const std::string &serialized, const TaskID &current_task_id);
 
-  ActorID ActorID() const {
-    return ActorID::FromBinary(inner_.actor_id());
-  };
+  ActorID ActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
   ActorHandleID ActorHandleID() const {
     return ActorHandleID::FromBinary(inner_.actor_handle_id());
@@ -47,21 +37,15 @@ class ActorHandle {
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
-  JobID CreationJobID() const {
-    return JobID::FromBinary(inner_.creation_job_id());
-  };
+  JobID CreationJobID() const { return JobID::FromBinary(inner_.creation_job_id()); };
 
-  Language ActorLanguage() const {
-    return inner_.actor_language();
-  };
+  Language ActorLanguage() const { return inner_.actor_language(); };
 
   std::vector<std::string> ActorCreationTaskFunctionDescriptor() const {
     return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
   };
 
-  ObjectID ActorCursor() const {
-    return ObjectID::FromBinary(inner_.actor_cursor());
-  }
+  ObjectID ActorCursor() const { return ObjectID::FromBinary(inner_.actor_cursor()); }
 
   bool IsDirectCallActor() const { return inner_.is_direct_call(); }
 
