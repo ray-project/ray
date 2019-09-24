@@ -547,6 +547,9 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
+    def get_current_task_id(self):
+        return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
+
     def set_current_task_id(self, TaskID task_id):
         cdef:
             CTaskID c_task_id = task_id.native()

@@ -78,4 +78,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         # TODO(edoakes): remove these once the Python core worker uses the task
         # interfaces
         void SetCurrentJobId(const CJobID &job_id)
+        CTaskID GetCurrentTaskId()
         void SetCurrentTaskId(const CTaskID &task_id)
