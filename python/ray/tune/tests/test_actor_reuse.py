@@ -28,7 +28,7 @@ def create_resettable_class():
             return {
                 "num_resets": self.num_resets,
                 "done": self.iter > 1,
-                "stops": self.num_stops
+                "num_stops": self.num_stops
             }
 
         def _save(self, chkpt_dir):
