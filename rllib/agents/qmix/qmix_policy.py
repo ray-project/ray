@@ -172,6 +172,7 @@ class QMixTorchPolicy(Policy):
         self.n_actions = action_space.spaces[0].n
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
+        self.has_action_mask = False
         self.lock = RLock()
         self.device = (th.device("cuda")
                        if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
@@ -180,16 +181,17 @@ class QMixTorchPolicy(Policy):
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
             space_keys = set(agent_obs_space.spaces.keys())
-            if not {"obs", "action_mask"}.issubset(space_keys):
+            if "obs" not in space_keys:
                 raise ValueError(
-                    "Dict obs space for agent must have keyset "
-                    "['obs', 'action_mask'], got {}".format(space_keys))
-            mask_shape = tuple(agent_obs_space.spaces["action_mask"].shape)
-            if mask_shape != (self.n_actions, ):
-                raise ValueError("Action mask shape must be {}, got {}".format(
-                    (self.n_actions, ), mask_shape))
-            self.has_action_mask = True
+                    "Dict obs space must have subspace labeled `obs`")
             self.obs_size = _get_size(agent_obs_space.spaces["obs"])
+            if "action_mask" in space_keys:
+                mask_shape = tuple(agent_obs_space.spaces["action_mask"].shape)
+                if mask_shape != (self.n_actions, ):
+                    raise ValueError(
+                        "Action mask shape must be {}, got {}".format(
+                            (self.n_actions, ), mask_shape))
+                self.has_action_mask = True
             if ENV_STATE in space_keys:
                 self.env_global_state_shape = _get_size(
                     agent_obs_space.spaces[ENV_STATE])
@@ -199,7 +201,6 @@ class QMixTorchPolicy(Policy):
             # The real agent obs space is nested inside the dict
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
-            self.has_action_mask = False
             self.obs_size = _get_size(agent_obs_space)
 
         self.model = ModelCatalog.get_model_v2(
@@ -475,8 +476,12 @@ class QMixTorchPolicy(Policy):
                 [o["action_mask"] for o in unpacked], axis=1).reshape(
                     [len(obs_batch), self.n_agents, self.n_actions])
         else:
+            if isinstance(unpacked[0], dict):
+                unpacked_obs = [u["obs"] for u in unpacked]
+            else:
+                unpacked_obs = unpacked
             obs = np.concatenate(
-                unpacked,
+                unpacked_obs,
                 axis=1).reshape([len(obs_batch), self.n_agents, self.obs_size])
             action_mask = np.ones(
                 [len(obs_batch), self.n_agents, self.n_actions],

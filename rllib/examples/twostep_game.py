@@ -14,7 +14,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from gym.spaces import Tuple, Discrete
+from gym.spaces import Tuple, MultiDiscrete, Dict, Discrete
 import numpy as np
 
 import ray
@@ -30,10 +30,6 @@ parser.add_argument("--run", type=str, default="PG")
 class TwoStepGame(MultiAgentEnv):
     action_space = Discrete(2)
 
-    # Each agent gets a separate [3] obs space, to ensure that they can
-    # learn meaningfully different Q values even with a shared Q model.
-    observation_space = Discrete(6)
-
     def __init__(self, env_config):
         self.state = None
         self.agent_1 = 0
@@ -41,9 +37,26 @@ class TwoStepGame(MultiAgentEnv):
         # MADDPG emits action logits instead of actual discrete actions
         self.actions_are_logits = env_config.get("actions_are_logits", False)
 
+        if env_config.get("ddpg_observations", False):
+            self.observation_space = Discrete(6)
+            self.with_state = False
+            self.ddpg_observations = True
+        else:
+            # Each agent gets the full state (one-hot encoding of which of the
+            # three states are active) as input with the receiving agent's
+            # ID (1 or 2) concatenated onto the end.
+            if env_config.get("separate_state_space", False):
+                self.with_state = True
+                self.observation_space = Dict(
+                    {"obs": MultiDiscrete([2, 2, 2, 3]),
+                    "state": MultiDiscrete([2, 2, 2])})
+            else:
+                self.with_state = False
+                self.observation_space = MultiDiscrete([2, 2, 2, 3])
+
     def reset(self):
-        self.state = 0
-        return {self.agent_1: self.state, self.agent_2: self.state + 3}
+        self.state = np.array([1, 0, 0])
+        return self._obs()
 
     def step(self, action_dict):
         if self.actions_are_logits:
@@ -52,16 +65,17 @@ class TwoStepGame(MultiAgentEnv):
                 for k, v in action_dict.items()
             }
 
-        if self.state == 0:
+        state_index = np.flatnonzero(self.state)
+        if state_index == 0:
             action = action_dict[self.agent_1]
             assert action in [0, 1], action
             if action == 0:
-                self.state = 1
+                self.state = np.array([0, 1, 0])
             else:
-                self.state = 2
+                self.state = np.array([0, 0, 1])
             global_rew = 0
             done = False
-        elif self.state == 1:
+        elif state_index == 1:
             global_rew = 7
             done = True
         else:
@@ -79,10 +93,32 @@ class TwoStepGame(MultiAgentEnv):
             self.agent_1: global_rew / 2.0,
             self.agent_2: global_rew / 2.0
         }
-        obs = {self.agent_1: self.state, self.agent_2: self.state + 3}
+        obs = self._obs()
         dones = {"__all__": done}
         infos = {}
         return obs, rewards, dones, infos
+
+    def _obs(self):
+        if self.with_state:
+            return {self.agent_1: {"obs": self.agent_1_obs(),
+                                   "state": self.state},
+                    self.agent_2: {"obs": self.agent_2_obs(),
+                                   "state": self.state}}
+        else:
+            return {self.agent_1: self.agent_1_obs(),
+                    self.agent_2: self.agent_2_obs()}
+
+    def agent_1_obs(self):
+        if self.ddpg_observations:
+            return np.flatnonzero(self.state)[0]
+        else:
+            return np.concatenate([self.state, [1]])
+
+    def agent_2_obs(self):
+        if self.ddpg_observations:
+            return np.flatnonzero(self.state)[0] + 3
+        else:
+            return np.concatenate([self.state, [2]])
 
 
 if __name__ == "__main__":
@@ -92,8 +128,10 @@ if __name__ == "__main__":
         "group_1": [0, 1],
     }
     obs_space = Tuple([
-        TwoStepGame.observation_space,
-        TwoStepGame.observation_space,
+        Dict({"obs": MultiDiscrete([2, 2, 2, 3]),
+              "state": MultiDiscrete([2, 2, 2])}),
+        Dict({"obs": MultiDiscrete([2, 2, 2, 3]),
+              "state": MultiDiscrete([2, 2, 2])}),
     ])
     act_space = Tuple([
         TwoStepGame.action_space,
@@ -106,8 +144,8 @@ if __name__ == "__main__":
 
     if args.run == "contrib/MADDPG":
         obs_space_dict = {
-            "agent_1": TwoStepGame.observation_space,
-            "agent_2": TwoStepGame.observation_space,
+            "agent_1": Discrete(6),
+            "agent_2": Discrete(6),
         }
         act_space_dict = {
             "agent_1": TwoStepGame.action_space,
@@ -117,14 +155,15 @@ if __name__ == "__main__":
             "learning_starts": 100,
             "env_config": {
                 "actions_are_logits": True,
+                "ddpg_observations": True,
             },
             "multiagent": {
                 "policies": {
-                    "pol1": (None, TwoStepGame.observation_space,
+                    "pol1": (None, Discrete(6),
                              TwoStepGame.action_space, {
                                  "agent_id": 0,
                              }),
-                    "pol2": (None, TwoStepGame.observation_space,
+                    "pol2": (None, Discrete(6),
                              TwoStepGame.action_space, {
                                  "agent_id": 1,
                              }),
@@ -135,16 +174,19 @@ if __name__ == "__main__":
         group = False
     elif args.run == "QMIX":
         config = {
+            "num_gpus": .3,
             "sample_batch_size": 4,
             "train_batch_size": 32,
+            "exploration_fraction": .4,
             "exploration_final_eps": 0.0,
             "num_workers": 0,
             "mixer": grid_search([None, "qmix", "vdn"]),
+            "env_config": {"separate_state_space": True},
         }
         group = True
     elif args.run == "APEX_QMIX":
         config = {
-            "num_gpus": 0,
+            "num_gpus": 1,
             "num_workers": 2,
             "optimizer": {
                 "num_replay_buffer_shards": 1,
@@ -156,6 +198,7 @@ if __name__ == "__main__":
             "sample_batch_size": 32,
             "target_network_update_freq": 500,
             "timesteps_per_iteration": 1000,
+            "env_config": {"separate_state_space": True},
         }
         group = True
     else:
