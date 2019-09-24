@@ -153,6 +153,13 @@ This document describes the process for creating new releases.
         --prev-branch="ray-0.7.1" \
         --curr-branch="ray-0.7.2"
 
+    Run `ray microbenchmark` to get the latest microbenchmark numbers, and
+    include them in the release notes.
+
+    .. code-block:: bash
+
+      ray microbenchmark
+
 10. **Update version numbers throughout codebase:** Suppose we just released
     0.7.1. The previous release version number (in this case 0.7.0) and the
     previous dev version number (in this case 0.8.0.dev0) appear in many places
