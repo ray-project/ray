@@ -20,8 +20,7 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return reinterpret_cast<jlong>(
-      new ray::ActorHandle(GetActorHandle(nativeActorHandle), true));
+  return reinterpret_cast<jlong>(GetActorHandle(nativeActorHandle).Fork().release());
 }
 
 /*
