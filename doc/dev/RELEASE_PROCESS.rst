@@ -141,7 +141,7 @@ This document describes the process for creating new releases.
 
 
     At the end of the release note, you can add a list of contributors that help
-    creating this release. Use the ``dev/get_contributors.py`` to generate this
+    creating this release. Use the ``doc/dev/get_contributors.py`` to generate this
     list. You will need to create a GitHub token for this task. Example usage:
 
     .. code-block:: bash
