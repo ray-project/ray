@@ -39,7 +39,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
 
   auto executor_func = [](const ray::RayFunction &ray_function,
                           const std::vector<std::shared_ptr<ray::RayObject>> &args,
-                          int num_returns,
+                          int num_returns, const ray::TaskSpecification &task_spec,
                           std::vector<std::shared_ptr<ray::RayObject>> *results) {
     JNIEnv *env = local_env;
     RAY_CHECK(env);
