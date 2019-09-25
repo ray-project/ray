@@ -13,6 +13,12 @@ along with ``ray.wait``.
     tuning library built using Ray's Actor API.
 
 .. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
+
+Setup: Dependencies
+-------------------
+
+First, import some dependencies and define functions to generate
+random hyperpaameters and retrieve data.
 """
 import os
 import numpy as np
@@ -64,6 +70,13 @@ def get_data_loaders(batch_size):
         shuffle=True)
     return train_loader, test_loader
 
+#######################################################################
+# Setup: Defining the Neural Network
+# ----------------------------------
+#
+# We define a small neural network to use in training. In addition, 
+# we created methods to train and test this neural network 
+
 
 class ConvNet(nn.Module):
     def __init__(self):
@@ -107,6 +120,15 @@ def test(model, test_loader, device=torch.device("cpu")):
 
     return correct / total
 
+#######################################################################
+# Evaluating the Hyperparameters
+# -------------------------------
+#
+# For a given configuration, the neural network created previously
+# will be trained and return the accuracy of the model.
+#
+# The ``@ray.remote`` decorator defines a remote process.
+
 
 @ray.remote
 def evaluate_hyperparameters(config):
@@ -119,6 +141,14 @@ def evaluate_hyperparameters(config):
     train(model, optimizer, train_loader)
     return test(model, test_loader)
 
+#######################################################################
+# Synchronous Evaluation of Randomly Generated Hyperparameters
+# ------------------------------------------------------------
+#
+# We will create multiple sets of random hyperparameters for our neural
+# network that will be trained in parallel. These trained networks will
+# then be tested for accuracy to find the best set of hyperparameters.
+
 
 # Keep track of the best hyperparameters and the best accuracy.
 best_hyperparameters = None
@@ -130,6 +160,10 @@ remaining_ids = []
 # hyerparameters used for that experiment.
 hyperparameters_mapping = {}
 
+###########################################################################
+# Compute accuracy for different randomly generated hyperparameters, and 
+# store each hyperparameter with its corresponding accuracy
+
 # Randomly generate some hyperparameters, and launch a task for each set.
 for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
@@ -137,6 +171,11 @@ for i in range(num_evaluations):
     remaining_ids += [accuracy_id]
     # Keep track of which hyperparameters correspond to this experiment.
     hyperparameters_mapping[accuracy_id] = hyperparameters
+
+###########################################################################
+# Process each hyperparameter and corresponding accuracy in the order that 
+# they finish training and testing the neural network to store the 
+# hyperparameters with the best accuracy
 
 # Fetch and print the results of the tasks in the order that they complete.
 while remaining_ids:
