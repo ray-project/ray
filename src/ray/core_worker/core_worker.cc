@@ -16,15 +16,11 @@ CoreWorker::CoreWorker(
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
       io_work_(io_service_) {
-  // Initialize logging if log_dir is passed. Otherwise, it must be initialized
-  // and cleaned up by the caller.
-  if (!log_dir_.empty()) {
-    std::stringstream app_name;
-    app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
-             << worker_context_.GetWorkerID();
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
-    RayLog::InstallFailureSignalHandler();
-  }
+  std::stringstream app_name;
+  app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
+           << worker_context_.GetWorkerID();
+  RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
+  RayLog::InstallFailureSignalHandler();
 
   // Initialize gcs client.
   gcs_client_ =
@@ -95,9 +91,7 @@ CoreWorker::~CoreWorker() {
   if (task_execution_interface_) {
     task_execution_interface_->Stop();
   }
-  if (!log_dir_.empty()) {
-    RayLog::ShutDownRayLog();
-  }
+  RayLog::ShutDownRayLog();
 }
 
 void CoreWorker::Disconnect() {

@@ -27,7 +27,7 @@ void Profiler::Start() {
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
   std::lock_guard<std::mutex> lock(profile_info_mutex_);
   if (!thread_.joinable()) {
-    RAY_LOG(WARNING)
+    RAY_LOG(DEBUG)
         << "Tried to add profile event but background thread isn't running. "
         << "Either Profiler::Start() wasn't run yet or the thread exited unexpectedly.";
     return;
