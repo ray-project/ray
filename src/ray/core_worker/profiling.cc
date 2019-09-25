@@ -6,10 +6,10 @@ namespace ray {
 
 namespace worker {
 
-ProfilingEvent::ProfilingEvent(Profiler &profiler, const std::string &event_type)
+ProfileEvent::ProfileEvent(Profiler &profiler, const std::string &event_type)
     : profiler_(profiler) {
-  inner_.set_event_type(event_type);
-  inner_.set_start_time(current_sys_time_seconds());
+  rpc_event_.set_event_type(event_type);
+  rpc_event_.set_start_time(current_sys_time_seconds());
 }
 
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
@@ -26,6 +26,12 @@ void Profiler::Start() {
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
   std::lock_guard<std::mutex> lock(profile_info_mutex_);
+  if (!thread_.joinable()) {
+    RAY_LOG(WARNING)
+        << "Tried to add profile event but background thread isn't running. "
+        << "Either Profiler::Start() wasn't run yet or the thread exited unexpectedly.";
+    return;
+  }
   profile_info_.add_profile_events()->CopyFrom(event);
 }
 

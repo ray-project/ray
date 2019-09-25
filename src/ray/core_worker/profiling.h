@@ -51,20 +51,22 @@ class Profiler {
   std::condition_variable kill_cond_;
 };
 
-class ProfilingEvent {
+class ProfileEvent {
  public:
-  ProfilingEvent(Profiler &profiler, const std::string &event_type);
+  ProfileEvent(Profiler &profiler, const std::string &event_type);
 
-  void SetExtraData(const std::string &extra_data) { inner_.set_extra_data(extra_data); }
+  void SetExtraData(const std::string &extra_data) {
+    rpc_event_.set_extra_data(extra_data);
+  }
 
-  ~ProfilingEvent() {
-    inner_.set_end_time(current_sys_time_seconds());
-    profiler_.AddEvent(inner_);
+  ~ProfileEvent() {
+    rpc_event_.set_end_time(current_sys_time_seconds());
+    profiler_.AddEvent(rpc_event_);
   }
 
  private:
   Profiler &profiler_;
-  rpc::ProfileTableData::ProfileEvent inner_;
+  rpc::ProfileTableData::ProfileEvent rpc_event_;
 };
 
 }  // namespace worker
