@@ -91,9 +91,7 @@ CoreWorker::~CoreWorker() {
   if (task_execution_interface_) {
     task_execution_interface_->Stop();
   }
-  if (!log_dir_.empty()) {
-    RayLog::ShutDownRayLog();
-  }
+  RayLog::ShutDownRayLog();
 }
 
 void CoreWorker::Disconnect() {
