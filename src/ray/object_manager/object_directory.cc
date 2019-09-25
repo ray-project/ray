@@ -136,7 +136,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
 
           // Update entries for this object.
           UpdateObjectLocations(
-              object_notification.change_mode_, object_notification.object_data_,
+              object_notification.GetGcsChangeMode(), object_notification.GetData(),
               gcs_client_->client_table(), &it->second.current_object_locations);
           // Copy the callbacks so that the callbacks can unsubscribe without interrupting
           // looping over the callbacks.
