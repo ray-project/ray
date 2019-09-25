@@ -112,7 +112,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
-      next_task_index, actor_handle.ActorID());
+      next_task_index, actor_handle.GetActorID());
   BuildCommonTaskSpec(builder, actor_handle.CreationJobID(), actor_task_id,
                       next_task_index, function, args, num_returns,
                       task_options.resources, {}, transport_type, return_ids);

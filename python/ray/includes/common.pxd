@@ -188,8 +188,8 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
         CActorHandle(
             const c_string &serialized, const CTaskID &current_task_id)
 
-        CActorID ActorID() const
-        CActorHandleID ActorHandleID() const
+        CActorID GetActorID() const
+        CActorHandleID GetActorHandleID() const
         unique_ptr[CActorHandle] Fork()
         unique_ptr[CActorHandle] ForkForSerialization()
         void Serialize(c_string *output)

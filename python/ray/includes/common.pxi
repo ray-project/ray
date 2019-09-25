@@ -66,7 +66,7 @@ cdef class ActorHandle:
         return output
 
     def actor_id(self):
-        return ActorID(self.inner.get().ActorID().Binary())
+        return ActorID(self.inner.get().GetActorID().Binary())
 
     def actor_handle_id(self):
-        return ActorHandleID(self.inner.get().ActorHandleID().Binary())
+        return ActorHandleID(self.inner.get().GetActorHandleID().Binary())

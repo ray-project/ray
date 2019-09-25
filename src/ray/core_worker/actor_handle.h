@@ -34,9 +34,9 @@ class ActorHandle {
   /// serialization in order to pass an actor handle for uses not covered by the Ray API.
   std::unique_ptr<ActorHandle> ForkForSerialization();
 
-  ActorID ActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
+  ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
-  ActorHandleID ActorHandleID() const {
+  ActorHandleID GetActorHandleID() const {
     return ActorHandleID::FromBinary(inner_.actor_handle_id());
   };
 

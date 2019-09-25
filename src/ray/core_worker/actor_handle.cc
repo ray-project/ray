@@ -28,7 +28,7 @@ std::unique_ptr<ActorHandle> ActorHandle::Fork() {
       std::unique_ptr<ActorHandle>(new ActorHandle(inner_));
   child->inner_ = inner_;
   const class ActorHandleID new_actor_handle_id =
-      ComputeForkedActorHandleId(this->ActorHandleID(), num_forks_++);
+      ComputeForkedActorHandleId(GetActorHandleID(), num_forks_++);
   // Notify the backend to expect this new actor handle. The backend will
   // not release the cursor for any new handles until the first task for
   // each of the new handles is submitted.
@@ -58,7 +58,8 @@ std::unique_ptr<ActorHandle> ActorHandle::ForkForSerialization() {
   // created by an out-of-band fork. A new actor handle ID will be computed
   // when the handle is deserialized.
   const class ActorHandleID new_actor_handle_id = ActorHandleID::Nil();
-  inner_.set_actor_handle_id(new_actor_handle_id.Data(), new_actor_handle_id.Size());
+  child->inner_.set_actor_handle_id(new_actor_handle_id.Data(),
+                                    new_actor_handle_id.Size());
   return child;
 }
 
@@ -85,11 +86,11 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
                                    const ObjectID new_cursor) {
   std::unique_lock<std::mutex> guard(mutex_);
   // Build actor task spec.
-  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(ActorID());
+  const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(GetActorID());
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
                               /*transport_type=*/static_cast<int>(transport_type));
-  builder.SetActorTaskSpec(ActorID(), this->ActorHandleID(),
+  builder.SetActorTaskSpec(GetActorID(), GetActorHandleID(),
                            actor_creation_dummy_object_id,
                            /*previous_actor_task_dummy_object_id=*/ActorCursor(),
                            task_counter_++, new_actor_handles_);
