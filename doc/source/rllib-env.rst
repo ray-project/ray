@@ -130,10 +130,6 @@ When using remote envs, you can control the batching level for inference with ``
 Multi-Agent and Hierarchical
 ----------------------------
 
-.. note::
-
-   Learn more about multi-agent reinforcement learning in RLlib by checking out some of the `code examples <rllib-examples.html#multi-agent-and-hierarchical>`__ or reading the `blog post <https://bair.berkeley.edu/blog/2018/12/12/rllib/>`__.
-
 A multi-agent environment is one which has multiple acting entities per step, e.g., in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment. The model for multi-agent in RLlib as follows: (1) as a user you define the number of policies available up front, and (2) a function that maps agent ids to policy ids. This is summarized by the below figure:
 
 .. image:: multi-agent.svg

@@ -73,7 +73,7 @@ extras = {
     "rllib": [
         "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
     ],
-    "debug": ["psutil", "setproctitle", "py-spy"],
+    "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug"],
 }
