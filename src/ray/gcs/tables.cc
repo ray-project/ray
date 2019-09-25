@@ -110,8 +110,9 @@ template <typename ID, typename Data>
 Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const Callback &subscribe,
                                 const SubscriptionCallback &done) {
-  auto subscribe_wrapper = [subscribe](RedisGcsClient *client, const ID &id,
-                                       const Notification<Data> &notification) {
+  auto subscribe_wrapper = [subscribe](
+                               RedisGcsClient *client, const ID &id,
+                               const Notification<std::vector<Data>> &notification) {
     RAY_CHECK(notification.GetGcsChangeMode() != GcsChangeMode::REMOVE);
     subscribe(client, id, notification.GetData());
   };
@@ -146,7 +147,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
           result.ParseFromString(gcs_entry.entries(i));
           results.emplace_back(std::move(result));
         }
-        Notification<Data> notification(gcs_entry.change_mode(), std::move(results));
+        Notification<std::vector<Data>> notification(gcs_entry.change_mode(),
+                                                     std::move(results));
         subscribe(client_, id, notification);
       }
     }
