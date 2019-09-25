@@ -8,6 +8,7 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import numpy as np
@@ -1278,6 +1279,13 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
+        # Tell Ray to serialize StringIO with pickle.
+        register_custom_serializer(
+            io.StringIO,
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="io.StringIO")
 
 
 def init(address=None,
