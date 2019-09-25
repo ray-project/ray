@@ -21,9 +21,15 @@ class Profiler {
       killed_ = true;
       kill_cond_.notify_one();
     }
-    thread_.join();
+    if (thread_.joinable()) {
+      thread_.join();
+    }
   }
 
+  // Spawn a thread to start flushing events periodically.
+  void Start();
+
+  // Add an event to the queue to be flushed periodically.
   void AddEvent(const rpc::ProfileTableData::ProfileEvent &event);
 
  private:

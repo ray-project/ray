@@ -27,7 +27,7 @@ from ray.includes.libraylet cimport CRayletClient
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
-        pass
+        void Start()
 
     cdef cppclass CProfilingEvent "ray::worker::ProfilingEvent":
         CProfilingEvent(CProfiler &profiler, const c_string &event_type)

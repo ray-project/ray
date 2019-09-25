@@ -18,6 +18,9 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
   profile_info_.set_component_type(WorkerTypeString(worker_context_.GetWorkerType()));
   profile_info_.set_component_id(worker_context_.GetWorkerID().Binary());
   profile_info_.set_node_ip_address(node_ip_address);
+}
+
+void Profiler::Start() {
   thread_ = std::thread(&Profiler::PeriodicallyFlushEvents, this);
 }
 
