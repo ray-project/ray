@@ -31,7 +31,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorId(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return IdToJavaByteArray<ray::ActorID>(env,
-                                         GetActorHandle(nativeActorHandle).ActorID());
+                                         GetActorHandle(nativeActorHandle).GetActorID());
 }
 
 /*
@@ -43,7 +43,7 @@ JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorHandleId(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return IdToJavaByteArray<ray::ActorHandleID>(
-      env, GetActorHandle(nativeActorHandle).ActorHandleID());
+      env, GetActorHandle(nativeActorHandle).GetActorHandleID());
 }
 
 /*
