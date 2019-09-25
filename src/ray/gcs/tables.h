@@ -95,8 +95,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using Callback = std::function<void(RedisGcsClient *client, const ID &id,
                                       const std::vector<Data> &data)>;
 
-  using NotificationCallback = std::function<void(
-      RedisGcsClient *client, const ID &id, const Notification<Data> &notification)>;
+  using NotificationCallback =
+      std::function<void(RedisGcsClient *client, const ID &id,
+                         const Notification<std::vector<Data>> &notification)>;
 
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;

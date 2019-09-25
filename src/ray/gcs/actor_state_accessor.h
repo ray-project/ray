@@ -79,6 +79,17 @@ class ActorStateAccessor {
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done);
 
  private:
+  /// Subscribe to any update operations of an actor.
+  ///
+  /// \param actor_id The ID of actor to be subscribed to. Subscribe to all actors
+  /// if the ID is Nil.
+  /// \param subscribe Callback that will be called each time when actor is updated.
+  /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
+  Status DoAsyncSubscribe(const ActorID &actor_id,
+                          const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                          const StatusCallback &done);
+
   RedisGcsClient &client_impl_;
   // Use a random ClientID for actor subscription. Because:
   // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
@@ -88,7 +99,7 @@ class ActorStateAccessor {
   // TODO(micafan): Remove this random id, once GCS becomes a service.
   ClientID node_id_{ClientID::FromRandom()};
 
-  typedef SubscriptionExecutor<ActorID, ActorTableData, ActorTable>
+  typedef SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
 };

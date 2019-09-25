@@ -634,16 +634,15 @@ void TestSetSubscribeAll(const JobID &job_id,
   // Callback for a notification.
   auto notification_callback = [object_ids, managers](
                                    gcs::RedisGcsClient *client, const ObjectID &id,
-                                   const GcsChangeMode change_mode,
-                                   const std::vector<ObjectTableData> data) {
+                                   const ObjectNotification &notification) {
     if (test->NumCallbacks() < 3 * 3) {
-      ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
+      ASSERT_EQ(notification.GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
     } else {
-      ASSERT_EQ(change_mode, GcsChangeMode::REMOVE);
+      ASSERT_EQ(notification.GetGcsChangeMode(), GcsChangeMode::REMOVE);
     }
     ASSERT_EQ(id, object_ids[test->NumCallbacks() / 3 % 3]);
     // Check that we get notifications in the same order as the writes.
-    for (const auto &entry : data) {
+    for (const auto &entry : notification.GetData()) {
       ASSERT_EQ(entry.manager(), managers[test->NumCallbacks() % 3]);
       test->IncrementNumCallbacks();
     }
@@ -869,13 +868,12 @@ void TestSetSubscribeId(const JobID &job_id,
   // received for keys that we requested notifications for.
   auto notification_callback = [object_id2, managers2](
                                    gcs::RedisGcsClient *client, const ObjectID &id,
-                                   const GcsChangeMode change_mode,
-                                   const std::vector<ObjectTableData> &data) {
-    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
+                                   const ObjectNotification &notification) {
+    ASSERT_EQ(notification.GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
     // Check that we only get notifications for the requested key.
     ASSERT_EQ(id, object_id2);
     // Check that we get notifications in the same order as the writes.
-    for (const auto &entry : data) {
+    for (const auto &entry : notification.GetData()) {
       ASSERT_EQ(entry.manager(), managers2[test->NumCallbacks()]);
       test->IncrementNumCallbacks();
     }
@@ -1082,13 +1080,13 @@ void TestSetSubscribeCancel(const JobID &job_id,
   // received for the object that we requested notifications for.
   auto notification_callback = [object_id, managers](
                                    gcs::RedisGcsClient *client, const ObjectID &id,
-                                   const GcsChangeMode change_mode,
-                                   const std::vector<ObjectTableData> &data) {
-    ASSERT_EQ(change_mode, GcsChangeMode::APPEND_OR_ADD);
+                                   const ObjectNotification &notification) {
+    ASSERT_EQ(notification.GetGcsChangeMode(), GcsChangeMode::APPEND_OR_ADD);
     ASSERT_EQ(id, object_id);
     // Check that we get a duplicate notification for the first write. We get a
     // duplicate notification because notifications
     // are canceled after the first write, then requested again.
+    const std::vector<ObjectTableData> &data = notification.GetData();
     if (data.size() == 1) {
       // first notification
       ASSERT_EQ(data[0].manager(), managers[0]);

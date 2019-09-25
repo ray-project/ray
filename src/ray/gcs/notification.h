@@ -24,9 +24,9 @@ class Notification {
     this.data_ = std::move(other.data_);
   }
 
-  rpc::GcsChangeMode GetGcsChangeMode() { return change_mode_; }
+  rpc::GcsChangeMode GetGcsChangeMode() const { return change_mode_; }
 
-  const Data &GetData() { return data_; }
+  const Data &GetData() const { return data_; }
 
  private:
   rpc::GcsChangeMode change_mode_;
