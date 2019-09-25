@@ -126,7 +126,7 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
   auto callback = [this, subscribe, done](const CallbackReply &reply) {
-    const auto data = reply.ReadAsPubsubData();
+    auto data = reply.ReadAsPubsubData();
 
     if (data.empty()) {
       // No notification data is provided. This is the callback for the

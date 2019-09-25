@@ -1,5 +1,10 @@
-#include "ray/gcs/object_state_accessor.h"
+#include <unordered_map>
+#include <vector>
+#include "gtest/gtest.h"
 #include "ray/gcs/accessor_test_base.h"
+#include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/object_state_accessor.h"
+#include "ray/util/test_util.h"
 
 namespace ray {
 
@@ -13,7 +18,7 @@ class ObjectStateAccessorTest : public AccessorTestBase<ObjectID, ObjectTableDat
       for (size_t j = 0; j < 5; ++j) {
         auto object = std::make_shared<ObjectTableData>();
         object->set_object_size(i);
-        object->set_manager("10.10.10.10_" + std::to_string("j"));
+        object->set_manager("10.10.10.10_" + std::to_string(j));
         object_vec.emplace_back(std::move(object));
       }
       ObjectID id = ObjectID::FromRandom();
@@ -22,7 +27,7 @@ class ObjectStateAccessorTest : public AccessorTestBase<ObjectID, ObjectTableDat
   }
 
   typedef std::vector<std::shared_ptr<ObjectTableData>> ObjectVector;
-  std::unordered_map<ID, ObjectVector> object_id_to_data_;
+  std::unordered_map<ObjectID, ObjectVector> object_id_to_data_;
 };
 
 TEST_F(ObjectStateAccessorTest, TestAll) {
@@ -42,10 +47,12 @@ TEST_F(ObjectStateAccessorTest, TestAll) {
   // get
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
+    size_t total_size = elem.second.size();
     object_accessor.AsyncGet(
-        elem.first, [this](Status status, const std::vector<ObjectTableData> &result) {
+        elem.first, [this, total_size](
+            Status status, const std::vector<ObjectTableData> &result) {
           RAY_CHECK_OK(status);
-          RAY_CHECK(elem.second.size(), result.size());
+          RAY_CHECK(total_size == result.size());
         });
   }
   WaitPendingDone(wait_pending_timeout_);
@@ -53,13 +60,14 @@ TEST_F(ObjectStateAccessorTest, TestAll) {
   // subscribe && delete
   // subscribe
   std::atomic<int> sub_pending_count(0);
-  auto subscribe = [this](const ObjectID &object_id, const ObjectNotification &result) {
+  auto subscribe = [this, &sub_pending_count](
+      const ObjectID &object_id, const ObjectNotification &result) {
     const auto it = object_id_to_data_.find(object_id);
     ASSERT_TRUE(it != object_id_to_data_.end());
-    RAY_CHECK(result.GetData().size(), 1U);
+    RAY_CHECK(result.GetData().size() == 1U);
     static rpc::GcsChangeMode change_mode = rpc::GcsChangeMode::APPEND_OR_ADD;
     RAY_CHECK(change_mode == result.GetGcsChangeMode());
-    change_mode = rpc::GcsChangeMode : REMOVE;
+    change_mode = rpc::GcsChangeMode::REMOVE;
     --sub_pending_count;
   };
   for (const auto &elem : object_id_to_data_) {
@@ -86,10 +94,12 @@ TEST_F(ObjectStateAccessorTest, TestAll) {
   // get
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
+    size_t total_size = elem.second.size();
     object_accessor.AsyncGet(
-        elem.first, [this](Status status, const std::vector<ObjectTableData> &result) {
+        elem.first, [this, total_size](
+            Status status, const std::vector<ObjectTableData> &result) {
           RAY_CHECK_OK(status);
-          RAY_CHECK(elem.second.size(), result.size() + 1);
+          RAY_CHECK(total_size == result.size() + 1);
         });
   }
   WaitPendingDone(wait_pending_timeout_);

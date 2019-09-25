@@ -6,7 +6,8 @@
 set -e
 set -x
 
-bazel build "//:redis_gcs_client_test" "//:actor_state_accessor_test"  "//:subscription_executor_test" "//:asio_test" "//:libray_redis_module.so"
+bazel build "//:redis_gcs_client_test" "//:asio_test" "//:libray_redis_module.so"
+bazel build "//:subscription_executor_test" "//:actor_state_accessor_test" "//:object_state_accessor_test"
 
 # Start Redis.
 if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
@@ -24,9 +25,10 @@ fi
 sleep 1s
 
 ./bazel-bin/redis_gcs_client_test
-./bazel-bin/actor_state_accessor_test
-./bazel-bin/subscription_executor_test
 ./bazel-bin/asio_test
+./bazel-bin/subscription_executor_test
+./bazel-bin/actor_state_accessor_test
+./bazel-bin/object_state_accessor_test
 
 ./bazel-genfiles/redis-cli -p 6379 shutdown
 sleep 1s
