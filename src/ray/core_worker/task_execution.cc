@@ -19,8 +19,9 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       main_work_(*main_service_) {
   RAY_CHECK(execution_callback_ != nullptr);
 
-  auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
-                        std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+  auto func =
+      std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
+                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
@@ -37,8 +38,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
-    const TaskSpecification &task_spec,
-    const ResourceMappingType &resource_ids,
+    const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
     std::vector<std::shared_ptr<RayObject>> *results) {
   idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
@@ -62,12 +62,12 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
-  idle_profile_event_ = std::unique_ptr<worker::ProfilingEvent>(new worker::ProfilingEvent(profiler_, "worker_idle"));
+  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   return status;
 }
 
 void CoreWorkerTaskExecutionInterface::Run() {
-  idle_profile_event_ = std::unique_ptr<worker::ProfilingEvent>(new worker::ProfilingEvent(profiler_, "worker_idle"));
+  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   main_service_->run();
 }
 

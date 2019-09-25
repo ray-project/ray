@@ -180,7 +180,8 @@ cdef class TaskSpec:
                     arg_list.append(
                         ObjectID(self.task_spec.ArgId(i, 0).Binary()))
                 else:
-                    data = self.task_spec.ArgData(i)[:self.task_spec.ArgDataSize(i)]
+                    data = self.task_spec.ArgData(i)[
+                        :self.task_spec.ArgDataSize(i)]
                     metadata = self.task_spec.ArgMetadata(i)[
                         :self.task_spec.ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
@@ -197,7 +198,8 @@ cdef class TaskSpec:
         """Return the object IDs for the return values of the task."""
         return_id_list = []
         for i in range(self.task_spec.NumReturns()):
-            return_id_list.append(ObjectID(self.task_spec.ReturnId(i).Binary()))
+            return_id_list.append(
+                ObjectID(self.task_spec.ReturnId(i).Binary()))
         return return_id_list
 
     def required_resources(self):

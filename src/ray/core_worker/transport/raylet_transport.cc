@@ -40,8 +40,9 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   // Set the resource IDs for this task.
   ResourceMappingType resource_ids;
-  auto resource_infos = flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(
-      request.resource_ids().data())->resource_infos();
+  auto resource_infos =
+      flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
+          ->resource_infos();
   for (size_t i = 0; i < resource_infos->size(); ++i) {
     auto const &fractional_resource_ids = resource_infos->Get(i);
     auto &acquired_resources =

@@ -88,8 +88,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
                     const c_string log_dir, const c_string &node_ip_address,
-                    CRayStatus (const CRayFunction &ray_function, const c_vector[shared_ptr[CRayObject]] &args, int num_returns, const CTaskSpec &task_spec, c_vector[shared_ptr[CRayObject]] *returns) nogil,
-                    c_bool use_memory_store_) nogil
+                    CRayStatus (
+                        const CRayFunction &ray_function,
+                        const c_vector[shared_ptr[CRayObject]] &args,
+                        int num_returns, const CTaskSpec &task_spec,
+                        c_vector[shared_ptr[CRayObject]] *returns) nogil,
+                    c_bool use_memory_store) nogil
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()

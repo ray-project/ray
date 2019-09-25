@@ -30,11 +30,11 @@ class CoreWorkerTaskExecutionInterface {
   /// \param args[in] Arguments of the task.
   /// \param results[out] Results of the task execution.
   /// \return Status.
-  using TaskExecutor = std::function<Status(
-      const RayFunction &ray_function,
-      const std::vector<std::shared_ptr<RayObject>> &args, int num_returns,
-      const TaskSpecification &task_spec,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+  using TaskExecutor =
+      std::function<Status(const RayFunction &ray_function,
+                           const std::vector<std::shared_ptr<RayObject>> &args,
+                           int num_returns, const TaskSpecification &task_spec,
+                           std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
@@ -103,7 +103,9 @@ class CoreWorkerTaskExecutionInterface {
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
 
-  std::unique_ptr<worker::ProfilingEvent> idle_profile_event_;
+  // Profile event for when the worker is idle. Should be reset when the worker
+  // enters and exits an idle period.
+  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
 
   friend class CoreWorker;
 };
