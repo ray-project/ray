@@ -751,7 +751,7 @@ workers=$(
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy --pid $pid --dump;
+    sudo $pyspy dump --pid $pid;
     echo;
 done
     """

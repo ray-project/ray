@@ -6,6 +6,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/profiling.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/worker/worker_client.h"
@@ -38,6 +39,7 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
+                                   worker::Profiler &profiler,
                                    const TaskExecutor &executor);
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
@@ -78,6 +80,8 @@ class CoreWorkerTaskExecutionInterface {
   /// Reference to the parent CoreWorker's objects interface.
   CoreWorkerObjectInterface &object_interface_;
 
+  worker::Profiler &profiler_;
+
   // Task execution callback.
   TaskExecutor execution_callback_;
 
@@ -98,6 +102,8 @@ class CoreWorkerTaskExecutionInterface {
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
+
+  std::unique_ptr<worker::ProfilingEvent> idle_profile_event_;
 
   friend class CoreWorker;
 };

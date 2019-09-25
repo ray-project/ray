@@ -106,7 +106,7 @@ All results reported by the trainable will be logged locally to a unique directo
 Trial Parallelism
 ~~~~~~~~~~~~~~~~~
 
-Tune automatically N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this with ``resources_per_trial``:
+Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this with ``resources_per_trial``:
 
 .. code-block:: python
 
@@ -474,6 +474,41 @@ You often will want to compute a large object (e.g., training data, model weight
 
     tune.run(f)
 
+Custom Stopping Criteria
+------------------------
+
+You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
+
+If a dictionary is passed in, the keys may be any field in the return result of ``tune.track.log`` in the Function API or ``train()`` (including the results from ``_train`` and auto-filled metrics).
+
+In the example below, each trial will be stopped either when it completes 10 iterations OR when it reaches a mean accuracy of 0.98. Note that `training_iteration` is an auto-filled metric by Tune.
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        stop={"training_iteration": 10, "mean_accuracy": 0.98}
+    )
+
+For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
+
+You can use this to stop all trials after the criteria is fulfilled by any individual trial:
+
+.. code-block:: python
+
+    class Stopper:
+        def __init__(self):
+            self.should_stop = False
+
+        def stop(self, trial_id, result):
+            if not self.should_stop and result['foo'] > 10:
+                self.should_stop = True
+            return self.should_stop
+
+    stopper = Stopper()
+    tune.run(my_trainable, stop=stopper.stop)
+
+Note that in the above example all trials will not stop immediately, but will do so once their current iterations are complete.
 
 Auto-Filled Results
 -------------------

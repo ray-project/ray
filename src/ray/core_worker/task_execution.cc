@@ -8,9 +8,11 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor)
+    CoreWorkerObjectInterface &object_interface, worker::Profiler &profiler,
+    const TaskExecutor &executor)
     : worker_context_(worker_context),
       object_interface_(object_interface),
+      profiler_(profiler),
       execution_callback_(executor),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_service_(std::make_shared<boost::asio::io_service>()),
@@ -38,6 +40,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     const TaskSpecification &task_spec,
     const ResourceMappingType &resource_ids,
     std::vector<std::shared_ptr<RayObject>> *results) {
+  idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
   resource_ids_ = resource_ids;
@@ -59,11 +62,12 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
+  idle_profile_event_ = std::unique_ptr<worker::ProfilingEvent>(new worker::ProfilingEvent(profiler_, "worker_idle"));
   return status;
 }
 
 void CoreWorkerTaskExecutionInterface::Run() {
-  // Run main IO service.
+  idle_profile_event_ = std::unique_ptr<worker::ProfilingEvent>(new worker::ProfilingEvent(profiler_, "worker_idle"));
   main_service_->run();
 }
 
@@ -73,12 +77,13 @@ void CoreWorkerTaskExecutionInterface::Stop() {
   // Delay the execution of io_service::stop() to avoid deadlock if
   // CoreWorkerTaskExecutionInterface::Stop is called inside a task.
   main_service_->post([main_service]() { main_service->stop(); });
+  idle_profile_event_.reset();
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
     const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args) {
   auto num_args = task.NumArgs();
-  (*args).resize(num_args);
+  args->resize(num_args);
 
   std::vector<ObjectID> object_ids_to_fetch;
   std::vector<int> indices;
