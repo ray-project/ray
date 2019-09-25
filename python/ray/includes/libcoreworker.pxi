@@ -1,20 +1,20 @@
 from libcpp.string cimport string as c_string
 
-from ray.includes.libcoreworker cimport CProfiler, CProfilingEvent
+from ray.includes.libcoreworker cimport CProfiler, CProfileEvent
 
 import json
 import traceback
 
-cdef class ProfilingEvent:
-    """Cython wrapper class of C++ `ray::worker::ProfilingEvent`."""
+cdef class ProfileEvent:
+    """Cython wrapper class of C++ `ray::worker::ProfileEvent`."""
     cdef:
-        unique_ptr[CProfilingEvent] inner
+        unique_ptr[CProfileEvent] inner
         dict extra_data
 
     @staticmethod
     cdef make(CProfiler &profiler, c_string &event_type, dict extra_data):
-        cdef ProfilingEvent self = ProfilingEvent.__new__(ProfilingEvent)
-        self.inner.reset(new CProfilingEvent(profiler, event_type))
+        cdef ProfileEvent self = ProfileEvent.__new__(ProfileEvent)
+        self.inner.reset(new CProfileEvent(profiler, event_type))
         self.extra_data = extra_data
         return self
 
@@ -37,6 +37,6 @@ cdef class ProfilingEvent:
 
         self.inner.get().SetExtraData(json.dumps(extra_data).encode("ascii"))
 
-        # Deleting the CProfilingEvent will add it to a queue to be pushed to
+        # Deleting the CProfileEvent will add it to a queue to be pushed to
         # the driver.
         self.inner.reset()

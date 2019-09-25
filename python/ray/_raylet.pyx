@@ -662,6 +662,6 @@ cdef class CoreWorker:
 
             return VectorToObjectIDs(return_ids)
 
-    def profiling_event(self, event_type, dict extra_data):
-        return ProfilingEvent.make(self.core_worker.get().Profiler(),
-                                   event_type.encode("ascii"), extra_data)
+    def profile_event(self, event_type, dict extra_data):
+        return ProfileEvent.make(self.core_worker.get().Profiler(),
+                                 event_type.encode("ascii"), extra_data)
