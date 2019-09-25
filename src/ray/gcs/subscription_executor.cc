@@ -63,11 +63,11 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribeAll(
       sub_all_callback = subscribe_all_callback_;
     }
     if (sub_one_callback != nullptr) {
-      sub_one_callback(id, result.back());
+      sub_one_callback(id, result);
     }
     if (sub_all_callback != nullptr) {
       RAY_CHECK(sub_one_callback == nullptr);
-      sub_all_callback(id, result.back());
+      sub_all_callback(id, result);
     }
   };
 
