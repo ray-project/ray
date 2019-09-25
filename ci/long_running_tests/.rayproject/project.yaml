@@ -24,6 +24,6 @@ commands:
     command: uptime
     help: "Check load of the workload."
 
-  - name: tail-log
+  - name: tail-output
     command: tmux capture-pane -p
-    help: "Show tail of the workoad log."
+    help: "Show tail of the workoad output."

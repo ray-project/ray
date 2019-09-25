@@ -21,7 +21,7 @@ You can start all the workloads with:
 
 This will start one EC2 instance per workload and will start the workloads
 running (one per instance). You can start a specific workload by specifying
-its name as an argument --workload= instead of "*". A list of available options
+its name as an argument ``--workload=`` instead of ``"*"``. A list of available options
 is available via `any session start run --help`.
 
 

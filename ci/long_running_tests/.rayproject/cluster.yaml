@@ -7,14 +7,14 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-east-1
-    availability_zone: us-east-1a
+    region: us-west-2
+    availability_zone: us-west-2a
 auth:
     ssh_user: ubuntu
 
 head_node:
     InstanceType: m5.xlarge
-    ImageId: ami-0d96d570269578cd7  # DLAMI 7/1/19
+    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -22,7 +22,7 @@ head_node:
 
 worker_nodes:
     InstanceType: m5.large
-    ImageId: ami-0d96d570269578cd7  # DLAMI 7/1/19
+    ImageId: ami-0888a3b5189309429  # DLAMI 7/1/19
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
