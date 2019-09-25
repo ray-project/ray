@@ -25,6 +25,7 @@ from ray.tests.utils import (
     relevant_errors,
     wait_for_condition,
     wait_for_errors,
+    wait_for_pid_to_exit,
 )
 
 
@@ -2387,7 +2388,7 @@ def kill_actor(actor):
     """A helper function that kills an actor process."""
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
-    time.sleep(1)
+    wait_for_pid_to_exit(pid)
 
 
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
