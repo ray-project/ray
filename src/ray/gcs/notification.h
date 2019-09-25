@@ -11,7 +11,7 @@ namespace gcs {
 template <typename Data>
 class Notification {
  public:
-  Notification(rpc::GcsChangeMode change_mode, std::vector<Data> data)
+  Notification(rpc::GcsChangeMode change_mode, Data data)
       : change_mode_(change_mode), data_(std::move(data)) {}
 
   Notification(Notification &&other) {
@@ -26,14 +26,14 @@ class Notification {
 
   rpc::GcsChangeMode GetGcsChangeMode() { return change_mode_; }
 
-  const std::vector<Data> &GetData() { return data_; }
+  const Data &GetData() { return data_; }
 
  private:
   rpc::GcsChangeMode change_mode_;
-  std::vector<Data> data_;
+  Data data_;
 };
 
-typedef Notification<rpc::ObjectTableData> ObjectNotification;
+typedef Notification<std::vector<rpc::ObjectTableData>> ObjectNotification;
 
 }  // namespace gcs
 
