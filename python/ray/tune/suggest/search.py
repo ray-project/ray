@@ -68,3 +68,9 @@ class SearchAlgorithm(object):
         Can return True before all trials have finished executing.
         """
         raise NotImplementedError
+
+    def save(self, checkpoint_dir):
+        raise NotImplementedError
+
+    def restore(self, checkpoint_dir):
+        raise NotImplementedError
