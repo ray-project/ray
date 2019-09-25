@@ -63,11 +63,11 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pip install tensorflow==2.0.0rc1 && python /ray/python/ray/tune/examples/async_hyperband_example.py \
+    "pip install tensorflow==2.0.0rc1 && python /ray/python/ray/tune/examples/async_hyperband_example.py" \
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    pip install tensorflow==1.15.0rc1 && python /ray/python/ray/tune/examples/async_hyperband_example.py \
+    "pip install tensorflow==1.15.0rc1 && python /ray/python/ray/tune/examples/async_hyperband_example.py" \
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
