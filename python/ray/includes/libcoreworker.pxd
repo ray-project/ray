@@ -29,8 +29,8 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
 
-    cdef cppclass CProfilingEvent "ray::worker::ProfilingEvent":
-        CProfilingEvent(CProfiler &profiler, const c_string &event_type)
+    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+        CProfileEvent(CProfiler &profiler, const c_string &event_type)
         void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
