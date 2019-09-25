@@ -29,9 +29,9 @@ Check Workload Statuses
 -----------------------
 
 To check up on the workloads, run either
-``any session --name="*" execute check --load``, which
+``any session --name="*" execute check-load``, which
 will print the load on each machine, or
-``any session --name="*" execute check --logs``, which
+``any session --name="*" execute tail-log``, which
 will print the tail of the output for each workload.
 
 To debug workloads that have failed, you may find it useful to ssh to the
@@ -43,7 +43,7 @@ Shut Down the Workloads
 -----------------------
 
 The instances running the workloads can all be killed by running
-``./shut_down_workloads.sh``.
+``any session stop --name "*"``.
 
 Adding a Workload
 -----------------
