@@ -1279,7 +1279,10 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
-        # Tell Ray to serialize StringIO with pickle.
+        # Tell Ray to serialize StringIO with pickle. We do this because
+        # Ray's default __dict__ serialization is incorrect for this type
+        # (the object's __dict__ is empty and therefore doesn't
+        # contain the full state of the object).
         register_custom_serializer(
             io.StringIO,
             use_pickle=True,
