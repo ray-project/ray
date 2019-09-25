@@ -74,6 +74,7 @@ include "includes/ray_config.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/libcoreworker.pxi"
 
 
 logger = logging.getLogger(__name__)
@@ -329,50 +330,6 @@ cdef class RayletClient:
                                            error_message.encode("ascii"),
                                            timestamp))
 
-    def push_profile_events(self, component_type, UniqueID component_id,
-                            node_ip_address, profile_data):
-        cdef:
-            GCSProfileTableData profile_info
-            GCSProfileEvent *profile_event
-            c_string event_type
-
-        if len(profile_data) == 0:
-            return  # Short circuit if there are no profile events.
-
-        profile_info.set_component_type(component_type.encode("ascii"))
-        profile_info.set_component_id(component_id.binary())
-        profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
-
-        for py_profile_event in profile_data:
-            profile_event = profile_info.add_profile_events()
-            if not isinstance(py_profile_event, dict):
-                raise TypeError(
-                    "Incorrect type for a profile event. Expected dict "
-                    "instead of '%s'" % str(type(py_profile_event)))
-            # TODO(rkn): If the dictionary is formatted incorrectly, that
-            # could lead to errors. E.g., if any of the strings are empty,
-            # that will cause segfaults in the node manager.
-            for key_string, event_data in py_profile_event.items():
-                if key_string == "event_type":
-                    if len(event_data) == 0:
-                        raise ValueError(
-                            "'event_type' should not be a null string.")
-                    profile_event.set_event_type(event_data.encode("ascii"))
-                elif key_string == "start_time":
-                    profile_event.set_start_time(float(event_data))
-                elif key_string == "end_time":
-                    profile_event.set_end_time(float(event_data))
-                elif key_string == "extra_data":
-                    if len(event_data) == 0:
-                        raise ValueError(
-                            "'extra_data' should not be a null string.")
-                    profile_event.set_extra_data(event_data.encode("ascii"))
-                else:
-                    raise ValueError(
-                        "Unknown profile event key '%s'" % key_string)
-
-        check_status(self.client.PushProfileEvents(profile_info))
-
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef:
             CActorCheckpointID checkpoint_id
@@ -408,12 +365,14 @@ cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
-                  JobID job_id, GcsClientOptions gcs_options, log_dir):
+                  JobID job_id, GcsClientOptions gcs_options, log_dir,
+                  node_ip_address):
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], log_dir.encode("utf-8"), NULL, False))
+            gcs_options.native()[0], log_dir.encode("utf-8"),
+            node_ip_address.encode("utf-8"), NULL, False))
 
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "
@@ -620,3 +579,7 @@ cdef class CoreWorker:
             message = self.core_worker.get().Objects().MemoryUsageString()
 
         return message.decode("utf-8")
+
+    def profiling_event(self, event_type, dict extra_data):
+        return ProfilingEvent.make(self.core_worker.get().Profiler(),
+                                   event_type.encode("ascii"), extra_data)

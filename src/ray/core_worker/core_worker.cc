@@ -7,29 +7,21 @@ CoreWorker::CoreWorker(
     const WorkerType worker_type, const Language language,
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-    const std::string &log_dir,
+    const std::string &log_dir, const std::string &node_ip_address,
     const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
     bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
       log_dir_(log_dir),
-      worker_context_(worker_type, job_id),
+      worker_context_(worker_type, job_id, node_ip_address),
       io_work_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (!log_dir_.empty()) {
     std::stringstream app_name;
-    if (language_ == Language::PYTHON) {
-      app_name << "python-";
-    } else if (language == Language::JAVA) {
-      app_name << "java-";
-    }
-    if (worker_type_ == WorkerType::DRIVER) {
-      app_name << "core-driver-" << worker_context_.GetWorkerID();
-    } else {
-      app_name << "core-worker-" << worker_context_.GetWorkerID();
-    }
+    app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
+             << worker_context_.GetWorkerID();
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
@@ -38,6 +30,10 @@ CoreWorker::CoreWorker(
   gcs_client_ =
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+
+  // Initialize profiler.
+  profiler_ = std::unique_ptr<worker::Profiler>(
+      new worker::Profiler(worker_context_, gcs_client_));
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(

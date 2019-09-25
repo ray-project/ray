@@ -10,11 +10,14 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const JobID &job_id);
+  WorkerContext(WorkerType worker_type, const JobID &job_id,
+                const std::string &node_ip_address);
 
   const WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;
+
+  const std::string &GetNodeIPAddress() const;
 
   const JobID &GetCurrentJobID() const;
 
@@ -44,6 +47,8 @@ class WorkerContext {
 
   /// ID for this worker.
   const WorkerID worker_id_;
+
+  const std::string node_ip_address_;
 
   /// Job ID for this worker.
   JobID current_job_id_;

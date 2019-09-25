@@ -46,10 +46,12 @@ struct WorkerThreadContext {
 thread_local std::unique_ptr<WorkerThreadContext> WorkerContext::thread_context_ =
     nullptr;
 
-WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
+WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id,
+                             const std::string &node_ip_address)
     : worker_type_(worker_type),
       worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                     : WorkerID::FromRandom()),
+      node_ip_address_(node_ip_address),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
       current_actor_id_(ActorID::Nil()) {
   // For worker main thread which initializes the WorkerContext,
@@ -63,6 +65,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
 
 const WorkerID &WorkerContext::GetWorkerID() const { return worker_id_; }
+
+const std::string &WorkerContext::GetNodeIPAddress() const { return node_ip_address_; }
 
 int WorkerContext::GetNextTaskIndex() { return GetThreadContext().GetNextTaskIndex(); }
 
