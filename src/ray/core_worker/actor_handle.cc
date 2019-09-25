@@ -28,7 +28,7 @@ std::unique_ptr<ActorHandle> ActorHandle::Fork() {
       std::unique_ptr<ActorHandle>(new ActorHandle(inner_));
   child->inner_ = inner_;
   const class ActorHandleID new_actor_handle_id =
-      ComputeForkedActorHandleId(ActorHandleID(), num_forks_++);
+      ComputeForkedActorHandleId(this->ActorHandleID(), num_forks_++);
   // Notify the backend to expect this new actor handle. The backend will
   // not release the cursor for any new handles until the first task for
   // each of the new handles is submitted.
@@ -89,7 +89,8 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
   const ObjectID actor_creation_dummy_object_id =
       ObjectID::ForTaskReturn(actor_creation_task_id, /*index=*/1,
                               /*transport_type=*/static_cast<int>(transport_type));
-  builder.SetActorTaskSpec(ActorID(), ActorHandleID(), actor_creation_dummy_object_id,
+  builder.SetActorTaskSpec(ActorID(), this->ActorHandleID(),
+                           actor_creation_dummy_object_id,
                            /*previous_actor_task_dummy_object_id=*/ActorCursor(),
                            task_counter_++, new_actor_handles_);
 
