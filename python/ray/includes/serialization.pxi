@@ -115,8 +115,7 @@ cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
     # | prefix | num_threads * chunk_size | suffix |.
     # Each thread gets a "chunk" of k blocks.
 
-    for i in prange(num_threads, nogil=True, num_threads=num_threads,
-                    schedule='static', chunksize=1):
+    for i in prange(num_threads, nogil=True, num_threads=num_threads):
         memcpy(dst + prefix + i * chunk_size, left + i * chunk_size,
                chunk_size)
         if i == 0:
