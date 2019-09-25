@@ -306,7 +306,7 @@ def test_complex_serialization(ray_start_regular):
         assert_equal(obj, ray.get(ray.put(obj)))
 
     # Test StringIO serialization
-    s = io.StringIO("Hello, world!\n")
+    s = io.StringIO(u"Hello, world!\n")
     s.seek(0)
     line = s.readline()
     s.seek(0)
