@@ -11,7 +11,7 @@ namespace worker {
 
 class Profiler {
  public:
-  Profiler(WorkerContext &worker_context,
+  Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
            std::unique_ptr<gcs::RedisGcsClient> &gcs_client);
 
   ~Profiler() {
@@ -27,19 +27,22 @@ class Profiler {
   void AddEvent(const rpc::ProfileTableData::ProfileEvent &event);
 
  private:
-  void PushEvents();
+  // Periodically flush all of the events that have been added to the GCS.
+  void PeriodicallyFlushEvents();
 
   rpc::ProfileTableData profile_info_;
-
-  // Used to gracefully kill the background thread.
-  bool killed_ = false;
-  std::mutex kill_mutex_;
-  std::condition_variable kill_cond_;
-
-  std::mutex mutex_;
-  std::thread thread_;
+  std::mutex profile_info_mutex_;
   WorkerContext &worker_context_;
   std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
+
+  // Background thread that runs PeriodicalllyFlushEvents().
+  std::thread thread_;
+  // Flag checked by the background thread so it knows when to exit.
+  bool killed_ = false;
+  // Mutex guarding the killed_ flag.
+  std::mutex kill_mutex_;
+  // Condition variable used to signal to the thread that killed_ has been set.
+  std::condition_variable kill_cond_;
 };
 
 class ProfilingEvent {

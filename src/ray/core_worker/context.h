@@ -10,14 +10,11 @@ struct WorkerThreadContext;
 
 class WorkerContext {
  public:
-  WorkerContext(WorkerType worker_type, const JobID &job_id,
-                const std::string &node_ip_address);
+  WorkerContext(WorkerType worker_type, const JobID &job_id);
 
   const WorkerType GetWorkerType() const;
 
   const WorkerID &GetWorkerID() const;
-
-  const std::string &GetNodeIPAddress() const;
 
   const JobID &GetCurrentJobID() const;
 
@@ -42,21 +39,10 @@ class WorkerContext {
   int GetNextPutIndex();
 
  private:
-  /// Type of the worker.
   const WorkerType worker_type_;
-
-  /// ID for this worker.
   const WorkerID worker_id_;
-
-  const std::string node_ip_address_;
-
-  /// Job ID for this worker.
   JobID current_job_id_;
-
-  /// ID of current actor.
   ActorID current_actor_id_;
-
-  /// Whether current actor accepts direct calls.
   bool current_actor_use_direct_call_;
 
  private:

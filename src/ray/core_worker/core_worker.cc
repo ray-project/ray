@@ -14,7 +14,7 @@ CoreWorker::CoreWorker(
       language_(language),
       raylet_socket_(raylet_socket),
       log_dir_(log_dir),
-      worker_context_(worker_type, job_id, node_ip_address),
+      worker_context_(worker_type, job_id),
       io_work_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
@@ -33,7 +33,7 @@ CoreWorker::CoreWorker(
 
   // Initialize profiler.
   profiler_ = std::unique_ptr<worker::Profiler>(
-      new worker::Profiler(worker_context_, gcs_client_));
+      new worker::Profiler(worker_context_, node_ip_address, gcs_client_));
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
