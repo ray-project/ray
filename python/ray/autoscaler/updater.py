@@ -53,6 +53,7 @@ class NodeUpdater(object):
                  file_mounts,
                  initialization_commands,
                  setup_commands,
+                 ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
                  exit_on_update_fail=False,
@@ -80,6 +81,7 @@ class NodeUpdater(object):
         }
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
+        self.ray_start_commands = ray_start_commands
         self.exit_on_update_fail = exit_on_update_fail
         self.runtime_hash = runtime_hash
 
@@ -222,21 +224,32 @@ class NodeUpdater(object):
             ssh_ok = self.wait_for_ssh(deadline)
             assert ssh_ok, "Unable to SSH to node"
 
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
-        self.sync_file_mounts(self.rsync_up)
+        node_tags = self.provider.node_tags(self.node_id)
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+            logger.info(
+                "NodeUpdater: {} already up-to-date, skip to ray start".format(
+                    self.node_id))
+        else:
+            self.provider.set_node_tags(self.node_id,
+                                        {TAG_RAY_NODE_STATUS: "syncing-files"})
+            self.sync_file_mounts(self.rsync_up)
 
-        # Run init commands
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "setting-up"})
-        m = "{}: Initialization commands completed".format(self.node_id)
-        with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.initialization_commands:
-                self.ssh_cmd(cmd, exit_on_fail=self.exit_on_update_fail)
+            # Run init commands
+            self.provider.set_node_tags(self.node_id,
+                                        {TAG_RAY_NODE_STATUS: "setting-up"})
+            m = "{}: Initialization commands completed".format(self.node_id)
+            with LogTimer("NodeUpdater: {}".format(m)):
+                for cmd in self.initialization_commands:
+                    self.ssh_cmd(cmd, exit_on_fail=self.exit_on_update_fail)
 
-        m = "{}: Setup commands completed".format(self.node_id)
+            m = "{}: Setup commands completed".format(self.node_id)
+            with LogTimer("NodeUpdater: {}".format(m)):
+                for cmd in self.setup_commands:
+                    self.ssh_cmd(cmd, exit_on_fail=self.exit_on_update_fail)
+
+        m = "{}: Ray start commands completed".format(self.node_id)
         with LogTimer("NodeUpdater: {}".format(m)):
-            for cmd in self.setup_commands:
+            for cmd in self.ray_start_commands:
                 self.ssh_cmd(cmd, exit_on_fail=self.exit_on_update_fail)
 
     def rsync_up(self, source, target, redirect=None):

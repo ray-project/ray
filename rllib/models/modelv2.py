@@ -3,7 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.models.model import restore_original_dimensions
+from ray.rllib.models.model import restore_original_dimensions, flatten
 from ray.rllib.utils.annotations import PublicAPI
 
 
@@ -146,8 +146,12 @@ class ModelV2(object):
         restored = input_dict.copy()
         restored["obs"] = restore_original_dimensions(
             input_dict["obs"], self.obs_space, self.framework)
-        restored["obs_flat"] = input_dict["obs"]
-        res = self.forward(restored, state or [], seq_lens)
+        if len(input_dict["obs"].shape) > 2:
+            restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
+        else:
+            restored["obs_flat"] = input_dict["obs"]
+        with self.context():
+            res = self.forward(restored, state or [], seq_lens)
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
@@ -195,3 +199,20 @@ class ModelV2(object):
     def last_output(self):
         """Returns the last output returned from calling the model."""
         return self._last_output
+
+    def context(self):
+        """Returns a contextmanager for the current forward pass."""
+        return NullContextManager()
+
+
+class NullContextManager(object):
+    """No-op context manager"""
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass

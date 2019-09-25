@@ -214,11 +214,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
             pass
 
         register_trainable("foo", train)
+        Experiment("test", train)
         register_trainable("foo", B)
+        Experiment("test", B)
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
+        self.assertRaises(TuneError, lambda: Experiment("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
+        self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
-    def testRegisterTrainableCallable(self):
+    def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
             reporter(timesteps_total=steps, done=True)
 
@@ -230,6 +234,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "run": "test",
             }
         })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
+        [trial] = tune.run(partial(dummy_fn, steps=steps)).trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
@@ -445,6 +452,17 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 }).trials
         [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
+
+    def testStoppingFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        def stop(trial_id, result):
+            return result["test"] > 6
+
+        [trial] = tune.run(train, stop=stop).trials
+        self.assertEqual(trial.last_result["training_iteration"], 8)
 
     def testEarlyReturn(self):
         def train(config, reporter):
@@ -1153,6 +1171,8 @@ class TestSyncFunctionality(unittest.TestCase):
         os.remove(test_file_path)
 
     def testNoSync(self):
+        """Sync should not run on a single node."""
+
         def sync_func(source, target):
             pass
 
@@ -1165,9 +1185,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "stop": {
                         "training_iteration": 1
                     },
-                    "upload_dir": "test",
-                    "sync_to_driver": sync_func,
-                    "sync_to_cloud": sync_func
+                    "sync_to_driver": sync_func
                 }).trials
             self.assertEqual(mock_sync.call_count, 0)
 
@@ -1202,6 +1220,7 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].max_failures, 5)
+        self.assertEqual(trials[0].evaluated_params, {})
         self.assertEqual(trials[0].local_dir,
                          os.path.join(DEFAULT_RESULTS_DIR, "tune-pong"))
         self.assertEqual(trials[1].experiment_tag, "1")
@@ -1218,6 +1237,7 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"foo": 4})
+        self.assertEqual(trials[0].evaluated_params, {"foo": 4})
         self.assertEqual(trials[0].experiment_tag, "0_foo=4")
 
     def testGridSearch(self):
@@ -1230,18 +1250,72 @@ class VariantGeneratorTest(unittest.TestCase):
                 "foo": {
                     "grid_search": [1, 2, 3]
                 },
+                "baz": "asd",
             },
         }, "grid_search")
         trials = list(trials)
         self.assertEqual(len(trials), 6)
-        self.assertEqual(trials[0].config, {"bar": True, "foo": 1})
+        self.assertEqual(trials[0].config, {
+            "bar": True,
+            "foo": 1,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[0].evaluated_params, {
+            "bar": True,
+            "foo": 1,
+        })
         self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1")
-        self.assertEqual(trials[1].config, {"bar": False, "foo": 1})
+
+        self.assertEqual(trials[1].config, {
+            "bar": False,
+            "foo": 1,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[1].evaluated_params, {
+            "bar": False,
+            "foo": 1,
+        })
         self.assertEqual(trials[1].experiment_tag, "1_bar=False,foo=1")
-        self.assertEqual(trials[2].config, {"bar": True, "foo": 2})
-        self.assertEqual(trials[3].config, {"bar": False, "foo": 2})
-        self.assertEqual(trials[4].config, {"bar": True, "foo": 3})
-        self.assertEqual(trials[5].config, {"bar": False, "foo": 3})
+
+        self.assertEqual(trials[2].config, {
+            "bar": True,
+            "foo": 2,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[2].evaluated_params, {
+            "bar": True,
+            "foo": 2,
+        })
+
+        self.assertEqual(trials[3].config, {
+            "bar": False,
+            "foo": 2,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[3].evaluated_params, {
+            "bar": False,
+            "foo": 2,
+        })
+
+        self.assertEqual(trials[4].config, {
+            "bar": True,
+            "foo": 3,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[4].evaluated_params, {
+            "bar": True,
+            "foo": 3,
+        })
+
+        self.assertEqual(trials[5].config, {
+            "bar": False,
+            "foo": 3,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[5].evaluated_params, {
+            "bar": False,
+            "foo": 3,
+        })
 
     def testGridSearchAndEval(self):
         trials = self.generate_trials({
@@ -1250,11 +1324,22 @@ class VariantGeneratorTest(unittest.TestCase):
                 "qux": tune.sample_from(lambda spec: 2 + 2),
                 "bar": grid_search([True, False]),
                 "foo": grid_search([1, 2, 3]),
+                "baz": "asd",
             },
         }, "grid_eval")
         trials = list(trials)
         self.assertEqual(len(trials), 6)
-        self.assertEqual(trials[0].config, {"bar": True, "foo": 1, "qux": 4})
+        self.assertEqual(trials[0].config, {
+            "bar": True,
+            "foo": 1,
+            "qux": 4,
+            "baz": "asd",
+        })
+        self.assertEqual(trials[0].evaluated_params, {
+            "bar": True,
+            "foo": 1,
+            "qux": 4,
+        })
         self.assertEqual(trials[0].experiment_tag, "0_bar=True,foo=1,qux=4")
 
     def testConditionResolution(self):
@@ -1269,6 +1354,8 @@ class VariantGeneratorTest(unittest.TestCase):
         trials = list(trials)
         self.assertEqual(len(trials), 1)
         self.assertEqual(trials[0].config, {"x": 1, "y": 2, "z": 3})
+        self.assertEqual(trials[0].evaluated_params, {"y": 2, "z": 3})
+        self.assertEqual(trials[0].experiment_tag, "0_y=2,z=3")
 
     def testDependentLambda(self):
         trials = self.generate_trials({
@@ -1298,6 +1385,36 @@ class VariantGeneratorTest(unittest.TestCase):
         self.assertEqual(len(trials), 2)
         self.assertEqual(trials[0].config, {"x": 100, "y": 1})
         self.assertEqual(trials[1].config, {"x": 200, "y": 1})
+
+    def testNestedValues(self):
+        trials = self.generate_trials({
+            "run": "PPO",
+            "config": {
+                "x": {
+                    "y": {
+                        "z": tune.sample_from(lambda spec: 1)
+                    }
+                },
+                "y": tune.sample_from(lambda spec: 12),
+                "z": tune.sample_from(lambda spec: spec.config.x.y.z * 100),
+            },
+        }, "nested_values")
+        trials = list(trials)
+        self.assertEqual(len(trials), 1)
+        self.assertEqual(trials[0].config, {
+            "x": {
+                "y": {
+                    "z": 1
+                }
+            },
+            "y": 12,
+            "z": 100
+        })
+        self.assertEqual(trials[0].evaluated_params, {
+            "x/y/z": 1,
+            "y": 12,
+            "z": 100
+        })
 
     def testLogUniform(self):
         sampler = tune.loguniform(1e-10, 1e-1).func
@@ -1530,6 +1647,14 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[1].status, Trial.RUNNING)
         self.assertEqual(trials[2].status, Trial.PENDING)
         self.assertEqual(trials[3].status, Trial.PENDING)
+
+    def testResourceNumericalError(self):
+        resource = Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
+        small_resource = Resources(
+            cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
+        for i in range(3):
+            resource = Resources.subtract(resource, small_resource)
+        self.assertTrue(resource.is_nonnegative())
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)

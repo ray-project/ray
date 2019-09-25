@@ -70,16 +70,20 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ReturnId(size_t return_index) const;
 
-  const uint8_t *ArgVal(size_t arg_index) const;
+  const uint8_t *ArgData(size_t arg_index) const;
 
-  size_t ArgValLength(size_t arg_index) const;
+  size_t ArgDataSize(size_t arg_index) const;
+
+  const uint8_t *ArgMetadata(size_t arg_index) const;
+
+  size_t ArgMetadataSize(size_t arg_index) const;
 
   /// Return the resources that are to be acquired during the execution of this
   /// task.
   ///
   /// \return The resources that will be acquired during the execution of this
   /// task.
-  const ResourceSet GetRequiredResources() const;
+  const ResourceSet &GetRequiredResources() const;
 
   /// Return the resources that are required for a task to be placed on a node.
   /// This will typically be the same as the resources acquired during execution
@@ -90,7 +94,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// so the placement of the actor should take this into account.
   ///
   /// \return The resources that are required to place a task on a node.
-  const ResourceSet GetRequiredPlacementResources() const;
+  const ResourceSet &GetRequiredPlacementResources() const;
 
   bool IsDriverTask() const;
 
@@ -127,6 +131,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<ActorHandleID> NewActorHandles() const;
 
+  bool IsDirectCall() const;
+
   ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;
@@ -134,9 +140,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  private:
   void ComputeResources();
   /// Field storing required resources. Initalized in constructor.
-  ResourceSet required_resources_;
+  /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
+  /// instead of keeping shared ptrs here.
+  std::shared_ptr<ResourceSet> required_resources_;
   /// Field storing required placement resources. Initalized in constructor.
-  ResourceSet required_placement_resources_;
+  std::shared_ptr<ResourceSet> required_placement_resources_;
 };
 
 }  // namespace ray

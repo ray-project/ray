@@ -1,5 +1,6 @@
 package org.ray.api.test;
 
+import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import java.io.File;
@@ -44,13 +45,17 @@ public abstract class BaseMultiLanguageTest {
     }
   }
 
-  @BeforeClass
-  public void setUp() {
+  private void checkMultiLanguageTestFlag() {
     if (!"1".equals(System.getenv("ENABLE_MULTI_LANGUAGE_TESTS"))) {
       LOGGER.info("Skip Multi-language tests because environment variable "
           + "ENABLE_MULTI_LANGUAGE_TESTS isn't set");
       throw new SkipException("Skip test.");
     }
+  }
+
+  @BeforeClass(alwaysRun = true)
+  public void setUp() {
+    checkMultiLanguageTestFlag();
 
     // Delete existing socket files.
     for (String socket : ImmutableList.of(RAYLET_SOCKET_NAME, PLASMA_STORE_SOCKET_NAME)) {
@@ -63,7 +68,7 @@ public abstract class BaseMultiLanguageTest {
     // Start ray cluster.
     String workerOptions =
         " -classpath " + System.getProperty("java.class.path");
-    final List<String> startCommand = ImmutableList.of(
+    List<String> startCommand = ImmutableList.of(
         "ray",
         "start",
         "--head",
@@ -74,6 +79,13 @@ public abstract class BaseMultiLanguageTest {
         "--include-java",
         "--java-worker-options=" + workerOptions
     );
+    String numWorkersPerProcessJava = System
+        .getProperty("ray.raylet.config.num_workers_per_process_java");
+    if (!Strings.isNullOrEmpty(numWorkersPerProcessJava)) {
+      startCommand = ImmutableList.<String>builder().addAll(startCommand)
+          .add(String.format("--internal-config={\"num_workers_per_process_java\": %s}",
+              numWorkersPerProcessJava)).build();
+    }
     if (!executeCommand(startCommand, 10, getRayStartEnv())) {
       throw new RuntimeException("Couldn't start ray cluster.");
     }
@@ -92,8 +104,10 @@ public abstract class BaseMultiLanguageTest {
     return ImmutableMap.of();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void tearDown() {
+    checkMultiLanguageTestFlag();
+
     // Disconnect to the cluster.
     Ray.shutdown();
     System.clearProperty("ray.redis.address");

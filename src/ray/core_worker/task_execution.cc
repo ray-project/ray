@@ -22,12 +22,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          raylet_client, object_interface_, *main_service_, worker_server_, func)));
+          worker_context_, raylet_client, object_interface_, *main_service_,
+          worker_server_, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(object_interface_, *main_service_,
-                                                worker_server_, func)));
+          new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+                                                *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -89,10 +90,17 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       indices.push_back(i);
     } else {
       // pass by value.
-      (*args)[i] = std::make_shared<RayObject>(
-          std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgVal(i)),
-                                              task.ArgValLength(i)),
-          nullptr);
+      std::shared_ptr<LocalMemoryBuffer> data = nullptr;
+      if (task.ArgDataSize(i)) {
+        data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
+                                                   task.ArgDataSize(i));
+      }
+      std::shared_ptr<LocalMemoryBuffer> metadata = nullptr;
+      if (task.ArgMetadataSize(i)) {
+        metadata = std::make_shared<LocalMemoryBuffer>(
+            const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
+      }
+      (*args)[i] = std::make_shared<RayObject>(data, metadata);
     }
   }
 

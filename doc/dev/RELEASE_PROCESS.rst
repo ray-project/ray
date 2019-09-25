@@ -7,8 +7,8 @@ This document describes the process for creating new releases.
    package version. See `this example`_.
 
 2. **Bump version on Ray master branch again:** Create a pull request to
-   increment the version of the master branch. The format of the new version is
-   as follows:
+   increment the version of the master branch, see `this PR`_. The format of
+   the new version is as follows:
 
    New minor release (e.g., 0.7.0): Increment the minor version and append
    ``.dev0`` to the version. For example, if the version of the new release is
@@ -19,7 +19,12 @@ This document describes the process for creating new releases.
    of the new release is 0.7.1, the master branch needs to be updated to
    0.8.0.dev1.
 
-   This can be merged as soon as step 1 is complete.
+   After the wheels for the new version are built, create and merge a
+   `PR like this`_.
+
+   These should be merged as soon as step 1 is complete to make sure the links
+   in the documentation keep working and the master stays on the development
+   version.
 
 3. **Create a release branch:** Create the branch from the version bump PR (the
    one from step 1, not step 2). In order to create the branch, locally checkout
@@ -42,8 +47,8 @@ This document describes the process for creating new releases.
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
    cherry-pick the relevant commit  (using ``git cherry-pick``) onto the release
-   branch. 2) Revert the commit that introduced the bug on the release branch
-   (using ``git revert``), but not on the master.
+   branch (recommended). 2) Revert the commit that introduced the bug on the
+   release branch (using ``git revert``), but not on the master (not recommended).
 
    These changes should then be pushed directly to the release branch.
 
@@ -128,6 +133,7 @@ This document describes the process for creating new releases.
     list. You will need to create a GitHub token for this task. Example usage:
 
     .. code-block:: bash
+
       python get_contributors.py --help
       python get_contributors.py \
         --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
@@ -149,4 +155,6 @@ This document describes the process for creating new releases.
     process so that whoever manages the release next will have an easier time.
 
 .. _`this example`: https://github.com/ray-project/ray/pull/4226
+.. _`this PR`: https://github.com/ray-project/ray/pull/5523
+.. _`PR like this`: https://github.com/ray-project/ray/pull/5585
 .. _`GitHub website`: https://github.com/ray-project/ray/releases

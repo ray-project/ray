@@ -34,8 +34,8 @@ def build_data(data_path, size, dataset):
     def load_transform(value):
         # Convert these examples to dense labels and processed images.
         record = tf.reshape(tf.decode_raw(value, tf.uint8), [record_bytes])
-        label = tf.cast(tf.slice(record, [label_offset], [label_bytes]),
-                        tf.int32)
+        label = tf.cast(
+            tf.slice(record, [label_offset], [label_bytes]), tf.int32)
         # Convert from string to [depth * height * width] to
         # [depth, height, width].
         depth_major = tf.reshape(
@@ -44,10 +44,11 @@ def build_data(data_path, size, dataset):
         # Convert from [depth, height, width] to [height, width, depth].
         image = tf.cast(tf.transpose(depth_major, [1, 2, 0]), tf.float32)
         return (image, label)
+
     # Read examples from files in the filename queue.
     data_files = tf.gfile.Glob(data_path)
-    data = tf.contrib.data.FixedLengthRecordDataset(data_files,
-                                                    record_bytes=record_bytes)
+    data = tf.contrib.data.FixedLengthRecordDataset(
+        data_files, record_bytes=record_bytes)
     data = data.map(load_transform)
     data = data.batch(size)
     iterator = data.make_one_shot_iterator()
@@ -102,8 +103,7 @@ def build_input(data, batch_size, dataset, train):
     labels = tf.reshape(labels, [batch_size, 1])
     indices = tf.reshape(tf.range(0, batch_size, 1), [batch_size, 1])
     labels = tf.sparse_to_dense(
-        tf.concat([indices, labels], 1),
-        [batch_size, num_classes], 1.0, 0.0)
+        tf.concat([indices, labels], 1), [batch_size, num_classes], 1.0, 0.0)
 
     assert len(images.get_shape()) == 4
     assert images.get_shape()[0] == batch_size

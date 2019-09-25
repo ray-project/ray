@@ -9,6 +9,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
 import ray.services as services
 from ray.autoscaler.commands import (
@@ -235,15 +236,11 @@ def start(node_ip_address, redis_address, address, redis_port,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
-    if redis_address is not None:
-        redis_address = services.address_to_ip(redis_address)
-    if address:
-        if redis_address:
-            raise ValueError(
-                "You should specify address instead of redis_address.")
-        if address == "auto":
-            address = services.find_redis_address_or_die()
-        redis_address = address
+
+    if redis_address is not None or address is not None:
+        (redis_address, redis_address_ip,
+         redis_address_port) = services.validate_redis_address(
+             address, redis_address)
 
     try:
         resources = json.loads(resources)
@@ -314,7 +311,7 @@ def start(node_ip_address, redis_address, address, redis_port,
             include_java=False,
         )
 
-        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=False)
+        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=block)
         redis_address = node.redis_address
 
         logger.info(
@@ -338,10 +335,10 @@ def start(node_ip_address, redis_address, address, redis_port,
         # Start Ray on a non-head node.
         if redis_port is not None:
             raise Exception("If --head is not passed in, --redis-port is not "
-                            "allowed")
+                            "allowed.")
         if redis_shard_ports is not None:
             raise Exception("If --head is not passed in, --redis-shard-ports "
-                            "is not allowed")
+                            "is not allowed.")
         if redis_address is None:
             raise Exception("If --head is not passed in, --redis-address must "
                             "be provided.")
@@ -358,12 +355,10 @@ def start(node_ip_address, redis_address, address, redis_port,
             raise ValueError("--include-java should only be set for the head "
                              "node.")
 
-        redis_ip_address, redis_port = redis_address.split(":")
-
         # Wait for the Redis server to be started. And throw an exception if we
         # can't connect to it.
         services.wait_for_redis_to_start(
-            redis_ip_address, int(redis_port), password=redis_password)
+            redis_address_ip, redis_address_port, password=redis_password)
 
         # Create a Redis client.
         redis_client = services.create_redis_client(
@@ -384,13 +379,12 @@ def start(node_ip_address, redis_address, address, redis_port,
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
         ray_params.update(redis_address=redis_address)
-        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=False)
+        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=block)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")
 
     if block:
-        import time
         while True:
             time.sleep(1)
             deceased = node.dead_processes()
@@ -399,8 +393,8 @@ def start(node_ip_address, redis_address, address, redis_port,
                 for process_type, process in deceased:
                     logger.error("\t{} died with exit code {}".format(
                         process_type, process.returncode))
+                # shutdown_at_exit will handle cleanup.
                 logger.error("Killing remaining processes and exiting...")
-                node.kill_all_processes(check_alive=False, allow_graceful=True)
                 sys.exit(1)
 
 
@@ -409,22 +403,40 @@ def stop():
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
-        "raylet",
-        "plasma_store_server",
-        "raylet_monitor",
-        "monitor.py",
-        "redis-server",
-        "default_worker.py",  # Python worker.
-        " ray_",  # Python worker.
-        "org.ray.runtime.runner.worker.DefaultWorker",  # Java worker.
-        "log_monitor.py",
-        "reporter.py",
-        "dashboard.py",
+        # The first element is the substring to filter.
+        # The second element, if True, is to filter ps results by command name
+        # (only the first 15 charactors of the executable name);
+        # if False, is to filter ps results by command with all its arguments.
+        # See STANDARD FORMAT SPECIFIERS section of
+        # http://man7.org/linux/man-pages/man1/ps.1.html
+        # about comm and args. This can help avoid killing non-ray processes.
+        ["raylet", True],
+        ["plasma_store", True],
+        ["raylet_monitor", True],
+        ["monitor.py", False],
+        ["redis-server", True],
+        ["default_worker.py", False],  # Python worker.
+        [" ray_", True],  # Python worker.
+        ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
+        ["log_monitor.py", False],
+        ["reporter.py", False],
+        ["dashboard.py", False],
     ]
 
     for process in processes_to_kill:
-        command = ("kill -9 $(ps aux | grep '" + process +
-                   "' | grep -v grep | " + "awk '{ print $2 }') 2> /dev/null")
+        filter = process[0]
+        if process[1]:
+            format = "pid,comm"
+            # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
+            # comm only prints the first 15 characters of the executable name.
+            if len(filter) > 15:
+                raise ValueError("The filter string should not be more than" +
+                                 " 15 characters. Actual length: " +
+                                 str(len(filter)) + ". Filter: " + filter)
+        else:
+            format = "pid,args"
+        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
+                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
         subprocess.call([command], shell=True)
 
 
@@ -551,6 +563,8 @@ def monitor(cluster_config_file, lines, cluster_name):
     default=False,
     help="Start the cluster if needed.")
 @click.option(
+    "--screen", is_flag=True, default=False, help="Run the command in screen.")
+@click.option(
     "--tmux", is_flag=True, default=False, help="Run the command in tmux.")
 @click.option(
     "--cluster-name",
@@ -560,8 +574,8 @@ def monitor(cluster_config_file, lines, cluster_name):
     help="Override the configured cluster name.")
 @click.option(
     "--new", "-N", is_flag=True, help="Force creation of a new screen.")
-def attach(cluster_config_file, start, tmux, cluster_name, new):
-    attach_cluster(cluster_config_file, start, tmux, cluster_name, new)
+def attach(cluster_config_file, start, screen, tmux, cluster_name, new):
+    attach_cluster(cluster_config_file, start, screen, tmux, cluster_name, new)
 
 
 @cli.command()
@@ -737,7 +751,7 @@ workers=$(
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy --pid $pid --dump;
+    sudo $pyspy dump --pid $pid;
     echo;
 done
     """
