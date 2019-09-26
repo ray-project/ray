@@ -759,6 +759,12 @@ done
 
 
 @cli.command()
+def microbenchmark():
+    from ray.ray_perf import main
+    main()
+
+
+@cli.command()
 @click.option(
     "--redis-address",
     required=False,
@@ -791,6 +797,7 @@ cli.add_command(teardown, name="down")
 cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
+cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(timeline)
 cli.add_command(project_cli)
