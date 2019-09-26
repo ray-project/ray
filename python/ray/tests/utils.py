@@ -120,13 +120,14 @@ def relevant_errors(error_type):
     return [error for error in flat_errors() if error["type"] == error_type]
 
 
-def wait_for_errors(error_type, num_errors, timeout=10):
+def wait_for_errors(error_type, num_errors, timeout=20):
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len(relevant_errors(error_type)) >= num_errors:
             return
         time.sleep(0.1)
-    raise Exception("Timing out of wait.")
+    raise Exception("Timed out waiting for {} {} errors.".format(
+        num_errors, error_type))
 
 
 def wait_for_condition(condition_predictor,
