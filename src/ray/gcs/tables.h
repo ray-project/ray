@@ -12,8 +12,8 @@
 #include "ray/util/logging.h"
 
 #include "ray/gcs/callback.h"
-#include "ray/gcs/notification.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/gcs/subscription_notification.h"
 #include "ray/protobuf/gcs.pb.h"
 
 struct redisAsyncContext;
@@ -95,9 +95,9 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   using Callback = std::function<void(RedisGcsClient *client, const ID &id,
                                       const std::vector<Data> &data)>;
 
-  using NotificationCallback =
-      std::function<void(RedisGcsClient *client, const ID &id,
-                         const Notification<std::vector<Data>> &notification)>;
+  using NotificationCallback = std::function<void(
+      RedisGcsClient *client, const ID &id,
+      const SubscriptionNotification<std::vector<Data>> &notification)>;
 
   /// The callback to call when a write to a key succeeds.
   using WriteCallback = typename LogInterface<ID, Data>::WriteCallback;
