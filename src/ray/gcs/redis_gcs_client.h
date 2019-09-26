@@ -20,6 +20,8 @@ class RedisContext;
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
   friend class SubscriptionExecutorTest;
+  friend class ObjectStateAccessor;
+  friend class SetTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -38,9 +40,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
 
   /// Disconnect with GCS Service. Non-thread safe.
   void Disconnect();
-
-  /// Use method Objects() instead
-  ObjectTable &object_table();
 
   // TODO: Some API for getting the error on the driver
   raylet::TaskTable &raylet_task_table();
@@ -79,6 +78,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
 
   /// Use method Actors() instead
   ActorTable &actor_table();
+
+  /// Use method Objects() instead
+  ObjectTable &object_table();
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;
