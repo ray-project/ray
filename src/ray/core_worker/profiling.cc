@@ -31,7 +31,7 @@ void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
     return;
   }
   if (!thread_.joinable()) {
-    RAY_LOG(DEBUG)
+    RAY_LOG(WARNING)
         << "Tried to add profile event but background thread isn't running. "
         << "Either Profiler::Start() wasn't run yet or the thread exited unexpectedly.";
     return;
