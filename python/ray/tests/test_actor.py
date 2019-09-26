@@ -75,16 +75,19 @@ def ray_checkpointable_actor_cls(request):
             if not os.path.isfile(filename):
                 return None
 
+            available_checkpoint_ids = [
+                c.checkpoint_id for c in available_checkpoints
+            ]
             with open(filename, "r") as f:
-                lines = f.readlines()
-                checkpoint_id, value = lines[-1].split(" ")
-                self.value = int(value)
-                self.resumed_from_checkpoint = True
-                checkpoint_id = ray.ActorCheckpointID(
-                    ray.utils.hex_to_binary(checkpoint_id))
-                assert any(checkpoint_id == checkpoint.checkpoint_id
-                           for checkpoint in available_checkpoints)
-                return checkpoint_id
+                for line in f:
+                    checkpoint_id, value = line.strip().split(" ")
+                    checkpoint_id = ray.ActorCheckpointID(
+                        ray.utils.hex_to_binary(checkpoint_id))
+                    if checkpoint_id in available_checkpoint_ids:
+                        self.value = int(value)
+                        self.resumed_from_checkpoint = True
+                        return checkpoint_id
+                return None
 
         def checkpoint_expired(self, actor_id, checkpoint_id):
             pass
