@@ -4,13 +4,19 @@ from __future__ import print_function
 
 import fnmatch
 import os
-import psutil
 import subprocess
 import sys
 import tempfile
 import time
 
+import psutil
+
 import ray
+
+
+class RayTestTimeoutException(Exception):
+    """Exception used to identify timeouts from test utilities."""
+    pass
 
 
 def _pid_alive(pid):
@@ -35,7 +41,8 @@ def wait_for_pid_to_exit(pid, timeout=20):
         if not _pid_alive(pid):
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for process to exit.")
+    raise RayTestTimeoutException(
+        "Timed out while waiting for process to exit.")
 
 
 def wait_for_children_of_pid(pid, num_children=1, timeout=20):
@@ -46,8 +53,9 @@ def wait_for_children_of_pid(pid, num_children=1, timeout=20):
         if num_alive >= num_children:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for process children to start "
-                    "({}/{} started).".format(num_alive, num_children))
+    raise RayTestTimeoutException(
+        "Timed out while waiting for process children to start "
+        "({}/{} started).".format(num_alive, num_children))
 
 
 def wait_for_children_of_pid_to_exit(pid, timeout=20):
@@ -57,9 +65,9 @@ def wait_for_children_of_pid_to_exit(pid, timeout=20):
 
     _, alive = psutil.wait_procs(children, timeout=timeout)
     if len(alive) > 0:
-        raise Exception("Timed out while waiting for process children to exit."
-                        " Children still alive: {}.".format(
-                            [p.name() for p in alive]))
+        raise RayTestTimeoutException(
+            "Timed out while waiting for process children to exit."
+            " Children still alive: {}.".format([p.name() for p in alive]))
 
 
 def kill_process_by_name(name, SIGKILL=False):
@@ -126,7 +134,7 @@ def wait_for_errors(error_type, num_errors, timeout=20):
         if len(relevant_errors(error_type)) >= num_errors:
             return
         time.sleep(0.1)
-    raise Exception("Timed out waiting for {} {} errors.".format(
+    raise RayTestTimeoutException("Timed out waiting for {} {} errors.".format(
         num_errors, error_type))
 
 

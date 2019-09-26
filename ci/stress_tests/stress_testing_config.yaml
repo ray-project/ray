@@ -26,8 +26,8 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-west-2
-    availability_zone: us-west-2a
+    region: us-east-1
+    availability_zone: us-east-1a
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -42,14 +42,14 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: m5.12xlarge
-    ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
+    InstanceType: m4.16xlarge
+    ImageId: ami-0757fc5a639fe7666
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 50
+              VolumeSize: 100
 
     # Additional options in the boto docs.
 
@@ -58,14 +58,14 @@ head_node:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
-    InstanceType: m5.large
-    ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
+    InstanceType: m4.large
+    ImageId: ami-0757fc5a639fe7666
 
     # Set primary volume to 25 GiB
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
-              VolumeSize: 50
+              VolumeSize: 100
 
     # Run workers on spot by default. Comment this out to use on-demand.
     InstanceMarketOptions:
@@ -86,14 +86,14 @@ file_mounts: {
 # List of shell commands to run to set up nodes.
 setup_commands:
     # Consider uncommenting these if you run into dpkg locking issues
-    # - sudo pkill -9 apt-get || true
-    # - sudo pkill -9 dpkg || true
-    # - sudo dpkg --configure -a
+    - sudo pkill -9 apt-get || true
+    - sudo pkill -9 dpkg || true
+    - sudo dpkg --configure -a
     # Install basics.
-    - sudo apt-get update
+    - sudo apt-get -qq update
     - sudo apt-get install -y build-essential curl unzip
     # Install Anaconda.
-    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
+    - wget --quiet https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
     - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
     - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
     # # Build Ray.
@@ -102,7 +102,6 @@ setup_commands:
     - pip install boto3==1.4.8 cython==0.29.0
     # - cd ray/python; git checkout master; git pull; pip install -e . --verbose
     - pip install https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<<<RAY_VERSION>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-cp36-cp36m-manylinux1_x86_64.whl
-    - echo "sudo halt" | at now + 60 minutes
 
 # Custom commands that will be run on the head node after common setup.
 head_setup_commands: []
