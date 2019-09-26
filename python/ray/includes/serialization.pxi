@@ -1,6 +1,6 @@
 from cpython cimport PY_VERSION_HEX
 from libc.string cimport strlen, memcpy
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint64_t
 from cython.parallel cimport prange
 
 # This is the default alignment value for len(buffer) < 2048.
@@ -12,6 +12,14 @@ DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 
+
+cdef extern from "ray/protobuf/serialization.pb.h" nogil:
+  cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
+    void set_address(uint64_t value)
+    void set_length(uint64_t value)
+
+  cdef cppclass CPythonObject "ray::serialization::PythonObject":
+    CPythonBuffer* add_buffer()
 
 cdef int64_t padded_length(int64_t offset, int64_t alignment):
     return ((offset + alignment - 1) // alignment) * alignment
@@ -195,6 +203,11 @@ def unpack_pickle5_buffers(Buffer buf):
 
 cdef class Pickle5Writer:
     cdef:
+        CPythonObject python_object
+        # Location of the current buffer, relative to the end of the
+        # protobuf metadata.
+        int64_t curr_addr
+
         int32_t n_buffers
         c_vector[int32_t] ndims
         c_vector[int32_t] readonlys
@@ -211,6 +224,7 @@ cdef class Pickle5Writer:
         c_vector[int64_t] itemsizes
 
     def __cinit__(self):
+        self.curr_addr = 0
         self.n_buffers = 0
         self.buffer_bytes = 0
 
@@ -219,8 +233,22 @@ cdef class Pickle5Writer:
             Py_buffer view
             int64_t buf_len
             size_t format_len
+
+            CPythonBuffer* buffer = self.python_object.add_buffer()
+
         cpython.PyObject_GetBuffer(pickle_buffer, &view,
                                    cpython.PyBUF_RECORDS_RO)
+
+        buffer[0].set_address(self.curr_addr)
+        buffer[0].set_length(view.len)
+
+        # Set the other attributes
+
+        if view.len < kMajorBufferSize:
+            self.curr_addr += padded_length(view.len, kMinorBufferAlign)
+        else:
+            self.curr_addr = padded_length(view.len, kMajorBufferAlign)
+
         self.n_buffers += 1
 
         self.ndims.push_back(view.ndim)
