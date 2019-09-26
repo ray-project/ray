@@ -1,7 +1,7 @@
 Tune: A Scalable Hyperparameter Tuning Library
 ==============================================
 
-.. important:: Take the `2019 Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_ and show us your Tune project!
+.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
 .. image:: images/tune.png
     :scale: 30%

@@ -23,6 +23,8 @@ View the `codebase on GitHub`_.
 
 .. _`codebase on GitHub`: https://github.com/ray-project/ray
 
+.. tip:: Join our new `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+
 
 Quick Start
 -----------
