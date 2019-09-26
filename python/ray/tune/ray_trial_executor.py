@@ -180,7 +180,6 @@ class RayTrialExecutor(TrialExecutor):
         try:
             trial.write_error_log(error_msg)
             if hasattr(trial, "runner") and trial.runner:
-                trial.runner.stop.remote()
                 if (not error and self._reuse_actors
                         and self._cached_actor is None):
                     logger.debug("Reusing actor for {}".format(trial.runner))
@@ -188,6 +187,7 @@ class RayTrialExecutor(TrialExecutor):
                 else:
                     logger.debug(
                         "Destroying actor for trial {}.".format(trial))
+                    trial.runner.stop.remote()
                     trial.runner.__ray_terminate__.remote()
         except Exception:
             logger.exception("Error stopping runner for Trial %s", str(trial))

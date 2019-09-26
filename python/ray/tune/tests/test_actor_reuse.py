@@ -21,24 +21,16 @@ def create_resettable_class():
             self.config = config
             self.num_resets = 0
             self.iter = 0
-            self.num_stops = 0
 
         def _train(self):
             self.iter += 1
-            return {
-                "num_resets": self.num_resets,
-                "done": self.iter > 1,
-                "num_stops": self.num_stops
-            }
+            return {"num_resets": self.num_resets, "done": self.iter > 1}
 
         def _save(self, chkpt_dir):
             return {"iter": self.iter}
 
         def _restore(self, item):
             self.iter = item["iter"]
-
-        def _stop(self):
-            self.num_stops += 1
 
         def reset_config(self, new_config):
             if "fake_reset_not_supported" in self.config:
@@ -82,8 +74,6 @@ class ActorReuseTest(unittest.TestCase):
             reuse_actors=True,
             scheduler=FrequentPausesScheduler())
         self.assertEqual([t.last_result["num_resets"] for t in trials],
-                         [1, 2, 3, 4])
-        self.assertEqual([t.last_result["num_stops"] for t in trials],
                          [1, 2, 3, 4])
 
     def testTrialReuseEnabledError(self):
