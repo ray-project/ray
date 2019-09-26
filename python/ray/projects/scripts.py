@@ -149,13 +149,17 @@ def load_project_or_throw():
 class SessionRunner(object):
     """Class for setting up a session and executing commands in it."""
 
-    def __init__(self):
+    def __init__(self, session_name=None):
         """Initialize session runner and try to parse the command arguments.
+
+        Args:
+            session_name (str): Name of the session.
 
         Raises:
             click.ClickException: This exception is raised if any error occurs.
         """
         self.project_definition = load_project_or_throw()
+        self.session_name = session_name
 
         # Check for features we don't support right now
         project_environment = self.project_definition.config["environment"]
@@ -174,7 +178,7 @@ class SessionRunner(object):
             no_restart=False,
             restart_only=False,
             yes=True,
-            override_cluster_name=None,
+            override_cluster_name=self.session_name,
         )
 
     def sync_files(self):
@@ -183,7 +187,7 @@ class SessionRunner(object):
             self.project_definition.cluster_yaml(),
             source=self.project_definition.root,
             target=self.project_definition.working_directory(),
-            override_cluster_name=None,
+            override_cluster_name=self.session_name,
             down=False,
         )
 
@@ -203,7 +207,7 @@ class SessionRunner(object):
                 self.project_definition.cluster_yaml(),
                 source=requirements_txt,
                 target=remote_requirements_txt,
-                override_cluster_name=None,
+                override_cluster_name=self.session_name,
                 down=False,
             )
             self.execute_command(
@@ -255,7 +259,7 @@ class SessionRunner(object):
             tmux=False,
             stop=False,
             start=False,
-            override_cluster_name=None,
+            override_cluster_name=self.session_name,
             port_forward=None,
         )
 
@@ -273,13 +277,14 @@ def attach():
 
 
 @session_cli.command(help="Stop a session based on current project config")
-def stop():
+@click.option("--name", help="Name of the session to stop", default=None)
+def stop(name):
     project_definition = load_project_or_throw()
     teardown_cluster(
         project_definition.cluster_yaml(),
         yes=True,
         workers_only=False,
-        override_cluster_name=None)
+        override_cluster_name=name)
 
 
 @session_cli.command(
@@ -294,8 +299,9 @@ def stop():
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def session_start(command, args, shell):
-    runner = SessionRunner()
+@click.option("--name", help="A name to tag the session with.", default=None)
+def session_start(command, args, shell, name):
+    runner = SessionRunner(session_name=name)
     if shell or command:
         # Get the actual command to run.
         cmd = runner.format_command(command, args, shell)
@@ -328,7 +334,9 @@ def session_start(command, args, shell):
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def session_execute(command, args, shell):
-    runner = SessionRunner()
+@click.option(
+    "--name", help="Name of the session to run this command on", default=None)
+def session_execute(command, args, shell, name):
+    runner = SessionRunner(session_name=name)
     cmd = runner.format_command(command, args, shell)
     runner.execute_command(cmd)
