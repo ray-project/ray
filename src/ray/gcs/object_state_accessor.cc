@@ -42,8 +42,8 @@ Status ObjectStateAccessor::AsyncDelete(const ObjectID &object_id,
                      const ObjectTableData &data)>
       on_done = nullptr;
   if (callback != nullptr) {
-    auto on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
-                              const ObjectTableData &data) { callback(Status::OK()); };
+    on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
+                         const ObjectTableData &data) { callback(Status::OK()); };
   }
 
   ObjectTable &object_table = client_impl_.object_table();

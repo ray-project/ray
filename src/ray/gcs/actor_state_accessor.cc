@@ -103,8 +103,7 @@ Status ActorStateAccessor::AsyncSubscribe(
 }
 
 Status ActorStateAccessor::DoAsyncSubscribe(
-    const ActorID &actor_id,
-    const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+    const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const ActorID &actor_id,
