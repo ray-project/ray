@@ -1235,7 +1235,8 @@ def test_profiling_api(ray_start_2_cpus):
         if time.time() - start_time > timeout_seconds:
             raise RayTestTimeoutException(
                 "Timed out while waiting for information in "
-                "profile table.")
+                "profile table. Missing events: {}.".format(
+                    set(expected_types) - set(event_types)))
 
         # The profiling information only flushes once every second.
         time.sleep(1.1)
