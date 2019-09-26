@@ -5,7 +5,6 @@ from __future__ import print_function
 from gym.spaces import Tuple, Discrete, Dict
 import os
 import logging
-from threading import RLock
 import numpy as np
 import torch as th
 import torch.nn as nn
@@ -172,7 +171,6 @@ class QMixTorchPolicy(Policy):
         self.h_size = config["model"]["lstm_cell_size"]
         self.has_env_global_state = False
         self.has_action_mask = False
-        self.lock = RLock()
         self.device = (th.device("cuda")
                        if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
                        else th.device("cpu"))
@@ -266,29 +264,28 @@ class QMixTorchPolicy(Policy):
         # to compute actions
 
         # Compute actions
-        with self.lock:
-            with th.no_grad():
-                q_values, hiddens = _mac(
-                    self.model,
+        with th.no_grad():
+            q_values, hiddens = _mac(
+                self.model,
+                th.as_tensor(
+                    obs_batch, dtype=th.float, device=self.device),
+                [
                     th.as_tensor(
-                        obs_batch, dtype=th.float, device=self.device),
-                    [
-                        th.as_tensor(
-                            np.array(s), dtype=th.float, device=self.device)
-                        for s in state_batches
-                    ])
-                avail = th.as_tensor(
-                    action_mask, dtype=th.float, device=self.device)
-                masked_q_values = q_values.clone()
-                masked_q_values[avail == 0.0] = -float("inf")
-                # epsilon-greedy action selector
-                random_numbers = th.rand_like(q_values[:, :, 0])
-                pick_random = (random_numbers < self.cur_epsilon).long()
-                random_actions = Categorical(avail).sample().long()
-                actions = (pick_random * random_actions +
-                           (1 - pick_random) * masked_q_values.max(dim=2)[1])
-                actions = actions.cpu().numpy()
-                hiddens = [s.cpu().numpy() for s in hiddens]
+                        np.array(s), dtype=th.float, device=self.device)
+                    for s in state_batches
+                ])
+            avail = th.as_tensor(
+                action_mask, dtype=th.float, device=self.device)
+            masked_q_values = q_values.clone()
+            masked_q_values[avail == 0.0] = -float("inf")
+            # epsilon-greedy action selector
+            random_numbers = th.rand_like(q_values[:, :, 0])
+            pick_random = (random_numbers < self.cur_epsilon).long()
+            random_actions = Categorical(avail).sample().long()
+            actions = (pick_random * random_actions +
+                        (1 - pick_random) * masked_q_values.max(dim=2)[1])
+            actions = actions.cpu().numpy()
+            hiddens = [s.cpu().numpy() for s in hiddens]
 
         return TupleActions(list(actions.transpose([1, 0]))), hiddens, {}
 
@@ -357,74 +354,68 @@ class QMixTorchPolicy(Policy):
                 B, T, self.n_agents)
 
         # Compute loss
-        with self.lock:
-            loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-                self.loss(rewards, actions, terminated, mask, obs,
-                          next_obs, action_mask, next_action_mask,
-                          env_global_state, next_env_global_state)
+        loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
+            self.loss(rewards, actions, terminated, mask, obs,
+                        next_obs, action_mask, next_action_mask,
+                        env_global_state, next_env_global_state)
 
-            # Optimise
-            self.optimiser.zero_grad()
-            loss_out.backward()
-            grad_norm = th.nn.utils.clip_grad_norm_(
-                self.params, self.config["grad_norm_clipping"])
-            self.optimiser.step()
+        # Optimise
+        self.optimiser.zero_grad()
+        loss_out.backward()
+        grad_norm = th.nn.utils.clip_grad_norm_(
+            self.params, self.config["grad_norm_clipping"])
+        self.optimiser.step()
 
-            mask_elems = mask.sum().item()
-            stats = {
-                "loss": loss_out.item(),
-                "grad_norm": grad_norm
-                if isinstance(grad_norm, float) else grad_norm.item(),
-                "td_error_abs": masked_td_error.abs().sum().item() /
-                mask_elems,
-                "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
-                mask_elems,
-                "target_mean": (targets * mask).sum().item() / mask_elems,
-            }
-            return {LEARNER_STATS_KEY: stats}
+        mask_elems = mask.sum().item()
+        stats = {
+            "loss": loss_out.item(),
+            "grad_norm": grad_norm
+            if isinstance(grad_norm, float) else grad_norm.item(),
+            "td_error_abs": masked_td_error.abs().sum().item() /
+            mask_elems,
+            "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
+            mask_elems,
+            "target_mean": (targets * mask).sum().item() / mask_elems,
+        }
+        return {LEARNER_STATS_KEY: stats}
 
     @override(Policy)
     def get_initial_state(self):  # initial RNN state
-        with self.lock:
-            return [
-                s.expand([self.n_agents, -1]).cpu().numpy()
-                for s in self.model.get_initial_state()
-            ]
+        return [
+            s.expand([self.n_agents, -1]).cpu().numpy()
+            for s in self.model.get_initial_state()
+        ]
 
     @override(Policy)
     def get_weights(self):
-        with self.lock:
-            return {
-                "model": self._cpu_dict(self.model.state_dict()),
-                "target_model": self._cpu_dict(self.target_model.state_dict()),
-                "mixer": self._cpu_dict(self.mixer.state_dict())
-                if self.mixer else None,
-                "target_mixer": self._cpu_dict(self.target_mixer.state_dict())
-                if self.mixer else None,
-            }
+        return {
+            "model": self._cpu_dict(self.model.state_dict()),
+            "target_model": self._cpu_dict(self.target_model.state_dict()),
+            "mixer": self._cpu_dict(self.mixer.state_dict())
+            if self.mixer else None,
+            "target_mixer": self._cpu_dict(self.target_mixer.state_dict())
+            if self.mixer else None,
+        }
 
     @override(Policy)
     def set_weights(self, weights):
-        with self.lock:
-            self.model.load_state_dict(self._device_dict(weights["model"]))
-            self.target_model.load_state_dict(
-                self._device_dict(weights["target_model"]))
-            if weights["mixer"] is not None:
-                self.mixer.load_state_dict(self._device_dict(weights["mixer"]))
-                self.target_mixer.load_state_dict(
-                    self._device_dict(weights["target_mixer"]))
+        self.model.load_state_dict(self._device_dict(weights["model"]))
+        self.target_model.load_state_dict(
+            self._device_dict(weights["target_model"]))
+        if weights["mixer"] is not None:
+            self.mixer.load_state_dict(self._device_dict(weights["mixer"]))
+            self.target_mixer.load_state_dict(
+                self._device_dict(weights["target_mixer"]))
 
     @override(Policy)
     def get_state(self):
-        with self.lock:
-            state = self.get_weights()
-            state["cur_epsilon"] = self.cur_epsilon
+        state = self.get_weights()
+        state["cur_epsilon"] = self.cur_epsilon
 
     @override(Policy)
     def set_state(self, state):
-        with self.lock:
-            self.set_weights(state)
-            self.set_epsilon(state["cur_epsilon"])
+        self.set_weights(state)
+        self.set_epsilon(state["cur_epsilon"])
 
     def update_target(self):
         self.target_model.load_state_dict(self.model.state_dict())
