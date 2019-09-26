@@ -36,7 +36,6 @@ class ObjectStateAccessor {
   /// \param data_ptr The object information that will be add to GCS.
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
-  // TODO(micafan) add field ObjectID to ObjectTableData
   Status AsyncAdd(const ObjectID &object_id,
                   const std::shared_ptr<ObjectTableData> &data_ptr,
                   const StatusCallback &callback);
