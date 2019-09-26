@@ -36,15 +36,18 @@ class Profiler {
   // Periodically flush all of the events that have been added to the GCS.
   void PeriodicallyFlushEvents();
 
-  rpc::ProfileTableData profile_info_;
   WorkerContext &worker_context_;
   std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
+
+  // RPC message containing profiling data. Holds the queue of profile events
+  // until they are flushed.
+  rpc::ProfileTableData rpc_profile_data_;
 
   // Background thread that runs PeriodicalllyFlushEvents().
   std::thread thread_;
   // Flag checked by the background thread so it knows when to exit.
-  bool killed_;
-  // Mutex guarding profile_info_ and the killed_ flag.
+  bool killed_ = false;
+  // Mutex guarding rpc_profile_data_ and the killed_ flag.
   std::mutex mutex_;
   // Condition variable used to signal to the thread that killed_ has been set.
   std::condition_variable kill_cond_;
