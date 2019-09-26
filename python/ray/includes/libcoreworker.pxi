@@ -12,7 +12,8 @@ cdef class ProfileEvent:
         dict extra_data
 
     @staticmethod
-    cdef make(CProfiler &profiler, c_string &event_type, dict extra_data):
+    cdef make(const shared_ptr[CProfiler] profiler,
+              c_string &event_type, dict extra_data):
         cdef ProfileEvent self = ProfileEvent.__new__(ProfileEvent)
         self.inner.reset(new CProfileEvent(profiler, event_type))
         self.extra_data = extra_data
