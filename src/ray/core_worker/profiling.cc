@@ -16,12 +16,13 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> profiler,
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
                    std::unique_ptr<gcs::RedisGcsClient> &gcs_client)
     : worker_context_(worker_context), gcs_client_(gcs_client) {
-  profile_info_.set_component_type(WorkerTypeString(worker_context_.GetWorkerType()));
-  profile_info_.set_component_id(worker_context_.GetWorkerID().Binary());
-  profile_info_.set_node_ip_address(node_ip_address);
+  rpc_profile_data_.set_component_type(WorkerTypeString(worker_context_.GetWorkerType()));
+  rpc_profile_data_.set_component_id(worker_context_.GetWorkerID().Binary());
+  rpc_profile_data_.set_node_ip_address(node_ip_address);
 }
 
 void Profiler::Start() {
+  RAY_LOG(INFO) << "Started profiler background thread.";
   thread_ = std::thread(&Profiler::PeriodicallyFlushEvents, this);
 }
 
@@ -36,7 +37,7 @@ void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
         << "Either Profiler::Start() wasn't run yet or the thread exited unexpectedly.";
     return;
   }
-  profile_info_.add_profile_events()->CopyFrom(event);
+  rpc_profile_data_.add_profile_events()->CopyFrom(event);
 }
 
 void Profiler::PeriodicallyFlushEvents() {
@@ -49,18 +50,18 @@ void Profiler::PeriodicallyFlushEvents() {
         return;
       }
 
-      if (profile_info_.profile_events_size() == 0) {
+      if (rpc_profile_data_.profile_events_size() == 0) {
         continue;
       }
       // TODO(edoakes): this should be migrated to use the new GCS client interface
       // instead of the raw table interface once it's ready.
-      if (!gcs_client_->profile_table().AddProfileEventBatch(profile_info_).ok()) {
+      if (!gcs_client_->profile_table().AddProfileEventBatch(rpc_profile_data_).ok()) {
         RAY_LOG(WARNING) << "Failed to push profile events to GCS.";
       } else {
-        RAY_LOG(DEBUG) << "Pushed " << profile_info_.profile_events_size()
+        RAY_LOG(DEBUG) << "Pushed " << rpc_profile_data_.profile_events_size()
                        << "events to GCS.";
       }
-      profile_info_.clear_profile_events();
+      rpc_profile_data_.clear_profile_events();
     }
   }
 }

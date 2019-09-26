@@ -8,8 +8,8 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, worker::Profiler &profiler,
-    const TaskExecutor &executor)
+    CoreWorkerObjectInterface &object_interface,
+    const std::shared_ptr<worker::Profiler> profiler, const TaskExecutor &executor)
     : worker_context_(worker_context),
       object_interface_(object_interface),
       profiler_(profiler),
