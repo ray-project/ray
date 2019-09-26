@@ -32,6 +32,8 @@ import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
 
+from ray.tests.utils import RayTestTimeoutException
+
 logger = logging.getLogger(__name__)
 
 
@@ -1231,9 +1233,9 @@ def test_profiling_api(ray_start_2_cpus):
             break
 
         if time.time() - start_time > timeout_seconds:
-            raise Exception("Timed out while waiting for information in "
-                            "profile table. Missing events: {}.".format(
-                                set(expected_types) - set(event_types)))
+            raise RayTestTimeoutException(
+                "Timed out while waiting for information in "
+                "profile table.")
 
         # The profiling information only flushes once every second.
         time.sleep(1.1)
@@ -1916,8 +1918,9 @@ def test_gpu_ids(shutdown_only):
         if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
             break
         if time.time() > start_time + 10:
-            raise Exception("Timed out while waiting for workers to start "
-                            "up.")
+            raise RayTestTimeoutException(
+                "Timed out while waiting for workers to start "
+                "up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -2514,7 +2517,7 @@ def wait_for_num_tasks(num_tasks, timeout=10):
         if len(ray.tasks()) >= num_tasks:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def wait_for_num_objects(num_objects, timeout=10):
@@ -2523,7 +2526,7 @@ def wait_for_num_objects(num_objects, timeout=10):
         if len(ray.objects()) >= num_objects:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 @pytest.mark.skipif(
@@ -2616,8 +2619,9 @@ def test_global_state_api(shutdown_only):
             if tables_ready:
                 return
             time.sleep(0.1)
-        raise Exception("Timed out while waiting for object table to "
-                        "update.")
+        raise RayTestTimeoutException(
+            "Timed out while waiting for object table to "
+            "update.")
 
     object_table = ray.objects()
     assert len(object_table) == 2
