@@ -1,3 +1,4 @@
+# flake8: noqa
 """
 Learning to Play Pong
 =====================
@@ -36,7 +37,6 @@ depends on how well the policy is doing. For example, a really bad policy will
 lose very quickly. As the policy learns, we should expect these numbers to
 increase.
 """
-import argparse
 import numpy as np
 import os
 import ray
@@ -51,18 +51,18 @@ import gym
 # Here we'll define a couple of the hyperparameters that are used.
 
 H = 200  # The number of hidden layer neurons.
-gamma = 0.99  # Discount factor for reward.
+gamma = 0.99  # The discount factor for reward.
 decay_rate = 0.99  # The decay factor for RMSProp leaky sum of grad^2.
 D = 80 * 80  # The input dimensionality: 80x80 grid.
-learning_rate = 1e-4
+learning_rate = 1e-4  # Magnitude of the update.
 
 #############################################################################
 # Helper Functions
 # ----------------
 #
-# We define a couple helper functions here.
+# We first define a few helper functions:
 #
-# 1. preprocessing: The ``preprocess`` function will
+# 1. Preprocessing: The ``preprocess`` function will
 # preprocess the original 210x160x3 uint8 frame into a one-dimensional 6400
 # float vector.
 #
@@ -151,7 +151,7 @@ def rollout(model, env):
 # Here, a neural network is used to define a "policy"
 # for playing Pong (that is, a function that chooses an action given a state).
 #
-# To implement a neural network in Numpy, we need to provide helper functions
+# To implement a neural network in NumPy, we need to provide helper functions
 # for calculating updates and computing the output of the neural network
 # given an input, which in our case is an observation.
 
@@ -250,8 +250,8 @@ class RolloutWorker(object):
 # Running
 # -------
 #
-# This example is easy to parallelize because the network can play ten games in
-# parallel and no information needs to be shared between the games.
+# This example is easy to parallelize because the network can play ten games
+# in parallel and no information needs to be shared between the games.
 #
 # In the loop, the network repeatedly plays games of Pong and
 # records a gradient from each game. Every ten games, the gradients are

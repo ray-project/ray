@@ -5,6 +5,7 @@ from __future__ import print_function
 import copy
 import os
 import logging
+import pickle
 try:
     import sigopt as sgo
 except ImportError:
@@ -140,3 +141,14 @@ class SigOptSearch(SuggestionAlgorithm):
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
+
+    def save(self, checkpoint_dir):
+        trials_object = (self.conn, self.experiment)
+        with open(checkpoint_dir, "wb") as outputFile:
+            pickle.dump(trials_object, outputFile)
+
+    def restore(self, checkpoint_dir):
+        with open(checkpoint_dir, "rb") as inputFile:
+            trials_object = pickle.load(inputFile)
+        self.conn = trials_object[0]
+        self.experiment = trials_object[1]

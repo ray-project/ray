@@ -5,20 +5,15 @@ Simple Parallel Model Selection
 In this example, we'll demonstrate how to quickly write a hyperparameter
 tuning script that evaluates a set of hyperparameters in parallel.
 
-This script will demonstrate how to use the ``ray.remote`` API for functions
-along with ``ray.wait``.
+This script will demonstrate how to use two important parts of the Ray API:
+using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for
+their results to be ready.
 
 .. important:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.
 
 .. _`Tune`: https://ray.readthedocs.io/en/latest/tune.html
-
-Setup: Dependencies
--------------------
-
-First, import some dependencies and define functions to generate
-random hyperpaameters and retrieve data.
 """
 import os
 import numpy as np
@@ -70,15 +65,10 @@ def get_data_loaders(batch_size):
         shuffle=True)
     return train_loader, test_loader
 
-#######################################################################
-# Setup: Defining the Neural Network
-# ----------------------------------
-#
-# We define a small neural network to use in training. In addition, 
-# we created methods to train and test this neural network 
-
 
 class ConvNet(nn.Module):
+    """Simple two layer Convolutional Neural Network."""
+
     def __init__(self):
         super(ConvNet, self).__init__()
         self.conv1 = nn.Conv2d(1, 3, kernel_size=3)
@@ -92,6 +82,10 @@ class ConvNet(nn.Module):
 
 
 def train(model, optimizer, train_loader, device=torch.device("cpu")):
+    """Optimize the model with one pass over the data.
+
+    Cuts off at 1024 samples to simplify training.
+    """
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         if batch_idx * len(data) > 1024:
@@ -120,16 +114,6 @@ def test(model, test_loader, device=torch.device("cpu")):
 
     return correct / total
 
-#######################################################################
-# Evaluating the Hyperparameters
-# -------------------------------
-#
-# For a given configuration, the neural network created previously
-# will be trained and return the accuracy of the model.
-#
-# The ``@ray.remote`` decorator defines a remote process.
-
-
 @ray.remote
 def evaluate_hyperparameters(config):
     model = ConvNet()
@@ -141,47 +125,31 @@ def evaluate_hyperparameters(config):
     train(model, optimizer, train_loader)
     return test(model, test_loader)
 
-#######################################################################
-# Synchronous Evaluation of Randomly Generated Hyperparameters
-# ------------------------------------------------------------
-#
-# We will create multiple sets of random hyperparameters for our neural
-# network that will be trained in parallel. These trained networks will
-# then be tested for accuracy to find the best set of hyperparameters.
-
 
 # Keep track of the best hyperparameters and the best accuracy.
 best_hyperparameters = None
 best_accuracy = 0
-# This list holds the object IDs for all of the experiments that we have
-# launched and that have not yet been processed.
+# A list holding the object IDs for all of the experiments that we have
+# launched but have not yet been processed.
 remaining_ids = []
-# This is a dictionary mapping the object ID of an experiment to the
+# A dictionary mapping an experiment's object ID to its hyperparameters.
 # hyerparameters used for that experiment.
 hyperparameters_mapping = {}
 
-###########################################################################
-# Compute accuracy for different randomly generated hyperparameters, and 
-# store each hyperparameter with its corresponding accuracy
-
-# Randomly generate some hyperparameters, and launch a task for each set.
+# Randomly generate sets of hyperparameters and launch a task to test each set.
 for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
     accuracy_id = evaluate_hyperparameters.remote(hyperparameters)
-    remaining_ids += [accuracy_id]
-    # Keep track of which hyperparameters correspond to this experiment.
+    remaining_ids.append(accuracy_id)
     hyperparameters_mapping[accuracy_id] = hyperparameters
-
-###########################################################################
-# Process each hyperparameter and corresponding accuracy in the order that 
-# they finish training and testing the neural network to store the 
-# hyperparameters with the best accuracy
 
 # Fetch and print the results of the tasks in the order that they complete.
 while remaining_ids:
     # Use ray.wait to get the object ID of the first task that completes.
-    [result_id], remaining_ids = ray.wait(remaining_ids)
-    # Process the output of this task.
+    done_ids, remaining_ids = ray.wait(remaining_ids)
+    # There is only one return result by default.
+    result_id = done_ids[0]
+
     hyperparameters = hyperparameters_mapping[result_id]
     accuracy = ray.get(result_id)
     print("""We achieve accuracy {:.3}% with

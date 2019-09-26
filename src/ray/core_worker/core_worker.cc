@@ -69,6 +69,28 @@ CoreWorker::CoreWorker(
       language_, rpc_server_port));
 
   io_thread_ = std::thread(&CoreWorker::StartIOService, this);
+
+  // Create an entry for the driver task in the task table. This task is
+  // added immediately with status RUNNING. This allows us to push errors
+  // related to this driver task back to the driver. For example, if the
+  // driver creates an object that is later evicted, we should notify the
+  // user that we're unable to reconstruct the object, since we cannot
+  // rerun the driver.
+  if (worker_type_ == WorkerType::DRIVER) {
+    TaskSpecBuilder builder;
+    std::vector<std::string> empty_descriptor;
+    std::unordered_map<std::string, double> empty_resources;
+    const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
+    builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
+                              worker_context_.GetCurrentJobID(),
+                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
+                              0, 0, empty_resources, empty_resources);
+
+    std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
+    data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
+    RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
+    worker_context_.SetCurrentTaskId(task_id);
+  }
 }
 
 CoreWorker::~CoreWorker() {

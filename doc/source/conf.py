@@ -17,10 +17,8 @@ import shutil
 import sys
 import os
 import urllib
-import shlex
 sys.path.insert(0, os.path.abspath('.'))
-from custom_directives import (IncludeDirective, GalleryItemDirective,
-                               CustomGalleryItemDirective)
+from custom_directives import CustomGalleryItemDirective
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
@@ -77,7 +75,7 @@ extensions = [
 ]
 
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples"],  # path to your example scripts
+    "examples_dirs": ["../examples"],  # path to example scripts
     "gallery_dirs": ["auto_examples"],  # path where to save generated examples
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
@@ -95,11 +93,9 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
     except OSError:
         pass
 
-    # Copy rst files from source dir to gallery dir
+    # Copy rst files from source dir to gallery dir.
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
         shutil.copy(f, gallery_dir)
-
-
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -384,9 +380,10 @@ def update_context(app, pagename, templatename, context, doctree):
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
 
 
+# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
+
+
 def setup(app):
     app.connect('html-page-context', update_context)
     # Custom directives
-    app.add_directive('includenodoc', IncludeDirective)
-    app.add_directive('galleryitem', GalleryItemDirective)
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)

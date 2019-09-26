@@ -317,8 +317,9 @@ class Trainer(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent",
-        "custom_resources_per_worker", "evaluation_config"
+        "tf_session_args", "local_tf_session_args", "env_config", "model",
+        "optimizer", "multiagent", "custom_resources_per_worker",
+        "evaluation_config"
     ]
 
     @PublicAPI
@@ -364,7 +365,7 @@ class Trainer(Trainable):
                     os.makedirs(DEFAULT_RESULTS_DIR)
                 logdir = tempfile.mkdtemp(
                     prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, None)
+                return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
