@@ -4,11 +4,12 @@ from __future__ import print_function
 
 import fnmatch
 import os
-import psutil
 import subprocess
 import sys
 import tempfile
 import time
+
+import psutil
 
 import ray
 
