@@ -14,6 +14,7 @@
 #include "ray/gcs/callback.h"
 #include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/gcs/subscription_notification.h"
 #include "ray/protobuf/gcs.pb.h"
 
 struct redisAsyncContext;

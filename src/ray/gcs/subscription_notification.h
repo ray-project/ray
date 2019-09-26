@@ -8,24 +8,33 @@ namespace ray {
 
 namespace gcs {
 
+/// \class SubscriptionNotification
+/// SubscriptionNotification class is a template class which represent
+/// notification of subscription request.
 template <typename Data>
-class Notification {
+class SubscriptionNotification {
  public:
-  Notification(rpc::GcsChangeMode change_mode, Data data)
+  SubscriptionNotification(rpc::GcsChangeMode change_mode, Data data)
       : change_mode_(change_mode), data_(std::move(data)) {}
 
-  Notification(Notification &&other) {
+  SubscriptionNotification(SubscriptionNotification &&other) {
     this.change_mode_ = other.change_mode_;
     this.data_ = std::move(other.data_);
   }
 
-  Notification &operator=(Notification &&other) {
+  SubscriptionNotification &operator=(SubscriptionNotification &&other) {
     this.change_mode_ = other.change_mode_;
     this.data_ = std::move(other.data_);
   }
 
+  /// Get change mode of this notification.
+  ///
+  /// \return rpc::GcsChangeMode
   rpc::GcsChangeMode GetGcsChangeMode() const { return change_mode_; }
 
+  /// Get data of this notification.
+  ///
+  /// \return Data
   const Data &GetData() const { return data_; }
 
  private:
@@ -33,7 +42,7 @@ class Notification {
   Data data_;
 };
 
-typedef Notification<std::vector<rpc::ObjectTableData>> ObjectNotification;
+typedef SubscriptionNotification<std::vector<rpc::ObjectTableData>> ObjectNotification;
 
 }  // namespace gcs
 

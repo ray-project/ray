@@ -3,7 +3,6 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/notification.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
 
