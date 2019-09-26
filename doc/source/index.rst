@@ -254,13 +254,15 @@ Getting Involved
    :maxdepth: -1
    :caption: Examples
 
-   example-rl-pong.rst
-   example-parameter-server.rst
-   example-newsreader.rst
-   example-resnet.rst
-   example-a3c.rst
-   example-lbfgs.rst
-   example-streaming.rst
+   auto_examples/overview.rst
+   auto_examples/plot_lbfgs.rst
+   auto_examples/plot_newsreader.rst
+   auto_examples/plot_hyperparameter.rst
+   auto_examples/plot_pong_example.rst
+   auto_examples/plot_resnet.rst
+   auto_examples/plot_streaming.rst
+   auto_examples/plot_parameter_server.rst
+   auto_examples/plot_example-a3c.rst
    using-ray-with-tensorflow.rst
    using-ray-with-pytorch.rst
 
