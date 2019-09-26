@@ -127,10 +127,10 @@ if __name__ == "__main__":
                 'gpu': 0,
             },
             "stop": {
-                TRAINING_ITERATION: 50,
+                TRAINING_ITERATION: 25,
             },
             'local_dir': os.path.dirname(os.path.realpath(__file__)) + '/pbt',
-            'num_samples': 16,
+            'num_samples': 8,
             'checkpoint_freq': 0,
             'checkpoint_at_end': True,
             'verbose': 1,
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         'time_attr': TRAINING_ITERATION,
         'metric': 'loss',
         'mode': 'min',
-        'perturbation_interval': 10,
+        'perturbation_interval': 5,
         'quantile_fraction': .5,
         'resample_probability': .25,  # par param: 25% new, 75% (50% *1.2, 50% *.8)
         'hyperparam_mutations': {

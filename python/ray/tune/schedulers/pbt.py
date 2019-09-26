@@ -220,11 +220,13 @@ class PopulationBasedTraining(FIFOScheduler):
     def on_trial_add(self, trial_runner, trial):
         self._trial_state[trial] = PBTTrialState(trial)
 
-    def on_trial_result(self, trial_runner, trial, result):
+    def on_trial_result(self, trial_runner, trial, result, raw_result):
         if self._time_attr not in result or self._metric not in result:
             return TrialScheduler.CONTINUE
         time = result[self._time_attr]
         state = self._trial_state[trial]
+
+        trial.result_logger.on_result(raw_result)
 
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
@@ -237,7 +239,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if trial in upper_quantile:
             state.last_checkpoint = trial_runner.trial_executor.save(
                 trial, Checkpoint.MEMORY)
-            state.last_result = trial.last_result
+            state.last_result = raw_result
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial

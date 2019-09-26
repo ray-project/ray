@@ -405,6 +405,7 @@ class Trial(object):
             self.last_debug = time.time()
         self.last_result = result
         self.last_update_time = time.time()
+        # self.result_logger.on_result(result)
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.

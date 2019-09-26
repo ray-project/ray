@@ -516,9 +516,6 @@ class TrialRunner(object):
 
             self._total_time += result.get(TIME_THIS_ITER_S, 0)
 
-            if not is_duplicate:
-                trial.result_logger.on_result(result)
-
             flat_result = flatten_dict(result)
             if trial.should_stop(flat_result):
                 # Hook into scheduler
@@ -529,7 +526,7 @@ class TrialRunner(object):
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
-                        self, trial, flat_result)
+                        self, trial, flat_result, result)
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)
