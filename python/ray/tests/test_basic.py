@@ -1208,9 +1208,6 @@ def test_profiling_api(ray_start_2_cpus):
     timeout_seconds = 20
     start_time = time.time()
     while True:
-        if time.time() - start_time > timeout_seconds:
-            raise Exception("Timed out while waiting for information in "
-                            "profile table.")
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
@@ -1232,6 +1229,14 @@ def test_profiling_api(ray_start_2_cpus):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
+
+        if time.time() - start_time > timeout_seconds:
+            raise Exception("Timed out while waiting for information in "
+                            "profile table. Missing events: {}.".format(
+                                set(expected_types) - set(event_types)))
+
+        # The profiling information only flushes once every second.
+        time.sleep(1.1)
 
 
 def test_wait_cluster(ray_start_cluster):
