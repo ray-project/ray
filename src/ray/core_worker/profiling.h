@@ -17,7 +17,7 @@ class Profiler {
   ~Profiler() {
     {
       // Gracefully kill the background thread.
-      std::lock_guard<std::mutex> cond_lock(kill_mutex_);
+      std::lock_guard<std::mutex> lock(mutex_);
       killed_ = true;
       kill_cond_.notify_one();
     }
@@ -37,23 +37,22 @@ class Profiler {
   void PeriodicallyFlushEvents();
 
   rpc::ProfileTableData profile_info_;
-  std::mutex profile_info_mutex_;
   WorkerContext &worker_context_;
   std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
 
   // Background thread that runs PeriodicalllyFlushEvents().
   std::thread thread_;
   // Flag checked by the background thread so it knows when to exit.
-  bool killed_ = false;
-  // Mutex guarding the killed_ flag.
-  std::mutex kill_mutex_;
+  bool killed_;
+  // Mutex guarding profile_info_ and the killed_ flag.
+  std::mutex mutex_;
   // Condition variable used to signal to the thread that killed_ has been set.
   std::condition_variable kill_cond_;
 };
 
 class ProfileEvent {
  public:
-  ProfileEvent(Profiler &profiler, const std::string &event_type);
+  ProfileEvent(const std::shared_ptr<Profiler> profiler, const std::string &event_type);
 
   void SetExtraData(const std::string &extra_data) {
     rpc_event_.set_extra_data(extra_data);
@@ -61,11 +60,11 @@ class ProfileEvent {
 
   ~ProfileEvent() {
     rpc_event_.set_end_time(current_sys_time_seconds());
-    profiler_.AddEvent(rpc_event_);
+    profiler_->AddEvent(rpc_event_);
   }
 
  private:
-  Profiler &profiler_;
+  const std::shared_ptr<Profiler> profiler_;
   rpc::ProfileTableData::ProfileEvent rpc_event_;
 };
 

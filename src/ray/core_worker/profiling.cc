@@ -6,7 +6,8 @@ namespace ray {
 
 namespace worker {
 
-ProfileEvent::ProfileEvent(Profiler &profiler, const std::string &event_type)
+ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> profiler,
+                           const std::string &event_type)
     : profiler_(profiler) {
   rpc_event_.set_event_type(event_type);
   rpc_event_.set_start_time(current_sys_time_seconds());
@@ -25,9 +26,12 @@ void Profiler::Start() {
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
-  std::lock_guard<std::mutex> lock(profile_info_mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (killed_) {
+    return;
+  }
   if (!thread_.joinable()) {
-    RAY_LOG(DEBUG)
+    RAY_LOG(WARNING)
         << "Tried to add profile event but background thread isn't running. "
         << "Either Profiler::Start() wasn't run yet or the thread exited unexpectedly.";
     return;
@@ -38,14 +42,13 @@ void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
 void Profiler::PeriodicallyFlushEvents() {
   while (true) {
     // Push events every 1 second until killed_ is set.
-    std::unique_lock<std::mutex> cond_lock(kill_mutex_);
-    kill_cond_.wait_for(cond_lock, std::chrono::seconds(1));
-    if (killed_) {
-      return;
-    }
-
     {
-      std::lock_guard<std::mutex> lock(profile_info_mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
+      kill_cond_.wait_for(lock, std::chrono::seconds(1));
+      if (killed_) {
+        return;
+      }
+
       if (profile_info_.profile_events_size() == 0) {
         continue;
       }
