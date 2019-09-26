@@ -68,8 +68,6 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   popd
 done
 
-git clean -f -f -x -d -e .whl
-
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
 # hack, we should use auditwheel instead.
 pushd .whl
