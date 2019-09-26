@@ -6,6 +6,7 @@ from __future__ import print_function
 import collections
 from concurrent.futures import ThreadPoolExecutor
 import glob
+import io
 import json
 import logging
 from multiprocessing import Process
@@ -303,6 +304,13 @@ def test_complex_serialization(ray_start_regular):
     for obj in RAY_TEST_OBJECTS:
         assert_equal(obj, ray.get(f.remote(obj)))
         assert_equal(obj, ray.get(ray.put(obj)))
+
+    # Test StringIO serialization
+    s = io.StringIO(u"Hello, world!\n")
+    s.seek(0)
+    line = s.readline()
+    s.seek(0)
+    assert ray.get(ray.put(s)).readline() == line
 
 
 def test_nested_functions(ray_start_regular):
