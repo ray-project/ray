@@ -81,8 +81,14 @@ class CoreWorker {
     worker_context_.SetCurrentTaskId(task_id);
   }
 
+  void AddActiveObjectID(const ObjectID &object_id);
+
+  void RemoveActiveObjectID(const ObjectID &object_id);
+
  private:
-  void StartIOService();
+  void StartIOService() { io_service_.run(); }
+
+  void SendActiveObjectIDsHeartbeat();
 
   const WorkerType worker_type_;
   const Language language_;
@@ -94,12 +100,22 @@ class CoreWorker {
   boost::asio::io_service io_service_;
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
+  /// Timer used to periodically send heartbeat containing active object IDs to the
+  /// raylet.
+  boost::asio::steady_timer heartbeat_timer_;
 
   std::thread io_thread_;
   std::unique_ptr<RayletClient> raylet_client_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+
+  /// Set of object IDs that are in scope in the language worker.
+  std::unordered_set<ObjectID> active_object_ids_;
+
+  /// Indicates whether or not the active_object_ids map has changed since the
+  /// last time it was sent to the raylet.
+  bool active_object_ids_changed;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;

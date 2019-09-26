@@ -1,4 +1,5 @@
 #include "ray/core_worker/core_worker.h"
+#include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 
 namespace ray {
@@ -15,7 +16,8 @@ CoreWorker::CoreWorker(
       raylet_socket_(raylet_socket),
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
-      io_work_(io_service_) {
+      io_work_(io_service_),
+      heartbeat_timer_(io_service_, boost::asio::chrono::milliseconds(100)) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (!log_dir_.empty()) {
@@ -68,6 +70,10 @@ CoreWorker::CoreWorker(
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, rpc_server_port));
 
+  // Set timer to periodically send heartbeats containing active object IDs to the raylet.
+  heartbeat_timer_.async_wait(
+      boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+
   io_thread_ = std::thread(&CoreWorker::StartIOService, this);
 
   // Create an entry for the driver task in the task table. This task is
@@ -93,6 +99,32 @@ CoreWorker::CoreWorker(
   }
 }
 
+void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
+  io_service_.post([this, object_id]() -> void { active_object_ids_.insert(object_id); });
+}
+
+void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
+  io_service_.post([this, object_id]() -> void {
+    if (!active_object_ids_.erase(object_id)) {
+      RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
+    }
+  });
+}
+
+void CoreWorker::SendActiveObjectIDsHeartbeat() {
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+  if (active_object_ids_.size() > RayConfig::instance().raylet_active_object_ids_size()) {
+    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+                     << "This may lead to required objects being garbage collected.";
+  }
+  RAY_CHECK_OK(raylet_client_->ActiveObjectIDsHeartbeat(active_object_ids_));
+  // Reset the timer from the previous expiration time to avoid drift.
+  heartbeat_timer_.expires_at(heartbeat_timer_.expiry() +
+                              boost::asio::chrono::milliseconds(100));
+  heartbeat_timer_.async_wait(
+      boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+}
+
 CoreWorker::~CoreWorker() {
   io_service_.stop();
   io_thread_.join();
@@ -112,7 +144,5 @@ void CoreWorker::Disconnect() {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }
 }
-
-void CoreWorker::StartIOService() { io_service_.run(); }
 
 }  // namespace ray

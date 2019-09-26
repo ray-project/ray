@@ -80,3 +80,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
         void SetCurrentTaskId(const CTaskID &task_id)
+        void AddActiveObjectID(const CObjectID &object_id)
+        void RemoveActiveObjectID(const CObjectID &object_id)

@@ -326,6 +326,28 @@ void NodeManager::Heartbeat() {
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
   }
 
+  std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
+  uint64_t max_size = RayConfig::instance().raylet_active_object_ids_size();
+  if (active_object_ids.size() <= max_size) {
+    for (const auto &object_id : active_object_ids) {
+      if (heartbeat_data->active_object_id_size() == max_size) {
+        break;
+      }
+      std::string object_id_bytes = object_id.Binary();
+      heartbeat_data->add_active_object_id(object_id_bytes.data(),
+                                           object_id_bytes.size());
+    }
+  } else {
+    std::vector<ObjectID> active_object_id_vector(active_object_ids.begin(),
+                                                  active_object_ids.end());
+    std::random_shuffle(active_object_id_vector.begin(), active_object_id_vector.end());
+    for (const auto &object_id : active_object_ids) {
+      std::string object_id_bytes = object_id.Binary();
+      heartbeat_data->add_active_object_id(object_id_bytes.data(),
+                                           object_id_bytes.size());
+    }
+  }
+
   ray::Status status = heartbeat_table.Add(
       JobID::Nil(), gcs_client_->client_table().GetLocalClientId(), heartbeat_data,
       /*success_callback=*/nullptr);
@@ -652,7 +674,11 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
   // Update load information provided by each heartbeat.
+  std::unordered_set<ObjectID> active_object_ids;
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
+    for (int i = 0; i < heartbeat_data.active_object_id_size(); i++) {
+      active_object_ids.insert(ObjectID::FromBinary(heartbeat_data.active_object_id(i)));
+    }
     const ClientID &client_id = ClientID::FromBinary(heartbeat_data.client_id());
     if (client_id == local_client_id) {
       // Skip heartbeats from self.
@@ -660,6 +686,7 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     }
     HeartbeatAdded(client_id, heartbeat_data);
   }
+  RAY_LOG(DEBUG) << "Total active object IDs on this node: " << active_object_ids.size();
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
@@ -880,6 +907,9 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
+  } break;
+  case protocol::MessageType::ActiveObjectIDsHeartbeat: {
+    ProcessActiveObjectIDsHeartbeat(client, message_data);
   } break;
 
   default:
@@ -1282,6 +1312,24 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
   RAY_LOG(DEBUG) << "Actor " << actor_id << " was resumed from checkpoint "
                  << checkpoint_id;
   checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
+}
+
+void NodeManager::ProcessActiveObjectIDsHeartbeat(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+    RAY_CHECK(worker);
+  }
+
+  auto message = flatbuffers::GetRoot<protocol::ActiveObjectIDsHeartbeat>(message_data);
+  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+
+  std::unordered_set<ObjectID> active_object_ids;
+  for (const auto &object_id : object_ids) {
+    active_object_ids.insert(object_id);
+  }
+  worker->SetActiveObjectIds(active_object_ids);
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
