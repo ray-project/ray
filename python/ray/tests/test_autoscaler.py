@@ -17,6 +17,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
+from ray.tests.utils import RayTestTimeoutException
 import pytest
 
 
@@ -238,7 +239,8 @@ class AutoscalingTest(unittest.TestCase):
             if condition():
                 return
             time.sleep(.1)
-        raise Exception("Timed out waiting for {}".format(condition))
+        raise RayTestTimeoutException(
+            "Timed out waiting for {}".format(condition))
 
     def waitForNodes(self, expected, comparison=None, tag_filters={}):
         MAX_ITER = 50
