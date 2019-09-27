@@ -147,9 +147,6 @@ class MockProvider(NodeProvider):
             if node.state == "pending":
                 node.state = "running"
 
-    def sleep(self, _):
-        time.sleep(0.01)  # spin fast for tests
-
 
 SMALL_CLUSTER = {
     "cluster_name": "default",
