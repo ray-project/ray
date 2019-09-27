@@ -17,7 +17,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
     fillout_defaults, validate_config
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
-from ray.test.utils import RayTestTimeoutException
+from ray.tests.utils import RayTestTimeoutException
 import pytest
 
 
