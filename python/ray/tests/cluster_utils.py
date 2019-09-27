@@ -8,7 +8,6 @@ import time
 import redis
 
 import ray
-from ray.tests.utils import RayTestTimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +152,7 @@ class Cluster(object):
                 return
             else:
                 time.sleep(0.1)
-        raise RayTestTimeoutException(
-            "Timed out while waiting for nodes to join.")
+        raise Exception("Timed out while waiting for nodes to join.")
 
     def wait_for_nodes(self, timeout=30):
         """Waits for correct number of nodes to be registered.
@@ -191,8 +189,7 @@ class Cluster(object):
                     "{} nodes are currently registered, but we are expecting "
                     "{}".format(len(live_clients), expected))
                 time.sleep(0.1)
-        raise RayTestTimeoutException(
-            "Timed out while waiting for nodes to join.")
+        raise Exception("Timed out while waiting for nodes to join.")
 
     def list_all_nodes(self):
         """Lists all nodes.
