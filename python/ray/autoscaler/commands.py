@@ -422,11 +422,12 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.ssh_cmd(
-            cmd,
-            allocate_tty=True,
-            exit_on_fail=True,
-            port_forward=port_forward)
+        try:
+            updater.ssh_cmd(cmd, allocate_tty=True, port_forward=port_forward)
+        except Exception:
+            logger.error("Command failed: \n\n  {}\n".format(
+                " ".join(final_cmd)))
+            sys.exit(1)
 
 
 def rsync(config_file, source, target, override_cluster_name, down):

@@ -12,6 +12,12 @@ TAG_RAY_NODE_TYPE = "ray-node-type"
 
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
 TAG_RAY_NODE_STATUS = "ray-node-status"
+STATUS_UNINITIALIZED = "uninitialized"
+STATUS_WAITING_FOR_SSH = "waiting-for-ssh"
+STATUS_SYNCING_FILES = "syncing-files"
+STATUS_SETTING_UP = "setting-up"
+STATUS_UPDATE_FAILED = "update-failed"
+STATUS_UP_TO_DATE = "up-to-date"
 
 # Tag uniquely identifying all nodes of a cluster
 TAG_RAY_CLUSTER_NAME = "ray-cluster-name"

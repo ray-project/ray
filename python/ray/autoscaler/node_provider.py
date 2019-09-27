@@ -188,3 +188,7 @@ class NodeProvider(object):
     def cleanup(self):
         """Clean-up when a Provider is no longer required."""
         pass
+
+    def sleep(self, seconds):
+        """Overridable sleep for testing."""
+        time.sleep(secondS)
