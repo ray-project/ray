@@ -66,7 +66,8 @@ class CoreWorker {
   /// store.
   CoreWorkerObjectInterface &Objects() { return *object_interface_; }
 
-  const std::shared_ptr<worker::Profiler> &Profiler() { return profiler_; }
+  /// Create a profile event with a reference to the core worker's profiler.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
@@ -100,7 +101,7 @@ class CoreWorker {
   boost::asio::io_service::work io_work_;
 
   std::thread io_thread_;
-  std::shared_ptr<worker::Profiler> profiler_;
+  std::unique_ptr<worker::Profiler> profiler_;
   std::unique_ptr<RayletClient> raylet_client_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
