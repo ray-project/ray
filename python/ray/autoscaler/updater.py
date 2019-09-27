@@ -286,6 +286,7 @@ class NodeUpdater(object):
                 redirect=None,
                 allocate_tty=False,
                 emulate_interactive=True,
+                exit_on_fail=False,
                 port_forward=None):
 
         self.set_ssh_ip_if_required()
@@ -313,10 +314,20 @@ class NodeUpdater(object):
             self.ssh_private_key, connect_timeout, self.ssh_control_path) + [
                 "{}@{}".format(self.ssh_user, self.ssh_ip), cmd
             ]
-        self.process_runner.check_call(
-            final_cmd,
-            stdout=redirect or sys.stdout,
-            stderr=redirect or sys.stderr)
+        try:
+            self.process_runner.check_call(
+                final_cmd,
+                stdout=redirect or sys.stdout,
+                stderr=redirect or sys.stderr)
+        except subprocess.CalledProcessError:
+            if exit_on_fail:
+                # Only reason we need this exit flag here is because here we
+                # know the final command and can print it nicely before exit()
+                logger.error("Command failed: \n\n  {}\n".format(
+                    " ".join(final_cmd)))
+                sys.exit(1)
+            else:
+                raise
 
 
 class NodeUpdaterThread(NodeUpdater, Thread):
