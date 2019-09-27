@@ -63,7 +63,7 @@ def create_model(config):
     model.add(Dropout(0.25))
 
     model.add(Flatten())
-    model.add(Dense(512))
+    model.add(Dense(64))
     model.add(Activation("relu"))
     model.add(Dropout(0.5))
     model.add(Dense(num_classes))
@@ -160,10 +160,7 @@ if __name__ == "__main__":
         default=1,
         help="Sets number of replicas for training.")
     parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=512,
-        help="Sets number of replicas for training.")
+        "--batch-size", type=int, default=32, help="Sets batch size.")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
