@@ -11,6 +11,8 @@ Ray
 
 **Ray is a fast and simple framework for building and running distributed applications.**
 
+.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
 - `Tune`_: Scalable Hyperparameter Tuning
@@ -22,6 +24,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the `Installation
 View the `codebase on GitHub`_.
 
 .. _`codebase on GitHub`: https://github.com/ray-project/ray
+
 
 
 Quick Start
