@@ -519,14 +519,14 @@ class TrialRunner(object):
             flat_result = flatten_dict(result)
             if trial.should_stop(flat_result):
                 # Hook into scheduler
-                self._scheduler_alg.on_trial_complete(self, trial, flat_result)
+                self._scheduler_alg.on_trial_complete(self, trial, result)
                 self._search_alg.on_trial_complete(
                     trial.trial_id, result=flat_result)
                 decision = TrialScheduler.STOP
             else:
                 with warn_if_slow("scheduler.on_trial_result"):
                     decision = self._scheduler_alg.on_trial_result(
-                        self, trial, flat_result, result)
+                        self, trial, result)
                 with warn_if_slow("search_alg.on_trial_result"):
                     self._search_alg.on_trial_result(trial.trial_id,
                                                      flat_result)

@@ -8,6 +8,7 @@ import numpy as np
 
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -77,15 +78,16 @@ class MedianStoppingRule(FIFOScheduler):
         value by step `t` is strictly worse than the median of the running
         averages of all completed trials' objectives reported up to step `t`.
         """
-        if self._time_attr not in result or self._metric not in result:
+        flat_result = flatten_dict(result)
+        if self._time_attr not in flat_result or self._metric not in flat_result:
             return TrialScheduler.CONTINUE
 
         if trial in self._stopped_trials:
             assert not self._hard_stop
             return TrialScheduler.CONTINUE  # fall back to FIFO
 
-        time = result[self._time_attr]
-        self._results[trial].append(result)
+        time = flat_result[self._time_attr]
+        self._results[trial].append(flat_result)
         median_result = self._get_median_result(time)
         best_result = self._best_result(trial)
         if self._verbose:
@@ -104,7 +106,8 @@ class MedianStoppingRule(FIFOScheduler):
             return TrialScheduler.CONTINUE
 
     def on_trial_complete(self, trial_runner, trial, result):
-        self._results[trial].append(result)
+        flat_result = flatten_dict(result)
+        self._results[trial].append(flat_result)
         self._completed_trials.add(trial)
 
     def on_trial_remove(self, trial_runner, trial):

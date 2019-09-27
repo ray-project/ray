@@ -6,6 +6,7 @@ import logging
 import numpy as np
 
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
+from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -91,25 +92,28 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
     def on_trial_result(self, trial_runner, trial, result):
+        flat_result = flatten_dict(result)
         action = TrialScheduler.CONTINUE
-        if self._time_attr not in result or self._metric not in result:
+        if self._time_attr not in flat_result or self._metric not in flat_result:
             return action
-        if result[self._time_attr] >= self._max_t:
+        if flat_result[self._time_attr] >= self._max_t:
             action = TrialScheduler.STOP
         else:
             bracket = self._trial_info[trial.trial_id]
-            action = bracket.on_result(trial, result[self._time_attr],
-                                       self._metric_op * result[self._metric])
+            action = bracket.on_result(trial, flat_result[self._time_attr],
+                                       self._metric_op * flat_result[self._metric])
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
         return action
 
     def on_trial_complete(self, trial_runner, trial, result):
-        if self._time_attr not in result or self._metric not in result:
+        flat_result = flatten_dict(result)
+
+        if self._time_attr not in flat_result or self._metric not in flat_result:
             return
         bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(trial, result[self._time_attr],
-                          self._metric_op * result[self._metric])
+        bracket.on_result(trial, flat_result[self._time_attr],
+                          self._metric_op * flat_result[self._metric])
         del self._trial_info[trial.trial_id]
 
     def on_trial_remove(self, trial_runner, trial):

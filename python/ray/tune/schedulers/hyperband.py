@@ -9,6 +9,7 @@ import logging
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 from ray.tune.error import TuneError
+from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -172,8 +173,9 @@ class HyperBandScheduler(FIFOScheduler):
         The current running trial will not be handled,
         as the trialrunner will be given control to handle it."""
 
+        flat_result = flatten_dict(result)
         bracket, _ = self._trial_info[trial]
-        bracket.update_trial_stats(trial, result)
+        bracket.update_trial_stats(trial, flat_result)
 
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE

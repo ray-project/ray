@@ -17,6 +17,7 @@ from ray.tune.logger import _SafeFallbackEncoder
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
 from ray.tune.trial import Trial, Checkpoint
+from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -220,18 +221,20 @@ class PopulationBasedTraining(FIFOScheduler):
     def on_trial_add(self, trial_runner, trial):
         self._trial_state[trial] = PBTTrialState(trial)
 
-    def on_trial_result(self, trial_runner, trial, result, raw_result):
-        if self._time_attr not in result or self._metric not in result:
+    def on_trial_result(self, trial_runner, trial, result):
+        flat_result = flatten_dict(result)
+        
+        if self._time_attr not in flat_result or self._metric not in flat_result:
             return TrialScheduler.CONTINUE
-        time = result[self._time_attr]
+        time = flat_result[self._time_attr]
         state = self._trial_state[trial]
 
-        trial.result_logger.on_result(raw_result)
+        trial.result_logger.on_result(result)
 
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        score = self._metric_op * result[self._metric]
+        score = self._metric_op * flat_result[self._metric]
         state.last_score = score
         state.last_perturbation_time = time
         lower_quantile, upper_quantile = self._quantiles()
@@ -239,7 +242,7 @@ class PopulationBasedTraining(FIFOScheduler):
         if trial in upper_quantile:
             state.last_checkpoint = trial_runner.trial_executor.save(
                 trial, Checkpoint.MEMORY)
-            state.last_result = raw_result
+            state.last_result = result
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial

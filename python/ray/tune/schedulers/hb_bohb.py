@@ -7,6 +7,7 @@ import logging
 from ray.tune.schedulers.trial_scheduler import TrialScheduler
 from ray.tune.schedulers.hyperband import HyperBandScheduler, Bracket
 from ray.tune.trial import Trial
+from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -74,14 +75,16 @@ class HyperBandForBOHB(HyperBandScheduler):
         The current running trial will not be handled,
         as the trialrunner will be given control to handle it."""
 
-        result["hyperband_info"] = {}
+        flat_result = flatten_dict(result)
+
+        flat_result["hyperband_info"] = {}
         bracket, _ = self._trial_info[trial]
-        bracket.update_trial_stats(trial, result)
+        bracket.update_trial_stats(trial, flat_result)
 
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
-        result["hyperband_info"]["budget"] = bracket._cumul_r
+        flat_result["hyperband_info"]["budget"] = bracket._cumul_r
 
         # MAIN CHANGE HERE!
         statuses = [(t, t.status) for t in bracket._live_trials]
