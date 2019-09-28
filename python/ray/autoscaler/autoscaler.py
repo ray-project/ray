@@ -657,12 +657,11 @@ class StandardAutoscaler(object):
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return (None, None, None)
+            return None, None, None  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
-
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return (None, None, None)
+            return None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
