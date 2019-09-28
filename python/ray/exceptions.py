@@ -53,7 +53,8 @@ class RayTaskError(RayError):
         cause class.
         """
 
-        if issubclass(RayTaskError, self.cause_cls):
+        if self.cause_cls == RayTaskError or issubclass(
+                RayTaskError, self.cause_cls):
             return self  # already satisfied
 
         class cls(self.cause_cls, RayTaskError):
@@ -62,12 +63,14 @@ class RayTaskError(RayError):
                 RayTaskError.__init__(self, function_name, traceback_str,
                                       cause_cls, pid, host)
 
-        name = "RayTaskError_as_{}".format(self.cause_cls.__name__)
+        name = "RayTaskError({})".format(self.cause_cls.__name__)
         cls.__name__ = name
         cls.__qualname__ = name
 
         return cls(self.function_name, self.traceback_str, self.cause_cls,
                    self.pid, self.host)
+        cls.original = self
+        return cls
 
     def __str__(self):
         """Format a RayTaskError as a string."""

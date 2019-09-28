@@ -76,7 +76,7 @@ def test_failed_task(ray_start_regular):
         assert "This function failed." in str(e)
         assert isinstance(e, CustomException)
         assert isinstance(e, ray.exceptions.RayTaskError)
-        assert "RayTaskError_as_CustomException" in repr(e)
+        assert "RayTaskError(CustomException)" in repr(e)
     else:
         # ray.get should throw an exception.
         assert False

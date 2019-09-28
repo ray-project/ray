@@ -1002,8 +1002,12 @@ class Worker(object):
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
-        failure_object = RayTaskError(function_name, backtrace,
-                                      error.__class__)
+        if isinstance(error, RayTaskError):
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.cause_cls)
+        else:
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.__class__)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
