@@ -45,6 +45,7 @@ void Profiler::FlushEvents() {
   }
   // Reset the timer to 1 second from the previous expiration time to avoid drift.
   timer_.expires_at(timer_.expiry() + boost::asio::chrono::seconds(1));
+  timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
 }
 
 }  // namespace worker
