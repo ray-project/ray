@@ -28,8 +28,8 @@ CoreWorker::CoreWorker(
     RayLog::InstallFailureSignalHandler();
   }
 
-  boost::asio::signal_set signals(io_service_, SIGINT, SIGTERM);
-  signals.async_wait(
+  boost::asio::signal_set sigterm(io_service_, SIGTERM);
+  sigterm.async_wait(
       [this](const boost::system::error_code &error, int signal_number) -> void {
         if (!error) {
           RAY_LOG(WARNING) << "Got signal " << signal_number << ", exiting.";
