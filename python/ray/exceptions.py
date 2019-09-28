@@ -53,8 +53,7 @@ class RayTaskError(RayError):
         cause class.
         """
 
-        if self.cause_cls == RayTaskError or issubclass(
-                RayTaskError, self.cause_cls):
+        if issubclass(RayTaskError, self.cause_cls):
             return self  # already satisfied
 
         class cls(self.cause_cls, RayTaskError):
