@@ -1003,6 +1003,7 @@ class Worker(object):
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
         if isinstance(error, RayTaskError):
+            # avoid recursively nesting of RayTaskError
             failure_object = RayTaskError(function_name, backtrace,
                                           error.cause_cls)
         else:
