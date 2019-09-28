@@ -37,8 +37,7 @@ class Profiler {
 
 class ProfileEvent {
  public:
-  ProfileEvent(const std::unique_ptr<Profiler> &profiler,
-               const const std::string &event_type);
+  ProfileEvent(const std::unique_ptr<Profiler> &profiler, const std::string &event_type);
 
   ~ProfileEvent() {
     rpc_event_.set_end_time(current_sys_time_seconds());
