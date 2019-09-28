@@ -9,6 +9,8 @@ TAG_RAY_NODE_NAME = "ray-node-name"
 
 # Tag for the type of node (e.g. Head, Worker)
 TAG_RAY_NODE_TYPE = "ray-node-type"
+NODE_TYPE_HEAD = "head"
+NODE_TYPE_WORKER = "worker"
 
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
 TAG_RAY_NODE_STATUS = "ray-node-status"

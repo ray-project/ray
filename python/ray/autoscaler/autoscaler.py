@@ -23,7 +23,7 @@ from ray.autoscaler.node_provider import get_node_provider, \
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
                                  TAG_RAY_NODE_NAME, STATUS_UP_TO_DATE,
-                                 STATUS_UNINITIALIZED)
+                                 STATUS_UNINITIALIZED, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
@@ -316,7 +316,7 @@ class NodeLauncher(threading.Thread):
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count):
-        worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
+        worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.log("Launching {} nodes.".format(count))
@@ -324,7 +324,7 @@ class NodeLauncher(threading.Thread):
             config["worker_nodes"], {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
                     config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "worker",
+                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
                 TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
                 TAG_RAY_LAUNCH_CONFIG: launch_hash,
             }, count)
@@ -713,7 +713,7 @@ class StandardAutoscaler(object):
 
     def workers(self):
         return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+            tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
         logger.info("StandardAutoscaler: {}".format(
