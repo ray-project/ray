@@ -32,7 +32,7 @@ CoreWorker::CoreWorker(
   sigterm.async_wait(
       [this](const boost::system::error_code &error, int signal_number) -> void {
         if (!error) {
-          RAY_LOG(WARNING) << "Got signal " << signal_number << ", exiting.";
+          RAY_LOG(WARNING) << "Got SIGTERM " << signal_number << ", shutting down.";
           io_service_.stop();
         }
       });
