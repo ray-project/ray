@@ -445,6 +445,7 @@ class Set : private Log<ID, Data>,
   Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, RedisGcsClient *client)
       : Log<ID, Data>(contexts, client) {}
 
+  using Log<ID, Data>::Subscribe;
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
   using Log<ID, Data>::Lookup;

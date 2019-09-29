@@ -44,6 +44,8 @@ class SubscriptionNotification {
 
 typedef SubscriptionNotification<std::vector<rpc::ObjectTableData>> ObjectNotification;
 
+typedef SubscriptionNotification<std::vector<rpc::ActorTableData>> ActorNotification;
+
 }  // namespace gcs
 
 }  // namespace ray
