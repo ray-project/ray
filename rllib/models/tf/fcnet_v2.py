@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils import try_import_tf
@@ -10,9 +12,7 @@ tf = try_import_tf()
 
 
 class FullyConnectedNetwork(TFModelV2):
-    """Generic fully connected network implemented in ModelV2 API.
-
-    TODO(ekl): should make this the default fcnet in the future."""
+    """Generic fully connected network implemented in ModelV2 API."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
                  name):
@@ -24,8 +24,9 @@ class FullyConnectedNetwork(TFModelV2):
         no_final_linear = model_config.get("no_final_linear")
         vf_share_layers = model_config.get("vf_share_layers")
 
+        # we are using obs_flat, so take the flattened shape as input
         inputs = tf.keras.layers.Input(
-            shape=obs_space.shape, name="observations")
+            shape=(np.product(obs_space.shape), ), name="observations")
         last_layer = inputs
         i = 1
 
@@ -65,7 +66,7 @@ class FullyConnectedNetwork(TFModelV2):
             for size in hiddens:
                 last_layer = tf.keras.layers.Dense(
                     size,
-                    name="value_fc_{}".format(i),
+                    name="fc_value_{}".format(i),
                     activation=activation,
                     kernel_initializer=normc_initializer(1.0))(last_layer)
                 i += 1

@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
   // Initialize stats.
   const ray::stats::TagsType global_tags = {
       {ray::stats::JobNameKey, "raylet"},
-      {ray::stats::VersionKey, "0.8.0.dev3"},
+      {ray::stats::VersionKey, "0.8.0.dev4"},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(stat_address, global_tags, disable_stats, enable_stdout_exporter);
 
@@ -104,8 +104,6 @@ int main(int argc, char *argv[]) {
   node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
-  node_manager_config.num_workers_per_process =
-      RayConfig::instance().num_workers_per_process();
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
 
   if (!python_worker_command.empty()) {

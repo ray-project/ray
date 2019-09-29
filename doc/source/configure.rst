@@ -5,6 +5,9 @@ This page discusses the various way to configure Ray, both from the Python API
 and from the command line. Take a look at the ``ray.init`` `documentation
 <package-ref.html#ray.init>`__ for a complete overview of the configurations.
 
+.. important:: For the multi-node setting, you must first run `ray start` on the command line before ``ray.init`` in Python. On a single machine, you can run ``ray.init()`` without `ray start`.
+
+
 Cluster Resources
 -----------------
 
@@ -33,7 +36,7 @@ When starting Ray from the command line, pass the ``--num-cpus`` and ``--num-cpu
   $ ray start --head --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
 
   # To start a non-head node.
-  $ ray start --redis-address=<redis-address> --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
+  $ ray start --address=<address> --num-cpus=<NUM_CPUS> --num-gpus=<NUM_GPUS>
 
   # Specifying custom resources
   ray start [--head] --num-cpus=<NUM_CPUS> --resources='{"Resource1": 4, "Resource2": 16}'
@@ -43,7 +46,7 @@ If using the command line, connect to the Ray cluster as follow:
 .. code-block:: python
 
   # Connect to ray. Notice if connected to existing cluster, you don't specify resources.
-  ray.init(redis_address=<redis-address>)
+  ray.init(address=<address>)
 
 
 Logging and Debugging
@@ -113,6 +116,9 @@ behind a firewall, this feature is useful for instances exposed to the internet
 where configuring a firewall is not possible. Because Redis is
 very fast at serving queries, the chosen password should be long.
 
+
+.. note:: The Redis passwords provided below may not contain spaces.
+
 Redis authentication is only supported on the raylet code path.
 
 To add authentication via the Python API, start Ray using:
@@ -142,7 +148,6 @@ Using the Object Store with Huge Pages
 Plasma is a high-performance shared memory object store originally developed in
 Ray and now being developed in `Apache Arrow`_. See the `relevant
 documentation`_.
-
 
 On Linux, it is possible to increase the write throughput of the Plasma object
 store by using huge pages. You first need to create a file system and activate

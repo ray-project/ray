@@ -15,27 +15,37 @@ class CoreWorker;
 /// The class provides implementations for accessing local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
 /// actor call (see direct_actor_transport.cc).
+/// See `CoreWorkerStoreProvider` for the semantics of public methods.
 class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
  public:
   CoreWorkerMemoryStoreProvider(std::shared_ptr<CoreWorkerMemoryStore> store);
 
-  /// See `CoreWorkerStoreProvider::Put` for semantics.
+  Status SetClientOptions(std::string name, int64_t limit_bytes) override;
+
   Status Put(const RayObject &object, const ObjectID &object_id) override;
 
-  /// See `CoreWorkerStoreProvider::Get` for semantics.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms, const TaskID &task_id,
-             std::vector<std::shared_ptr<RayObject>> *results) override;
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data) override;
 
-  /// See `CoreWorkerStoreProvider::Wait` for semantics.
+  Status Seal(const ObjectID &object_id) override;
+
+  Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+             const TaskID &task_id,
+             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             bool *got_exception) override;
+
+  Status Contains(const ObjectID &object_id, bool *has_object) override;
+
   /// Note that `num_objects` must equal to number of items in `object_ids`.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+  Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
-              std::vector<bool> *results) override;
+              std::unordered_set<ObjectID> *ready) override;
 
-  /// See `CoreWorkerStoreProvider::Delete` for semantics.
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
   Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
+
+  std::string MemoryUsageString() override;
 
  private:
   /// Implementation.

@@ -31,6 +31,7 @@ ACTION_SPACES_TO_TEST = {
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
     "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
@@ -69,6 +70,7 @@ def make_stub_env(action_space, obs_space, check_action_bounds):
 def check_support(alg, config, stats, check_bounds=False, name=None):
     covered_a = set()
     covered_o = set()
+    config["log_level"] = "ERROR"
     for a_name, action_space in ACTION_SPACES_TO_TEST.items():
         for o_name, obs_space in OBSERVATION_SPACES_TO_TEST.items():
             print("=== Testing", alg, action_space, obs_space, "===")
@@ -105,6 +107,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
 def check_support_multiagent(alg, config):
     register_env("multi_mountaincar", lambda _: MultiMountainCar(2))
     register_env("multi_cartpole", lambda _: MultiCartpole(2))
+    config["log_level"] = "ERROR"
     if "DDPG" in alg:
         a = get_agent_class(alg)(config=config, env="multi_mountaincar")
     else:

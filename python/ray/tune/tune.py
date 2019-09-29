@@ -80,9 +80,11 @@ def run(run_or_experiment,
             If Experiment, then Tune will execute training based on
             Experiment.spec.
         name (str): Name of experiment.
-        stop (dict): The stopping criteria. The keys may be any field in
-            the return result of 'train()', whichever is reached first.
-            Defaults to empty dict.
+        stop (dict|func): The stopping criteria. If dict, the keys may be
+            any field in the return result of 'train()', whichever is
+            reached first. If function, it must take (trial_id, result) as
+            arguments and return a boolean (True if trial should be stopped,
+            False otherwise).
         config (dict): Algorithm-specific configuration for Tune variant
             generation (e.g. env, hyperparams). Defaults to empty dict.
             Custom search algorithms may ignore this.
@@ -246,6 +248,11 @@ def run(run_or_experiment,
             if verbose:
                 print(runner.debug_string())
             last_debug = time.time()
+
+    try:
+        runner.checkpoint(force=True)
+    except Exception:
+        logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
         print(runner.debug_string(max_debug=99999))

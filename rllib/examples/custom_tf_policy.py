@@ -7,7 +7,7 @@ import argparse
 import ray
 from ray import tune
 from ray.rllib.agents.trainer_template import build_trainer
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.evaluation.postprocessing import discount
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils import try_import_tf
 
@@ -17,16 +17,26 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--iters", type=int, default=200)
 
 
-def policy_gradient_loss(policy, batch_tensors):
-    actions = batch_tensors[SampleBatch.ACTIONS]
-    rewards = batch_tensors[SampleBatch.REWARDS]
-    return -tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
+def policy_gradient_loss(policy, model, dist_class, train_batch):
+    logits, _ = model.from_batch(train_batch)
+    action_dist = dist_class(logits, model)
+    return -tf.reduce_mean(
+        action_dist.logp(train_batch["actions"]) * train_batch["returns"])
+
+
+def calculate_advantages(policy,
+                         sample_batch,
+                         other_agent_batches=None,
+                         episode=None):
+    sample_batch["returns"] = discount(sample_batch["rewards"], 0.99)
+    return sample_batch
 
 
 # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>
 MyTFPolicy = build_tf_policy(
     name="MyTFPolicy",
     loss_fn=policy_gradient_loss,
+    postprocess_fn=calculate_advantages,
 )
 
 # <class 'ray.rllib.agents.trainer_template.MyCustomTrainer'>

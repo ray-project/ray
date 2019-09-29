@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--smoke-test", action="store_true", help="Finish quickly for testing")
 parser.add_argument(
-    "--ray-redis-address",
+    "--ray-address",
     help="Address of Ray cluster for seamless distributed execution.")
 args, _ = parser.parse_known_args()
 
@@ -56,7 +56,7 @@ class MyTrainableClass(Trainable):
 
 if __name__ == "__main__":
     import ConfigSpace as CS
-    ray.init(redis_address=args.ray_redis_address)
+    ray.init(address=args.ray_address)
 
     # BOHB uses ConfigSpace for their hyperparameter search space
     config_space = CS.ConfigurationSpace()

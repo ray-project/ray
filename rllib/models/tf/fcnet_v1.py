@@ -25,6 +25,9 @@ class FullyConnectedNetwork(Model):
         hiddens = options.get("fcnet_hiddens")
         activation = get_activation_fn(options.get("fcnet_activation"))
 
+        if len(inputs.shape) > 2:
+            inputs = tf.layers.flatten(inputs)
+
         with tf.name_scope("fc_net"):
             i = 1
             last_layer = inputs

@@ -2,12 +2,11 @@ import numpy as np
 import unittest
 
 import ray
-import pyarrow
 
 MB = 1024 * 1024
 
 OBJECT_EVICTED = ray.exceptions.UnreconstructableError
-OBJECT_TOO_LARGE = pyarrow._plasma.PlasmaStoreFull
+OBJECT_TOO_LARGE = ray.exceptions.ObjectStoreFullError
 
 
 @ray.remote
@@ -50,7 +49,7 @@ class TestMemoryLimits(unittest.TestCase):
     def testTooLargeAllocation(self):
         try:
             ray.init(num_cpus=1, driver_object_store_memory=100 * MB)
-            ray.put(np.zeros(50 * MB, dtype=np.uint8))
+            ray.put(np.zeros(50 * MB, dtype=np.uint8), weakref=True)
             self.assertRaises(
                 OBJECT_TOO_LARGE,
                 lambda: ray.put(np.zeros(200 * MB, dtype=np.uint8)))
@@ -64,7 +63,7 @@ class TestMemoryLimits(unittest.TestCase):
                 num_cpus=1,
                 object_store_memory=300 * MB,
                 driver_object_store_memory=driver_quota)
-            z = ray.put("hi")
+            z = ray.put("hi", weakref=True)
             a = LightActor._remote(object_store_memory=a_quota)
             b = GreedyActor._remote(object_store_memory=b_quota)
             for _ in range(5):
@@ -77,7 +76,7 @@ class TestMemoryLimits(unittest.TestCase):
             print("Raised exception", type(e), e)
             raise e
         finally:
-            print(ray.worker.global_worker.plasma_client.debug_string())
+            print(ray.worker.global_worker.dump_object_store_memory_usage())
             ray.shutdown()
 
 

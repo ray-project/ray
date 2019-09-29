@@ -7,7 +7,7 @@ repo: https://github.com/keithito/tacotron
 cluster: .rayproject/cluster.yaml
 
 environment:
-  requirements: requirements.txt
+  requirements: .rayproject/requirements.txt
 
   shell:
     - curl http://data.keithito.com/data/speech/tacotron-20180906.tar.gz | tar xzC /tmp

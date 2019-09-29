@@ -10,6 +10,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.annotation.RayRemote;
+import org.ray.api.function.RayFunc1;
 import org.ray.api.test.BaseTest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,7 +65,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
         long endTime = remoteResult.getFinishTime();
         long costTime = endTime - temp.getStartTime();
         counterList.add(costTime / 1000);
-        LOGGER.warn("{}_cost_time:{}ns",logPrefix, costTime);
+        LOGGER.warn("{}_cost_time:{}ns", logPrefix, costTime);
         Assert.assertTrue(rayBenchmarkTest.checkResult(remoteResult.getResult()));
       }
       return counterList;
@@ -130,7 +131,13 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     RayObject<List<Long>>[] rayObjects = new RayObject[clientNum];
 
     for (int i = 0; i < clientNum; i++) {
-      rayObjects[i] = Ray.call(RayBenchmarkTest::singleClient, pressureTestParameter);
+      // Java compiler can't automatically infer the type of
+      // `RayBenchmarkTest::singleClient`, because `RayBenchmarkTest` is a generic class.
+      // It will match both `RayFunc1` and `RayFuncVoid1`. This looks like a bug or
+      // defect of the Java compiler.
+      // TODO(hchen): Figure out how to avoid manually declaring `RayFunc` type in this case.
+      RayFunc1<PressureTestParameter, List<Long>> func = RayBenchmarkTest::singleClient;
+      rayObjects[i] = Ray.call(func, pressureTestParameter);
     }
     for (int i = 0; i < clientNum; i++) {
       List<Long> subCounterList = rayObjects[i].get();

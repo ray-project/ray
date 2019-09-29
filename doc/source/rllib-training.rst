@@ -14,7 +14,7 @@ You can train a simple DQN trainer with the following command:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0
+    rllib train --run DQN --env CartPole-v0  # --eager [--trace] for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -122,6 +122,7 @@ Here is an example of the basic usage (for a more complete example, see `custom_
     config = ppo.DEFAULT_CONFIG.copy()
     config["num_gpus"] = 0
     config["num_workers"] = 1
+    config["eager"] = False
     trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
     # Can optionally call trainer.restore(path) to load a checkpoint.
@@ -156,6 +157,7 @@ All RLlib trainers are compatible with the `Tune API <tune-usage.html>`__. This 
             "num_gpus": 0,
             "num_workers": 1,
             "lr": tune.grid_search([0.01, 0.001, 0.0001]),
+            "eager": False,
         },
     )
 
@@ -176,7 +178,7 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
 Custom Training Workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#training-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
+In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__, Tune will call ``train()`` on your trainer once per iteration and report the new training results. Sometimes, it is desirable to have full control over training, but still run inside Tune. Tune supports `custom trainable functions <tune-usage.html#trainable-api>`__ that can be used to implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py>`__.
 
 For even finer-grained control over training, you can use RLlib's lower-level `building blocks <rllib-concepts.html>`__ directly to implement `fully customized training workflows <https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py>`__.
 
@@ -199,6 +201,161 @@ You can also access just the "master" copy of the trainer state through ``traine
 
     # Same as above
     trainer.workers.foreach_worker_with_index(lambda ev, i: ev.get_policy().get_weights())
+
+Accessing Model State
+~~~~~~~~~~~~~~~~~~~~~
+
+Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
+
+**Example: Preprocessing observations for feeding into a model**
+
+.. code-block:: python
+
+    >>> import gym
+    >>> env = gym.make("Pong-v0")
+
+    # RLlib uses preprocessors to implement transforms such as one-hot encoding
+    # and flattening of tuple and dict observations.
+    >>> from ray.rllib.models.preprocessors import get_preprocessor
+    >>> prep = get_preprocessor(env.observation_space)(env.observation_space)
+    <ray.rllib.models.preprocessors.GenericPixelPreprocessor object at 0x7fc4d049de80>
+
+    # Observations should be preprocessed prior to feeding into a model
+    >>> env.reset().shape
+    (210, 160, 3)
+    >>> prep.transform(env.reset()).shape
+    (84, 84, 3)
+
+**Example: Querying a policy's action distribution**
+
+.. code-block:: python
+
+    # Get a reference to the policy
+    >>> from ray.rllib.agents.ppo import PPOTrainer
+    >>> trainer = PPOTrainer(env="CartPole-v0", config={"eager": True, "num_workers": 0})
+    >>> policy = trainer.get_policy()
+    <ray.rllib.policy.eager_tf_policy.PPOTFPolicy_eager object at 0x7fd020165470>
+
+    # Run a forward pass to get model output logits. Note that complex observations
+    # must be preprocessed as in the above code block.
+    >>> logits, _ = policy.model.from_batch({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+    (<tf.Tensor: id=1274, shape=(1, 2), dtype=float32, numpy=...>, [])
+
+    # Compute action distribution given logits
+    >>> policy.dist_class
+    <class_object 'ray.rllib.models.tf.tf_action_dist.Categorical'>
+    >>> dist = policy.dist_class(logits, policy.model)
+    <ray.rllib.models.tf.tf_action_dist.Categorical object at 0x7fd02301d710>
+
+    # Query the distribution for samples, sample logps
+    >>> dist.sample()
+    <tf.Tensor: id=661, shape=(1,), dtype=int64, numpy=..>
+    >>> dist.logp([1])
+    <tf.Tensor: id=1298, shape=(1,), dtype=float32, numpy=...>
+
+    # Get the estimated values for the most recent forward pass
+    >>> policy.model.value_function()
+    <tf.Tensor: id=670, shape=(1,), dtype=float32, numpy=...>
+
+    >>> policy.model.base_model.summary()
+    Model: "model"
+    _____________________________________________________________________
+    Layer (type)               Output Shape  Param #  Connected to       
+    =====================================================================
+    observations (InputLayer)  [(None, 4)]   0                           
+    _____________________________________________________________________
+    fc_1 (Dense)               (None, 256)   1280     observations[0][0] 
+    _____________________________________________________________________
+    fc_value_1 (Dense)         (None, 256)   1280     observations[0][0] 
+    _____________________________________________________________________
+    fc_2 (Dense)               (None, 256)   65792    fc_1[0][0]         
+    _____________________________________________________________________
+    fc_value_2 (Dense)         (None, 256)   65792    fc_value_1[0][0]   
+    _____________________________________________________________________
+    fc_out (Dense)             (None, 2)     514      fc_2[0][0]         
+    _____________________________________________________________________
+    value_out (Dense)          (None, 1)     257      fc_value_2[0][0]   
+    =====================================================================
+    Total params: 134,915
+    Trainable params: 134,915
+    Non-trainable params: 0
+    _____________________________________________________________________
+
+**Example: Getting Q values from a DQN model**
+
+.. code-block:: python
+
+    # Get a reference to the model through the policy
+    >>> from ray.rllib.agents.dqn import DQNTrainer
+    >>> trainer = DQNTrainer(env="CartPole-v0", config={"eager": True})
+    >>> model = trainer.get_policy().model
+    <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
+
+    # List of all model variables
+    >>> model.variables()
+    [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
+
+    # Run a forward pass to get base model output. Note that complex observations
+    # must be preprocessed. An example of preprocessing is examples/saving_experiences.py
+    >>> model_out = model.from_batch({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+    (<tf.Tensor: id=832, shape=(1, 256), dtype=float32, numpy=...)
+
+    # Access the base Keras models (all default models have a base)
+    >>> model.base_model.summary()
+    Model: "model"
+    _______________________________________________________________________
+    Layer (type)                Output Shape    Param #  Connected to      
+    =======================================================================
+    observations (InputLayer)   [(None, 4)]     0                          
+    _______________________________________________________________________
+    fc_1 (Dense)                (None, 256)     1280     observations[0][0]
+    _______________________________________________________________________
+    fc_out (Dense)              (None, 256)     65792    fc_1[0][0]        
+    _______________________________________________________________________
+    value_out (Dense)           (None, 1)       257      fc_1[0][0]        
+    =======================================================================
+    Total params: 67,329
+    Trainable params: 67,329
+    Non-trainable params: 0
+    ______________________________________________________________________________
+
+    # Access the Q value model (specific to DQN)
+    >>> model.get_q_value_distributions(model_out)
+    [<tf.Tensor: id=891, shape=(1, 2)>, <tf.Tensor: id=896, shape=(1, 2, 1)>]
+
+    >>> model.q_value_head.summary()
+    Model: "model_1"
+    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    model_out (InputLayer)       [(None, 256)]             0         
+    _________________________________________________________________
+    lambda (Lambda)              [(None, 2), (None, 2, 1), 66306     
+    =================================================================
+    Total params: 66,306
+    Trainable params: 66,306
+    Non-trainable params: 0
+    _________________________________________________________________
+
+    # Access the state value model (specific to DQN)
+    >>> model.get_state_value(model_out)
+    <tf.Tensor: id=913, shape=(1, 1), dtype=float32>
+
+    >>> model.state_value_head.summary()
+    Model: "model_2"
+    _________________________________________________________________
+    Layer (type)                 Output Shape              Param #   
+    =================================================================
+    model_out (InputLayer)       [(None, 256)]             0         
+    _________________________________________________________________
+    lambda_1 (Lambda)            (None, 1)                 66049     
+    =================================================================
+    Total params: 66,049
+    Trainable params: 66,049
+    Non-trainable params: 0
+    _________________________________________________________________
+
+This is especially useful when used with `custom model classes <rllib-models.html>`__.
 
 Global Coordination
 ~~~~~~~~~~~~~~~~~~~
@@ -257,26 +414,43 @@ You can provide callback functions to be called at points during policy evaluati
         print("trainer.train() result: {} -> {} episodes".format(
             info["trainer"].__name__, info["result"]["episodes_this_iter"]))
 
+    def on_postprocess_traj(info):
+        episode = info["episode"]
+        batch = info["post_batch"]  # note: you can mutate this
+        print("postprocessed {} steps".format(batch.count))
+
     ray.init()
     analysis = tune.run(
         "PG",
         config={
             "env": "CartPole-v0",
             "callbacks": {
-                "on_episode_start": tune.function(on_episode_start),
-                "on_episode_step": tune.function(on_episode_step),
-                "on_episode_end": tune.function(on_episode_end),
-                "on_train_result": tune.function(on_train_result),
+                "on_episode_start": on_episode_start,
+                "on_episode_step": on_episode_step,
+                "on_episode_end": on_episode_end,
+                "on_train_result": on_train_result,
+                "on_postprocess_traj": on_postprocess_traj,
             },
         },
     )
+
+Visualizing Custom Metrics
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
-Example: Curriculum Learning
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Rewriting Trajectories
+~~~~~~~~~~~~~~~~~~~~~~
+
+Note that in the ``on_postprocess_batch`` callback you have full access to the trajectory batch (``post_batch``) and other training state. This can be used to rewrite the trajectory, which has a number of uses including:
+
+ * Backdating rewards to previous time steps (e.g., based on values in ``info``).
+ * Adding model-based curiosity bonuses to rewards (you can train the model with a `custom model supervised loss <rllib-models.html#supervised-model-losses>`__).
+
+Curriculum Learning
+~~~~~~~~~~~~~~~~~~~
 
 Let's look at two ways to use the above APIs to implement `curriculum learning <https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/>`__. In curriculum learning, the agent task is adjusted over time to improve the learning process. Suppose that we have an environment class with a ``set_phase()`` method that we can call to adjust the task difficulty over time:
 
@@ -343,7 +517,7 @@ Approach 2: Use the callbacks API to update the environment on new training resu
         config={
             "env": YourEnv,
             "callbacks": {
-                "on_train_result": tune.function(on_train_result),
+                "on_train_result": on_train_result,
             },
         },
     )
@@ -367,10 +541,12 @@ The ``"monitor": true`` config can be used to save Gym episode videos to the res
     openaigym.video.0.31403.video000000.meta.json
     openaigym.video.0.31403.video000000.mp4
 
-TensorFlow Eager
-~~~~~~~~~~~~~~~~
+Eager Mode
+~~~~~~~~~~
 
-While RLlib uses TF graph mode for all computations, you can still leverage TF eager to inspect the intermediate state of computations using `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__. Here's an example of using eager mode in `a custom RLlib model and loss <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
+Policies built with ``build_tf_policy`` (most of the reference algorithms are) can be run in eager mode by setting the ``"eager": True`` / ``"eager_tracing": True`` config options or using ``rllib train --eager [--trace]``. This will tell RLlib to execute the model forward pass, action distribution, loss, and stats functions in eager mode.
+
+Eager mode makes debugging much easier, since you can now use normal Python functions such as ``print()`` to inspect intermediate tensor values. However, it can be slower than graph mode unless tracing is enabled.
 
 Episode Traces
 ~~~~~~~~~~~~~~

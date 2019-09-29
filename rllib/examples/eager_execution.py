@@ -47,7 +47,7 @@ class EagerModel(Model):
         return feature_layer
 
 
-def policy_gradient_loss(policy, batch_tensors):
+def policy_gradient_loss(policy, model, dist_class, train_batch):
     """Example of using embedded eager execution in a custom loss.
 
     Here `compute_penalty` prints the actions and rewards for debugging, and
@@ -61,12 +61,15 @@ def policy_gradient_loss(policy, batch_tensors):
             print("The eagerly computed penalty is", penalty, actions, rewards)
         return penalty
 
-    actions = batch_tensors[SampleBatch.ACTIONS]
-    rewards = batch_tensors[SampleBatch.REWARDS]
+    logits, _ = model.from_batch(train_batch)
+    action_dist = dist_class(logits, model)
+
+    actions = train_batch[SampleBatch.ACTIONS]
+    rewards = train_batch[SampleBatch.REWARDS]
     penalty = tf.py_function(
         compute_penalty, [actions, rewards], Tout=tf.float32)
 
-    return penalty - tf.reduce_mean(policy.action_dist.logp(actions) * rewards)
+    return penalty - tf.reduce_mean(action_dist.logp(actions) * rewards)
 
 
 # <class 'ray.rllib.policy.tf_policy_template.MyTFPolicy'>

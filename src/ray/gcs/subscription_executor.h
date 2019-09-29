@@ -2,6 +2,7 @@
 #define RAY_GCS_SUBSCRIPTION_EXECUTOR_H
 
 #include <atomic>
+#include <list>
 #include <mutex>
 #include "ray/gcs/callback.h"
 #include "ray/gcs/tables.h"
@@ -67,8 +68,18 @@ class SubscriptionExecutor {
 
   std::mutex mutex_;
 
+  enum class RegistrationStatus : uint8_t {
+    kNotRegistered,
+    kRegistering,
+    kRegistered,
+  };
+
   /// Whether successfully registered subscription to GCS.
-  bool registered_{false};
+  RegistrationStatus registration_status_{RegistrationStatus::kNotRegistered};
+
+  /// List of subscriptions before registration to GCS is done, these callbacks
+  /// will be called when the registration to GCS finishes.
+  std::list<StatusCallback> pending_subscriptions_;
 
   /// Subscribe Callback of all elements.
   SubscribeCallback<ID, Data> subscribe_all_callback_{nullptr};

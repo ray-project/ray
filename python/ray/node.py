@@ -19,7 +19,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.services
 from ray.resource_spec import ResourceSpec
-from ray.utils import try_to_create_directory
+from ray.utils import try_to_create_directory, try_to_symlink
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray configures it by default automatically
@@ -27,6 +27,7 @@ from ray.utils import try_to_create_directory
 logger = logging.getLogger(__name__)
 
 PY3 = sys.version_info.major >= 3
+SESSION_LATEST = "session_latest"
 
 
 class Node(object):
@@ -60,9 +61,12 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        if shutdown_at_exit and connect_only:
-            raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
-                             "be both true.")
+        if shutdown_at_exit:
+            if connect_only:
+                raise ValueError("'shutdown_at_exit' and 'connect_only' "
+                                 "cannot both be true.")
+            self._register_shutdown_hooks()
+
         self.head = head
         self.all_processes = {}
 
@@ -151,9 +155,50 @@ class Node(object):
         if not connect_only:
             self.start_ray_processes()
 
-        if shutdown_at_exit:
-            atexit.register(lambda: self.kill_all_processes(
-                check_alive=False, allow_graceful=True))
+    def _register_shutdown_hooks(self):
+        # Make ourselves a process group session leader to ensure we can clean
+        # up child processes later without killing a process that started us.
+        try:
+            os.setpgrp()
+        except OSError as e:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+
+        # Clean up child process by first going through the normal
+        # kill_all_processes procedure (which should clean them all up
+        # under normal circumstances), then sending a SIGTERM to our
+        # process group to take care of any children that may have been
+        # spawned but not yet added to the list.
+        def clean_up_children(sigterm_handler):
+            self.kill_all_processes(check_alive=False, allow_graceful=True)
+            signal.signal(signal.SIGTERM, sigterm_handler)
+            try:
+                # SIGTERM our process group as a last resort in case there
+                # were processes that we spawned but didn't add to the list
+                # (could happen if interrupted just after spawning them).
+                # We could send SIGKILL here to be sure, but we're also
+                # sending it to ourselves.
+                os.killpg(0, signal.SIGTERM)
+            except OSError as e:
+                print("killpg failed, processes may not have "
+                      "been cleaned up properly: {}.".format(e))
+
+        # Register the a handler to be called during the normal python
+        # shutdown process. We pass an empty lambda to clean_up_children
+        # because after cleaning up the child processes, it should do
+        # nothing and return so that the shutdown process can continue.
+        def atexit_handler():
+            return clean_up_children(lambda *args, **kwargs: None)
+
+        atexit.register(atexit_handler)
+
+        # Register the a handler to be called if we get a SIGTERM.
+        # In this case, we want to exit with an error code (1) after
+        # cleaning up child processes.
+        def sigterm_handler():
+            return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -171,15 +216,19 @@ class Node(object):
         else:
             self._session_dir = ray.utils.decode(
                 redis_client.get("session_dir"))
+        session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
         try_to_create_directory(self._session_dir)
+        try_to_symlink(session_symlink, self._session_dir)
         # Create a directory to be used for socket files.
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
         try_to_create_directory(self._sockets_dir, warn_if_exist=False)
         # Create a directory to be used for process log files.
         self._logs_dir = os.path.join(self._session_dir, "logs")
         try_to_create_directory(self._logs_dir, warn_if_exist=False)
+        old_logs_dir = os.path.join(self._logs_dir, "old")
+        try_to_create_directory(old_logs_dir, warn_if_exist=False)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -195,6 +244,11 @@ class Node(object):
     def node_ip_address(self):
         """Get the cluster Redis address."""
         return self._node_ip_address
+
+    @property
+    def address(self):
+        """Get the cluster address."""
+        return self._redis_address
 
     @property
     def redis_address(self):
@@ -219,6 +273,12 @@ class Node(object):
     def plasma_store_socket_name(self):
         """Get the node's plasma store socket name."""
         return self._plasma_store_socket_name
+
+    @property
+    def unique_id(self):
+        """Get a unique identifier for this node."""
+        return "{}:{}".format(self.node_ip_address,
+                              self._plasma_store_socket_name)
 
     @property
     def webui_url(self):

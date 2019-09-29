@@ -12,9 +12,13 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
+import glob
+import shutil
 import sys
 import os
-import shlex
+import urllib
+sys.path.insert(0, os.path.abspath('.'))
+from custom_directives import CustomGalleryItemDirective
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
@@ -66,12 +70,32 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc',
-    'sphinx.ext.viewcode',
-    'sphinx.ext.napoleon',
-    'sphinx_click.ext',
-    'sphinx-jsonschema',
+    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
+    'sphinx_click.ext', 'sphinx-jsonschema', 'sphinx_gallery.gen_gallery'
 ]
+
+sphinx_gallery_conf = {
+    "examples_dirs": ["../examples"],  # path to example scripts
+    "gallery_dirs": ["auto_examples"],  # path where to save generated examples
+    "ignore_pattern": "../examples/doc_code/",
+    "plot_gallery": "False",
+    # "filename_pattern": "tutorial.py",
+    "backreferences_dir": False
+    # "show_memory': False,
+    # 'min_reported_time': False
+}
+
+for i in range(len(sphinx_gallery_conf["examples_dirs"])):
+    gallery_dir = sphinx_gallery_conf["gallery_dirs"][i]
+    source_dir = sphinx_gallery_conf["examples_dirs"][i]
+    try:
+        os.mkdir(gallery_dir)
+    except OSError:
+        pass
+
+    # Copy rst files from source dir to gallery dir.
+    for f in glob.glob(os.path.join(source_dir, '*.rst')):
+        shutil.copy(f, gallery_dir)
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -94,7 +118,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Ray'
-copyright = u'2016, The Ray Team'
+copyright = u'2019, The Ray Team'
 author = u'The Ray Team'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -122,6 +146,8 @@ language = None
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 exclude_patterns = ['_build']
+exclude_patterns += sphinx_gallery_conf['examples_dirs']
+exclude_patterns += ["*/README.rst"]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
@@ -330,4 +356,33 @@ texinfo_documents = [
 # Python methods should be presented in source code order
 autodoc_member_order = 'bysource'
 
+# Taken from https://github.com/edx/edx-documentation
+FEEDBACK_FORM_FMT = "https://github.com/ray-project/ray/issues/new?title={title}&labels=docs&body={body}"
+
+
+def feedback_form_url(project, page):
+    """Create a URL for feedback on a particular page in a project."""
+    return FEEDBACK_FORM_FMT.format(
+        title=urllib.parse.quote(
+            "[docs] Issue on `{page}.rst`".format(page=page)),
+        body=urllib.parse.quote(
+            "# Documentation Problem/Question/Comment\n"
+            "<!-- Describe your issue/question/comment below. -->\n"
+            "<!-- If there are typos or errors in the docs, feel free to create a pull-request. -->\n"
+            "\n\n\n\n"
+            "(Created directly from the docs)\n"))
+
+
+def update_context(app, pagename, templatename, context, doctree):
+    """Update the page rendering context to include ``feedback_form_url``."""
+    context['feedback_form_url'] = feedback_form_url(app.config.project,
+                                                     pagename)
+
+
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
+
+
+def setup(app):
+    app.connect('html-page-context', update_context)
+    # Custom directives
+    app.add_directive('customgalleryitem', CustomGalleryItemDirective)

@@ -4,13 +4,10 @@ from __future__ import print_function
 
 import argparse
 import numpy as np
-import keras
-from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import (Dense, Dropout, Flatten, Conv2D, MaxPooling2D)
+from tensorflow.keras.datasets import mnist
 
 from ray.tune.integration.keras import TuneReporterCallback
-from ray.tune.examples.utils import get_mnist_data, set_keras_threads
+from ray.tune.examples.utils import get_mnist_data
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -19,7 +16,11 @@ args, _ = parser.parse_known_args()
 
 
 def train_mnist(config, reporter):
-    set_keras_threads(config["threads"])
+    # https://github.com/tensorflow/tensorflow/issues/32159
+    import tensorflow as tf
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import (Dense, Dropout, Flatten, Conv2D,
+                                         MaxPooling2D)
     batch_size = 128
     num_classes = 10
     epochs = 12
@@ -40,8 +41,8 @@ def train_mnist(config, reporter):
     model.add(Dense(num_classes, activation="softmax"))
 
     model.compile(
-        loss=keras.losses.categorical_crossentropy,
-        optimizer=keras.optimizers.SGD(
+        loss=tf.keras.losses.categorical_crossentropy,
+        optimizer=tf.keras.optimizers.SGD(
             lr=config["lr"], momentum=config["momentum"]),
         metrics=["accuracy"])
 

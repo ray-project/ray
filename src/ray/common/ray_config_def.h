@@ -137,8 +137,11 @@ RAY_CONFIG(int, object_manager_repeated_push_delay_ms, 60000)
 /// chunks exceeds the number of available sending threads.
 RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 1000000)
 
-/// Number of workers per process
-RAY_CONFIG(int, num_workers_per_process, 1)
+/// Number of workers per Python worker process
+RAY_CONFIG(int, num_workers_per_process_python, 1)
+
+/// Number of workers per Java worker process
+RAY_CONFIG(int, num_workers_per_process_java, 10)
 
 /// Maximum timeout in milliseconds within which a task lease must be renewed.
 RAY_CONFIG(int64_t, max_task_lease_timeout_ms, 60000)

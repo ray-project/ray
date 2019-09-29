@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import json
 import os
-import pyarrow.plasma as plasma
 import pytest
 import sys
 import tempfile
@@ -527,6 +526,27 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
+def test_warning_for_resource_deadlock(shutdown_only):
+    # Check that we get warning messages for infeasible tasks.
+    ray.init(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Foo(object):
+        def f(self):
+            return 0
+
+    @ray.remote
+    def f():
+        # Creating both actors is not possible.
+        actors = [Foo.remote() for _ in range(2)]
+        for a in actors:
+            ray.get(a.f.remote())
+
+    # Run in a task to check we handle the blocked task case correctly
+    f.remote()
+    wait_for_errors(ray_constants.RESOURCE_DEADLOCK_ERROR, 1, timeout=30)
+
+
 def test_warning_for_infeasible_tasks(ray_start_regular):
     # Check that we get warning messages for infeasible tasks.
 
@@ -604,20 +624,18 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 
 def test_redis_module_failure(ray_start_regular):
     address_info = ray_start_regular
-    redis_address = address_info["redis_address"]
-    redis_address = redis_address.split(":")
-    assert len(redis_address) == 2
+    address = address_info["redis_address"]
+    address = address.split(":")
+    assert len(address) == 2
 
     def run_failure_test(expecting_message, *command):
         with pytest.raises(
                 Exception, match=".*{}.*".format(expecting_message)):
-            client = redis.StrictRedis(
-                host=redis_address[0], port=int(redis_address[1]))
+            client = redis.StrictRedis(host=address[0], port=int(address[1]))
             client.execute_command(*command)
 
     def run_one_command(*command):
-        client = redis.StrictRedis(
-            host=redis_address[0], port=int(redis_address[1]))
+        client = redis.StrictRedis(host=address[0], port=int(address[1]))
         client.execute_command(*command)
 
     run_failure_test("wrong number of arguments", "RAY.TABLE_ADD", 13)
@@ -701,7 +719,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     })
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _internal_config=config)
-    ray.init(redis_address=cluster.redis_address)
+    ray.init(address=cluster.address)
     info = relevant_errors(ray_constants.REMOVED_NODE_ERROR)
     assert len(info) == 0
     # This node is killed by SIGKILL, ray_monitor will mark it to dead.
@@ -748,7 +766,7 @@ def test_parallel_actor_fill_plasma_retry(ray_start_cluster_head, num_actors):
         "object_store_memory": 10**8
     }],
     indirect=True)
-def test_fill_plasma_exception(ray_start_cluster_head):
+def test_fill_object_store_exception(ray_start_cluster_head):
     @ray.remote
     class LargeMemoryActor(object):
         def some_expensive_task(self):
@@ -763,5 +781,5 @@ def test_fill_plasma_exception(ray_start_cluster_head):
     # Make sure actor does not die
     ray.get(actor.test.remote())
 
-    with pytest.raises(plasma.PlasmaStoreFull):
+    with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))

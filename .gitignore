@@ -12,9 +12,6 @@
 /src/ray/raylet/format/*_generated.h
 /java/runtime/src/main/java/org/ray/runtime/generated/*
 
-# Modin source files
-/python/ray/modin
-
 # Redis temporary files
 *dump.rdb
 

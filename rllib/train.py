@@ -93,6 +93,14 @@ def create_parser(parser_creator=None):
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
     parser.add_argument(
+        "--eager",
+        action="store_true",
+        help="Whether to attempt to enable TF eager execution.")
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Whether to attempt to enable tracing for eager mode.")
+    parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
         "--queue-trials",
@@ -140,6 +148,12 @@ def run(args, parser):
             parser.error("the following arguments are required: --run")
         if not exp.get("env") and not exp.get("config", {}).get("env"):
             parser.error("the following arguments are required: --env")
+        if args.eager:
+            exp["config"]["eager"] = True
+        if args.trace:
+            if not exp["config"].get("eager"):
+                raise ValueError("Must enable --eager to enable tracing.")
+            exp["config"]["eager_tracing"] = True
 
     if args.ray_num_nodes:
         cluster = Cluster()
@@ -150,7 +164,7 @@ def run(args, parser):
                 object_store_memory=args.ray_object_store_memory,
                 memory=args.ray_memory,
                 redis_max_memory=args.ray_redis_max_memory)
-        ray.init(address=cluster.redis_address)
+        ray.init(address=cluster.address)
     else:
         ray.init(
             address=args.ray_address,

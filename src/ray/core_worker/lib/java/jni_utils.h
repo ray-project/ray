@@ -4,6 +4,7 @@
 #include <jni.h>
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_object.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/store_provider/store_provider.h"
 
@@ -77,12 +78,12 @@ extern jclass java_language_class;
 /// getNumber of Language class
 extern jmethodID java_language_get_number;
 
-/// NativeTaskArg class
+/// FunctionArg class
 extern jclass java_function_arg_class;
-/// id field of NativeTaskArg class
+/// id field of FunctionArg class
 extern jfieldID java_function_arg_id;
-/// data field of NativeTaskArg class
-extern jfieldID java_function_arg_data;
+/// value field of FunctionArg class
+extern jfieldID java_function_arg_value;
 
 /// BaseTaskOptions class
 extern jclass java_base_task_options_class;
@@ -91,8 +92,12 @@ extern jfieldID java_base_task_options_resources;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
+/// DEFAULT_USE_DIRECT_CALL field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_default_use_direct_call;
 /// maxReconstructions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_max_reconstructions;
+/// useDirectCall field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_use_direct_call;
 /// jvmOptions field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_jvm_options;
 
@@ -279,11 +284,11 @@ inline std::shared_ptr<ray::RayObject> JavaNativeRayObjectToNativeRayObject(
   std::shared_ptr<ray::Buffer> data_buffer = JavaByteArrayToNativeBuffer(env, java_data);
   std::shared_ptr<ray::Buffer> metadata_buffer =
       JavaByteArrayToNativeBuffer(env, java_metadata);
-  if (!data_buffer) {
-    data_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
+  if (data_buffer && data_buffer->Size() == 0) {
+    data_buffer = nullptr;
   }
-  if (!metadata_buffer) {
-    metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(nullptr, 0);
+  if (metadata_buffer && metadata_buffer->Size() == 0) {
+    metadata_buffer = nullptr;
   }
   return std::make_shared<ray::RayObject>(data_buffer, metadata_buffer);
 }
