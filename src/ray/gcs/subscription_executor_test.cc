@@ -2,6 +2,7 @@
 #include "ray/gcs/accessor_test_base.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/redis_gcs_client.h"
+#include "ray/gcs/subscription_notification.h"
 
 namespace ray {
 
@@ -9,15 +10,15 @@ namespace gcs {
 
 class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData> {
  public:
-  typedef SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>
-      ActorSubExecutor;
+  typedef SubscriptionExecutor<ActorID, ActorNotification, ActorTable> ActorSubExecutor;
 
   virtual void SetUp() {
     AccessorTestBase<ActorID, ActorTableData>::SetUp();
 
     actor_sub_executor_.reset(new ActorSubExecutor(gcs_client_->actor_table()));
 
-    subscribe_ = [this](const ActorID &id, const std::vector<ActorTableData> &data) {
+    subscribe_ = [this](const ActorID &id, const ActorNotification &notification) {
+      const auto &data = notification.GetData();
       if (!data.empty()) {
         const auto it = id_to_data_.find(id);
         ASSERT_TRUE(it != id_to_data_.end());
@@ -80,7 +81,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   std::atomic<int> do_sub_pending_count_{0};
   std::atomic<int> do_unsub_pending_count_{0};
 
-  SubscribeCallback<ActorID, std::vector<ActorTableData>> subscribe_{nullptr};
+  SubscribeCallback<ActorID, ActorNotification> subscribe_{nullptr};
   StatusCallback sub_done_{nullptr};
   StatusCallback unsub_done_{nullptr};
 };

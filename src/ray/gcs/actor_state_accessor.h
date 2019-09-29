@@ -99,7 +99,7 @@ class ActorStateAccessor {
   // TODO(micafan): Remove this random id, once GCS becomes a service.
   ClientID node_id_{ClientID::FromRandom()};
 
-  typedef SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>
+  typedef SubscriptionExecutor<ActorID, ActorNotification, ActorTable>
       ActorSubscriptionExecutor;
   ActorSubscriptionExecutor actor_sub_executor_;
 };

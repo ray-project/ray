@@ -107,7 +107,8 @@ Status ActorStateAccessor::DoAsyncSubscribe(
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   auto on_subscribe = [subscribe](const ActorID &actor_id,
-                                  const std::vector<ActorTableData> &data) {
+                                  const ActorNotification &notification) {
+    const auto &data = notification.GetData();
     if (!data.empty()) {
       // We only need the last entry, because it represents the latest state of
       // this actor.

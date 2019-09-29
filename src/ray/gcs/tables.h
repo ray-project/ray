@@ -205,6 +205,28 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status CancelNotifications(const JobID &job_id, const ID &id, const ClientID &client_id,
                              const StatusCallback &done);
 
+  /// Subscribe to any modifications to the key. The caller may choose
+  /// to subscribe to all modifications, or to subscribe only to keys that it
+  /// requests notifications for. This may only be called once per Log
+  /// instance. This function is different from public version due to
+  /// an additional parameter change_mode in NotificationCallback. Therefore this
+  /// function supports notifications of remove operations.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param client_id The type of update to listen to. If this is nil, then a
+  /// message for each Add to the table will be received. Else, only
+  /// messages for the given client will be received. In the latter
+  /// case, the client may request notifications on specific keys in the
+  /// table via `RequestNotifications`.
+  /// \param subscribe Callback that is called on each received message. If the
+  /// callback is called with an empty vector, then there was no data at the key.
+  /// \param done Callback that is called when subscription is complete and we
+  /// are ready to receive messages.
+  /// \return Status
+  Status Subscribe(const JobID &job_id, const ClientID &client_id,
+                   const NotificationCallback &subscribe,
+                   const SubscriptionCallback &done);
+
   /// Delete an entire key from redis.
   ///
   /// \param job_id The ID of the job.
@@ -229,28 +251,6 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
     static std::hash<ID> index;
     return shard_contexts_[index(id) % shard_contexts_.size()];
   }
-
-  /// Subscribe to any modifications to the key. The caller may choose
-  /// to subscribe to all modifications, or to subscribe only to keys that it
-  /// requests notifications for. This may only be called once per Log
-  /// instance. This function is different from public version due to
-  /// an additional parameter change_mode in NotificationCallback. Therefore this
-  /// function supports notifications of remove operations.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param client_id The type of update to listen to. If this is nil, then a
-  /// message for each Add to the table will be received. Else, only
-  /// messages for the given client will be received. In the latter
-  /// case, the client may request notifications on specific keys in the
-  /// table via `RequestNotifications`.
-  /// \param subscribe Callback that is called on each received message. If the
-  /// callback is called with an empty vector, then there was no data at the key.
-  /// \param done Callback that is called when subscription is complete and we
-  /// are ready to receive messages.
-  /// \return Status
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const NotificationCallback &subscribe,
-                   const SubscriptionCallback &done);
 
   /// The connection to the GCS.
   std::vector<std::shared_ptr<RedisContext>> shard_contexts_;
@@ -415,6 +415,7 @@ class Set : private Log<ID, Data>,
   Set(const std::vector<std::shared_ptr<RedisContext>> &contexts, RedisGcsClient *client)
       : Log<ID, Data>(contexts, client) {}
 
+  using Log<ID, Data>::Subscribe;
   using Log<ID, Data>::RequestNotifications;
   using Log<ID, Data>::CancelNotifications;
   using Log<ID, Data>::Lookup;
@@ -441,12 +442,6 @@ class Set : private Log<ID, Data>,
   /// \return Status
   Status Remove(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
-
-  Status Subscribe(const JobID &job_id, const ClientID &client_id,
-                   const NotificationCallback &subscribe,
-                   const SubscriptionCallback &done) {
-    return Log<ID, Data>::Subscribe(job_id, client_id, subscribe, done);
-  }
 
   /// Returns debug string for class.
   ///

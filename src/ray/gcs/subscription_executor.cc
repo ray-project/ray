@@ -169,7 +169,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
   return table_.CancelNotifications(JobID::Nil(), id, client_id, on_done);
 }
 
-template class SubscriptionExecutor<ActorID, std::vector<ActorTableData>, ActorTable>;
+template class SubscriptionExecutor<ActorID, ActorNotification, ActorTable>;
 
 template class SubscriptionExecutor<ObjectID, ObjectNotification, ObjectTable>;
 
