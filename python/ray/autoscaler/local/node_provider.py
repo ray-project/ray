@@ -10,7 +10,8 @@ import socket
 import logging
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_NODE_TYPE
+from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, NODE_TYPE_WORKER, \
+    NODE_TYPE_HEAD
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,9 @@ class ClusterState(object):
                 if os.path.exists(self.save_path):
                     workers = json.loads(open(self.save_path).read())
                     head_config = workers.get(provider_config["head_ip"])
-                    if not head_config or head_config.get(
-                            "tags", {}).get(TAG_RAY_NODE_TYPE) != "head":
+                    if (not head_config or
+                            head_config.get("tags", {}).get(TAG_RAY_NODE_TYPE)
+                            != NODE_TYPE_HEAD):
                         workers = {}
                         logger.info("Head IP changed - recreating cluster.")
                 else:
@@ -41,23 +43,23 @@ class ClusterState(object):
                     if worker_ip not in workers:
                         workers[worker_ip] = {
                             "tags": {
-                                TAG_RAY_NODE_TYPE: "worker"
+                                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
                             },
                             "state": "terminated",
                         }
                     else:
                         assert workers[worker_ip]["tags"][
-                            TAG_RAY_NODE_TYPE] == "worker"
+                            TAG_RAY_NODE_TYPE] == NODE_TYPE_WORKER
                 if provider_config["head_ip"] not in workers:
                     workers[provider_config["head_ip"]] = {
                         "tags": {
-                            TAG_RAY_NODE_TYPE: "head"
+                            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
                         },
                         "state": "terminated",
                     }
                 else:
                     assert workers[provider_config["head_ip"]]["tags"][
-                        TAG_RAY_NODE_TYPE] == "head"
+                        TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD
                 assert len(workers) == len(provider_config["worker_ips"]) + 1
                 with open(self.save_path, "w") as f:
                     logger.debug("ClusterState: "
