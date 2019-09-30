@@ -211,7 +211,7 @@ class CoreWorkerTaskInterface {
 
   /// Pending tasks for submission. Guarded by task_batch_lock_.
   std::vector<TaskSpecification> task_batch_;
-  boost::asio::io_service& raylet_io_service_;
+  boost::asio::io_service &raylet_io_service_;
 
   /// Protects task_batch_.
   std::recursive_mutex task_batch_lock_;

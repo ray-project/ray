@@ -120,7 +120,6 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
   const TaskSpecification &spec = task.GetTaskSpecification();
   if (rpc_client_ != nullptr) {
-    RAY_CHECK(!task.IsVectorTask());
     // Use push mode.
     RAY_CHECK(port_ > 0);
     rpc::AssignTaskRequest request;
@@ -148,28 +147,18 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                      << " to worker " << worker_id_;
     }
   } else {
-//    auto start = current_sys_time_us();
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
     flatbuffers::FlatBufferBuilder fbb;
     auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
 
-    std::vector<flatbuffers::Offset<flatbuffers::String>> task_strs;
-    if (task.IsVectorTask()) {
-      for (const auto& s : task.GetTaskSpecificationVector()) {
-        task_strs.push_back(fbb.CreateString(s.Serialize()));
-      }
-    } else {
-      task_strs.push_back(fbb.CreateString(spec.Serialize()));
-    }
     auto message =
-        protocol::CreateGetTaskReply(fbb, fbb.CreateVector(task_strs),
+        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
                                      fbb.CreateVector(resource_id_set_flatbuf));
     fbb.Finish(message);
     Connection()->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
         fbb.GetBufferPointer(), finish_assign_callback);
-//    RAY_LOG(INFO) << "worker push task time " << (current_sys_time_us() - start);
   }
 }
 

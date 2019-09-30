@@ -220,24 +220,14 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  return SubmitTaskBatch({task_spec});
-}
-
-ray::Status RayletClient::SubmitTaskBatch(
-    const std::vector<ray::TaskSpecification> &tasks) {
-  std::unique_ptr<uint8_t[]> reply;
   flatbuffers::FlatBufferBuilder fbb;
-  std::vector<flatbuffers::Offset<flatbuffers::String>> taskfb;
-  for (const auto &task : tasks) {
-    taskfb.push_back(fbb.CreateString(task.Serialize()));
-  }
-  auto message = ray::protocol::CreateSubmitTaskRequest(fbb, fbb.CreateVector(taskfb));
+  auto message = ray::protocol::CreateSubmitTaskRequest(
+      fbb, fbb.CreateString(task_spec.Serialize()));
   fbb.Finish(message);
-  return conn_->AtomicRequestReply(
-      MessageType::SubmitTask, MessageType::SubmitTaskReply, reply, &fbb);
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTasks(std::vector<std::unique_ptr<ray::TaskSpecification>>& task_specs) {
+ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
   std::unique_ptr<uint8_t[]> reply;
   // Receive a task from the raylet. This will block until the raylet
   // gives this client a task.
@@ -270,13 +260,8 @@ ray::Status RayletClient::GetTasks(std::vector<std::unique_ptr<ray::TaskSpecific
   }
 
   // Return the copy of the task spec and pass ownership to the caller.
-  int num_tasks = reply_message->task_specs()->size();
-  for (int i = 0; i < num_tasks; i++) {
-    task_specs.emplace_back(
-      std::unique_ptr<ray::TaskSpecification>(
-        new ray::TaskSpecification(string_from_flatbuf(
-            *reply_message->task_specs()->Get(i)))));
-  }
+  task_spec->reset(
+      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
   return ray::Status::OK();
 }
 

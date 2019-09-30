@@ -868,12 +868,11 @@ class Worker(object):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
             if outputs[i] is ray.experimental.no_return.NoReturn:
-                pass
-#                if not self.core_worker.object_exists(object_ids[i]):
-#                    raise RuntimeError(
-#                        "Attempting to return 'ray.experimental.NoReturn' "
-#                        "from a remote function, but the corresponding "
-#                        "ObjectID does not exist in the local object store.")
+                if not self.core_worker.object_exists(object_ids[i]):
+                    raise RuntimeError(
+                        "Attempting to return 'ray.experimental.NoReturn' "
+                        "from a remote function, but the corresponding "
+                        "ObjectID does not exist in the local object store.")
             else:
                 self.put_object(object_ids[i], outputs[i])
 
@@ -978,7 +977,7 @@ class Worker(object):
                 num_returns = len(return_object_ids)
                 if num_returns == 1:
                     outputs = (outputs, )
-            self._store_outputs_in_object_store(return_object_ids, outputs)
+                self._store_outputs_in_object_store(return_object_ids, outputs)
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
@@ -1099,19 +1098,19 @@ class Worker(object):
             self.core_worker.disconnect()
             sys.exit(0)
 
-    def _get_next_tasks_from_raylet(self):
+    def _get_next_task_from_raylet(self):
         """Get the next task from the raylet.
 
         Returns:
             A task from the raylet.
         """
         with profiling.profile("worker_idle"):
-            tasks = self.raylet_client.get_tasks()
+            task = self.raylet_client.get_task()
 
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-        return tasks
+        return task
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -1123,9 +1122,8 @@ class Worker(object):
         signal.signal(signal.SIGTERM, exit)
 
         while True:
-            tasks = self._get_next_tasks_from_raylet()
-            for task in tasks:
-                self._wait_for_and_process_task(task)
+            task = self._get_next_task_from_raylet()
+            self._wait_for_and_process_task(task)
 
 
 def get_gpu_ids():
