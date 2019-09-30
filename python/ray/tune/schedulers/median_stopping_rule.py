@@ -8,7 +8,6 @@ import numpy as np
 
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
-from ray.tune.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -92,14 +91,15 @@ class MedianStoppingRule(FIFOScheduler):
         trials.remove(trial)
 
         if len(trials) < self._min_samples_required:
-            waiting = [t for t in trial_runner.get_trials()
-                       if t.status in (Trial.PENDING, Trial.PAUSED)]
+            waiting = [
+                t for t in trial_runner.get_trials()
+                if t.status in (Trial.PENDING, Trial.PAUSED)
+            ]
             if self._verbose and waiting:
                 logger.info(
                     "MedianStoppingRule: insufficient samples={} to evaluate "
                     "trial {} at t={}. Yielding time to other trials.".format(
-                        len(trials), trial.trial_id, result_time)
-                )
+                        len(trials), trial.trial_id, result_time))
             return TrialScheduler.PAUSE if waiting else TrialScheduler.CONTINUE
 
         median_result = self._median_result(trials, result_time)
@@ -128,8 +128,10 @@ class MedianStoppingRule(FIFOScheduler):
             len(self._stopped_trials))
 
     def _trials_beyond_time(self, time):
-        trials = [trial for trial in self._results
-                  if trial.last_result.get(self._time_attr) >= time]
+        trials = [
+            trial for trial in self._results
+            if self._results[trial][-1][self._time_attr] >= time
+        ]
         return trials
 
     def _median_result(self, trials, time):
