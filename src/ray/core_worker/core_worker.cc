@@ -17,7 +17,9 @@ CoreWorker::CoreWorker(
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
-      heartbeat_timer_(io_service_, boost::asio::chrono::milliseconds(100)) {
+      heartbeat_timer_(io_service_,
+                       boost::asio::chrono::milliseconds(
+                           RayConfig::instance().heartbeat_timeout_milliseconds())) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (!log_dir_.empty()) {
@@ -119,8 +121,10 @@ void CoreWorker::SendActiveObjectIDsHeartbeat() {
   }
   RAY_CHECK_OK(raylet_client_->ActiveObjectIDsHeartbeat(active_object_ids_));
   // Reset the timer from the previous expiration time to avoid drift.
-  heartbeat_timer_.expires_at(heartbeat_timer_.expiry() +
-                              boost::asio::chrono::milliseconds(100));
+  heartbeat_timer_.expires_at(
+      heartbeat_timer_.expiry() +
+      boost::asio::chrono::milliseconds(
+          RayConfig::instance().heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(
       boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
 }

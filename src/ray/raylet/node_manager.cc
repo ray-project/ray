@@ -343,8 +343,8 @@ void NodeManager::Heartbeat() {
     std::vector<ObjectID> active_object_id_vector(active_object_ids.begin(),
                                                   active_object_ids.end());
     std::random_shuffle(active_object_id_vector.begin(), active_object_id_vector.end());
-    for (const auto &object_id : active_object_ids) {
-      std::string object_id_bytes = object_id.Binary();
+    for (size_t i = 0; i < max_size; i++) {
+      std::string object_id_bytes = active_object_id_vector[i].Binary();
       heartbeat_data->add_active_object_id(object_id_bytes.data(),
                                            object_id_bytes.size());
     }
@@ -688,7 +688,7 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     }
     HeartbeatAdded(client_id, heartbeat_data);
   }
-  RAY_LOG(DEBUG) << "Total active object IDs on this node: " << active_object_ids.size();
+  RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
