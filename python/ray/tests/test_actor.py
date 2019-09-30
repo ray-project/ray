@@ -264,6 +264,24 @@ def test_custom_classes(ray_start_regular):
     assert results2[2].x == 3
 
 
+def test_actor_class_attributes(ray_start_regular):
+
+    @ray.remote
+    class TestActor(object):
+        X = 3
+
+        @classmethod
+        def f(cls):
+            assert TestActor.X == 3
+            return 4
+
+        def g(self):
+            assert TestActor.f() == 4
+            return TestActor.X
+
+    t = TestActor.remote()
+    assert ray.get(t.g.remote()) == 3
+
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 

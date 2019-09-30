@@ -246,8 +246,19 @@ class ActorClass(object):
     def _from_modified_class(cls, modified_class, class_id,
                              max_reconstructions, num_cpus, num_gpus, memory,
                              object_store_memory, resources):
+
+        # Make sure the actor class we are constructing inherits from the
+        # original class so it retains all class properties.
+        class DerivedActorClass(cls, modified_class):
+            pass
+
+        name = "ActorClass({})".format(modified_class.__name__)
+        DerivedActorClass.__module__ = modified_class.__module__
+        DerivedActorClass.__name__ = name
+        DerivedActorClass.__qualname__ = name
+
         # Construct the base object.
-        self = cls.__new__(cls)
+        self = DerivedActorClass.__new__(DerivedActorClass)
 
         self._modified_class = modified_class
         self._class_id = class_id
