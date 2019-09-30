@@ -298,7 +298,7 @@ void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().heartbeat_timeout_milliseconds()) {
+                     RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
     RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
   }
   last_heartbeat_at_ms_ = now_ms;
@@ -330,9 +330,6 @@ void NodeManager::Heartbeat() {
   int64_t max_size = RayConfig::instance().raylet_active_object_ids_size();
   if (active_object_ids.size() <= max_size) {
     for (const auto &object_id : active_object_ids) {
-      if (heartbeat_data->active_object_id_size() == max_size) {
-        break;
-      }
       std::string object_id_bytes = object_id.Binary();
       heartbeat_data->add_active_object_id(object_id_bytes.data(),
                                            object_id_bytes.size());
@@ -1327,10 +1324,7 @@ void NodeManager::ProcessActiveObjectIDsHeartbeat(
   auto message = flatbuffers::GetRoot<protocol::ActiveObjectIDsHeartbeat>(message_data);
   std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
 
-  std::unordered_set<ObjectID> active_object_ids;
-  for (const auto &object_id : object_ids) {
-    active_object_ids.insert(object_id);
-  }
+  std::unordered_set<ObjectID> active_object_ids(object_ids.begin(), object_ids.end());
   worker->SetActiveObjectIds(active_object_ids);
 }
 

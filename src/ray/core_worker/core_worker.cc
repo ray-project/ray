@@ -17,9 +17,7 @@ CoreWorker::CoreWorker(
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
-      heartbeat_timer_(io_service_,
-                       boost::asio::chrono::milliseconds(
-                           RayConfig::instance().heartbeat_timeout_milliseconds())) {
+      heartbeat_timer_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (!log_dir_.empty()) {
@@ -73,8 +71,13 @@ CoreWorker::CoreWorker(
       language_, rpc_server_port));
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
-  heartbeat_timer_.async_wait(
-      boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+  // If the heartbeat timeout is < 0, the heartbeats are disabled.
+  if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
+    heartbeat_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+        RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
+    heartbeat_timer_.async_wait(
+        boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+  }
 
   io_thread_ = std::thread(&CoreWorker::StartIOService, this);
 
@@ -136,7 +139,7 @@ void CoreWorker::SendActiveObjectIDsHeartbeat() {
   heartbeat_timer_.expires_at(
       heartbeat_timer_.expiry() +
       boost::asio::chrono::milliseconds(
-          RayConfig::instance().heartbeat_timeout_milliseconds()));
+          RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(
       boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
   active_object_ids_updated_ = false;

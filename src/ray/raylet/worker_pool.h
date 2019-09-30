@@ -121,9 +121,7 @@ class WorkerPool {
   /// \param task_id The task that we want to query.
   bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
 
-  /// Get the set of active object IDs from all workers in the worker pool. If
-  /// there are more than the configured raylet_active_object_ids_size, that
-  /// many IDs will be randomly sampled.
+  /// Get the set of active object IDs from all workers in the worker pool.
   /// \return A set containing the active object IDs.
   std::unordered_set<ObjectID> GetActiveObjectIDs() const;
 

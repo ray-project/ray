@@ -2,7 +2,7 @@
 #define COMMON_PROTOCOL_H
 
 #include <flatbuffers/flatbuffers.h>
-#include <unordered_map>
+#include <unordered_set>
 
 #include "ray/common/id.h"
 #include "ray/util/logging.h"
@@ -29,6 +29,14 @@ ID from_flatbuf(const flatbuffers::String &string);
 /// @return The vector of IDs.
 template <typename ID>
 const std::vector<ID> from_flatbuf(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
+
+/// Convert a flatbuffer vector of strings to an unordered_set of unique IDs.
+///
+/// @param vector The flatbuffer vector.
+/// @return The unordered set of IDs.
+template <typename ID>
+const std::unordered_set<ID> unordered_set_from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector);
 
 /// Convert a flatbuffer of string that concatenated
@@ -99,6 +107,16 @@ const std::vector<ID> from_flatbuf(
   std::vector<ID> ids;
   for (int64_t i = 0; i < vector.Length(); i++) {
     ids.push_back(from_flatbuf<ID>(*vector.Get(i)));
+  }
+  return ids;
+}
+
+template <typename ID>
+const std::vector<ID> unordered_set_from_flatbuf(
+    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
+  std::unordered_set<ID> ids;
+  for (int64_t i = 0; i < vector.Length(); i++) {
+    ids.insert(from_flatbuf<ID>(*vector.Get(i)));
   }
   return ids;
 }

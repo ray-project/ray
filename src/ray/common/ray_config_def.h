@@ -20,9 +20,8 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
-/// The duration between heartbeats. These are sent by the raylet and from the
-/// workers to the raylet.
-RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100)
+/// The duration between heartbeats send from the raylets.
+RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -40,6 +39,9 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 /// require an object will not try to reconstruct the task until at least
 /// this many milliseconds.
 RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
+
+/// The duration between heartbeats sent from the workers to the raylet.
+RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 500)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.

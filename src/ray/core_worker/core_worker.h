@@ -81,8 +81,12 @@ class CoreWorker {
     worker_context_.SetCurrentTaskId(task_id);
   }
 
+  // Add this object ID to the set of active object IDs that is sent to the raylet
+  // in the heartbeat messsage.
   void AddActiveObjectID(const ObjectID &object_id);
 
+  // Remove this object ID from the set of active object IDs that is sent to the raylet
+  // in the heartbeat messsage.
   void RemoveActiveObjectID(const ObjectID &object_id);
 
  private:
