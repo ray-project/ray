@@ -71,7 +71,7 @@ Early Stopping with ASHA
 Let's integrate an early stopping algorithm to our search - ASHA, a scalable algorithm for principled early stopping.
 
 How does it work? On a high level, it terminates trials that are less promising and
-allocates more time and resources to more promising trials. See `this blog post <ttps://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
+allocates more time and resources to more promising trials. See `this blog post <https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/>`__ for more details.
 
 We can afford to **increase the search space by 5x**, by adjusting the parameter ``num_samples``. See the `Trial Scheduler section <tune-schedulers.html>`__ for more details of available schedulers and library integrations.
 
