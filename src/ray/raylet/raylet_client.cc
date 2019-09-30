@@ -220,11 +220,21 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
+  return SubmitTaskBatch({task_spec});
+}
+
+ray::Status RayletClient::SubmitTaskBatch(
+    const std::vector<ray::TaskSpecification> &tasks) {
+  std::unique_ptr<uint8_t[]> reply;
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, fbb.CreateString(task_spec.Serialize()));
+  std::vector<flatbuffers::Offset<flatbuffers::String>> taskfb;
+  for (const auto &task : tasks) {
+    taskfb.push_back(fbb.CreateString(task.Serialize()));
+  }
+  auto message = ray::protocol::CreateSubmitTaskRequest(fbb, fbb.CreateVector(taskfb));
   fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
+  return conn_->AtomicRequestReply(
+      MessageType::SubmitTask, MessageType::SubmitTaskReply, reply, &fbb);
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {

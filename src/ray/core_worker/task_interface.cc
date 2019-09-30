@@ -158,7 +158,7 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
 
   std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
   task_batch_.push_back(builder.Build());
-  FlushTaskBatch();
+  SendTasksInBatch();
   return Status::OK();
 }
 
@@ -239,7 +239,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
   return status;
 }
 
-void CoreWorkerTaskInterface::FlushTaskBatch() {
+void CoreWorkerTaskInterface::SendTasksInBatch() {
   std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
 
   if (task_batch_.empty()) return;
@@ -253,7 +253,7 @@ void CoreWorkerTaskInterface::FlushTaskBatch() {
     task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(copy);
     std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
     flushing_ = false;
-    FlushTaskBatch();
+    SendTasksInBatch();
   });
   task_batch_.clear();
 }

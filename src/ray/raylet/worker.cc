@@ -4,7 +4,6 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
-#include "ray/util/util.h"
 
 namespace ray {
 

@@ -84,7 +84,6 @@ Status CoreWorkerObjectInterface::Seal(const ObjectID &object_id) {
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
-  FlushTaskBatch();
   (*results).resize(ids.size(), nullptr);
 
   // Divide the object ids by store provider type. For each store provider,
@@ -145,14 +144,12 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 }
 
 Status CoreWorkerObjectInterface::Contains(const ObjectID &object_id, bool *has_object) {
-  FlushTaskBatch();
   // Currently only the Plasma store supports Contains().
   return store_providers_[StoreProviderType::PLASMA]->Contains(object_id, has_object);
 }
 
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num_objects,
                                        int64_t timeout_ms, std::vector<bool> *results) {
-  FlushTaskBatch();
   (*results).resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {

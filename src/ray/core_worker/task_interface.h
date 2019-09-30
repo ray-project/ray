@@ -19,9 +19,6 @@
 
 namespace ray {
 
-const int MAX_TASK_BATCH_SIZE = 128;
-const int TASK_SUBMIT_BATCH_MILLIS = 5;
-
 class CoreWorker;
 
 /// Options of a non-actor-creation task.
@@ -175,11 +172,6 @@ class CoreWorkerTaskInterface {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
-  /// Flush any pending task submissions. This function is critical for task get
-  /// performance, otherwise task submissions could be delayed for up to
-  /// TASK_SUBMIT_BATCH_MILLIS.
-  void FlushTaskBatch();
-
  private:
   /// Build common attributes of the task spec, and compute return ids.
   ///
@@ -201,6 +193,10 @@ class CoreWorkerTaskInterface {
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       TaskTransportType transport_type, std::vector<ObjectID> *return_ids);
+
+  /// If no submit task IPC is pending, send one. Otherwise, queue the tasks for
+  /// sending in batch once the current IPC has finished.
+  void SendTasksInBatch();
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
