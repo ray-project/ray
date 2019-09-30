@@ -198,7 +198,7 @@ if __name__ == "__main__":
         group = True
     elif args.run == "APEX_QMIX":
         config = {
-            "num_gpus": 1,
+            "num_gpus": 0,
             "num_workers": 2,
             "optimizer": {
                 "num_replay_buffer_shards": 1,
