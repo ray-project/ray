@@ -75,16 +75,19 @@ def ray_checkpointable_actor_cls(request):
             if not os.path.isfile(filename):
                 return None
 
+            available_checkpoint_ids = [
+                c.checkpoint_id for c in available_checkpoints
+            ]
             with open(filename, "r") as f:
-                lines = f.readlines()
-                checkpoint_id, value = lines[-1].split(" ")
-                self.value = int(value)
-                self.resumed_from_checkpoint = True
-                checkpoint_id = ray.ActorCheckpointID(
-                    ray.utils.hex_to_binary(checkpoint_id))
-                assert any(checkpoint_id == checkpoint.checkpoint_id
-                           for checkpoint in available_checkpoints)
-                return checkpoint_id
+                for line in f:
+                    checkpoint_id, value = line.strip().split(" ")
+                    checkpoint_id = ray.ActorCheckpointID(
+                        ray.utils.hex_to_binary(checkpoint_id))
+                    if checkpoint_id in available_checkpoint_ids:
+                        self.value = int(value)
+                        self.resumed_from_checkpoint = True
+                        return checkpoint_id
+                return None
 
         def checkpoint_expired(self, actor_id, checkpoint_id):
             pass
@@ -2405,7 +2408,7 @@ def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
     actor = ray.remote(
         max_reconstructions=2)(ray_checkpointable_actor_cls).remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
@@ -2511,10 +2514,10 @@ def test_checkpointing_save_exception(ray_start_regular,
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
-            raise Exception("Error during save")
+            raise Exception("Intentional error saving checkpoint.")
 
     actor = RemoteCheckpointableActor.remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint that will fail.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
@@ -2539,13 +2542,8 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
-    # Check that checkpointing errors were pushed to the driver.
-    errors = ray.errors()
-    assert len(errors) > 0
-    for error in errors:
-        # An error for the actor process dying may also get pushed.
-        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
+    # Check that the checkpoint error was pushed to the driver.
+    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
 def test_checkpointing_load_exception(ray_start_regular,
@@ -2555,15 +2553,16 @@ def test_checkpointing_load_exception(ray_start_regular,
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def load_checkpoint(self, actor_id, checkpoints):
-            raise Exception("Error during load")
+            raise Exception("Intentional error loading checkpoint.")
 
     actor = RemoteCheckpointableActor.remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint that will succeed.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Assert that the actor wasn't resumed from a checkpoint.
+    # Assert that the actor wasn't resumed from a checkpoint because loading
+    # it failed.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
     kill_actor(actor)
@@ -2583,13 +2582,8 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
-    # Check that checkpointing errors were pushed to the driver.
-    errors = ray.errors()
-    assert len(errors) > 0
-    for error in errors:
-        # An error for the actor process dying may also get pushed.
-        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
+    # Check that the checkpoint error was pushed to the driver.
+    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
 @pytest.mark.parametrize(
