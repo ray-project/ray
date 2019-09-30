@@ -9,12 +9,11 @@ DynamicResourceStateAccessor::DynamicResourceStateAccessor(RedisGcsClient &clien
     : client_impl_(client_impl), resource_sub_executor_(client_impl_.resource_table()) {}
 
 Status DynamicResourceStateAccessor::AsyncGet(
-    const ClientID &node_id,
-    const OptionalItemCallback<TagToResourceMap> &callback) {
+    const ClientID &node_id, const OptionalItemCallback<ResourceMap> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
-                            const TagToResourceMap &data) {
-    boost::optional<TagToResourceMap> result;
+                            const ResourceMap &data) {
+    boost::optional<ResourceMap> result;
     if (!data.empty()) {
       result = data;
     }
@@ -26,14 +25,12 @@ Status DynamicResourceStateAccessor::AsyncGet(
 }
 
 Status DynamicResourceStateAccessor::AsyncUpdate(const ClientID &node_id,
-                                                 const TagToResourceMap &resources,
+                                                 const ResourceMap &resources,
                                                  const StatusCallback &callback) {
   Hash<ClientID, ResourceTableData>::HashCallback on_done = nullptr;
   if (callback != nullptr) {
     on_done = [callback](RedisGcsClient *client, const ClientID &node_id,
-                         const TagToResourceMap &resources) {
-      callback(Status::OK());
-    };
+                         const ResourceMap &resources) { callback(Status::OK()); };
   }
 
   DynamicResourceTable &resource_table = client_impl_.resource_table();
