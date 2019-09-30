@@ -28,7 +28,7 @@ class CoreWorker {
   /// \param[in] gcs_options Options for the GCS client.
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
-  /// \param[in] node_ip_address IP address of the node..
+  /// \param[in] node_ip_address IP address of the node.
   /// \param[in] execution_callback Language worker callback to execute tasks.
   /// \param[in] use_memory_store Whether or not to use the in-memory object store
   ///            in addition to the plasma store.
