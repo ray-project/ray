@@ -282,6 +282,7 @@ def test_actor_class_attributes(ray_start_regular):
     t = TestActor.remote()
     assert ray.get(t.g.remote()) == 3
 
+
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
