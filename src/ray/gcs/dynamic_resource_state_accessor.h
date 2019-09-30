@@ -3,8 +3,8 @@
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/tables.h"
 #include "ray/gcs/subscription_executor.h"
+#include "ray/gcs/tables.h"
 
 namespace ray {
 
@@ -22,8 +22,7 @@ class DynamicResourceStateAccessor {
   ~DynamicResourceStateAccessor() {}
 
   // TODO(micafan) Define ResourceMap in GCS proto.
-  typedef std::unordered_map<std::string, std::shared_ptr<ResourceTableData>>
-      TagToResourceMap;
+  typedef std::unordered_map<std::string, std::shared_ptr<ResourceTableData>> ResourceMap;
 
   /// Get node's dynamic resources from GCS asynchronously.
   ///
@@ -31,14 +30,14 @@ class DynamicResourceStateAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   Status AsyncGet(const ClientID &node_id,
-                  const OptionalItemCallback<TagToResourceMap> &callback);
+                  const OptionalItemCallback<ResourceMap> &callback);
 
   /// Update dynamic resources of node in GCS asynchronously.
   ///
   /// \param node_id The ID of node to update dynamic resources.
   /// \param resources The dynamic resources of node to be updated.
   /// \param callback Callback that will be called after update finishes.
-  Status AsyncUpdate(const ClientID &node_id, const TagToResourceMap &resources,
+  Status AsyncUpdate(const ClientID &node_id, const ResourceMap &resources,
                      const StatusCallback &callback);
 
   /// Delete resources of an node from GCS asynchronously.
@@ -56,14 +55,15 @@ class DynamicResourceStateAccessor {
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   Status AsyncSubscribe(
-    const SubscribeCallback<ClientID, DynamicResourceNotification> &subscribe,
-    const StatusCallback &done);
+      const SubscribeCallback<ClientID, DynamicResourceNotification> &subscribe,
+      const StatusCallback &done);
 
  private:
   RedisGcsClient &client_impl_;
 
   typedef SubscriptionExecutor<ClientID, DynamicResourceNotification,
-      DynamicResourceTable> DynamicResourceSubscriptionExecutor;
+                               DynamicResourceTable>
+      DynamicResourceSubscriptionExecutor;
   DynamicResourceSubscriptionExecutor resource_sub_executor_;
 };
 
