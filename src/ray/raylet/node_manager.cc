@@ -338,6 +338,8 @@ void NodeManager::Heartbeat() {
                                            object_id_bytes.size());
     }
   } else {
+    // If there are more than the configured maximum number of object IDs to send per
+    // heartbeat, sample from them randomly.
     std::vector<ObjectID> active_object_id_vector(active_object_ids.begin(),
                                                   active_object_ids.end());
     std::random_shuffle(active_object_id_vector.begin(), active_object_id_vector.end());
