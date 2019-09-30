@@ -450,7 +450,7 @@ class ModelCatalog(object):
         else:
             obs_rank = len(obs_space.shape)
 
-        if obs_rank > 1:
+        if obs_rank > 2:
             return PyTorchVisionNet(obs_space, action_space, num_outputs,
                                     model_config, name)
 
@@ -506,7 +506,7 @@ class ModelCatalog(object):
 
         obs_rank = len(input_dict["obs"].shape) - 1
 
-        if obs_rank > 1:
+        if obs_rank > 2:
             return VisionNetwork(input_dict, obs_space, action_space,
                                  num_outputs, options)
 
@@ -521,7 +521,7 @@ class ModelCatalog(object):
         if options.get("use_lstm"):
             return None  # TODO: default LSTM v2 not implemented
 
-        if obs_rank > 1:
+        if obs_rank > 2:
             return VisionNetV2
 
         return FCNetV2

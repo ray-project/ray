@@ -10,19 +10,39 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     const StatusCallback &done) {
   // TODO(micafan) Optimize the lock when necessary.
   // Consider avoiding locking in single-threaded processes.
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
 
   if (subscribe_all_callback_ != nullptr) {
     RAY_LOG(DEBUG) << "Duplicate subscription! Already subscribed to all elements.";
     return Status::Invalid("Duplicate subscription!");
   }
 
-  if (registered_) {
+  if (registration_status_ != RegistrationStatus::kNotRegistered) {
     if (subscribe != nullptr) {
       RAY_LOG(DEBUG) << "Duplicate subscription! Already subscribed to specific elements"
                         ", can't subscribe to all elements.";
       return Status::Invalid("Duplicate subscription!");
     }
+  }
+
+  if (registration_status_ == RegistrationStatus::kRegistered) {
+    // Already registered to GCS, just invoke the `done` callback.
+    lock.unlock();
+    if (done != nullptr) {
+      done(Status::OK());
+    }
+    return Status::OK();
+  }
+
+  // Registration to GCS is not finished yet, add the `done` callback to the pending list
+  // to be invoked when registration is done.
+  if (done != nullptr) {
+    pending_subscriptions_.emplace_back(done);
+  }
+
+  // If there's another registration request that's already on-going, then wait for it
+  // to finish.
+  if (registration_status_ == RegistrationStatus::kRegistering) {
     return Status::OK();
   }
 
@@ -37,7 +57,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     SubscribeCallback<ID, Data> sub_one_callback = nullptr;
     SubscribeCallback<ID, Data> sub_all_callback = nullptr;
     {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
       const auto it = id_to_callback_map_.find(id);
       if (it != id_to_callback_map_.end()) {
         sub_one_callback = it->second;
@@ -53,15 +73,23 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     }
   };
 
-  auto on_done = [done](RedisGcsClient *client) {
-    if (done != nullptr) {
-      done(Status::OK());
+  auto on_done = [this](RedisGcsClient *client) {
+    std::list<StatusCallback> pending_callbacks;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      registration_status_ = RegistrationStatus::kRegistered;
+      pending_callbacks.swap(pending_subscriptions_);
+      RAY_CHECK(pending_subscriptions_.empty());
+    }
+
+    for (const auto &callback : pending_callbacks) {
+      callback(Status::OK());
     }
   };
 
   Status status = table_.Subscribe(JobID::Nil(), client_id, on_subscribe, on_done);
   if (status.ok()) {
-    registered_ = true;
+    registration_status_ = RegistrationStatus::kRegistering;
     subscribe_all_callback_ = subscribe;
   }
 
@@ -72,35 +100,49 @@ template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
     const ClientID &client_id, const ID &id, const SubscribeCallback<ID, Data> &subscribe,
     const StatusCallback &done) {
-  Status status = AsyncSubscribe(client_id, nullptr, nullptr);
-  if (!status.ok()) {
-    return status;
-  }
+  RAY_CHECK(client_id != ClientID::Nil());
 
-  auto on_done = [this, done, id](Status status) {
-    if (!status.ok()) {
-      std::lock_guard<std::mutex> lock(mutex_);
-      id_to_callback_map_.erase(id);
-    }
-    if (done != nullptr) {
-      done(status);
+  // NOTE(zhijunfu): `Subscribe` and other operations use different redis contexts,
+  // thus we need to call `RequestNotifications` in the Subscribe callback to ensure
+  // it's processed after the `Subscribe` request. Otherwise if `RequestNotifications`
+  // is processed first we will miss the initial notification.
+  auto on_subscribe_done = [this, client_id, id, subscribe, done](Status status) {
+    auto on_request_notification_done = [this, done, id](Status status) {
+      if (!status.ok()) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        id_to_callback_map_.erase(id);
+      }
+      if (done != nullptr) {
+        done(status);
+      }
+    };
+
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      status = table_.RequestNotifications(JobID::Nil(), id, client_id,
+                                           on_request_notification_done);
+      if (!status.ok()) {
+        id_to_callback_map_.erase(id);
+      }
     }
   };
 
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
     if (it != id_to_callback_map_.end()) {
       RAY_LOG(DEBUG) << "Duplicate subscription to id " << id << " client_id "
                      << client_id;
       return Status::Invalid("Duplicate subscription to element!");
     }
-    status = table_.RequestNotifications(JobID::Nil(), id, client_id, on_done);
-    if (status.ok()) {
-      id_to_callback_map_[id] = subscribe;
-    }
+    id_to_callback_map_[id] = subscribe;
   }
 
+  auto status = AsyncSubscribe(client_id, nullptr, on_subscribe_done);
+  if (!status.ok()) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    id_to_callback_map_.erase(id);
+  }
   return status;
 }
 
@@ -108,7 +150,7 @@ template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
     const ClientID &client_id, const ID &id, const StatusCallback &done) {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
     if (it == id_to_callback_map_.end()) {
       RAY_LOG(DEBUG) << "Invalid Unsubscribe! id " << id << " client_id " << client_id;
@@ -118,7 +160,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
 
   auto on_done = [this, id, done](Status status) {
     if (status.ok()) {
-      std::lock_guard<std::mutex> lock(mutex_);
+      std::unique_lock<std::mutex> lock(mutex_);
       const auto it = id_to_callback_map_.find(id);
       if (it != id_to_callback_map_.end()) {
         id_to_callback_map_.erase(it);

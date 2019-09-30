@@ -17,6 +17,12 @@ elif [[ "$PYTHON" == "3.5" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
   pushd "$ROOT_DIR/../../python"
+    pushd ray/dashboard/client
+      source $HOME/.nvm/nvm.sh
+      nvm use node
+      npm ci
+      npm run build
+    popd
     python setup.py install --user
   popd
 

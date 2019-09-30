@@ -69,11 +69,11 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
-const ResourceSet TaskSpecification::GetRequiredResources() const {
+const ResourceSet &TaskSpecification::GetRequiredResources() const {
   return *required_resources_;
 }
 
-const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
+const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 

@@ -71,6 +71,8 @@ class CoreWorker {
     return *task_execution_interface_;
   }
 
+  const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
 

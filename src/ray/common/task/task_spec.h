@@ -83,7 +83,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \return The resources that will be acquired during the execution of this
   /// task.
-  const ResourceSet GetRequiredResources() const;
+  const ResourceSet &GetRequiredResources() const;
 
   /// Return the resources that are required for a task to be placed on a node.
   /// This will typically be the same as the resources acquired during execution
@@ -94,7 +94,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// so the placement of the actor should take this into account.
   ///
   /// \return The resources that are required to place a task on a node.
-  const ResourceSet GetRequiredPlacementResources() const;
+  const ResourceSet &GetRequiredPlacementResources() const;
 
   bool IsDriverTask() const;
 
