@@ -102,24 +102,36 @@ CoreWorker::CoreWorker(
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
-  io_service_.post([this, object_id]() -> void { active_object_ids_.insert(object_id); });
+  io_service_.post([this, object_id]() -> void {
+    active_object_ids_.insert(object_id);
+    active_object_ids_updated_ = true;
+  });
 }
 
 void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
   io_service_.post([this, object_id]() -> void {
-    if (!active_object_ids_.erase(object_id)) {
+    if (active_object_ids_.erase(object_id)) {
+      active_object_ids_updated_ = true;
+    } else {
       RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
     }
   });
 }
 
 void CoreWorker::SendActiveObjectIDsHeartbeat() {
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-  if (active_object_ids_.size() > RayConfig::instance().raylet_active_object_ids_size()) {
-    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
-                     << "This may lead to required objects being garbage collected.";
+  // Only send a heartbeat when the set of active object IDs has changed because the
+  // raylet only modifies the set of IDs when it receives a heartbeat.
+  if (active_object_ids_updated_) {
+    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+    if (active_object_ids_.size() >
+        RayConfig::instance().raylet_active_object_ids_size()) {
+      RAY_LOG(WARNING) << active_object_ids_.size()
+                       << "object IDs are currently in scope. "
+                       << "This may lead to required objects being garbage collected.";
+    }
+    RAY_CHECK_OK(raylet_client_->ActiveObjectIDsHeartbeat(active_object_ids_));
   }
-  RAY_CHECK_OK(raylet_client_->ActiveObjectIDsHeartbeat(active_object_ids_));
+
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
       heartbeat_timer_.expiry() +
@@ -127,6 +139,7 @@ void CoreWorker::SendActiveObjectIDsHeartbeat() {
           RayConfig::instance().heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(
       boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+  active_object_ids_updated_ = false;
 }
 
 CoreWorker::~CoreWorker() {

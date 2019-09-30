@@ -115,7 +115,7 @@ class CoreWorker {
 
   /// Indicates whether or not the active_object_ids map has changed since the
   /// last time it was sent to the raylet.
-  bool active_object_ids_changed;
+  bool active_object_ids_updated_ = false;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
