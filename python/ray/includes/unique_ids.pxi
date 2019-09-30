@@ -136,17 +136,10 @@ cdef class ObjectID(BaseID):
     def __init__(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
-        worker = ray.worker.global_worker
-        # TODO(edoakes): a few ObjectIDs are created before the core worker is
-        # initialized. We should try to reorder these or do something smarter
-        # here.
-        if hasattr(worker, "core_worker"):
-            worker.core_worker.add_active_object_id(self)
+        ray.worker.global_worker.core_worker.remove_active_object_id(self)
 
     def __dealloc__(self):
-        worker = ray.worker.global_worker
-        if hasattr(worker, "core_worker"):
-            worker.core_worker.remove_active_object_id(self)
+        ray.worker.global_worker.core_worker.remove_active_object_id(self)
 
     cdef CObjectID native(self):
         return <CObjectID>self.data
