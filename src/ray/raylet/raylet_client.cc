@@ -233,8 +233,8 @@ ray::Status RayletClient::SubmitTaskBatch(
   }
   auto message = ray::protocol::CreateSubmitTaskRequest(fbb, fbb.CreateVector(taskfb));
   fbb.Finish(message);
-  return conn_->AtomicRequestReply(
-      MessageType::SubmitTask, MessageType::SubmitTaskReply, reply, &fbb);
+  return conn_->AtomicRequestReply(MessageType::SubmitTask, MessageType::SubmitTaskReply,
+                                   reply, &fbb);
 }
 
 ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {

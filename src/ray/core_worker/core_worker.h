@@ -83,7 +83,6 @@ class CoreWorker {
 
  private:
   void StartIOService();
-  void StartRayletIOService();
 
   const WorkerType worker_type_;
   const Language language_;
@@ -96,13 +95,7 @@ class CoreWorker {
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
 
-  /// Event loop where the IO events are handled. e.g. async GCS operations.
-  boost::asio::io_service raylet_io_service_;
-  /// Keeps the io_service_ alive.
-  boost::asio::io_service::work raylet_io_work_;
-
   std::thread io_thread_;
-  std::thread raylet_io_thread_;
   std::unique_ptr<RayletClient> raylet_client_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;

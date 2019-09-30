@@ -15,8 +15,7 @@ CoreWorker::CoreWorker(
       raylet_socket_(raylet_socket),
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
-      io_work_(io_service_),
-      raylet_io_work_(raylet_io_service_) {
+      io_work_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (!log_dir_.empty()) {
@@ -43,10 +42,8 @@ CoreWorker::CoreWorker(
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
           worker_context_, raylet_client_, store_socket, use_memory_store));
-
-  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(
-      new CoreWorkerTaskInterface(worker_context_, raylet_client_, *object_interface_,
-                                  io_service_, raylet_io_service_, *gcs_client_));
+  task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
+      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
 
   // Initialize task execution.
   int rpc_server_port = 0;
@@ -72,7 +69,6 @@ CoreWorker::CoreWorker(
       language_, rpc_server_port));
 
   io_thread_ = std::thread(&CoreWorker::StartIOService, this);
-  raylet_io_thread_ = std::thread(&CoreWorker::StartRayletIOService, this);
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -100,8 +96,6 @@ CoreWorker::CoreWorker(
 CoreWorker::~CoreWorker() {
   io_service_.stop();
   io_thread_.join();
-  raylet_io_service_.stop();
-  raylet_io_thread_.join();
   if (task_execution_interface_) {
     task_execution_interface_->Stop();
   }
@@ -120,6 +114,5 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::StartIOService() { io_service_.run(); }
-void CoreWorker::StartRayletIOService() { raylet_io_service_.run(); }
 
 }  // namespace ray

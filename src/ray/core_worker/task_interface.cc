@@ -101,8 +101,8 @@ void ActorHandle::ClearNewActorHandles() { new_actor_handles_.clear(); }
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    boost::asio::io_service &raylet_io_service, gcs::RedisGcsClient &gcs_client)
-    : worker_context_(worker_context), raylet_io_service_(raylet_io_service) {
+    gcs::RedisGcsClient &gcs_client)
+    : worker_context_(worker_context), io_service_(io_service) {
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
@@ -248,7 +248,7 @@ void CoreWorkerTaskInterface::SendTasksInBatch() {
   flushing_ = true;
   auto copy = task_batch_;
 
-  raylet_io_service_.post([this, copy]() {
+  io_service_.post([this, copy]() {
     RAY_LOG(DEBUG) << "Flush task batch of size " << copy.size();
     task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(copy);
     std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
