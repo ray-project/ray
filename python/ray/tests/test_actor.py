@@ -265,7 +265,6 @@ def test_custom_classes(ray_start_regular):
 
 
 def test_actor_class_attributes(ray_start_regular):
-
     @ray.remote
     class TestActor(object):
         X = 3
