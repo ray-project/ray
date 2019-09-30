@@ -327,7 +327,7 @@ void NodeManager::Heartbeat() {
   }
 
   std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
-  uint64_t max_size = RayConfig::instance().raylet_active_object_ids_size();
+  int64_t max_size = RayConfig::instance().raylet_active_object_ids_size();
   if (active_object_ids.size() <= max_size) {
     for (const auto &object_id : active_object_ids) {
       if (heartbeat_data->active_object_id_size() == max_size) {

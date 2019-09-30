@@ -81,7 +81,7 @@ RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000)
 RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000)
 
 /// The maximum number of active object IDs to report in a heartbeat.
-RAY_CONFIG(uint64_t, raylet_active_object_ids_size, 1000)
+RAY_CONFIG(int64_t, raylet_active_object_ids_size, 1000)
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
