@@ -17,7 +17,7 @@ echo "Using Docker image" $DOCKER_SHA
 
 ######################## MICROBENCHMARK #################################
 
-$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     ray microbenchmark
 
 ######################## EXAMPLE TESTS #################################
