@@ -168,6 +168,7 @@ class ActorMethod(object):
 
         return invocation(args, kwargs)
 
+
 class ActorClassMetadata(object):
     """Metadata for an actor class.
 
@@ -201,9 +202,8 @@ class ActorClassMetadata(object):
             each actor method.
     """
 
-    def __init__(self, modified_class, class_id,
-                 max_reconstructions, num_cpus, num_gpus, memory,
-                 object_store_memory, resources):
+    def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
+                 num_gpus, memory, object_store_memory, resources):
         self.modified_class = modified_class
         self.class_id = class_id
         self.class_name = modified_class.__name__
@@ -417,7 +417,7 @@ class ActorClass(object):
             # all resources are acquired for the actor's lifetime and no
             # resources are associated with methods.
             cpus_to_use = (ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
-                           if meta.num_cpus is None else self._num_cpus)
+                           if meta.num_cpus is None else meta.num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
