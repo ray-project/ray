@@ -126,7 +126,6 @@ class Worker(object):
             WORKER_MODE.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        profiler: the profiler used to aggregate profiling information.
     """
 
     def __init__(self):
@@ -146,7 +145,6 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -1832,8 +1830,6 @@ def connect(node,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
-
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
@@ -1973,6 +1969,7 @@ def connect(node,
         worker.current_job_id,
         gcs_options,
         node.get_logs_dir_path(),
+        node.node_ip_address,
     )
     worker.task_context.current_task_id = (
         worker.core_worker.get_current_task_id())
@@ -2022,11 +2019,6 @@ def connect(node,
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    # If we are using the raylet code path and we are not in local mode, start
-    # a background thread to periodically flush profiling data to the GCS.
-    if mode != LOCAL_MODE:
-        worker.profiler.start_flush_thread()
-
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2069,8 +2061,6 @@ def disconnect():
         worker.threads_stopped.set()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
-        if hasattr(worker, "profiler") and hasattr(worker.profiler, "t"):
-            worker.profiler.join_flush_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "printer_thread"):

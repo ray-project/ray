@@ -1205,10 +1205,8 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile(
-                "custom_event",
-                extra_data={"name": "custom name"}) as ray_prof:
-            ray_prof.set_attribute("key", "value")
+        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+            pass
 
     ray.put(1)
     object_id = f.remote()
@@ -1220,10 +1218,6 @@ def test_profiling_api(ray_start_2_cpus):
     timeout_seconds = 20
     start_time = time.time()
     while True:
-        if time.time() - start_time > timeout_seconds:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for information in "
-                "profile table.")
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
@@ -1245,6 +1239,15 @@ def test_profiling_api(ray_start_2_cpus):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
+
+        if time.time() - start_time > timeout_seconds:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for information in "
+                "profile table. Missing events: {}.".format(
+                    set(expected_types) - set(event_types)))
+
+        # The profiling information only flushes once every second.
+        time.sleep(1.1)
 
 
 def test_wait_cluster(ray_start_cluster):
