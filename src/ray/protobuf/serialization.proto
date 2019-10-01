@@ -4,15 +4,19 @@ package ray.serialization;
 
 message PythonBuffer {
   uint64 address = 1;
-  uint64 length = 2;
+  int64 length = 2;
   int64 itemsize = 3;
-  bool readonly = 4;
-  bytes format = 5;
-  repeated int64 shape = 6;
-  repeated int64 stride = 7;
-  repeated int64 suboffset = 8;
+  int32 ndim = 4;
+  bool readonly = 5;
+  string format = 6;
+  repeated int64 shape = 7;
+  repeated int64 strides = 8;
+  // 'suboffsets' is ignored since it is required to be NULL by pickle5 protocol.
 }
 
 message PythonObject {
-  repeated PythonBuffer buffer = 1;
+  uint64 inband_data_offset = 1;
+  uint64 inband_data_size = 2;
+  uint64 buffers_offset = 3;
+  repeated PythonBuffer buffer = 4;
 }

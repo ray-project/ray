@@ -476,7 +476,7 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
-    def put_pickle5_buffers(self, ObjectID object_id, c_string meta,
+    def put_pickle5_buffers(self, ObjectID object_id, c_string inband,
                             Pickle5Writer writer,
                             int memcopy_threads=2):
         cdef:
@@ -489,7 +489,7 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
             size_t data_size
 
-        data_size = writer.get_total_bytes(meta)
+        data_size = writer.get_total_bytes(inband)
 
         with nogil:
             check_status(self.core_worker.get().Objects().Create(
@@ -502,7 +502,7 @@ cdef class CoreWorker:
         if not data:
             return
 
-        writer.write_to(meta, data, memcopy_threads)
+        writer.write_to(inband, data, memcopy_threads)
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 

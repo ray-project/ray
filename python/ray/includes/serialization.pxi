@@ -1,6 +1,6 @@
-from cpython cimport PY_VERSION_HEX
-from libc.string cimport strlen, memcpy
-from libc.stdint cimport uintptr_t, uint64_t
+from libc.stdlib cimport malloc
+from libc.string cimport memcpy
+from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 from cython.parallel cimport prange
 
 # This is the default alignment value for len(buffer) < 2048.
@@ -13,15 +13,56 @@ DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 
 
+cdef extern from "google/protobuf/repeated_field.h" nogil:
+    cdef cppclass RepeatedField[Element]:
+        const Element* data() const
+        Element *mutable_data()
+
 cdef extern from "ray/protobuf/serialization.pb.h" nogil:
   cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
     void set_address(uint64_t value)
-    void set_length(uint64_t value)
+    uint64_t address() const
+    void set_length(int64_t value)
+    int64_t length() const
+    void set_itemsize(int64_t value)
+    int64_t itemsize()
+    void set_ndim(int32_t value)
+    int32_t ndim()
+    void set_readonly(c_bool value)
+    c_bool readonly()
+    void set_format(const c_string& value)
+    const c_string &format()
+    c_string* release_format()
+    void add_shape(int64_t value)
+    int64_t shape(int index)
+    const RepeatedField[int64_t] &shape() const
+    int shape_size()
+    void add_strides(int64_t value)
+    int64_t strides(int index)
+    const RepeatedField[int64_t] &strides() const
+    int strides_size()
 
   cdef cppclass CPythonObject "ray::serialization::PythonObject":
+    uint64_t buffers_offset() const
+    void set_buffers_offset(uint64_t value)
+    uint64_t inband_data_offset() const
+    void set_inband_data_offset(uint64_t value)
+    uint64_t inband_data_size() const
+    void set_inband_data_size(uint64_t value)
     CPythonBuffer* add_buffer()
+    CPythonBuffer& buffer(int index) const
+    int buffer_size() const
+    size_t ByteSizeLong() const
+    int GetCachedSize() const
+    uint8_t *SerializeWithCachedSizesToArray(uint8_t *target)
+    c_bool ParseFromArray(void* data, int size)
+
 
 cdef int64_t padded_length(int64_t offset, int64_t alignment):
+    return ((offset + alignment - 1) // alignment) * alignment
+
+
+cdef int64_t padded_length_u64(uint64_t offset, uint64_t alignment):
     return ((offset + alignment - 1) // alignment) * alignment
 
 
@@ -133,215 +174,164 @@ cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
 
 
 # Buffer serialization format:
-# |  i64 len(meta)  |  meta  |  align:4  | i32 len(buffers) |           \
-#    i32 len(buffer_meta) | i32 len(shape_strides) | i32 len(formats) | \
-#    buffer_meta | shape_strides | formats | buffer |
-#
-# 'buffer_meta' format (designed for random buffer access):
-# | i64 buffer_addr, i64 len, i64 itemsize, i32 readonly, i32 ndim, \
-#   i32 format_offset, i32 shape_stride_offset |
-
-
+# | i64 offset(protobuf) | i64 len(protobuf) | inband_data | pad(64) | \
+# | buffers | pad(8) | protobuf_data |
 def unpack_pickle5_buffers(Buffer buf):
     cdef:
         shared_ptr[CBuffer] _buffer = buf.buffer
-        const uint8_t*data = buf.buffer.get().Data()
+        const uint8_t *data = buf.buffer.get().Data()
         size_t size = _buffer.get().Size()
-        size_t buffer_meta_item_size = \
-            sizeof(int64_t) * 3 + sizeof(int32_t) * 4
-        int64_t meta_length
-        c_string meta_str
-        int32_t n_buffers, buffer_meta_length, \
-            shape_stride_length, format_length
-        int32_t buffer_meta_offset
-        const uint8_t *buffer_meta_ptr
-        const uint8_t *shape_stride_entry
-        const uint8_t *format_entry
-        const uint8_t *buffer_entry
-        int32_t format_offset, shape_offset
-
-    meta_length = (<int64_t*> data)[0]
-    data += sizeof(int64_t)
-    meta_str.append(<char*> data, <size_t> meta_length)
-    data += meta_length
-    data = <uint8_t*> padded_length(<int64_t> data, 4)
-    n_buffers = (<int32_t*> data)[0]
-    buffer_meta_length = (<int32_t*> data)[1]
-    shape_stride_length = (<int32_t*> data)[2]
-    format_length = (<int32_t*> data)[3]
-    data += sizeof(int32_t) * 4
-    # calculate entry offsets
-    shape_stride_entry = data + buffer_meta_length
-    format_entry = shape_stride_entry + shape_stride_length
-    buffer_entry = <const uint8_t *> padded_length(<int64_t> (
-            format_entry + format_length), kMajorBufferAlign)
-
+        CPythonObject python_object
+        CPythonBuffer *buffer_meta
+        c_string inband_data
+        int64_t protobuf_offset
+        int64_t protobuf_size
+        int32_t i
+        const uint8_t *buffers_segment
+    protobuf_offset = (<int64_t*>data)[0]
+    protobuf_size = (<int64_t*>data)[1]
+    if protobuf_size > INT32_MAX:
+        raise ValueError("Incorrect protobuf size. "
+                         "Maybe the buffer has been corrupted.")
+    if not python_object.ParseFromArray(data + protobuf_offset, <int32_t>protobuf_size):
+        raise ValueError("Protobuf object corrupted")
+    inband_data.append(<char*>(data + python_object.inband_data_offset()),
+                       <size_t>python_object.inband_data_size())
+    buffers_segment = data + python_object.buffers_offset()
     pickled_buffers = []
     # Now read buffer meta
-    for buffer_meta_offset in range(0, n_buffers):
-        buffer_meta_ptr = data + buffer_meta_offset * buffer_meta_item_size
+    for i in range(python_object.buffer_size()):
+        buffer_meta = <CPythonBuffer *>&python_object.buffer(i)
         buffer = SubBuffer(buf)
-        buffer.buf = <void*> (buffer_entry + (<int64_t*> buffer_meta_ptr)[0])
-        buffer.len = (<int64_t*> buffer_meta_ptr)[1]
-        buffer.itemsize = (<int64_t*> buffer_meta_ptr)[2]
-        buffer_meta_ptr += sizeof(int64_t) * 3
-        buffer.readonly = (<int32_t*> buffer_meta_ptr)[0]
-        buffer.ndim = (<int32_t*> buffer_meta_ptr)[1]
-        format_offset = (<int32_t*> buffer_meta_ptr)[2]
-        shape_offset = (<int32_t*> buffer_meta_ptr)[3]
-        if format_offset < 0:
-            buffer.format = NULL
+        buffer.buf = <void*>(buffers_segment + buffer_meta.address())
+        buffer.len = buffer_meta.length()
+        buffer.itemsize = buffer_meta.itemsize()
+        buffer.readonly = buffer_meta.readonly()
+        buffer.ndim = buffer_meta.ndim()
+        if buffer_meta.format().size() > 0:
+            buffer.format = buffer_meta.release_format().c_str()
         else:
-            buffer.format = <const char *> (format_entry + format_offset)
-        buffer.shape = <Py_ssize_t *> (shape_stride_entry + shape_offset)
-        buffer.strides = buffer.shape + buffer.ndim
+            buffer.format = NULL
+        if buffer_meta.shape_size() > 0:
+            buffer.shape = <Py_ssize_t *>malloc(
+                sizeof(int64_t) * buffer_meta.shape_size())
+            memcpy(buffer.shape, buffer_meta.shape().data(),
+                   sizeof(int64_t) * buffer_meta.shape_size())
+        else:
+            buffer.shape = NULL
+        if buffer_meta.strides_size() > 0:
+            buffer.strides =  <Py_ssize_t *>malloc(
+                sizeof(int64_t) * buffer_meta.strides_size())
+            memcpy(buffer.strides, buffer_meta.strides().data(),
+                   sizeof(int64_t) * buffer_meta.strides_size())
+        else:
+            buffer.strides = NULL
         buffer.internal = NULL
         buffer.suboffsets = NULL
         pickled_buffers.append(buffer)
-    return meta_str, pickled_buffers
+    return inband_data, pickled_buffers
 
 
 cdef class Pickle5Writer:
     cdef:
         CPythonObject python_object
-        # Location of the current buffer, relative to the end of the
-        # protobuf metadata.
-        int64_t curr_addr
-
-        int32_t n_buffers
-        c_vector[int32_t] ndims
-        c_vector[int32_t] readonlys
-
-        c_vector[int32_t] shape_stride_offsets
-        c_vector[Py_ssize_t] shape_strides
-
-        c_vector[char] formats
-        c_vector[int32_t] format_offsets
         c_vector[Py_buffer] buffers
-        int64_t buffer_bytes
-        c_vector[int64_t] buffer_offsets
-        c_vector[int64_t] buffer_lens
-        c_vector[int64_t] itemsizes
+        # Address of end of the current buffer, relative to the
+        # begin offset of our buffers.
+        uint64_t _curr_buffer_addr
+        uint64_t _protobuf_offset
+        int64_t _total_bytes
 
     def __cinit__(self):
-        self.curr_addr = 0
-        self.n_buffers = 0
-        self.buffer_bytes = 0
+        self._curr_buffer_addr = 0
+        self._total_bytes = -1
 
     def buffer_callback(self, pickle_buffer):
         cdef:
             Py_buffer view
-            int64_t buf_len
-            size_t format_len
-
+            int32_t i
             CPythonBuffer* buffer = self.python_object.add_buffer()
-
         cpython.PyObject_GetBuffer(pickle_buffer, &view,
-                                   cpython.PyBUF_RECORDS_RO)
-
-        buffer[0].set_address(self.curr_addr)
-        buffer[0].set_length(view.len)
-
-        # Set the other attributes
-
-        if view.len < kMajorBufferSize:
-            self.curr_addr += padded_length(view.len, kMinorBufferAlign)
-        else:
-            self.curr_addr = padded_length(view.len, kMajorBufferAlign)
-
-        self.n_buffers += 1
-
-        self.ndims.push_back(view.ndim)
-        self.readonlys.push_back(view.readonly)
-        # => Shape & strides
-        self.shape_stride_offsets.push_back(self.shape_strides.size() *
-                                            sizeof(Py_ssize_t))
-        self.shape_strides.insert(self.shape_strides.end(), view.shape,
-                                  view.shape + view.ndim)
-        self.shape_strides.insert(self.shape_strides.end(), view.strides,
-                                  view.strides + view.ndim)
-
-        # => Format
+                                   cpython.PyBUF_FULL_RO)
+        buffer.set_length(view.len)
+        buffer.set_ndim(view.ndim)
+        buffer.set_readonly(view.readonly)
+        buffer.set_itemsize(view.itemsize)
         if view.format:
-            self.format_offsets.push_back(self.formats.size())
-            format_len = strlen(view.format)
-            # Also copy '\0'
-            self.formats.insert(self.formats.end(), view.format,
-                                view.format + format_len + 1)
-        else:
-            self.format_offsets.push_back(-1)
+            buffer.set_format(view.format)
+        if view.shape:
+            for i in range(view.ndim):
+                buffer.add_shape(view.shape[i])
+        if view.strides:
+            for i in range(view.ndim):
+                buffer.add_strides(view.strides[i])
 
-        # => Buffer
-        self.buffer_lens.push_back(view.len)
-        self.itemsizes.push_back(view.itemsize)
-
+        # Increase buffer address.
         if view.len < kMajorBufferSize:
-            self.buffer_bytes = padded_length(self.buffer_bytes,
-                                              kMinorBufferAlign)
+            self._curr_buffer_addr = padded_length(
+                self._curr_buffer_addr, kMinorBufferAlign)
         else:
-            self.buffer_bytes = padded_length(self.buffer_bytes,
-                                              kMajorBufferAlign)
-        self.buffer_offsets.push_back(self.buffer_bytes)
-        self.buffer_bytes += view.len
+            self._curr_buffer_addr = padded_length(
+                self._curr_buffer_addr, kMajorBufferAlign)
+        buffer.set_address(self._curr_buffer_addr)
+        self._curr_buffer_addr += view.len
         self.buffers.push_back(view)
 
-    def get_total_bytes(self, const c_string & meta):
-        cdef int64_t total_bytes = 0
-        total_bytes = sizeof(int64_t) + meta.length()  # len(meta),  meta
-        total_bytes = padded_length(total_bytes, 4)  # align to 4
-        # i32 len(buffers), i32 len(buffer_meta),
-        # i32 len(shape_strides), i32 len(formats)
-        total_bytes += sizeof(int32_t) * 4
-        # buffer meta
-        total_bytes += self.n_buffers * (
-                sizeof(int64_t) * 3 + sizeof(int32_t) * 4)
-        total_bytes += self.shape_strides.size() * sizeof(Py_ssize_t)
-        total_bytes += self.formats.size()
-        total_bytes = padded_length(total_bytes, kMajorBufferAlign)
-        total_bytes += self.buffer_bytes
-        return total_bytes
+    def get_total_bytes(self, const c_string &inband):
+        cdef:
+            size_t protobuf_bytes = 0
+            uint64_t buffers_offset
+            uint64_t inband_data_offset = sizeof(int64_t) * 2
+        buffers_offset = padded_length_u64(
+            inband_data_offset + inband.length(), kMajorBufferAlign)
+        self._protobuf_offset = padded_length_u64(
+            buffers_offset + self._curr_buffer_addr, kMinorBufferAlign)
+        # This is a placeholder for correct calculation of size.
+        self.python_object.set_inband_data_offset(inband_data_offset)
+        self.python_object.set_inband_data_size(inband.length())
+        self.python_object.set_buffers_offset(buffers_offset)
+        # We MUST NOT change 'python_object' size since now.
+        protobuf_bytes = self.python_object.ByteSizeLong()
+        if protobuf_bytes > INT32_MAX:
+            raise ValueError("Total buffer metadata size is bigger than %d. "
+                             "Consider reduce the number of buffers "
+                             "(number of numpy arrays, etc)." % INT32_MAX)
+        self._total_bytes = self._protobuf_offset + protobuf_bytes
+        return self._total_bytes
 
-    cdef void write_to(self, const c_string & meta, shared_ptr[CBuffer] data,
+    cdef void write_to(self, const c_string &inband, shared_ptr[CBuffer] data,
                        int memcopy_threads):
         cdef uint8_t *ptr = data.get().Data()
+        cdef uint8_t *__temp
+        cdef int32_t protobuf_size
+        cdef uint64_t buffer_addr
+        cdef uint64_t buffer_len
         cdef int i
-        (<int64_t*> ptr)[0] = meta.length()
-        ptr += sizeof(int64_t)
-        memcpy(ptr, meta.c_str(), meta.length())
-        ptr += meta.length()
-        ptr = <uint8_t*> padded_length(<int64_t> ptr, 4)
-        (<int32_t*> ptr)[0] = self.n_buffers
-        (<int32_t*> ptr)[1] = <int32_t> (
-                self.n_buffers * (sizeof(int64_t) * 3 + sizeof(int32_t) * 4))
-        (<int32_t*> ptr)[2] = <int32_t> (
-                self.shape_strides.size() * sizeof(Py_ssize_t))
-        (<int32_t*> ptr)[3] = <int32_t> (self.formats.size())
-        ptr += sizeof(int32_t) * 4
-        for i in range(self.n_buffers):
-            (<int64_t*> ptr)[0] = self.buffer_offsets[i]
-            (<int64_t*> ptr)[1] = self.buffer_lens[i]
-            (<int64_t*> ptr)[2] = self.itemsizes[i]
-            ptr += sizeof(int64_t) * 3
-            (<int32_t*> ptr)[0] = self.readonlys[i]
-            (<int32_t*> ptr)[1] = self.ndims[i]
-            (<int32_t*> ptr)[2] = self.format_offsets[i]
-            (<int32_t*> ptr)[3] = self.shape_stride_offsets[i]
-            ptr += sizeof(int32_t) * 4
-        memcpy(ptr, self.shape_strides.data(),
-               self.shape_strides.size() * sizeof(Py_ssize_t))
-        ptr += self.shape_strides.size() * sizeof(Py_ssize_t)
-        memcpy(ptr, self.formats.data(), self.formats.size())
-        ptr += self.formats.size()
-        ptr = <uint8_t*> padded_length(<int64_t> ptr, kMajorBufferAlign)
-        for i in range(self.n_buffers):
+        if self._total_bytes < 0:
+            raise ValueError("Must call 'get_total_bytes()' first "
+                             "to get the actual size")
+        # Write protobuf size for deserialization.
+        protobuf_size = self.python_object.GetCachedSize()
+        (<int64_t*>ptr)[0] = self._protobuf_offset
+        (<int64_t*>ptr)[1] = protobuf_size
+        # Write protobuf data.
+        self.python_object.SerializeWithCachedSizesToArray(
+            ptr + self._protobuf_offset)
+        # Write inband data.
+        memcpy(ptr + self.python_object.inband_data_offset(),
+               inband.c_str(), inband.length())
+        # Write buffer data.
+        ptr += self.python_object.buffers_offset()
+        for i in range(self.python_object.buffer_size()):
+            buffer_addr = self.python_object.buffer(i).address()
+            buffer_len = self.python_object.buffer(i).length()
             if (memcopy_threads > 1 and
-                    self.buffer_lens[i] > kMemcopyDefaultThreshold):
-                parallel_memcopy(ptr + self.buffer_offsets[i],
+                    buffer_len > kMemcopyDefaultThreshold):
+                parallel_memcopy(ptr + buffer_addr,
                                  <const uint8_t*> self.buffers[i].buf,
-                                 self.buffer_lens[i],
+                                 buffer_len,
                                  kMemcopyDefaultBlocksize, memcopy_threads)
             else:
-                memcpy(ptr + self.buffer_offsets[i], self.buffers[i].buf,
-                       self.buffer_lens[i])
+                memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
             # We must release the buffer, or we could experience memory leaks.
             cpython.PyBuffer_Release(&self.buffers[i])
