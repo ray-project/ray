@@ -114,7 +114,7 @@ class QMixLoss(nn.Module):
             mac_out_tp1[ignore_action_tp1] = -np.inf
 
             # obtain best actions at t+1 according to policy NN
-            cur_max_actions = mac_out_tp1.max(dim=3, keepdim=True)[1]
+            cur_max_actions = mac_out_tp1.argmax(dim=3, keepdim=True)
 
             # use the target network to estimate the Q-values of policy
             # network's selected actions
@@ -196,6 +196,7 @@ class QMixTorchPolicy(Policy):
             else:
                 self.env_global_state_shape = (self.obs_size, self.n_agents)
             # The real agent obs space is nested inside the dict
+            config["model"]["full_obs_space"] = agent_obs_space
             agent_obs_space = agent_obs_space.spaces["obs"]
         else:
             self.obs_size = _get_size(agent_obs_space)
@@ -283,7 +284,7 @@ class QMixTorchPolicy(Policy):
             pick_random = (random_numbers < self.cur_epsilon).long()
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
-                        (1 - pick_random) * masked_q_values.max(dim=2)[1])
+                        (1 - pick_random) * masked_q_values.argmax(dim=2))
             actions = actions.cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
@@ -522,9 +523,11 @@ def _mac(model, obs, h):
         h: Tensor of shape [B, n_agents, h_size]
     """
     B, n_agents = obs.size(0), obs.size(1)
-    obs_flat = obs.reshape([B * n_agents, -1])
+    if not isinstance(obs, dict):
+        obs = {"obs": obs}
+    obs_agents_as_batches = {k: _drop_agent_dim(v) for k, v in obs.items()}
     h_flat = [s.reshape([B * n_agents, -1]) for s in h]
-    q_flat, h_flat = model({"obs": obs_flat}, h_flat, None)
+    q_flat, h_flat = model(obs_agents_as_batches, h_flat, None)
     return q_flat.reshape(
         [B, n_agents, -1]), [s.reshape([B, n_agents, -1]) for s in h_flat]
 
@@ -543,3 +546,16 @@ def _unroll_mac(model, obs_tensor):
     mac_out = th.stack(mac_out, dim=1)  # Concat over time
 
     return mac_out
+
+
+def _drop_agent_dim(T):
+    shape = list(T.shape)
+    B, n_agents = shape[0], shape[1]
+    return T.reshape([B*n_agents] + shape[2:])
+
+
+def _add_agent_dim(T, n_agents):
+    shape = list(T.shape)
+    B = shape[0] // n_agents
+    assert shape[0] % n_agents == 0
+    return T.reshape([B, n_agents] + shape[1:])

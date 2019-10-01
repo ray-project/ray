@@ -31,7 +31,7 @@ class RNNModel(TorchModelV2, nn.Module):
 
     @override(TorchModelV2)
     def forward(self, input_dict, hidden_state, seq_lens):
-        x = F.relu(self.fc1(input_dict["obs_flat"].float()))
+        x = F.relu(self.fc1(input_dict["obs"].float()))
         h_in = hidden_state[0].reshape(-1, self.rnn_hidden_dim)
         h = self.rnn(x, h_in)
         q = self.fc2(h)
