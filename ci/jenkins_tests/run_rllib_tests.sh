@@ -285,7 +285,7 @@ docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     --run APEX_DDPG \
     --ray-num-cpus 8 \
     --stop '{"training_iteration": 1}' \
-    --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1, "batch_mode": "complete_episodes", "parameter_noise": true}'
+    --config '{"num_workers": 2, "optimizer": {"num_replay_buffer_shards": 1}, "learning_starts": 100, "min_iter_time_s": 1, "batch_mode": "complete_episodes", "parameter_noise": false}'
 
 docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     /ray/ci/suppress_output /ray/rllib/train.py \
