@@ -2660,14 +2660,14 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert error_message1 in errors[0]["message"]
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 2
     assert error_message1 in errors[1]["message"]
