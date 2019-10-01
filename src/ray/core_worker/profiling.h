@@ -12,62 +12,44 @@ namespace worker {
 class Profiler {
  public:
   Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
+           boost::asio::io_service &io_service,
            std::unique_ptr<gcs::RedisGcsClient> &gcs_client);
-
-  ~Profiler() {
-    {
-      // Gracefully kill the background thread.
-      std::lock_guard<std::mutex> lock(mutex_);
-      killed_ = true;
-      kill_cond_.notify_one();
-    }
-    if (thread_.joinable()) {
-      thread_.join();
-    }
-  }
-
-  // Spawn a thread to start flushing events periodically.
-  void Start();
 
   // Add an event to the queue to be flushed periodically.
   void AddEvent(const rpc::ProfileTableData::ProfileEvent &event);
 
  private:
-  // Periodically flush all of the events that have been added to the GCS.
-  void PeriodicallyFlushEvents();
+  // Flush all of the events that have been added since last flush to the GCS.
+  void FlushEvents();
 
-  WorkerContext &worker_context_;
-  std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
+  // ASIO IO service event loop. Must be started by the caller.
+  boost::asio::io_service &io_service_;
+
+  // Timer used to periodically flush events to the GCS.
+  boost::asio::steady_timer timer_;
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.
   rpc::ProfileTableData rpc_profile_data_;
 
-  // Background thread that runs PeriodicalllyFlushEvents().
-  std::thread thread_;
-  // Flag checked by the background thread so it knows when to exit.
-  bool killed_ = false;
-  // Mutex guarding rpc_profile_data_ and the killed_ flag.
-  std::mutex mutex_;
-  // Condition variable used to signal to the thread that killed_ has been set.
-  std::condition_variable kill_cond_;
+  std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
 };
 
 class ProfileEvent {
  public:
-  ProfileEvent(const std::shared_ptr<Profiler> profiler, const std::string &event_type);
-
-  void SetExtraData(const std::string &extra_data) {
-    rpc_event_.set_extra_data(extra_data);
-  }
+  ProfileEvent(const std::unique_ptr<Profiler> &profiler, const std::string &event_type);
 
   ~ProfileEvent() {
     rpc_event_.set_end_time(current_sys_time_seconds());
     profiler_->AddEvent(rpc_event_);
   }
 
+  void SetExtraData(const std::string &extra_data) {
+    rpc_event_.set_extra_data(extra_data);
+  }
+
  private:
-  const std::shared_ptr<Profiler> profiler_;
+  const std::unique_ptr<Profiler> &profiler_;
   rpc::ProfileTableData::ProfileEvent rpc_event_;
 };
 

@@ -39,7 +39,7 @@ class CoreWorkerTaskExecutionInterface {
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
-                                   const std::shared_ptr<worker::Profiler> profiler,
+                                   const std::unique_ptr<worker::Profiler> &profiler,
                                    const TaskExecutor &executor);
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
@@ -80,7 +80,7 @@ class CoreWorkerTaskExecutionInterface {
   /// Reference to the parent CoreWorker's objects interface.
   CoreWorkerObjectInterface &object_interface_;
 
-  const std::shared_ptr<worker::Profiler> profiler_;
+  const std::unique_ptr<worker::Profiler> &profiler_;
 
   // Task execution callback.
   TaskExecutor execution_callback_;

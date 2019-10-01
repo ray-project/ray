@@ -50,6 +50,10 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
                       const c_string &event_type)
         void SetExtraData(const c_string &extra_data)
 
+cdef extern from "ray/core_worker/profiling.h" nogil:
+    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+        void SetExtraData(const c_string &extra_data)
+
 cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
     cdef cppclass CTaskSubmissionInterface "CoreWorkerTaskInterface":
         CRayStatus SubmitTask(
@@ -88,20 +92,21 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
-                    const c_string log_dir, const c_string &node_ip_address,
+                    const c_string &log_dir, const c_string &node_ip_address,
                     CRayStatus (
                         const CRayFunction &ray_function,
                         const c_vector[shared_ptr[CRayObject]] &args,
                         int num_returns, const CTaskSpec &task_spec,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
-                    c_bool use_memory_store) nogil
+                    c_bool use_memory_store_)
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
         CTaskSubmissionInterface &Tasks()
         CTaskExecutionInterface &Execution()
-        const shared_ptr[CProfiler] &Profiler()
+        unique_ptr[CProfileEvent] CreateProfileEvent(
+            const c_string &event_type)
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
