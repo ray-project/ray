@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import inspect
 import logging
 import os
 import six
@@ -87,11 +88,19 @@ class Experiment(object):
             _raise_deprecation_note(
                 "sync_function", "sync_to_driver", soft=False)
 
+        stop = stop or {}
+        if not isinstance(stop, dict) and not callable(stop):
+            raise ValueError("Invalid stop criteria: {}. Must be a callable "
+                             "or dict".format(stop))
+        if callable(stop) and len(inspect.getargspec(stop).args) != 2:
+            raise ValueError("Invalid stop criteria: {}. Callable criteria "
+                             "must take exactly 2 parameters.".format(stop))
+
         config = config or {}
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
-            "stop": stop or {},
+            "stop": stop,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,

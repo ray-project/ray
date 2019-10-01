@@ -284,6 +284,9 @@ class Trial(object):
         if result.get(DONE):
             return True
 
+        if callable(self.stopping_criterion):
+            return self.stopping_criterion(self.trial_id, result)
+
         for criteria, stop_value in self.stopping_criterion.items():
             if criteria not in result:
                 raise TuneError(

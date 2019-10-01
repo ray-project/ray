@@ -8,6 +8,7 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import numpy as np
@@ -125,7 +126,6 @@ class Worker(object):
             WORKER_MODE.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        profiler: the profiler used to aggregate profiling information.
     """
 
     def __init__(self):
@@ -145,7 +145,6 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -1001,7 +1000,13 @@ class Worker(object):
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
-        failure_object = RayTaskError(function_name, backtrace)
+        if isinstance(error, RayTaskError):
+            # avoid recursively nesting of RayTaskError
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.cause_cls)
+        else:
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.__class__)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
@@ -1278,6 +1283,16 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
+        # Tell Ray to serialize StringIO with pickle. We do this because
+        # Ray's default __dict__ serialization is incorrect for this type
+        # (the object's __dict__ is empty and therefore doesn't
+        # contain the full state of the object).
+        register_custom_serializer(
+            io.StringIO,
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="io.StringIO")
 
 
 def init(address=None,
@@ -1405,13 +1420,9 @@ def init(address=None,
             arguments is passed in.
     """
 
-    if address:
-        if redis_address:
-            raise ValueError(
-                "You should specify address instead of redis_address.")
-        if address == "auto":
-            address = services.find_redis_address_or_die()
-        redis_address = address
+    if redis_address is not None or address is not None:
+        redis_address, _, _ = services.validate_redis_address(
+            address, redis_address)
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1441,8 +1452,6 @@ def init(address=None,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
-    if redis_address is not None:
-        redis_address = services.address_to_ip(redis_address)
 
     global _global_node
     if driver_mode == LOCAL_MODE:
@@ -1821,8 +1830,6 @@ def connect(node,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
-
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
@@ -1947,68 +1954,7 @@ def connect(node,
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     else:
-        raise Exception("This code should be unreachable.")
-
-    # If this is a driver, set the current task ID, the task driver ID, and set
-    # the task index to 0.
-    if mode == SCRIPT_MODE:
-        # If the user provided an object_id_seed, then set the current task ID
-        # deterministically based on that seed (without altering the state of
-        # the user's random number generator). Otherwise, set the current task
-        # ID randomly to avoid object ID collisions.
-        numpy_state = np.random.get_state()
-        if node.object_id_seed is not None:
-            np.random.seed(node.object_id_seed)
-        else:
-            # Try to use true randomness.
-            np.random.seed(None)
-        # Reset the state of the numpy random number generator.
-        np.random.set_state(numpy_state)
-
-        # Create an entry for the driver task in the task table. This task is
-        # added immediately with status RUNNING. This allows us to push errors
-        # related to this driver task back to the driver.  For example, if the
-        # driver creates an object that is later evicted, we should notify the
-        # user that we're unable to reconstruct the object, since we cannot
-        # rerun the driver.
-        nil_actor_counter = 0
-
-        function_descriptor = FunctionDescriptor.for_driver_task()
-        driver_task_spec = ray._raylet.TaskSpec(
-            TaskID.for_driver_task(worker.current_job_id),
-            worker.current_job_id,
-            function_descriptor.get_function_descriptor_list(),
-            [],  # arguments.
-            0,  # num_returns.
-            TaskID(worker.worker_id[:TaskID.size()]),  # parent_task_id.
-            0,  # parent_counter.
-            ActorID.nil(),  # actor_creation_id.
-            ObjectID.nil(),  # actor_creation_dummy_object_id.
-            ObjectID.nil(),  # previous_actor_task_dummy_object_id.
-            0,  # max_actor_reconstructions.
-            ActorID.nil(),  # actor_id.
-            ActorHandleID.nil(),  # actor_handle_id.
-            nil_actor_counter,  # actor_counter.
-            [],  # new_actor_handles.
-            {},  # resource_map.
-            {},  # placement_resource_map.
-        )
-        task_table_data = ray._raylet.generate_gcs_task_table_data(
-            driver_task_spec)
-
-        # Add the driver task to the task table.
-        ray.state.state._execute_command(
-            driver_task_spec.task_id(),
-            "RAY.TABLE_ADD",
-            ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
-            ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
-            driver_task_spec.task_id().binary(),
-            task_table_data,
-        )
-
-        # Set the driver's current task ID to the task ID assigned to the
-        # driver task.
-        worker.task_context.current_task_id = driver_task_spec.task_id()
+        raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
 
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
@@ -2023,9 +1969,10 @@ def connect(node,
         worker.current_job_id,
         gcs_options,
         node.get_logs_dir_path(),
+        node.node_ip_address,
     )
-    worker.core_worker.set_current_job_id(worker.current_job_id)
-    worker.core_worker.set_current_task_id(worker.current_task_id)
+    worker.task_context.current_task_id = (
+        worker.core_worker.get_current_task_id())
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
@@ -2072,11 +2019,6 @@ def connect(node,
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    # If we are using the raylet code path and we are not in local mode, start
-    # a background thread to periodically flush profiling data to the GCS.
-    if mode != LOCAL_MODE:
-        worker.profiler.start_flush_thread()
-
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2119,8 +2061,6 @@ def disconnect():
         worker.threads_stopped.set()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
-        if hasattr(worker, "profiler") and hasattr(worker.profiler, "t"):
-            worker.profiler.join_flush_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "printer_thread"):
@@ -2346,7 +2286,10 @@ def get(object_ids):
                 last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.UnreconstructableError):
                     worker.dump_object_store_memory_usage()
-                raise value
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
 
         # Run post processors.
         for post_processor in worker._post_get_hooks:
