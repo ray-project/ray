@@ -191,7 +191,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 
 bool LineageCache::CommitTask(const Task &task) {
   if (inSingleNode) {
-    return;
+    return true;
   }
 
   const TaskID task_id = task.GetTaskSpecification().TaskId();
