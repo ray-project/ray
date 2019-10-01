@@ -140,7 +140,8 @@ void CoreWorker::SendActiveObjectIDsHeartbeat() {
   // Only send a heartbeat when the set of active object IDs has changed because the
   // raylet only modifies the set of IDs when it receives a heartbeat.
   if (active_object_ids_updated_) {
-    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+    std::cout << "Sending " << active_object_ids_.size() << " object IDs to raylet."
+              << std::endl;
     if (active_object_ids_.size() >
         RayConfig::instance().raylet_active_object_ids_size()) {
       RAY_LOG(WARNING) << active_object_ids_.size()

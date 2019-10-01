@@ -41,6 +41,7 @@ RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 
 /// The duration between heartbeats sent from the workers to the raylet.
+/// If set to a negative value, the heartbeats will not be sent.
 RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 500)
 
 /// These are used by the worker to set timeouts and to batch requests when

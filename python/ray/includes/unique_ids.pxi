@@ -130,16 +130,26 @@ cdef class UniqueID(BaseID):
 
 
 cdef class ObjectID(BaseID):
-    cdef CObjectID data
-    cdef object buffer_ref
+    cdef:
+        CObjectID data
+        object buffer_ref
+        c_bool in_core_worker
 
     def __init__(self, id):
         check_id(id)
-        self.data = CObjectID.FromBinary(<c_string>id)
-        ray.worker.global_worker.core_worker.remove_active_object_id(self)
+        worker = ray.worker.global_worker
+        # TODO(edoakes): there are dummy object IDs being created in
+        # includes/task.pxi before the core worker is initialized.
+        if hasattr(worker, "core_worker"):
+            worker.core_worker.add_active_object_id(self)
+            self.in_core_worker = True
+        else:
+            self.in_core_worker = False
 
     def __dealloc__(self):
-        ray.worker.global_worker.core_worker.remove_active_object_id(self)
+        worker = ray.worker.global_worker
+        if self.in_core_worker:
+            worker.core_worker.remove_active_object_id(self)
 
     cdef CObjectID native(self):
         return <CObjectID>self.data
