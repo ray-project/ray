@@ -308,12 +308,15 @@ def get_session_runs(name, command, parsed_args):
 
 
 @session_cli.command(help="Attach to an existing cluster")
+@click.option(
+    "--screen", is_flag=True, default=False, help="Run the command in screen.")
 @click.option("--tmux", help="Attach to tmux session", is_flag=True)
-def attach(tmux):
+def attach(screen, tmux):
     project_definition = load_project_or_throw()
     attach_cluster(
         project_definition.cluster_yaml(),
         start=False,
+        use_screen=screen,
         use_tmux=tmux,
         override_cluster_name=None,
         new=False,
