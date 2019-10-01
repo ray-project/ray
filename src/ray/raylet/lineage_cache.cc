@@ -7,6 +7,8 @@ namespace ray {
 
 namespace raylet {
 
+const bool inSingleNode = true;
+
 LineageEntry::LineageEntry(const Task &task, GcsStatus status)
     : status_(status), task_(task) {
   ComputeParentTaskIds();
@@ -161,6 +163,10 @@ LineageCache::LineageCache(const ClientID &client_id,
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
+  if (inSingleNode) {
+    return;
+  }
+
   RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << client_id_;
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
@@ -184,6 +190,10 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
+  if (inSingleNode) {
+    return;
+  }
+
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << client_id_;
 
@@ -264,6 +274,10 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
 }
 
 void LineageCache::FlushTask(const TaskID &task_id) {
+  if (inSingleNode) {
+    return;
+  }
+
   auto entry = lineage_.GetEntryMutable(task_id);
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() < GcsStatus::COMMITTING);
