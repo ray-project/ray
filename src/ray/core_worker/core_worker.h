@@ -41,7 +41,8 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+             const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
+             const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
              bool use_memory_store = true);
 
   ~CoreWorker();

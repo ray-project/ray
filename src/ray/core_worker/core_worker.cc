@@ -10,7 +10,8 @@ CoreWorker::CoreWorker(
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
     const std::string &log_dir, const std::string &node_ip_address,
-    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+    const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
+    const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
     bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
@@ -63,11 +64,10 @@ CoreWorker::CoreWorker(
   // Initialize task execution.
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
-    RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
                                              *object_interface_, profiler_,
-                                             execution_callback));
+                                             normal_task_callback, actor_task_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
 

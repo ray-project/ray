@@ -24,23 +24,30 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  /// The callback provided app-language workers that executes tasks.
-  ///
-  /// \param ray_function[in] Information about the function to execute.
-  /// \param args[in] Arguments of the task.
-  /// \param results[out] Results of the task execution.
-  /// \return Status.
-  using TaskExecutor =
+  // TODO
+  using NormalTaskCallback =
       std::function<Status(const RayFunction &ray_function,
+                           const JobID &job_id, const TaskID &task_id,
                            const std::vector<std::shared_ptr<RayObject>> &args,
-                           int num_returns, const TaskSpecification &task_spec,
+                           const std::vector<ObjectID> &return_ids,
+                           std::vector<std::shared_ptr<RayObject>> *results)>;
+
+  // TODO
+  using ActorTaskCallback =
+      std::function<Status(const RayFunction &ray_function,
+                           const JobID &job_id, const TaskID &task_id,
+                           const ActorID &actor_id, bool create_actor,
+                           const std::unordered_map<std::string, double> &required_resources,
+                           const std::vector<std::shared_ptr<RayObject>> &args,
+                           const std::vector<ObjectID> &return_ids,
                            std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
                                    const std::unique_ptr<worker::Profiler> &profiler,
-                                   const TaskExecutor &executor);
+                                   const NormalTaskCallback &normal_task_callback,
+                                   const ActorTaskCallback &actor_task_callback);
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
@@ -82,8 +89,11 @@ class CoreWorkerTaskExecutionInterface {
 
   const std::unique_ptr<worker::Profiler> &profiler_;
 
-  // Task execution callback.
-  TaskExecutor execution_callback_;
+  // Normal task execution callback.
+  NormalTaskCallback normal_task_callback_;
+
+  // Actor task execution callback.
+  ActorTaskCallback actor_task_callback_;
 
   /// All the task task receivers supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>

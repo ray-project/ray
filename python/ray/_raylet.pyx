@@ -9,6 +9,7 @@ import logging
 
 from libc.stdint cimport uint8_t, int32_t, int64_t
 from libcpp cimport bool as c_bool
+from libcpp.cast cimport const_cast
 from libcpp.memory cimport (
     dynamic_pointer_cast,
     make_shared,
@@ -44,6 +45,7 @@ from ray.includes.libraylet cimport (
     WaitResultPair,
 )
 from ray.includes.unique_ids cimport (
+    CActorID,
     CActorCheckpointID,
     CObjectID,
     CClientID,
@@ -256,6 +258,20 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
     return out
 
 
+# Required because the Cython parser rejects 'unordered_map[c_string, double]*'
+# as a template parameter.
+ctypedef unordered_map[c_string, double]* ResourceMapPtr
+
+cdef dict resource_map_to_dict(const unordered_map[c_string, double] &resources):
+    result = {}
+    # This const_cast is required because Cython doesn't properly support
+    # const_iterators.
+    for key, value in dereference(const_cast[ResourceMapPtr](&resources)):
+        result[key.decode("ascii")] = value
+
+    return result
+
+
 cdef c_vector[c_string] string_vector_from_list(list string_list):
     cdef:
         c_vector[c_string] out
@@ -330,14 +346,55 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
-cdef CRayStatus execute_task(const CRayFunction &ray_function,
-                             const c_vector[shared_ptr[CRayObject]] &args,
-                             int num_returns,
-                             const CTaskSpec &c_task_spec,
-                             c_vector[shared_ptr[CRayObject]] *returns) nogil:
+cdef list deserialize_args(const c_vector[shared_ptr[CRayObject]] &args):
+    result = []
+    for i in range(args.size()):
+        data = Buffer.make(args[i].get().GetData())
+        if (args[i].get().HasMetadata()
+            and Buffer.make(args[i].get().GetMetadata()).to_pybytes()
+            == RAW_BUFFER_METADATA):
+            result.append(data)
+        else:
+            result.append(pickle.loads(data))
+
+    return result
+
+cdef CRayStatus execute_normal_task(const CRayFunction &ray_function,
+                                    const CJobID &job_id, const CTaskID &task_id,
+                                    const c_vector[shared_ptr[CRayObject]] &args,
+                                    const c_vector[CObjectID] &return_ids,
+                                    c_vector[shared_ptr[CRayObject]] *returns) nogil:
     with gil:
-        ray.worker.global_worker._wait_for_and_process_task(
-            TaskSpec.make(c_task_spec))
+        ray.worker.global_worker._process_normal_task(
+            ray_function.GetFunctionDescriptor(),
+            JobID(job_id.Binary()),
+            TaskID(task_id.Binary()),
+            deserialize_args(args),
+            VectorToObjectIDs(return_ids),
+        )
+
+    return CRayStatus.OK()
+
+cdef CRayStatus execute_actor_task(
+    const CRayFunction &ray_function,
+    const CJobID &job_id, const CTaskID &task_id,
+    const CActorID &actor_id, c_bool create_actor,
+    const unordered_map[c_string, double] &required_resources,
+    const c_vector[shared_ptr[CRayObject]] &args,
+    const c_vector[CObjectID] &return_ids,
+    c_vector[shared_ptr[CRayObject]] *returns) nogil:
+
+    with gil:
+        ray.worker.global_worker._process_actor_task(
+            ray_function.GetFunctionDescriptor(),
+            JobID(job_id.Binary()),
+            TaskID(task_id.Binary()),
+            ActorID(actor_id.Binary()),
+            resource_map_to_dict(required_resources),
+            deserialize_args(args),
+            VectorToObjectIDs(return_ids),
+            create_actor,
+        )
 
     return CRayStatus.OK()
 
@@ -356,7 +413,7 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), execute_task, False))
+            node_ip_address.encode("utf-8"), execute_normal_task, execute_actor_task, False))
 
     def disconnect(self):
         with nogil:

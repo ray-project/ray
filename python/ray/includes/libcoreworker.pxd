@@ -12,6 +12,7 @@ from libcpp.utility cimport pair
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
+    CActorID,
     CJobID,
     CTaskID,
     CObjectID,
@@ -95,8 +96,17 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &log_dir, const c_string &node_ip_address,
                     CRayStatus (
                         const CRayFunction &ray_function,
+                        const CJobID &job_id, const CTaskID &task_id,
                         const c_vector[shared_ptr[CRayObject]] &args,
-                        int num_returns, const CTaskSpec &task_spec,
+                        const c_vector[CObjectID] &return_ids,
+                        c_vector[shared_ptr[CRayObject]] *returns) nogil,
+                    CRayStatus (
+                        const CRayFunction &ray_function,
+                        const CJobID &job_id, const CTaskID &task_id,
+                        const CActorID &actor_id, c_bool create_actor,
+                        const unordered_map[c_string, double] &required_resources,
+                        const c_vector[shared_ptr[CRayObject]] &args,
+                        const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     c_bool use_memory_store_)
         void Disconnect()
