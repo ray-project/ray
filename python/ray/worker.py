@@ -8,6 +8,7 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import numpy as np
@@ -1001,7 +1002,13 @@ class Worker(object):
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
-        failure_object = RayTaskError(function_name, backtrace)
+        if isinstance(error, RayTaskError):
+            # avoid recursively nesting of RayTaskError
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.cause_cls)
+        else:
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.__class__)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
@@ -1278,6 +1285,16 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
+        # Tell Ray to serialize StringIO with pickle. We do this because
+        # Ray's default __dict__ serialization is incorrect for this type
+        # (the object's __dict__ is empty and therefore doesn't
+        # contain the full state of the object).
+        register_custom_serializer(
+            io.StringIO,
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="io.StringIO")
 
 
 def init(address=None,
@@ -2279,7 +2296,10 @@ def get(object_ids):
                 last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.UnreconstructableError):
                     worker.dump_object_store_memory_usage()
-                raise value
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
 
         # Run post processors.
         for post_processor in worker._post_get_hooks:
