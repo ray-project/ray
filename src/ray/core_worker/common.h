@@ -12,6 +12,12 @@
 namespace ray {
 using WorkerType = rpc::WorkerType;
 
+// Return a string representation of the worker type.
+std::string WorkerTypeString(WorkerType type);
+
+// Return a string representation of the language.
+std::string LanguageString(Language language);
+
 /// Information about a remote function.
 class RayFunction {
  public:

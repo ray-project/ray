@@ -185,6 +185,10 @@ class SampleBatch(object):
         return self.data.items()
 
     @PublicAPI
+    def get(self, key):
+        return self.data.get(key)
+
+    @PublicAPI
     def __getitem__(self, key):
         return self.data[key]
 

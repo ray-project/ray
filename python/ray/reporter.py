@@ -13,7 +13,7 @@ from socket import AddressFamily
 
 try:
     import psutil
-except ModuleNotFoundError:
+except ImportError:
     print("The reporter requires psutil to run.")
     import sys
     sys.exit(1)
@@ -48,14 +48,8 @@ def jsonify_asdict(o):
     return json.dumps(recursive_asdict(o))
 
 
-def running_worker(s):
-    if "ray_worker" not in s:
-        return False
-
-    if s == "ray_worker":
-        return False
-
-    return True
+def is_worker(cmdline):
+    return cmdline and cmdline[0].startswith("ray_")
 
 
 def determine_ip_address():
@@ -127,8 +121,10 @@ class Reporter(object):
     def get_workers():
         return [
             x.as_dict(attrs=[
-                "pid", "create_time", "cpu_times", "name", "memory_full_info"
-            ]) for x in psutil.process_iter() if running_worker(x.name())
+                "pid", "create_time", "cpu_percent", "cpu_times", "name",
+                "cmdline", "memory_info", "memory_full_info"
+            ]) for x in psutil.process_iter(attrs=["cmdline"])
+            if is_worker(x.info["cmdline"])
         ]
 
     def get_load_avg(self):
