@@ -15,6 +15,26 @@ from ray.includes.unique_ids cimport (
     CTaskID,
 )
 
+
+cdef extern from * namespace "polyfill":
+    """
+    namespace polyfill {
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T& t) {
+        return std::move(t);
+    }
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T&& t) {
+        return std::move(t);
+    }
+
+    }  // namespace polyfill
+    """
+    cdef T move[T](T)
+
+
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef cppclass StatusCode:
         pass

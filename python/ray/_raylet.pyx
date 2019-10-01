@@ -29,6 +29,8 @@ from ray.includes.common cimport (
     CGcsClientOptions,
     CTaskArg,
     CRayFunction,
+    LocalMemoryBuffer,
+    move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
@@ -416,7 +418,6 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), NULL, False))
-        self.core_worker.get().Profiler().get().Start()
 
     def disconnect(self):
         with nogil:
@@ -663,5 +664,9 @@ cdef class CoreWorker:
             return VectorToObjectIDs(return_ids)
 
     def profile_event(self, event_type, dict extra_data):
-        return ProfileEvent.make(self.core_worker.get().Profiler(),
-                                 event_type.encode("ascii"), extra_data)
+        cdef:
+            c_string c_event_type = event_type.encode("ascii")
+
+        return ProfileEvent.make(
+            self.core_worker.get().CreateProfileEvent(c_event_type),
+            extra_data)

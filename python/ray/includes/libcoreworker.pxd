@@ -26,12 +26,7 @@ from ray.includes.libraylet cimport CRayletClient
 
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
-    cdef cppclass CProfiler "ray::worker::Profiler":
-        void Start()
-
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
-        CProfileEvent(const shared_ptr[CProfiler] profiler,
-                      const c_string &event_type)
         void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
@@ -80,8 +75,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
         CTaskSubmissionInterface &Tasks()
-        const shared_ptr[CProfiler] &Profiler()
         # CTaskExecutionInterface &Execution()
+        unique_ptr[CProfileEvent] CreateProfileEvent(
+            const c_string &event_type)
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.

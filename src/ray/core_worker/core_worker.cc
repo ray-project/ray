@@ -1,5 +1,7 @@
-#include "ray/core_worker/core_worker.h"
+#include <boost/asio/signal_set.hpp>
+
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 
@@ -26,14 +28,31 @@ CoreWorker::CoreWorker(
     RayLog::InstallFailureSignalHandler();
   }
 
+  boost::asio::signal_set sigint(io_service_, SIGINT);
+  sigint.async_wait(
+      [](const boost::system::error_code &error, int signal_number) -> void {
+        if (!error) {
+          RAY_LOG(WARNING) << "Got SIGINT " << signal_number << ", ignoring it.";
+        }
+      });
+
+  boost::asio::signal_set sigterm(io_service_, SIGTERM);
+  sigterm.async_wait(
+      [this](const boost::system::error_code &error, int signal_number) -> void {
+        if (!error) {
+          RAY_LOG(WARNING) << "Got SIGTERM " << signal_number << ", shutting down.";
+          io_service_.stop();
+        }
+      });
+
   // Initialize gcs client.
   gcs_client_ =
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   // Initialize profiler.
-  profiler_ =
-      std::make_shared<worker::Profiler>(worker_context_, node_ip_address, gcs_client_);
+  profiler_ = std::unique_ptr<worker::Profiler>(
+      new worker::Profiler(worker_context_, node_ip_address, io_service_, gcs_client_));
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
@@ -110,5 +129,11 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::StartIOService() { io_service_.run(); }
+
+std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
+    const std::string &event_type) {
+  return std::unique_ptr<worker::ProfileEvent>(
+      new worker::ProfileEvent(profiler_, event_type));
+}
 
 }  // namespace ray
