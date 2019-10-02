@@ -1,4 +1,4 @@
-from libc.stdlib cimport malloc
+from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 from cython.parallel cimport prange
@@ -43,12 +43,14 @@ cdef extern from "ray/protobuf/serialization.pb.h" nogil:
     int strides_size()
 
   cdef cppclass CPythonObject "ray::serialization::PythonObject":
-    uint64_t buffers_offset() const
-    void set_buffers_offset(uint64_t value)
     uint64_t inband_data_offset() const
     void set_inband_data_offset(uint64_t value)
     uint64_t inband_data_size() const
     void set_inband_data_size(uint64_t value)
+    uint64_t raw_buffers_offset() const
+    void set_raw_buffers_offset(uint64_t value)
+    uint64_t raw_buffers_size() const
+    void set_raw_buffers_size(uint64_t value)
     CPythonBuffer* add_buffer()
     CPythonBuffer& buffer(int index) const
     int buffer_size() const
@@ -75,18 +77,31 @@ cdef class SubBuffer:
         void *buf
         Py_ssize_t len
         int readonly
-        const char *format
+        char *_format
         int ndim
-        Py_ssize_t *shape
-        Py_ssize_t *strides
+        Py_ssize_t *_shape
+        Py_ssize_t *_strides
         Py_ssize_t *suboffsets
         Py_ssize_t itemsize
         void *internal
         object buffer
+        # True if these memory fields are allocated,
+        # False if referenced or not assigned.
+        c_bool _format_allocated
+        c_bool _shape_allocated
+        c_bool _strides_allocated
 
     def __cinit__(self, Buffer buffer):
         # Increase ref count.
         self.buffer = buffer
+        self._format = NULL
+        self._shape = NULL
+        self._strides = NULL
+        self.suboffsets = NULL
+        self.internal = NULL
+        self._format_allocated = False
+        self._shape_allocated = False
+        self._strides_allocated = False
 
     def __len__(self):
         return self.len // self.itemsize
@@ -105,17 +120,38 @@ cdef class SubBuffer:
         return PyBytes_FromStringAndSize(
             <const char*> self.buf, self.len)
 
+    cdef copy_format(self, const c_string &format_str):
+        # TODO(suquark): We could further improve it
+        # by caching common formats.
+        cdef size_t size = format_str.length()
+        self._format = <char *>malloc(size + 1)
+        format_str.copy(self._format, size, 0)
+        self._format[size] = 0
+        self._format_allocated = True
+
+    cdef copy_shape(self, const Py_ssize_t *shape):
+        cdef size_t size = sizeof(Py_ssize_t) * self.ndim
+        self._shape =  <Py_ssize_t *>malloc(size)
+        memcpy(self._shape, shape, size)
+        self._shape_allocated = True
+
+    cdef copy_strides(self, const Py_ssize_t *strides):
+        cdef size_t size = sizeof(Py_ssize_t) * self.ndim
+        self._strides =  <Py_ssize_t *>malloc(size)
+        memcpy(self._strides, strides, size)
+        self._strides_allocated = True
+
     def __getbuffer__(self, Py_buffer* buffer, int flags):
         buffer.readonly = self.readonly
         buffer.buf = self.buf
-        buffer.format = <char *>self.format
-        buffer.internal = NULL
+        buffer.format = self._format
+        buffer.internal = self.internal
         buffer.itemsize = self.itemsize
         buffer.len = self.len
         buffer.ndim = self.ndim
-        buffer.obj = self
-        buffer.shape = self.shape
-        buffer.strides = self.strides
+        buffer.obj = self  # This is important for GC.
+        buffer.shape = self._shape
+        buffer.strides = self._strides
         buffer.suboffsets = self.suboffsets
 
     def __getsegcount__(self, Py_ssize_t *len_out):
@@ -136,6 +172,14 @@ cdef class SubBuffer:
         if p != NULL:
             p[0] = self.buf
         return self.size
+
+    def __dealloc__(self):
+        if self._shape_allocated:
+            free(self._shape)
+        if self._strides_allocated:
+            free(self._strides)
+        if self._format_allocated:
+            free(self._format)
 
 
 cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
@@ -173,9 +217,7 @@ cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
             memcpy(dst + prefix + num_threads * chunk_size, right, suffix)
 
 
-# Buffer serialization format:
-# | i64 offset(protobuf) | i64 len(protobuf) | inband_data | pad(64) | \
-# | buffers | pad(8) | protobuf_data |
+# See 'serialization.proto' for the memory layout in the Plasma buffer.
 def unpack_pickle5_buffers(Buffer buf):
     cdef:
         shared_ptr[CBuffer] _buffer = buf.buffer
@@ -189,15 +231,20 @@ def unpack_pickle5_buffers(Buffer buf):
         int32_t i
         const uint8_t *buffers_segment
     protobuf_offset = (<int64_t*>data)[0]
+    if protobuf_offset < 0:
+        raise ValueError("The protobuf data offset should be positive."
+                         "Got negative instead. "
+                         "Maybe the buffer has been corrupted.")
     protobuf_size = (<int64_t*>data)[1]
-    if protobuf_size > INT32_MAX:
+    if protobuf_size > INT32_MAX or protobuf_size < 0:
         raise ValueError("Incorrect protobuf size. "
                          "Maybe the buffer has been corrupted.")
-    if not python_object.ParseFromArray(data + protobuf_offset, <int32_t>protobuf_size):
-        raise ValueError("Protobuf object corrupted")
+    if not python_object.ParseFromArray(
+            data + protobuf_offset, <int32_t>protobuf_size):
+        raise ValueError("Protobuf object is corrupted.")
     inband_data.append(<char*>(data + python_object.inband_data_offset()),
                        <size_t>python_object.inband_data_size())
-    buffers_segment = data + python_object.buffers_offset()
+    buffers_segment = data + python_object.raw_buffers_offset()
     pickled_buffers = []
     # Now read buffer meta
     for i in range(python_object.buffer_size()):
@@ -209,23 +256,11 @@ def unpack_pickle5_buffers(Buffer buf):
         buffer.readonly = buffer_meta.readonly()
         buffer.ndim = buffer_meta.ndim()
         if buffer_meta.format().size() > 0:
-            buffer.format = buffer_meta.release_format().c_str()
-        else:
-            buffer.format = NULL
+            buffer.copy_format(buffer_meta.format())
         if buffer_meta.shape_size() > 0:
-            buffer.shape = <Py_ssize_t *>malloc(
-                sizeof(int64_t) * buffer_meta.shape_size())
-            memcpy(buffer.shape, buffer_meta.shape().data(),
-                   sizeof(int64_t) * buffer_meta.shape_size())
-        else:
-            buffer.shape = NULL
+            buffer.copy_shape(<Py_ssize_t *>buffer_meta.shape().data())
         if buffer_meta.strides_size() > 0:
-            buffer.strides =  <Py_ssize_t *>malloc(
-                sizeof(int64_t) * buffer_meta.strides_size())
-            memcpy(buffer.strides, buffer_meta.strides().data(),
-                   sizeof(int64_t) * buffer_meta.strides_size())
-        else:
-            buffer.strides = NULL
+            buffer.copy_strides(<Py_ssize_t *>buffer_meta.strides().data())
         buffer.internal = NULL
         buffer.suboffsets = NULL
         pickled_buffers.append(buffer)
@@ -280,29 +315,31 @@ cdef class Pickle5Writer:
     def get_total_bytes(self, const c_string &inband):
         cdef:
             size_t protobuf_bytes = 0
-            uint64_t buffers_offset
             uint64_t inband_data_offset = sizeof(int64_t) * 2
-        buffers_offset = padded_length_u64(
-            inband_data_offset + inband.length(), kMajorBufferAlign)
-        self._protobuf_offset = padded_length_u64(
-            buffers_offset + self._curr_buffer_addr, kMinorBufferAlign)
-        # This is a placeholder for correct calculation of size.
+            uint64_t raw_buffers_offset = padded_length_u64(
+                inband_data_offset + inband.length(), kMajorBufferAlign)
         self.python_object.set_inband_data_offset(inband_data_offset)
         self.python_object.set_inband_data_size(inband.length())
-        self.python_object.set_buffers_offset(buffers_offset)
-        # We MUST NOT change 'python_object' size since now.
+        self.python_object.set_raw_buffers_offset(raw_buffers_offset)
+        self.python_object.set_raw_buffers_size(self._curr_buffer_addr)
+        # Since calculating the output size is expensive, we will
+        # reuse the cached size.
+        # So we MUST NOT change 'python_object' afterwards.
+        # This is because protobuf could change the output size
+        # according to different values.
         protobuf_bytes = self.python_object.ByteSizeLong()
         if protobuf_bytes > INT32_MAX:
             raise ValueError("Total buffer metadata size is bigger than %d. "
                              "Consider reduce the number of buffers "
                              "(number of numpy arrays, etc)." % INT32_MAX)
+        self._protobuf_offset = padded_length_u64(
+            raw_buffers_offset + self._curr_buffer_addr, kMinorBufferAlign)
         self._total_bytes = self._protobuf_offset + protobuf_bytes
         return self._total_bytes
 
     cdef void write_to(self, const c_string &inband, shared_ptr[CBuffer] data,
                        int memcopy_threads):
         cdef uint8_t *ptr = data.get().Data()
-        cdef uint8_t *__temp
         cdef int32_t protobuf_size
         cdef uint64_t buffer_addr
         cdef uint64_t buffer_len
@@ -319,9 +356,9 @@ cdef class Pickle5Writer:
             ptr + self._protobuf_offset)
         # Write inband data.
         memcpy(ptr + self.python_object.inband_data_offset(),
-               inband.c_str(), inband.length())
+               inband.data(), inband.length())
         # Write buffer data.
-        ptr += self.python_object.buffers_offset()
+        ptr += self.python_object.raw_buffers_offset()
         for i in range(self.python_object.buffer_size()):
             buffer_addr = self.python_object.buffer(i).address()
             buffer_len = self.python_object.buffer(i).length()
