@@ -14,6 +14,7 @@ redis
 setproctitle
 sphinx
 sphinx-click
+sphinx-gallery
 sphinx-jsonschema
 sphinx_rtd_theme
 pandas

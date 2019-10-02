@@ -39,10 +39,15 @@ def generate_variants(unresolved_spec):
 
         "activation": {"grid_search": ["relu", "tanh"]}
         "cpu": {"eval": "spec.config.num_workers"}
+
+    Use `format_vars` to format the returned dict of hyperparameters.
+
+    Yields:
+        (Dict of resolved variables, Spec object)
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
-        yield format_vars(resolved_vars), spec
+        yield resolved_vars, spec
 
 
 def grid_search(values):
@@ -79,6 +84,7 @@ def resolve_nested_dict(nested_dict):
 
 
 def format_vars(resolved_vars):
+    """Formats the resolved variable dict into a single string."""
     out = []
     for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "resources_per_trial"]:
@@ -94,6 +100,17 @@ def format_vars(resolved_vars):
         pieces.reverse()
         out.append(_clean_value("_".join(pieces)) + "=" + _clean_value(value))
     return ",".join(out)
+
+
+def flatten_resolved_vars(resolved_vars):
+    """Formats the resolved variable dict into a mapping of (str -> value)."""
+    flattened_resolved_vars_dict = {}
+    for pieces, value in resolved_vars.items():
+        if pieces[0] == "config":
+            pieces = pieces[1:]
+        pieces = [str(piece) for piece in pieces]
+        flattened_resolved_vars_dict["/".join(pieces)] = value
+    return flattened_resolved_vars_dict
 
 
 def _clean_value(value):

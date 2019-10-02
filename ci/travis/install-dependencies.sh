@@ -59,8 +59,7 @@ elif [[ "$LINT" == "1" ]]; then
   bash miniconda.sh -b -p $HOME/miniconda
   export PATH="$HOME/miniconda/bin:$PATH"
   # Install Python linting tools.
-  pip install -q flake8==3.7.7 flake8-comprehensions
-  pip install flake8-quotes==2.0.0
+  pip install -q flake8==3.7.7 flake8-comprehensions flake8-quotes==2.0.0
 elif [[ "$LINUX_WHEELS" == "1" ]]; then
   sudo apt-get install docker
   sudo usermod -a -G docker travis
@@ -69,4 +68,10 @@ elif [[ "$MAC_WHEELS" == "1" ]]; then
 else
   echo "Unrecognized environment."
   exit 1
+fi
+
+if [[ "$PYTHON" == "3.5" ]] || [[ "$MAC_WHEELS" == "1" ]]; then
+  # Install the latest version of Node.js in order to build the dashboard.
+  source $HOME/.nvm/nvm.sh
+  nvm install node
 fi

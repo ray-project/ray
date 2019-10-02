@@ -160,11 +160,12 @@ class SkOptSearch(SuggestionAlgorithm):
         return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
-        trials_object = self._skopt_opt
-        with open(checkpoint_dir, "wb") as output:
-            pickle.dump(trials_object, output)
+        trials_object = (self._initial_points, self._skopt_opt)
+        with open(checkpoint_dir, "wb") as outputFile:
+            pickle.dump(trials_object, outputFile)
 
     def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as input:
-            trials_object = pickle.load(input)
-        self._skopt_opt = trials_object
+        with open(checkpoint_dir, "rb") as inputFile:
+            trials_object = pickle.load(inputFile)
+        self._initial_points = trials_object[0]
+        self._skopt_opt = trials_object[1]

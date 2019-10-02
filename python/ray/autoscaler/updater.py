@@ -16,7 +16,9 @@ import time
 from threading import Thread
 from getpass import getuser
 
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
+    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
+    STATUS_SETTING_UP, STATUS_SYNCING_FILES
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -313,9 +315,9 @@ class NodeUpdater(object):
                  file_mounts,
                  initialization_commands,
                  setup_commands,
+                 ray_start_commands,
                  runtime_hash,
                  process_runner=subprocess,
-                 exit_on_update_fail=False,
                  use_internal_ip=False):
 
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
@@ -340,8 +342,8 @@ class NodeUpdater(object):
         }
         self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
+        self.ray_start_commands = ray_start_commands
         self.runtime_hash = runtime_hash
-        self.exit_on_update_fail = exit_on_update_fail
 
     def run(self):
         logger.info(self.log_prefix +
@@ -357,13 +359,13 @@ class NodeUpdater(object):
                     e.returncode, " ".join(e.cmd))
             logger.error(self.log_prefix +
                          "Error updating {}".format(error_str))
-            self.provider.set_node_tags(self.node_id,
-                                        {TAG_RAY_NODE_STATUS: "update-failed"})
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
             raise e
 
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_NODE_STATUS: "up-to-date",
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
 
@@ -414,26 +416,37 @@ class NodeUpdater(object):
         assert False, "Unable to connect to node"
 
     def do_update(self):
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "waiting-for-start"})
+        self.provider.set_node_tags(
+            self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
 
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "syncing-files"})
-        self.sync_file_mounts(self.rsync_up)
+        node_tags = self.provider.node_tags(self.node_id)
+        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+            logger.info(
+                "NodeUpdater: {} already up-to-date, skip to ray start".format(
+                    self.node_id))
+        else:
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
+            self.sync_file_mounts(self.rsync_up)
 
-        # Run init commands
-        self.provider.set_node_tags(self.node_id,
-                                    {TAG_RAY_NODE_STATUS: "setting-up"})
-        with LogTimer(self.log_prefix + "Initialization commands completed"):
-            for cmd in self.initialization_commands:
-                self.cmd_runner.run(cmd, exit_on_fail=self.exit_on_update_fail)
+            # Run init commands
+            self.provider.set_node_tags(
+                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+            with LogTimer(self.log_prefix +
+                          "Initialization commands completed"):
+                for cmd in self.initialization_commands:
+                    self.cmd_runner.run(cmd)
 
-        with LogTimer(self.log_prefix + "Setup commands completed"):
-            for cmd in self.setup_commands:
-                self.cmd_runner.run(cmd, exit_on_fail=self.exit_on_update_fail)
+            with LogTimer(self.log_prefix + "Setup commands completed"):
+                for cmd in self.setup_commands:
+                    self.cmd_runner.run(cmd)
+
+        with LogTimer(self.log_prefix + "Ray start commands completed"):
+            for cmd in self.ray_start_commands:
+                self.cmd_runner.run(cmd)
 
     def rsync_up(self, source, target, redirect=None):
         logger.info(self.log_prefix +
