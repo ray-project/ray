@@ -41,6 +41,12 @@ source $HOME/.nvm/nvm.sh
 nvm install node
 nvm use node
 
+# Build the dashboard so its static assets can be included in the wheel.
+pushd python/ray/dashboard/client
+  npm ci
+  npm run build
+popd
+
 mkdir .whl
 for ((i=0; i<${#PYTHONS[@]}; ++i)); do
   PYTHON=${PYTHONS[i]}
@@ -48,14 +54,9 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
-  # and the -e flag ensures that we don't remove the .whl directory.
-  git clean -f -f -x -d -e .whl
-
-  # Build the dashboard so its static assets can be included in the wheel.
-  pushd python/ray/dashboard/client
-    npm ci
-    npm run build
-  popd
+  # and the -e flag ensures that we don't remove the .whl directory and the
+  # dashboard directory.
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
 
   pushd python
     # Fix the numpy version because this will be the oldest numpy version we can
@@ -66,8 +67,6 @@ for ((i=0; i<${#PYTHONS[@]}; ++i)); do
     mv dist/*.whl ../.whl/
   popd
 done
-
-git clean -f -f -x -d -e .whl
 
 # Rename the wheels so that they can be uploaded to PyPI. TODO(rkn): This is a
 # hack, we should use auditwheel instead.
