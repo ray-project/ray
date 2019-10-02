@@ -5,6 +5,7 @@ Full example of ray.serve module
 import ray
 import ray.experimental.serve as serve
 import requests
+import time
 
 # initialize ray serve system.
 # blocking=True will wait for HTTP server to be ready to serve request.
@@ -28,7 +29,7 @@ serve.link("my_endpoint", "echo:v1")
 print(requests.get("http://127.0.0.1:8000/echo").json())
 # The service will be reachable from http
 
-print(ray.get(serve.get_handle("my_endpint").remote()))
+print(ray.get(serve.get_handle("my_endpoint").remote("hello")))
 # as well as within the ray system.
 
 
@@ -44,6 +45,7 @@ serve.create_backend(echo_v2, "echo:v2")
 serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 
 # Observe requests are now split between two backends.
-for _ in range(5):
+for _ in range(10):
     print(requests.get("http://127.0.0.1:8000/echo").json())
+    time.sleep(0.5)
 
