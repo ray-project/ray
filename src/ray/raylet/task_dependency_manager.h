@@ -33,7 +33,7 @@ class TaskDependencyManager {
   TaskDependencyManager(ObjectManagerInterface &object_manager,
                         ReconstructionPolicyInterface &reconstruction_policy,
                         boost::asio::io_service &io_service, const ClientID &client_id,
-                        int64_t initial_lease_period_ms,
+                        int64_t initial_lease_period_ms, bool single_node,
                         gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table);
 
   /// Check whether an object is locally available.
@@ -227,6 +227,8 @@ class TaskDependencyManager {
   /// added to the GCS. The lease expiration period is doubled every time the
   /// lease is renewed.
   const int64_t initial_lease_period_ms_;
+  /// Whether we are in single-node mode.
+  const bool single_node_;
   /// The storage system for the task lease table.
   gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table_;
   /// A mapping from task ID of each subscribed task to its list of object

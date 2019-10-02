@@ -7,7 +7,7 @@ namespace ray {
 
 namespace raylet {
 
-const bool inSingleNode = true;
+const bool single_node_ = true;
 
 LineageEntry::LineageEntry(const Task &task, GcsStatus status)
     : status_(status), task_(task) {
@@ -157,13 +157,16 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
 LineageCache::LineageCache(const ClientID &client_id,
                            gcs::TableInterface<TaskID, TaskTableData> &task_storage,
                            gcs::PubsubInterface<TaskID> &task_pubsub,
-                           uint64_t max_lineage_size)
-    : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
+                           uint64_t max_lineage_size, bool single_node)
+    : client_id_(client_id),
+      task_storage_(task_storage),
+      task_pubsub_(task_pubsub),
+      single_node_(single_node) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
-  if (inSingleNode) {
+  if (single_node_) {
     return;
   }
 
@@ -190,7 +193,7 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
-  if (inSingleNode) {
+  if (single_node_) {
     return true;
   }
 
@@ -274,7 +277,7 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
 }
 
 void LineageCache::FlushTask(const TaskID &task_id) {
-  if (inSingleNode) {
+  if (single_node_) {
     return;
   }
 

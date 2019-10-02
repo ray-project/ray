@@ -60,6 +60,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// Whether we are in single node mode.
+  bool single_node;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {

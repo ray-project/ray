@@ -1491,7 +1491,10 @@ def init(address=None,
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler.
         _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, ray_params=ray_params)
+            head=True,
+            shutdown_at_exit=False,
+            ray_params=ray_params,
+            single_node=True)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
