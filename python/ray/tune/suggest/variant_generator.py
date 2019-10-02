@@ -41,7 +41,7 @@ def generate_variants(unresolved_spec):
         "cpu": {"eval": "spec.config.num_workers"}
 
     Yields:
-        (Dict of resolved_vars, Trial specification)
+        (Dict of resolved variables, Trial specification)
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
@@ -81,9 +81,10 @@ def resolve_nested_dict(nested_dict):
     return res
 
 
-def format_vars(resolved_vars_dict):
+def format_vars(resolved_vars):
+    """Formats the resolved variable dict into a single string."""
     out = []
-    for path, value in sorted(resolved_vars_dict.items()):
+    for path, value in sorted(resolved_vars.items()):
         if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []

@@ -8,7 +8,8 @@ import random
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
-from ray.tune.suggest.variant_generator import generate_variants, format_vars
+from ray.tune.suggest.variant_generator import (generate_variants, format_vars,
+                                                flatten_resolved_vars)
 from ray.tune.suggest.search import SearchAlgorithm
 
 
@@ -75,16 +76,16 @@ class BasicVariantGenerator(SearchAlgorithm):
         if "run" not in unresolved_spec:
             raise TuneError("Must specify `run` in {}".format(unresolved_spec))
         for _ in range(unresolved_spec.get("num_samples", 1)):
-            for variable_dict, spec in generate_variants(unresolved_spec):
+            for resolved_vars, spec in generate_variants(unresolved_spec):
                 experiment_tag = str(self._counter)
-                if variable_dict:
-                    experiment_tag += "_{}".format(format_vars(variable_dict))
+                if resolved_vars:
+                    experiment_tag += "_{}".format(format_vars(resolved_vars))
                 self._counter += 1
                 yield create_trial_from_spec(
                     spec,
                     output_path,
                     self._parser,
-                    evaluated_params=["/".join(k) for k in variable_dict],
+                    evaluated_params=flatten_resolved_vars(resolved_vars),
                     experiment_tag=experiment_tag)
 
     def is_finished(self):

@@ -19,7 +19,7 @@ from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT, DEFAULT_RESULT_KEYS,
-                             DEFAULT_EXPERIMENT_INFO_KEYS)
+                             DEFAULT_EXPERIMENT_INFO_KEYS, CONFIG_PREFIX)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -445,7 +445,9 @@ class TrialRunner(object):
             trial = trials[i]
             result = flatten_dict(trial.last_result)
             trial_info = [trial.trial_id, trial.status]
-            trial_info += [result.get(parameter) for parameter in parameters]
+            trial_info += [
+                result.get(CONFIG_PREFIX + param) for param in parameters
+            ]
             trial_info += [result.get(metric) for metric in metrics]
             trial_table.append(trial_info)
 
@@ -453,10 +455,7 @@ class TrialRunner(object):
         keys = ["Trial ID", "Status"] + parsed_parameters + metrics
         messages.append(
             tabulate(
-                trial_table,
-                headers=keys,
-                tablefmt=format,
-                showindex=False))
+                trial_table, headers=keys, tablefmt=format, showindex=False))
 
         return delim.join(messages) + delim
 
