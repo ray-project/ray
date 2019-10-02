@@ -51,6 +51,7 @@ from ray.includes.unique_ids cimport (
     CClientID,
 )
 import ray
+import ray.experimental.signal as ray_signal
 from ray import profiling
 from ray.includes.libcoreworker cimport (
     CCoreWorker, CTaskOptions, ResourceMappingType)
@@ -347,58 +348,136 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
-cdef list deserialize_args(const c_vector[shared_ptr[CRayObject]] &args):
+cdef list deserialize_args(const c_vector[CTaskArg] &args):
     with profiling.profile("task:deserialize_arguments"):
         result = []
         for i in range(args.size()):
-            data = Buffer.make(args[i].get().GetData())
-            if (args[i].get().HasMetadata()
-                and Buffer.make(args[i].get().GetMetadata()).to_pybytes()
-                    == RAW_BUFFER_METADATA):
-                result.append(data)
+            if args[i].IsPassedByReference():
+                result.append(
+                    ray.get(ObjectID(args[i].GetReference().Binary())))
             else:
-                result.append(pickle.loads(data))
+                data = Buffer.make(args[i].GetValue().GetData())
+                if (args[i].GetValue().HasMetadata()
+                    and Buffer.make(
+                        args[i].GetValue().GetMetadata()).to_pybytes()
+                        == RAW_BUFFER_METADATA):
+                    result.append(data)
+                else:
+                    result.append(pickle.loads(data))
 
     return result
 
 cdef CRayStatus execute_normal_task(
         const CRayFunction &ray_function,
-        const CJobID &job_id, const CTaskID &task_id,
-        const c_vector[shared_ptr[CRayObject]] &args,
+        const CJobID &c_job_id, const CTaskID &c_task_id,
+        const c_vector[CTaskArg] &args,
         const c_vector[CObjectID] &return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
-        ray.worker.global_worker._process_normal_task(
+        worker = ray.worker.global_worker
+
+        # Automatically restrict the GPUs available to this task.
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+        job_id = JobID(c_job_id.Binary())
+        task_id = TaskID(c_task_id.Binary())
+
+        assert worker.current_task_id.is_nil()
+        assert worker.task_context.task_index == 0
+        assert worker.task_context.put_index == 1
+        # If this worker is not an actor, check that `current_job_id`
+        # was reset when the worker finished the previous task.
+        assert worker.current_job_id.is_nil()
+        # Set the driver ID of the current running task. This is
+        # needed so that if the task throws an exception, we propagate
+        # the error message to the correct driver.
+        worker.current_job_id = job_id
+        worker.core_worker.set_current_job_id(job_id)
+        worker.task_context.current_task_id = task_id
+        worker.core_worker.set_current_task_id(task_id)
+
+        worker.current_job_id = job_id
+        worker._process_normal_task(
             ray_function.GetFunctionDescriptor(),
-            JobID(job_id.Binary()),
-            TaskID(task_id.Binary()),
+            job_id,
+            task_id,
             deserialize_args(args),
             VectorToObjectIDs(return_ids),
         )
+
+        # Reset the state fields so the next task can run.
+        worker.task_context.current_task_id = TaskID.nil()
+        worker.core_worker.set_current_task_id(TaskID.nil())
+        worker.task_context.task_index = 0
+        worker.task_context.put_index = 1
+        # Don't need to reset `current_job_id` if the worker is an
+        # actor. Because the following tasks should all have the
+        # same driver id.
+        worker.current_job_id = WorkerID.nil()
+        worker.core_worker.set_current_job_id(JobID.nil())
+        # Reset signal counters so that the next task can get
+        # all past signals.
+        ray_signal.reset()
 
     return CRayStatus.OK()
 
 cdef CRayStatus execute_actor_task(
         const CRayFunction &ray_function,
-        const CJobID &job_id, const CTaskID &task_id,
-        const CActorID &actor_id, c_bool create_actor,
+        const CJobID &c_job_id, const CTaskID &c_task_id,
+        const CActorID &c_actor_id, c_bool create_actor,
         const unordered_map[c_string, double] &resources,
-        const c_vector[shared_ptr[CRayObject]] &args,
+        const c_vector[CTaskArg] &args,
         const c_vector[CObjectID] &return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
-        ray.worker.global_worker._process_actor_task(
+        worker = ray.worker.global_worker
+
+        # Automatically restrict the GPUs available to this task.
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+        job_id = JobID(c_job_id.Binary())
+        task_id = TaskID(c_task_id.Binary())
+
+        assert worker.current_task_id.is_nil()
+        assert worker.task_context.task_index == 0
+        assert worker.task_context.put_index == 1
+        if create_actor:
+            # If this worker is not an actor, check that
+            # `current_job_id` was reset when the worker finished the
+            # previous task.
+            assert worker.current_job_id.is_nil()
+            # Set the driver ID of the current running task. This is
+            # needed so that if the task throws an exception, we
+            # propagate the error message to the correct driver.
+            worker.current_job_id = job_id
+            worker.core_worker.set_current_job_id(job_id)
+        else:
+            # If this worker is an actor, current_job_id wasn't reset.
+            # Check that current task's driver ID equals the previous
+            # one.
+            assert worker.current_job_id == job_id
+
+        worker.task_context.current_task_id = task_id
+        worker.core_worker.set_current_task_id(task_id)
+
+        worker._process_actor_task(
             ray_function.GetFunctionDescriptor(),
-            JobID(job_id.Binary()),
-            TaskID(task_id.Binary()),
-            ActorID(actor_id.Binary()),
+            job_id,
+            task_id,
+            ActorID(c_actor_id.Binary()),
             resource_map_to_dict(resources),
             deserialize_args(args),
             VectorToObjectIDs(return_ids),
             create_actor,
         )
+
+        # Reset the state fields so the next task can run.
+        worker.task_context.current_task_id = TaskID.nil()
+        worker.core_worker.set_current_task_id(TaskID.nil())
+        worker.task_context.task_index = 0
+        worker.task_context.put_index = 1
 
     return CRayStatus.OK()
 

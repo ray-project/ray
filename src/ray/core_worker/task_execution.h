@@ -27,8 +27,7 @@ class CoreWorkerTaskExecutionInterface {
   // TODO
   using NormalTaskCallback = std::function<Status(
       const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<ObjectID> &return_ids,
+      const std::vector<TaskArg> &args, const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   // TODO
@@ -36,8 +35,7 @@ class CoreWorkerTaskExecutionInterface {
       const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
       const ActorID &actor_id, bool create_actor,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<ObjectID> &return_ids,
+      const std::vector<TaskArg> &args, const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
@@ -59,16 +57,12 @@ class CoreWorkerTaskExecutionInterface {
   void Stop();
 
  private:
-  /// Build arguments for task executor. This would loop through all the arguments
-  /// in task spec, and for each of them that's passed by reference (ObjectID),
-  /// fetch its content from store and; for arguments that are passed by value,
-  /// just copy their content.
+  /// TODO
   ///
   /// \param spec[in] Task specification.
-  /// \param args[out] The arguments for passing to task executor.
+  /// \return The arguments for passing to task executor.
   ///
-  Status BuildArgsForExecutor(const TaskSpecification &spec,
-                              std::vector<std::shared_ptr<RayObject>> *args);
+  std::vector<TaskArg> BuildArgsForExecutor(const TaskSpecification &spec);
 
   /// Execute a task.
   ///

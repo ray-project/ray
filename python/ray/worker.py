@@ -43,7 +43,6 @@ import ray.state
 from ray import (
     ActorHandleID,
     ActorID,
-    WorkerID,
     JobID,
     ObjectID,
     TaskID,
@@ -1043,21 +1042,6 @@ class Worker(object):
 
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
-                assert self.current_task_id.is_nil()
-                assert self.task_context.task_index == 0
-                assert self.task_context.put_index == 1
-                # If this worker is not an actor, check that `current_job_id`
-                # was reset when the worker finished the previous task.
-                assert self.current_job_id.is_nil()
-                # Set the driver ID of the current running task. This is
-                # needed so that if the task throws an exception, we propagate
-                # the error message to the correct driver.
-                self.current_job_id = job_id
-                self.core_worker.set_current_job_id(job_id)
-
-                self.task_context.current_task_id = task_id
-                self.core_worker.set_current_task_id(task_id)
-
                 function_executor = execution_info.function
                 function_name = execution_info.function_name
 
@@ -1088,20 +1072,6 @@ class Worker(object):
                         function_descriptor, return_ids, e,
                         ray.utils.format_error_message(traceback.format_exc()))
 
-            # Reset the state fields so the next task can run.
-            self.task_context.current_task_id = TaskID.nil()
-            self.core_worker.set_current_task_id(TaskID.nil())
-            self.task_context.task_index = 0
-            self.task_context.put_index = 1
-            # Don't need to reset `current_job_id` if the worker is an
-            # actor. Because the following tasks should all have the
-            # same driver id.
-            self.current_job_id = WorkerID.nil()
-            self.core_worker.set_current_job_id(JobID.nil())
-            # Reset signal counters so that the next task can get
-            # all past signals.
-            ray_signal.reset()
-
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
             job_id, function_descriptor)
@@ -1115,8 +1085,6 @@ class Worker(object):
     def _process_actor_task(self, function_descriptor_list, job_id, task_id,
                             actor_id, required_resources, arguments,
                             return_ids, create_actor):
-        # Automatically restrict the GPUs available to this task.
-        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
@@ -1144,27 +1112,6 @@ class Worker(object):
 
         with profiling.profile("task", extra_data=extra_data):
             with _changeproctitle(title, next_title):
-                assert self.current_task_id.is_nil()
-                assert self.task_context.task_index == 0
-                assert self.task_context.put_index == 1
-                if create_actor:
-                    # If this worker is not an actor, check that
-                    # `current_job_id` was reset when the worker finished the
-                    # previous task.
-                    assert self.current_job_id.is_nil()
-                    # Set the driver ID of the current running task. This is
-                    # needed so that if the task throws an exception, we
-                    # propagate the error message to the correct driver.
-                    self.current_job_id = job_id
-                    self.core_worker.set_current_job_id(job_id)
-                else:
-                    # If this worker is an actor, current_job_id wasn't reset.
-                    # Check that current task's driver ID equals the previous
-                    # one.
-                    assert self.current_job_id == job_id
-
-                self.task_context.current_task_id = task_id
-                self.core_worker.set_current_task_id(task_id)
 
                 function_executor = execution_info.function
                 function_name = execution_info.function_name
@@ -1214,12 +1161,6 @@ class Worker(object):
                         function_descriptor, return_ids, e,
                         ray.utils.format_error_message(traceback.format_exc()))
 
-            # Reset the state fields so the next task can run.
-            self.task_context.current_task_id = TaskID.nil()
-            self.core_worker.set_current_task_id(TaskID.nil())
-            self.task_context.task_index = 0
-            self.task_context.put_index = 1
-
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
             job_id, function_descriptor)
@@ -1229,92 +1170,6 @@ class Worker(object):
         if reached_max_executions:
             self.core_worker.disconnect()
             sys.exit(0)
-
-    def _wait_for_and_process_task(self, task):
-        """Wait for a task to be ready and process the task.
-
-        Args:
-            task: The task to execute.
-        """
-        # Automatically restrict the GPUs available to this task.
-        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
-
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            task.function_descriptor_list())
-        job_id = task.job_id()
-
-        # TODO(rkn): It would be preferable for actor creation tasks to share
-        # more of the code path with regular task execution.
-        if task.is_actor_creation_task():
-            self.actor_id = task.actor_creation_id()
-            actor_class = self.function_actor_manager.load_actor_class(
-                job_id, function_descriptor)
-            self.actors[self.actor_id] = actor_class.__new__(actor_class)
-            self.actor_checkpoint_info[self.actor_id] = ActorCheckpointInfo(
-                num_tasks_since_last_checkpoint=0,
-                last_checkpoint_timestamp=int(1000 * time.time()),
-                checkpoint_ids=[],
-            )
-
-        execution_info = self.function_actor_manager.get_execution_info(
-            job_id, function_descriptor)
-
-        # Execute the task.
-        function_name = execution_info.function_name
-        extra_data = {"name": function_name, "task_id": task.task_id().hex()}
-        if not task.is_actor_task():
-            if not task.is_actor_creation_task():
-                title = "ray_worker:{}()".format(function_name)
-                next_title = "ray_worker"
-            else:
-                actor = self.actors[task.actor_creation_id()]
-                title = "ray_{}:{}()".format(actor.__class__.__name__,
-                                             function_name)
-                next_title = "ray_{}".format(actor.__class__.__name__)
-        else:
-            actor = self.actors[task.actor_id()]
-            title = "ray_{}:{}()".format(actor.__class__.__name__,
-                                         function_name)
-            next_title = "ray_{}".format(actor.__class__.__name__)
-
-        with profiling.profile("task", extra_data=extra_data):
-            with _changeproctitle(title, next_title):
-                self._process_task(task, execution_info)
-            # Reset the state fields so the next task can run.
-            self.task_context.current_task_id = TaskID.nil()
-            self.core_worker.set_current_task_id(TaskID.nil())
-            self.task_context.task_index = 0
-            self.task_context.put_index = 1
-            if self.actor_id.is_nil():
-                # Don't need to reset `current_job_id` if the worker is an
-                # actor. Because the following tasks should all have the
-                # same driver id.
-                self.current_job_id = WorkerID.nil()
-                self.core_worker.set_current_job_id(JobID.nil())
-                # Reset signal counters so that the next task can get
-                # all past signals.
-                ray_signal.reset()
-
-        # Increase the task execution counter.
-        self.function_actor_manager.increase_task_counter(
-            job_id, function_descriptor)
-
-        reached_max_executions = (self.function_actor_manager.get_task_counter(
-            job_id, function_descriptor) == execution_info.max_calls)
-        if reached_max_executions:
-            self.core_worker.disconnect()
-            sys.exit(0)
-
-    def _get_next_task_from_raylet(self):
-        """Get the next task from the raylet.
-
-        Returns:
-            A task from the raylet.
-        """
-        with profiling.profile("worker_idle"):
-            task = self.raylet_client.get_task()
-
-        return task
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""

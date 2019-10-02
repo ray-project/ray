@@ -52,8 +52,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
-  std::vector<std::shared_ptr<RayObject>> args;
-  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args));
+  std::vector<TaskArg> args = BuildArgsForExecutor(task_spec);
 
   std::vector<ObjectID> return_ids;
   for (int i = 0; i < task_spec.NumReturns(); i++) {
@@ -96,23 +95,17 @@ void CoreWorkerTaskExecutionInterface::Stop() {
   idle_profile_event_.reset();
 }
 
-Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args) {
-  auto num_args = task.NumArgs();
-  args->resize(num_args);
-
-  std::vector<ObjectID> object_ids_to_fetch;
-  std::vector<int> indices;
-
+std::vector<TaskArg> CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
+    const TaskSpecification &task) {
+  std::vector<TaskArg> args;
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     int count = task.ArgIdCount(i);
     if (count > 0) {
-      // pass by reference.
+      // Passed by reference.
       RAY_CHECK(count == 1);
-      object_ids_to_fetch.push_back(task.ArgId(i, 0));
-      indices.push_back(i);
+      args.push_back(TaskArg::PassByReference(task.ArgId(i, 0)));
     } else {
-      // pass by value.
+      // Passed by value.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (task.ArgDataSize(i)) {
         data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
@@ -123,19 +116,10 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      (*args)[i] = std::make_shared<RayObject>(data, metadata);
+      args.push_back(TaskArg::PassByValue(std::make_shared<RayObject>(data, metadata)));
     }
   }
-
-  std::vector<std::shared_ptr<RayObject>> results;
-  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
-  if (status.ok()) {
-    for (size_t i = 0; i < results.size(); i++) {
-      (*args)[indices[i]] = results[i];
-    }
-  }
-
-  return status;
+  return args;
 }
 
 }  // namespace ray

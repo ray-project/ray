@@ -97,7 +97,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     CRayStatus (
                         const CRayFunction &ray_function,
                         const CJobID &job_id, const CTaskID &task_id,
-                        const c_vector[shared_ptr[CRayObject]] &args,
+                        const c_vector[CTaskArg] &args,
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     CRayStatus (
@@ -105,7 +105,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const CJobID &job_id, const CTaskID &task_id,
                         const CActorID &actor_id, c_bool create_actor,
                         const unordered_map[c_string, double] &resources,
-                        const c_vector[shared_ptr[CRayObject]] &args,
+                        const c_vector[CTaskArg] &args,
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     c_bool use_memory_store_)
