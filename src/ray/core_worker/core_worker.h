@@ -37,13 +37,14 @@ class CoreWorker {
   /// NOTE(edoakes): the use_memory_store flag is a stop-gap solution to the issue
   ///                that randomly generated ObjectIDs may use the memory store
   ///                instead of the plasma store.
-  CoreWorker(const WorkerType worker_type, const Language language,
-             const std::string &store_socket, const std::string &raylet_socket,
-             const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-             const std::string &log_dir, const std::string &node_ip_address,
-             const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
-             const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
-             bool use_memory_store = true);
+  CoreWorker(
+      const WorkerType worker_type, const Language language,
+      const std::string &store_socket, const std::string &raylet_socket,
+      const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
+      const std::string &log_dir, const std::string &node_ip_address,
+      const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
+      const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
+      bool use_memory_store = true);
 
   ~CoreWorker();
 
@@ -102,7 +103,7 @@ class CoreWorker {
   boost::asio::io_service::work io_work_;
 
   std::thread io_thread_;
-  std::unique_ptr<worker::Profiler> profiler_;
+  std::shared_ptr<worker::Profiler> profiler_;
   std::unique_ptr<RayletClient> raylet_client_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;

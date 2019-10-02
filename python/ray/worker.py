@@ -873,7 +873,6 @@ class Worker(object):
             else:
                 self.put_object(object_ids[i], outputs[i])
 
-
     def _process_task(self, task, function_execution_info):
         """Execute a task assigned to this worker.
 
@@ -1020,8 +1019,8 @@ class Worker(object):
         # Send signal with the error.
         ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
-    def _process_normal_task(self, function_descriptor_list, job_id,
-                             task_id, arguments, return_ids):
+    def _process_normal_task(self, function_descriptor_list, job_id, task_id,
+                             arguments, return_ids):
         """Wait for a task to be ready and process the task.
 
         Args:
@@ -1082,8 +1081,8 @@ class Worker(object):
                         num_returns = len(return_ids)
                         if num_returns == 1:
                             outputs = (outputs, )
-                        self._store_outputs_in_object_store(return_ids,
-                                                            outputs)
+                        self._store_outputs_in_object_store(
+                            return_ids, outputs)
                 except Exception as e:
                     self._handle_process_task_failure(
                         function_descriptor, return_ids, e,
@@ -1140,8 +1139,7 @@ class Worker(object):
         # Execute the task.
         function_name = execution_info.function_name
         extra_data = {"name": function_name, "task_id": task_id.hex()}
-        title = "ray_{}:{}()".format(actor.__class__.__name__,
-                                     function_name)
+        title = "ray_{}:{}()".format(actor.__class__.__name__, function_name)
         next_title = "ray_{}".format(actor.__class__.__name__)
 
         with profiling.profile("task", extra_data=extra_data):
@@ -1150,17 +1148,19 @@ class Worker(object):
                 assert self.task_context.task_index == 0
                 assert self.task_context.put_index == 1
                 if create_actor:
-                    # If this worker is not an actor, check that `current_job_id`
-                    # was reset when the worker finished the previous task.
+                    # If this worker is not an actor, check that
+                    # `current_job_id` was reset when the worker finished the
+                    # previous task.
                     assert self.current_job_id.is_nil()
                     # Set the driver ID of the current running task. This is
-                    # needed so that if the task throws an exception, we propagate
-                    # the error message to the correct driver.
+                    # needed so that if the task throws an exception, we
+                    # propagate the error message to the correct driver.
                     self.current_job_id = job_id
                     self.core_worker.set_current_job_id(job_id)
                 else:
                     # If this worker is an actor, current_job_id wasn't reset.
-                    # Check that current task's driver ID equals the previous one.
+                    # Check that current task's driver ID equals the previous
+                    # one.
                     assert self.current_job_id == job_id
 
                 self.task_context.current_task_id = task_id
@@ -1200,14 +1200,15 @@ class Worker(object):
                 # Store the outputs in the local object store.
                 try:
                     with profiling.profile("task:store_outputs"):
-                        # If this is an actor task, then the last object ID returned by
-                        # the task is a dummy output, not returned by the function
-                        # itself. Decrement to get the correct number of return values.
+                        # If this is an actor task, then the last object ID
+                        # returned by the task is a dummy output, not returned
+                        # by the function itself. Decrement to get the correct
+                        # number of return values.
                         num_returns = len(return_ids)
                         if num_returns == 1:
                             outputs = (outputs, )
-                        self._store_outputs_in_object_store(return_ids,
-                                                            outputs)
+                        self._store_outputs_in_object_store(
+                            return_ids, outputs)
                 except Exception as e:
                     self._handle_process_task_failure(
                         function_descriptor, return_ids, e,

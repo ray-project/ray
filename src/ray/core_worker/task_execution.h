@@ -25,27 +25,25 @@ class TaskSpecification;
 class CoreWorkerTaskExecutionInterface {
  public:
   // TODO
-  using NormalTaskCallback =
-      std::function<Status(const RayFunction &ray_function,
-                           const JobID &job_id, const TaskID &task_id,
-                           const std::vector<std::shared_ptr<RayObject>> &args,
-                           const std::vector<ObjectID> &return_ids,
-                           std::vector<std::shared_ptr<RayObject>> *results)>;
+  using NormalTaskCallback = std::function<Status(
+      const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &return_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
   // TODO
-  using ActorTaskCallback =
-      std::function<Status(const RayFunction &ray_function,
-                           const JobID &job_id, const TaskID &task_id,
-                           const ActorID &actor_id, bool create_actor,
-                           const std::unordered_map<std::string, double> &required_resources,
-                           const std::vector<std::shared_ptr<RayObject>> &args,
-                           const std::vector<ObjectID> &return_ids,
-                           std::vector<std::shared_ptr<RayObject>> *results)>;
+  using ActorTaskCallback = std::function<Status(
+      const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
+      const ActorID &actor_id, bool create_actor,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &return_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
-                                   const std::unique_ptr<worker::Profiler> &profiler,
+                                   const std::shared_ptr<worker::Profiler> profiler,
                                    const NormalTaskCallback &normal_task_callback,
                                    const ActorTaskCallback &actor_task_callback);
 
@@ -87,7 +85,8 @@ class CoreWorkerTaskExecutionInterface {
   /// Reference to the parent CoreWorker's objects interface.
   CoreWorkerObjectInterface &object_interface_;
 
-  const std::unique_ptr<worker::Profiler> &profiler_;
+  // Reference to the parent CoreWorker's profiler.
+  const std::shared_ptr<worker::Profiler> profiler_;
 
   // Normal task execution callback.
   NormalTaskCallback normal_task_callback_;

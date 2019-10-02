@@ -104,7 +104,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const CRayFunction &ray_function,
                         const CJobID &job_id, const CTaskID &task_id,
                         const CActorID &actor_id, c_bool create_actor,
-                        const unordered_map[c_string, double] &required_resources,
+                        const unordered_map[c_string, double] &resources,
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,

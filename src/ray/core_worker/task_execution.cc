@@ -9,7 +9,9 @@ namespace ray {
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface,
-    const std::unique_ptr<worker::Profiler> &profiler, const NormalTaskCallback &normal_task_callback, const ActorTaskCallback &actor_task_callback)
+    const std::shared_ptr<worker::Profiler> profiler,
+    const NormalTaskCallback &normal_task_callback,
+    const ActorTaskCallback &actor_task_callback)
     : worker_context_(worker_context),
       object_interface_(object_interface),
       profiler_(profiler),
@@ -59,13 +61,18 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   }
 
   Status status;
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) { 
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
-    ActorID actor_id = task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : task_spec.ActorId();
-    status = actor_task_callback_(func, worker_context_.GetCurrentJobID(), task_spec.TaskId(), actor_id, task_spec.IsActorCreationTask(), task_spec.GetRequiredResources().GetResourceMap(), args, return_ids, results);
+    ActorID actor_id = task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
+                                                       : task_spec.ActorId();
+    status = actor_task_callback_(
+        func, worker_context_.GetCurrentJobID(), task_spec.TaskId(), actor_id,
+        task_spec.IsActorCreationTask(),
+        task_spec.GetRequiredResources().GetResourceMap(), args, return_ids, results);
   } else {
-    status = normal_task_callback_(func, worker_context_.GetCurrentJobID(), task_spec.TaskId(), args, return_ids, results);
+    status = normal_task_callback_(func, worker_context_.GetCurrentJobID(),
+                                   task_spec.TaskId(), args, return_ids, results);
   }
 
   // TODO(zhijunfu):
