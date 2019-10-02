@@ -1,5 +1,7 @@
-#include "ray/core_worker/core_worker.h"
+#include <boost/asio/signal_set.hpp>
+
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 
@@ -7,7 +9,7 @@ CoreWorker::CoreWorker(
     const WorkerType worker_type, const Language language,
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-    const std::string &log_dir,
+    const std::string &log_dir, const std::string &node_ip_address,
     const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
     bool use_memory_store)
     : worker_type_(worker_type),
@@ -20,24 +22,37 @@ CoreWorker::CoreWorker(
   // and cleaned up by the caller.
   if (!log_dir_.empty()) {
     std::stringstream app_name;
-    if (language_ == Language::PYTHON) {
-      app_name << "python-";
-    } else if (language == Language::JAVA) {
-      app_name << "java-";
-    }
-    if (worker_type_ == WorkerType::DRIVER) {
-      app_name << "core-driver-" << worker_context_.GetWorkerID();
-    } else {
-      app_name << "core-worker-" << worker_context_.GetWorkerID();
-    }
+    app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
+             << worker_context_.GetWorkerID();
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
+
+  boost::asio::signal_set sigint(io_service_, SIGINT);
+  sigint.async_wait(
+      [](const boost::system::error_code &error, int signal_number) -> void {
+        if (!error) {
+          RAY_LOG(WARNING) << "Got SIGINT " << signal_number << ", ignoring it.";
+        }
+      });
+
+  boost::asio::signal_set sigterm(io_service_, SIGTERM);
+  sigterm.async_wait(
+      [this](const boost::system::error_code &error, int signal_number) -> void {
+        if (!error) {
+          RAY_LOG(WARNING) << "Got SIGTERM " << signal_number << ", shutting down.";
+          io_service_.stop();
+        }
+      });
 
   // Initialize gcs client.
   gcs_client_ =
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+
+  // Initialize profiler.
+  profiler_ = std::unique_ptr<worker::Profiler>(
+      new worker::Profiler(worker_context_, node_ip_address, io_service_, gcs_client_));
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
@@ -99,7 +114,7 @@ CoreWorker::~CoreWorker() {
   if (task_execution_interface_) {
     task_execution_interface_->Stop();
   }
-  if (!log_dir_.empty()) {
+  if (log_dir_ != "") {
     RayLog::ShutDownRayLog();
   }
 }
@@ -114,5 +129,11 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::StartIOService() { io_service_.run(); }
+
+std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
+    const std::string &event_type) {
+  return std::unique_ptr<worker::ProfileEvent>(
+      new worker::ProfileEvent(profiler_, event_type));
+}
 
 }  // namespace ray

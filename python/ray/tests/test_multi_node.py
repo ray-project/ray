@@ -10,6 +10,7 @@ import time
 import ray
 from ray.utils import _random_string
 from ray.tests.utils import (
+    RayTestTimeoutException,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_children_of_pid,
@@ -256,7 +257,8 @@ print("success")
             print(output_line)
             if output_line == "success":
                 return
-        raise Exception("Timed out waiting for process to print success.")
+        raise RayTestTimeoutException(
+            "Timed out waiting for process to print success.")
 
     # Make sure we can run this driver repeatedly, which means that resources
     # are getting released in between.

@@ -19,6 +19,7 @@ from ray.tests.cluster_utils import Cluster
 from ray.tests.utils import (
     relevant_errors,
     wait_for_errors,
+    RayTestTimeoutException,
 )
 
 
@@ -62,14 +63,20 @@ def test_failed_task(ray_start_regular):
             # ray.get should throw an exception.
             assert False
 
+    class CustomException(ValueError):
+        pass
+
     @ray.remote
     def f():
-        raise Exception("This function failed.")
+        raise CustomException("This function failed.")
 
     try:
         ray.get(f.remote())
     except Exception as e:
         assert "This function failed." in str(e)
+        assert isinstance(e, CustomException)
+        assert isinstance(e, ray.exceptions.RayTaskError)
+        assert "RayTaskError(CustomException)" in repr(e)
     else:
         # ray.get should throw an exception.
         assert False
@@ -733,7 +740,7 @@ def test_connect_with_disconnected_node(shutdown_only):
     # This node is killed by SIGTERM, ray_monitor will not mark it again.
     removing_node = cluster.add_node(num_cpus=0, _internal_config=config)
     cluster.remove_node(removing_node, allow_graceful=True)
-    with pytest.raises(Exception, match=("Timing out of wait.")):
+    with pytest.raises(RayTestTimeoutException):
         wait_for_errors(ray_constants.REMOVED_NODE_ERROR, 3, timeout=2)
     # There is no connection error to a dead node.
     info = relevant_errors(ray_constants.RAYLET_CONNECTION_ERROR)

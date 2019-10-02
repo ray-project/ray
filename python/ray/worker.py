@@ -8,6 +8,7 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import numpy as np
@@ -125,7 +126,6 @@ class Worker(object):
             WORKER_MODE.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        profiler: the profiler used to aggregate profiling information.
     """
 
     def __init__(self):
@@ -145,7 +145,6 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -1001,7 +1000,13 @@ class Worker(object):
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
-        failure_object = RayTaskError(function_name, backtrace)
+        if isinstance(error, RayTaskError):
+            # avoid recursively nesting of RayTaskError
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.cause_cls)
+        else:
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.__class__)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
@@ -1278,6 +1283,16 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
+        # Tell Ray to serialize StringIO with pickle. We do this because
+        # Ray's default __dict__ serialization is incorrect for this type
+        # (the object's __dict__ is empty and therefore doesn't
+        # contain the full state of the object).
+        register_custom_serializer(
+            io.StringIO,
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="io.StringIO")
 
 
 def init(address=None,
@@ -1815,8 +1830,6 @@ def connect(node,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
-
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
@@ -1956,6 +1969,7 @@ def connect(node,
         worker.current_job_id,
         gcs_options,
         node.get_logs_dir_path(),
+        node.node_ip_address,
     )
     worker.task_context.current_task_id = (
         worker.core_worker.get_current_task_id())
@@ -2005,11 +2019,6 @@ def connect(node,
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    # If we are using the raylet code path and we are not in local mode, start
-    # a background thread to periodically flush profiling data to the GCS.
-    if mode != LOCAL_MODE:
-        worker.profiler.start_flush_thread()
-
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2052,8 +2061,6 @@ def disconnect():
         worker.threads_stopped.set()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
-        if hasattr(worker, "profiler") and hasattr(worker.profiler, "t"):
-            worker.profiler.join_flush_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "printer_thread"):
@@ -2279,7 +2286,10 @@ def get(object_ids):
                 last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.UnreconstructableError):
                     worker.dump_object_store_memory_usage()
-                raise value
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
 
         # Run post processors.
         for post_processor in worker._post_get_hooks:
