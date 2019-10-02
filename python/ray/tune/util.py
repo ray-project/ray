@@ -133,6 +133,27 @@ class warn_if_slow(object):
                            "which may be a performance bottleneck.")
 
 
+def memory_debug_string():
+    try:
+        import psutil
+        total_gb = psutil.virtual_memory().total / (1024**3)
+        used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
+        if used_gb > total_gb * 0.9:
+            warn = (": ***LOW MEMORY*** less than 10% of the memory on "
+                    "this node is available for use. This can cause "
+                    "unexpected crashes. Consider "
+                    "reducing the memory used by your application "
+                    "or reducing the Ray object store size by setting "
+                    "`object_store_memory` when calling `ray.init`.")
+        else:
+            warn = ""
+        return "Memory usage on this node: {}/{} GiB{}".format(
+            round(used_gb, 1), round(total_gb, 1), warn)
+    except ImportError:
+        return ("Unknown memory usage. Please run `pip install psutil` "
+                "(or ray[debug]) to resolve)")
+
+
 def merge_dicts(d1, d2):
     """Returns a new dict that is d1 and d2 deep merged."""
     merged = copy.deepcopy(d1)

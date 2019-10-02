@@ -40,10 +40,8 @@ def generate_variants(unresolved_spec):
         "activation": {"grid_search": ["relu", "tanh"]}
         "cpu": {"eval": "spec.config.num_workers"}
 
-    Use `format_vars` to format the returned dict of hyperparameters.
-
     Yields:
-        (Dict of resolved variables, Spec object)
+        (Dict of resolved_vars, Trial specification)
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
@@ -83,10 +81,9 @@ def resolve_nested_dict(nested_dict):
     return res
 
 
-def format_vars(resolved_vars):
-    """Formats the resolved variable dict into a single string."""
+def format_vars(resolved_vars_dict):
     out = []
-    for path, value in sorted(resolved_vars.items()):
+    for path, value in sorted(resolved_vars_dict.items()):
         if path[0] in ["run", "env", "resources_per_trial"]:
             continue  # TrialRunner already has these in the experiment_tag
         pieces = []

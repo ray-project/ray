@@ -17,6 +17,15 @@ from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
 
+try:
+    class_name = get_ipython().__class__.__name__
+    if "Terminal" in class_name:
+        IS_NOTEBOOK = False
+    else:
+        IS_NOTEBOOK = True
+except NameError:
+    IS_NOTEBOOK = False
+
 logger = logging.getLogger(__name__)
 
 _SCHEDULERS = {
@@ -25,6 +34,16 @@ _SCHEDULERS = {
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
+
+
+def _print_progress(trial_runner):
+    if IS_NOTEBOOK:
+        from IPython.display import clear_output
+        from IPython.core.display import display, HTML
+        clear_output(wait=True)
+        display((HTML(trial_runner.debug_string(table_format="html")),))
+    else:
+        print(trial_runner.debug_string())
 
 
 def _make_scheduler(args):
@@ -59,7 +78,7 @@ def run(run_or_experiment,
         scheduler=None,
         with_server=False,
         server_port=TuneServer.DEFAULT_PORT,
-        verbose=2,
+        verbose=1,
         resume=False,
         queue_trials=False,
         reuse_actors=False,
@@ -238,15 +257,12 @@ def run(run_or_experiment,
 
     runner.add_experiment(experiment)
 
-    if verbose:
-        print(runner.debug_string(max_debug=99999))
-
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
             if verbose:
-                print(runner.debug_string())
+                _print_progress(runner)
             last_debug = time.time()
 
     try:
@@ -255,7 +271,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        print(runner.debug_string(max_debug=99999))
+        _print_progress(runner)
 
     wait_for_sync()
 

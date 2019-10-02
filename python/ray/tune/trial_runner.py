@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import re
+from tabulate import tabulate
 import time
 import traceback
 import types
@@ -17,12 +18,13 @@ import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+                             SHOULD_CHECKPOINT, DEFAULT_RESULT_KEYS,
+                             DEFAULT_EXPERIMENT_INFO_KEYS)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.util import warn_if_slow, flatten_dict
+from ray.tune.util import warn_if_slow, flatten_dict, memory_debug_string
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
 
@@ -396,88 +398,61 @@ class TrialRunner(object):
             self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
 
-    def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
-        """Returns a human readable message for printing to the console."""
-        messages = self._debug_messages()
-        states = collections.defaultdict(set)
-        limit_per_state = collections.Counter()
-        for t in self._trials:
-            states[t.status].add(t)
+    def debug_string(self,
+                     parameters=None,
+                     metrics=None,
+                     table_format="psql",
+                     max_rows=100):
+        """Returns a human readable message for printing to the console.
 
-        # Show at most max_debug total, but divide the limit fairly
-        while max_debug > 0:
-            start_num = max_debug
-            for s in states:
-                if limit_per_state[s] >= len(states[s]):
-                    continue
-                max_debug -= 1
-                limit_per_state[s] += 1
-            if max_debug == start_num:
-                break
+        This contains a table where each row represents a trial, its parameters
+        and the current values of its metrics.
 
-        for local_dir in sorted({t.local_dir for t in self._trials}):
-            messages.append("Result logdir: {}".format(local_dir))
-
-        num_trials_per_state = {
-            state: len(trials)
-            for state, trials in states.items()
-        }
-        total_number_of_trials = sum(num_trials_per_state.values())
-        if total_number_of_trials > 0:
-            messages.append("Number of trials: {} ({})"
-                            "".format(total_number_of_trials,
-                                      num_trials_per_state))
-
-        for state, trials in sorted(states.items()):
-            limit = limit_per_state[state]
-            messages.append("{} trials:".format(state))
-            sorted_trials = sorted(
-                trials, key=lambda t: _naturalize(t.experiment_tag))
-            if len(trials) > limit:
-                tail_length = limit // 2
-                first = sorted_trials[:tail_length]
-                for t in first:
-                    messages.append(" - {}:\t{}".format(
-                        t, t.progress_string()))
-                messages.append(
-                    "  ... {} not shown".format(len(trials) - tail_length * 2))
-                last = sorted_trials[-tail_length:]
-                for t in last:
-                    messages.append(" - {}:\t{}".format(
-                        t, t.progress_string()))
-            else:
-                for t in sorted_trials:
-                    messages.append(" - {}:\t{}".format(
-                        t, t.progress_string()))
-
-        return "\n".join(messages) + "\n"
-
-    def _debug_messages(self):
+        Args:
+            parameters (List[str]): Names of trial parameters to include.
+                Defaults to all parameters across all trials.
+            metrics (List[str]): Names of metrics to include. Defaults to
+                metrics defined in DEFAULT_RESULT_KEYS.
+            table_format (str): Table format (see tablefmt in tabulate API).
+            max_rows (int): Maximum number of rows in the trial table.
+        """
         messages = ["== Status =="]
         messages.append(self._scheduler_alg.debug_string())
         messages.append(self.trial_executor.debug_string())
-        messages.append(self._memory_debug_string())
-        return messages
+        messages.append(memory_debug_string())
 
-    def _memory_debug_string(self):
-        try:
-            import psutil
-            total_gb = psutil.virtual_memory().total / (1024**3)
-            used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
-            if used_gb > total_gb * 0.9:
-                warn = (": ***LOW MEMORY*** less than 10% of the memory on "
-                        "this node is available for use. This can cause "
-                        "unexpected crashes. Consider "
-                        "reducing the memory used by your application "
-                        "or reducing the Ray object store size by setting "
-                        "`object_store_memory` when calling `ray.init`.")
-            else:
-                warn = ""
-            return "Memory usage on this node: {}/{} GiB{}".format(
-                round(used_gb, 1), round(total_gb, 1), warn)
-        except ImportError:
-            return ("Unknown memory usage. Please run `pip install psutil` "
-                    "(or ray[debug]) to resolve)")
+        trials = self.get_trials()
+        if len(trials) < 1:
+            return "\n".join(messages) + "\n"
+
+        num_trials = len(trials)
+        num_trials_per_state = collections.defaultdict(int)
+        for t in trials:
+            num_trials_per_state[t.status] += 1
+        messages.append("Number of trials: {} ({})"
+                        "".format(num_trials, num_trials_per_state))
+        if num_trials > max_rows:
+            messages.append("Table truncated to {} rows.".format(max_rows))
+
+        trial_table = []
+        if not parameters:
+            # Handle the case where parameters are defined in select trials.
+            parameters = set.union(*[t.evaluated_params for t in trials])
+        metrics = list(metrics or DEFAULT_RESULT_KEYS)
+
+        for i in range(min(num_trials, max_rows)):
+            trial = trials[i]
+            result = flatten_dict(trial.last_result)
+            trial_info = [str(trial), trial.status]
+            trial_info += [result.get(parameter) for parameter in parameters]
+            trial_info += [result.get(metric) for metric in metrics]
+            trial_table.append(trial_info)
+
+        keys = ["Trial Name", "Status"] + parameters + metrics
+        messages.append(tabulate(
+            trial_table, headers=keys, tablefmt=table_format, showindex=False)
+        )
+        return "\n".join(messages) + "\n"
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""

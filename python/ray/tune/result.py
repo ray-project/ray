@@ -57,6 +57,11 @@ TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
 # yapf: enable
 
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", "experiment_tag", TRIAL_ID)
+
+DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, MEAN_ACCURACY,
+                       MEAN_LOSS)
+
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.
 RESULT_DUPLICATE = "__duplicate__"
