@@ -101,7 +101,7 @@ class CoreWorker {
   boost::asio::io_service::work io_work_;
 
   std::thread io_thread_;
-  std::unique_ptr<worker::Profiler> profiler_;
+  std::shared_ptr<worker::Profiler> profiler_;
   std::unique_ptr<RayletClient> raylet_client_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
