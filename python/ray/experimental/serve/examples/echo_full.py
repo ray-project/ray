@@ -30,6 +30,7 @@ print(requests.get("http://127.0.0.1:8000/echo").json())
 # The service will be reachable from http
 
 print(ray.get(serve.get_handle("my_endpoint").remote("hello")))
+
 # as well as within the ray system.
 
 
