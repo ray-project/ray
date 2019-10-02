@@ -47,7 +47,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus UnknownError()
 
         @staticmethod
-        CRayStatus NotImplemented()
+        CRayStatus NotImplemented(const c_string &msg)
 
         @staticmethod
         CRayStatus RedisError()
@@ -74,6 +74,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
+    cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
 
 cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:

@@ -1,7 +1,14 @@
+# cython: profile = False
+# distutils: language = c++
+# cython: embedsignature = True
+
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
+from libcpp.functional cimport function as c_function
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
+from libcpp.unordered_map cimport unordered_map
+from libcpp.utility cimport pair
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
@@ -22,8 +29,26 @@ from ray.includes.common cimport (
     CLanguage,
     CGcsClientOptions,
 )
+from ray.includes.task cimport CTaskSpec
 from ray.includes.libraylet cimport CRayletClient
 
+ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
+    ResourceMappingType
+
+cdef extern from "ray/core_worker/task_execution.h" namespace "ray" nogil:
+    cdef cppclass CTaskExecutionInterface "CoreWorkerTaskExecutionInterface":
+        void Run()
+        void Stop()
+        const ResourceMappingType &GetResourceIDs() const
+
+cdef extern from "ray/core_worker/profiling.h" nogil:
+    cdef cppclass CProfiler "ray::worker::Profiler":
+        void Start()
+
+    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+        CProfileEvent(const shared_ptr[CProfiler] profiler,
+                      const c_string &event_type)
+        void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
     cdef cppclass CTaskSubmissionInterface "CoreWorkerTaskInterface":
@@ -63,14 +88,20 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
-                    const c_string log_dir, void* execution_callback,
-                    c_bool use_memory_store_)
+                    const c_string log_dir, const c_string &node_ip_address,
+                    CRayStatus (
+                        const CRayFunction &ray_function,
+                        const c_vector[shared_ptr[CRayObject]] &args,
+                        int num_returns, const CTaskSpec &task_spec,
+                        c_vector[shared_ptr[CRayObject]] *returns) nogil,
+                    c_bool use_memory_store) nogil
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
         CTaskSubmissionInterface &Tasks()
-        # CTaskExecutionInterface &Execution()
+        CTaskExecutionInterface &Execution()
+        const shared_ptr[CProfiler] &Profiler()
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.

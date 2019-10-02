@@ -40,7 +40,6 @@ from ray.includes.libraylet cimport (
     CRayletClient,
     GCSProfileEvent,
     GCSProfileTableData,
-    ResourceMappingType,
     WaitResultPair,
 )
 from ray.includes.unique_ids cimport (
@@ -48,7 +47,9 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.libcoreworker cimport CCoreWorker, CTaskOptions
+import ray
+from ray.includes.libcoreworker cimport (
+    CCoreWorker, CTaskOptions, ResourceMappingType)
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
 from ray.exceptions import RayletError, ObjectStoreFullError
@@ -74,6 +75,7 @@ include "includes/ray_config.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/libcoreworker.pxi"
 
 
 logger = logging.getLogger(__name__)
@@ -281,18 +283,7 @@ cdef class RayletClient:
             CObjectID c_id
 
         check_status(self.client.SubmitTask(
-            task_spec.task_spec.get()[0]))
-
-    def get_task(self):
-        cdef:
-            unique_ptr[CTaskSpec] task_spec
-
-        with nogil:
-            check_status(self.client.GetTask(&task_spec))
-        return TaskSpec.make(task_spec)
-
-    def task_done(self):
-        check_status(self.client.TaskDone())
+            task_spec.task_spec[0]))
 
     def fetch_or_reconstruct(self, object_ids,
                              c_bool fetch_only,
@@ -301,77 +292,12 @@ cdef class RayletClient:
         check_status(self.client.FetchOrReconstruct(
             fetch_ids, fetch_only, current_task_id.native()))
 
-    def resource_ids(self):
-        cdef:
-            ResourceMappingType resource_mapping = (
-                self.client.GetResourceIDs())
-            unordered_map[
-                c_string, c_vector[pair[int64_t, double]]
-            ].iterator iterator = resource_mapping.begin()
-            c_vector[pair[int64_t, double]] c_value
-
-        resources_dict = {}
-        while iterator != resource_mapping.end():
-            key = decode(dereference(iterator).first)
-            c_value = dereference(iterator).second
-            ids_and_fractions = []
-            for i in range(c_value.size()):
-                ids_and_fractions.append(
-                    (c_value[i].first, c_value[i].second))
-            resources_dict[key] = ids_and_fractions
-            postincrement(iterator)
-        return resources_dict
-
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
         check_status(self.client.PushError(job_id.native(),
                                            error_type.encode("ascii"),
                                            error_message.encode("ascii"),
                                            timestamp))
-
-    def push_profile_events(self, component_type, UniqueID component_id,
-                            node_ip_address, profile_data):
-        cdef:
-            GCSProfileTableData profile_info
-            GCSProfileEvent *profile_event
-            c_string event_type
-
-        if len(profile_data) == 0:
-            return  # Short circuit if there are no profile events.
-
-        profile_info.set_component_type(component_type.encode("ascii"))
-        profile_info.set_component_id(component_id.binary())
-        profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
-
-        for py_profile_event in profile_data:
-            profile_event = profile_info.add_profile_events()
-            if not isinstance(py_profile_event, dict):
-                raise TypeError(
-                    "Incorrect type for a profile event. Expected dict "
-                    "instead of '%s'" % str(type(py_profile_event)))
-            # TODO(rkn): If the dictionary is formatted incorrectly, that
-            # could lead to errors. E.g., if any of the strings are empty,
-            # that will cause segfaults in the node manager.
-            for key_string, event_data in py_profile_event.items():
-                if key_string == "event_type":
-                    if len(event_data) == 0:
-                        raise ValueError(
-                            "'event_type' should not be a null string.")
-                    profile_event.set_event_type(event_data.encode("ascii"))
-                elif key_string == "start_time":
-                    profile_event.set_start_time(float(event_data))
-                elif key_string == "end_time":
-                    profile_event.set_end_time(float(event_data))
-                elif key_string == "extra_data":
-                    if len(event_data) == 0:
-                        raise ValueError(
-                            "'extra_data' should not be a null string.")
-                    profile_event.set_extra_data(event_data.encode("ascii"))
-                else:
-                    raise ValueError(
-                        "Unknown profile event key '%s'" % key_string)
-
-        check_status(self.client.PushProfileEvents(profile_info))
 
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef:
@@ -403,25 +329,41 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
+cdef CRayStatus execute_task(const CRayFunction &ray_function,
+                             const c_vector[shared_ptr[CRayObject]] &args,
+                             int num_returns,
+                             const CTaskSpec &c_task_spec,
+                             c_vector[shared_ptr[CRayObject]] *returns) nogil:
+    with gil:
+        ray.worker.global_worker._wait_for_and_process_task(
+            TaskSpec.make(c_task_spec))
+
+    return CRayStatus.OK()
 
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
-                  JobID job_id, GcsClientOptions gcs_options, log_dir):
-        self.core_worker.reset(new CCoreWorker(
-            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
-            LANGUAGE_PYTHON, store_socket.encode("ascii"),
-            raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], log_dir.encode("utf-8"), NULL, False))
-
+                  JobID job_id, GcsClientOptions gcs_options, log_dir,
+                  node_ip_address):
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "
                                      "details.")
 
+        self.core_worker.reset(new CCoreWorker(
+            WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
+            LANGUAGE_PYTHON, store_socket.encode("ascii"),
+            raylet_socket.encode("ascii"), job_id.native(),
+            gcs_options.native()[0], log_dir.encode("utf-8"),
+            node_ip_address.encode("utf-8"), execute_task, False))
+        self.core_worker.get().Profiler().get().Start()
+
     def disconnect(self):
         with nogil:
             self.core_worker.get().Disconnect()
+
+    def run_task_loop(self):
+        self.core_worker.get().Execution().Run()
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
@@ -620,3 +562,29 @@ cdef class CoreWorker:
             message = self.core_worker.get().Objects().MemoryUsageString()
 
         return message.decode("utf-8")
+
+    def resource_ids(self):
+        cdef:
+            ResourceMappingType resource_mapping = (
+                self.core_worker.get().Execution().GetResourceIDs())
+            unordered_map[
+                c_string, c_vector[pair[int64_t, double]]
+            ].iterator iterator = resource_mapping.begin()
+            c_vector[pair[int64_t, double]] c_value
+
+        resources_dict = {}
+        while iterator != resource_mapping.end():
+            key = decode(dereference(iterator).first)
+            c_value = dereference(iterator).second
+            ids_and_fractions = []
+            for i in range(c_value.size()):
+                ids_and_fractions.append(
+                    (c_value[i].first, c_value[i].second))
+            resources_dict[key] = ids_and_fractions
+            postincrement(iterator)
+
+        return resources_dict
+
+    def profile_event(self, event_type, dict extra_data):
+        return ProfileEvent.make(self.core_worker.get().Profiler(),
+                                 event_type.encode("ascii"), extra_data)

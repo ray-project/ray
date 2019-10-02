@@ -3,7 +3,6 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.common cimport (
@@ -38,8 +37,6 @@ cdef extern from "ray/protobuf/gcs.pb.h" nogil:
         GCSProfileTableData()
 
 
-ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
-    ResourceMappingType
 ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
@@ -78,4 +75,3 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
         CWorkerID GetWorkerID() const
         CJobID GetJobID() const
         c_bool IsWorker() const
-        const ResourceMappingType &GetResourceIDs() const

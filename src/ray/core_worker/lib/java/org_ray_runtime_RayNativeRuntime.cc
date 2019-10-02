@@ -39,7 +39,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
 
   auto executor_func = [](const ray::RayFunction &ray_function,
                           const std::vector<std::shared_ptr<ray::RayObject>> &args,
-                          int num_returns,
+                          int num_returns, const ray::TaskSpecification &task_spec,
                           std::vector<std::shared_ptr<ray::RayObject>> *results) {
     JNIEnv *env = local_env;
     RAY_CHECK(env);
@@ -71,7 +71,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
   try {
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
-        native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"", executor_func);
+        native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"",
+        /*node_ip_address=*/"", executor_func);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;

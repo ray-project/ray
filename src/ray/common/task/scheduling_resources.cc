@@ -713,8 +713,7 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
 
 const std::string ResourceIdSet::Serialize() const {
   flatbuffers::FlatBufferBuilder fbb;
-  auto resource_id_set_flatbuf = ToFlatbuf(fbb);
-  fbb.Finish(fbb.CreateVector(resource_id_set_flatbuf));
+  fbb.Finish(protocol::CreateResourceIdSetInfos(fbb, fbb.CreateVector(ToFlatbuf(fbb))));
   return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
 }
 

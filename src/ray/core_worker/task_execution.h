@@ -6,6 +6,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/profiling.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/worker/worker_client.h"
@@ -29,15 +30,20 @@ class CoreWorkerTaskExecutionInterface {
   /// \param args[in] Arguments of the task.
   /// \param results[out] Results of the task execution.
   /// \return Status.
-  using TaskExecutor = std::function<Status(
-      const RayFunction &ray_function,
-      const std::vector<std::shared_ptr<RayObject>> &args, int num_returns,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+  using TaskExecutor =
+      std::function<Status(const RayFunction &ray_function,
+                           const std::vector<std::shared_ptr<RayObject>> &args,
+                           int num_returns, const TaskSpecification &task_spec,
+                           std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
+                                   const std::shared_ptr<worker::Profiler> profiler,
                                    const TaskExecutor &executor);
+
+  // Get the resource IDs available to this worker (as assigned by the raylet).
+  const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -62,15 +68,19 @@ class CoreWorkerTaskExecutionInterface {
   /// Execute a task.
   ///
   /// \param spec[in] Task specification.
+  /// \param spec[in] Resource IDs of resources assigned to this worker.
   /// \param results[out] Results for task execution.
   /// \return Status.
-  Status ExecuteTask(const TaskSpecification &spec,
+  Status ExecuteTask(const TaskSpecification &task_spec,
+                     const ResourceMappingType &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;
   /// Reference to the parent CoreWorker's objects interface.
   CoreWorkerObjectInterface &object_interface_;
+
+  const std::shared_ptr<worker::Profiler> profiler_;
 
   // Task execution callback.
   TaskExecutor execution_callback_;
@@ -87,6 +97,15 @@ class CoreWorkerTaskExecutionInterface {
 
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
+
+  /// A map from resource name to the resource IDs that are currently reserved
+  /// for this worker. Each pair consists of the resource ID and the fraction
+  /// of that resource allocated for this worker.
+  ResourceMappingType resource_ids_;
+
+  // Profile event for when the worker is idle. Should be reset when the worker
+  // enters and exits an idle period.
+  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
 
   friend class CoreWorker;
 };

@@ -13,7 +13,7 @@ from ray.utils import decode
 cdef class TaskSpec:
     """Cython wrapper class of C++ `ray::TaskSpecification`."""
     cdef:
-        unique_ptr[CTaskSpec] task_spec
+        const CTaskSpec *task_spec
 
     def __init__(self, TaskID task_id, JobID job_id, function_descriptor,
                  arguments,
@@ -94,12 +94,15 @@ cdef class TaskSpec:
         else:
             # Normal task.
             pass
-        self.task_spec.reset(new CTaskSpec(builder.GetMessage()))
+        self.task_spec = new CTaskSpec(builder.GetMessage())
+
+    def __del__(self):
+        del self.task_spec
 
     @staticmethod
-    cdef make(unique_ptr[CTaskSpec]& task_spec):
+    cdef make(const CTaskSpec& task_spec):
         cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
-        self.task_spec.reset(task_spec.release())
+        self.task_spec = &task_spec
         return self
 
     @staticmethod
@@ -113,7 +116,7 @@ cdef class TaskSpec:
             Python task specification object.
         """
         cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
-        self.task_spec.reset(new CTaskSpec(task_spec_str))
+        self.task_spec = new CTaskSpec(task_spec_str)
         return self
 
     def to_string(self):
@@ -122,40 +125,40 @@ cdef class TaskSpec:
         Returns:
             String representing the task specification.
         """
-        return self.task_spec.get().Serialize()
+        return self.task_spec.Serialize()
 
     def is_normal_task(self):
         """Whether this task is a normal task."""
-        return self.task_spec.get().IsNormalTask()
+        return self.task_spec.IsNormalTask()
 
     def is_actor_task(self):
         """Whether this task is an actor task."""
-        return self.task_spec.get().IsActorTask()
+        return self.task_spec.IsActorTask()
 
     def is_actor_creation_task(self):
         """Whether this task is an actor creation task."""
-        return self.task_spec.get().IsActorCreationTask()
+        return self.task_spec.IsActorCreationTask()
 
     def job_id(self):
         """Return the job ID for this task."""
-        return JobID(self.task_spec.get().JobId().Binary())
+        return JobID(self.task_spec.JobId().Binary())
 
     def task_id(self):
         """Return the task ID for this task."""
-        return TaskID(self.task_spec.get().TaskId().Binary())
+        return TaskID(self.task_spec.TaskId().Binary())
 
     def parent_task_id(self):
         """Return the task ID of the parent task."""
-        return TaskID(self.task_spec.get().ParentTaskId().Binary())
+        return TaskID(self.task_spec.ParentTaskId().Binary())
 
     def parent_counter(self):
         """Return the parent counter of this task."""
-        return self.task_spec.get().ParentCounter()
+        return self.task_spec.ParentCounter()
 
     def function_descriptor_list(self):
         """Return the function descriptor for this task."""
         cdef c_vector[c_string] function_descriptor = (
-            self.task_spec.get().FunctionDescriptor())
+            self.task_spec.FunctionDescriptor())
         results = []
         for i in range(function_descriptor.size()):
             results.append(function_descriptor[i])
@@ -164,23 +167,23 @@ cdef class TaskSpec:
     def arguments(self):
         """Return the arguments for the task."""
         cdef:
-            CTaskSpec*task_spec = self.task_spec.get()
-            int64_t num_args = task_spec.NumArgs()
-            int32_t lang = <int32_t>task_spec.GetLanguage()
+            int64_t num_args = self.task_spec.NumArgs()
+            int32_t lang = <int32_t>self.task_spec.GetLanguage()
             int count
         arg_list = []
 
         if lang == <int32_t>LANGUAGE_PYTHON:
             for i in range(num_args):
-                count = task_spec.ArgIdCount(i)
+                count = self.task_spec.ArgIdCount(i)
                 if count > 0:
                     assert count == 1
                     arg_list.append(
-                        ObjectID(task_spec.ArgId(i, 0).Binary()))
+                        ObjectID(self.task_spec.ArgId(i, 0).Binary()))
                 else:
-                    data = task_spec.ArgData(i)[:task_spec.ArgDataSize(i)]
-                    metadata = task_spec.ArgMetadata(i)[
-                        :task_spec.ArgMetadataSize(i)]
+                    data = self.task_spec.ArgData(i)[
+                        :self.task_spec.ArgDataSize(i)]
+                    metadata = self.task_spec.ArgMetadata(i)[
+                        :self.task_spec.ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
                     else:
@@ -193,17 +196,17 @@ cdef class TaskSpec:
 
     def returns(self):
         """Return the object IDs for the return values of the task."""
-        cdef CTaskSpec *task_spec = self.task_spec.get()
         return_id_list = []
-        for i in range(task_spec.NumReturns()):
-            return_id_list.append(ObjectID(task_spec.ReturnId(i).Binary()))
+        for i in range(self.task_spec.NumReturns()):
+            return_id_list.append(
+                ObjectID(self.task_spec.ReturnId(i).Binary()))
         return return_id_list
 
     def required_resources(self):
         """Return the resource dictionary of the task."""
         cdef:
             unordered_map[c_string, double] resource_map = (
-                self.task_spec.get().GetRequiredResources().GetResourceMap())
+                self.task_spec.GetRequiredResources().GetResourceMap())
             c_string resource_name
             double resource_value
             unordered_map[c_string, double].iterator iterator = (
@@ -221,39 +224,39 @@ cdef class TaskSpec:
 
     def language(self):
         """Return the language of the task."""
-        return Language.from_native(self.task_spec.get().GetLanguage())
+        return Language.from_native(self.task_spec.GetLanguage())
 
     def actor_creation_id(self):
         """Return the actor creation ID for the task."""
         if not self.is_actor_creation_task():
             return ActorID.nil()
-        return ActorID(self.task_spec.get().ActorCreationId().Binary())
+        return ActorID(self.task_spec.ActorCreationId().Binary())
 
     def actor_creation_dummy_object_id(self):
         """Return the actor creation dummy object ID for the task."""
         if not self.is_actor_task():
             return ObjectID.nil()
         return ObjectID(
-            self.task_spec.get().ActorCreationDummyObjectId().Binary())
+            self.task_spec.ActorCreationDummyObjectId().Binary())
 
     def previous_actor_task_dummy_object_id(self):
         """Return the object ID of the previously executed actor task."""
         if not self.is_actor_task():
             return ObjectID.nil()
         return ObjectID(
-            self.task_spec.get().PreviousActorTaskDummyObjectId().Binary())
+            self.task_spec.PreviousActorTaskDummyObjectId().Binary())
 
     def actor_id(self):
         """Return the actor ID for this task."""
         if not self.is_actor_task():
             return ActorID.nil()
-        return ActorID(self.task_spec.get().ActorId().Binary())
+        return ActorID(self.task_spec.ActorId().Binary())
 
     def actor_counter(self):
         """Return the actor counter for this task."""
         if not self.is_actor_task():
             return 0
-        return self.task_spec.get().ActorCounter()
+        return self.task_spec.ActorCounter()
 
 
 cdef class TaskExecutionSpec:
@@ -287,7 +290,7 @@ cdef class Task:
 
     def __init__(
             self, TaskSpec task_spec, TaskExecutionSpec task_execution_spec):
-        self.c_task.reset(new CTask(task_spec.task_spec.get()[0],
+        self.c_task.reset(new CTask(task_spec.task_spec[0],
                                     task_execution_spec.c_spec.get()[0]))
 
 
@@ -297,5 +300,5 @@ def generate_gcs_task_table_data(TaskSpec task_spec):
     cdef:
         TaskTableData task_table_data
     task_table_data.mutable_task().mutable_task_spec().CopyFrom(
-        task_spec.task_spec.get().GetMessage())
+        task_spec.task_spec.GetMessage())
     return task_table_data.SerializeAsString()
