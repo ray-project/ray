@@ -390,6 +390,9 @@ class ActorClass(object):
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
+            # Increment task_index, otherwise done via the worker.submit_task
+            # call in non local mode.
+            worker.task_context.task_index += 1
             worker.actors[actor_id] = self._modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
         else:
@@ -585,6 +588,9 @@ class ActorHandle(object):
             self._ray_module_name, method_name, self._ray_class_name)
 
         if worker.mode == ray.LOCAL_MODE:
+            # Increment task_index, otherwise done via the worker.submit_task
+            # call in non local mode.
+            worker.task_context.task_index += 1
             function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
                 function, function_descriptor, args, num_return_vals)
