@@ -41,7 +41,7 @@ def _print_progress(trial_runner):
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
         clear_output(wait=True)
-        display((HTML(trial_runner.debug_string(table_format="html")),))
+        display(HTML(trial_runner.debug_string(format="html")))
     else:
         print(trial_runner.debug_string())
 

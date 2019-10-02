@@ -401,7 +401,7 @@ class TrialRunner(object):
     def debug_string(self,
                      parameters=None,
                      metrics=None,
-                     table_format="psql",
+                     format="psql",
                      max_rows=100):
         """Returns a human readable message for printing to the console.
 
@@ -413,7 +413,7 @@ class TrialRunner(object):
                 Defaults to all parameters across all trials.
             metrics (List[str]): Names of metrics to include. Defaults to
                 metrics defined in DEFAULT_RESULT_KEYS.
-            table_format (str): Table format (see tablefmt in tabulate API).
+            format (str): Output format (see tablefmt in tabulate API).
             max_rows (int): Maximum number of rows in the trial table.
         """
         messages = ["== Status =="]
@@ -421,9 +421,11 @@ class TrialRunner(object):
         messages.append(self.trial_executor.debug_string())
         messages.append(memory_debug_string())
 
+        delim = "<br>" if format == "html" else "\n"
         trials = self.get_trials()
+
         if len(trials) < 1:
-            return "\n".join(messages) + "\n"
+            return delim.join(messages) + delim
 
         num_trials = len(trials)
         num_trials_per_state = collections.defaultdict(int)
@@ -436,23 +438,27 @@ class TrialRunner(object):
 
         trial_table = []
         if not parameters:
-            # Handle the case where parameters are defined in select trials.
-            parameters = set.union(*[t.evaluated_params for t in trials])
+            parameters = set().union(*[t.evaluated_params for t in trials])
         metrics = list(metrics or DEFAULT_RESULT_KEYS)
 
         for i in range(min(num_trials, max_rows)):
             trial = trials[i]
             result = flatten_dict(trial.last_result)
-            trial_info = [str(trial), trial.status]
+            trial_info = [trial.trial_id, trial.status]
             trial_info += [result.get(parameter) for parameter in parameters]
             trial_info += [result.get(metric) for metric in metrics]
             trial_table.append(trial_info)
 
-        keys = ["Trial Name", "Status"] + parameters + metrics
-        messages.append(tabulate(
-            trial_table, headers=keys, tablefmt=table_format, showindex=False)
-        )
-        return "\n".join(messages) + "\n"
+        parsed_parameters = [param for param in parameters]
+        keys = ["Trial ID", "Status"] + parsed_parameters + metrics
+        messages.append(
+            tabulate(
+                trial_table,
+                headers=keys,
+                tablefmt=format,
+                showindex=False))
+
+        return delim.join(messages) + delim
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
