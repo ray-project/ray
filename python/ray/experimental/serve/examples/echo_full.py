@@ -48,4 +48,3 @@ serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 for _ in range(10):
     print(requests.get("http://127.0.0.1:8000/echo").json())
     time.sleep(0.5)
-
