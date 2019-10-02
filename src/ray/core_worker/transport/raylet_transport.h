@@ -51,7 +51,8 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
-  Status HandleAssignTask0(const rpc::AssignTaskRequest &request, const TaskSpecification& task_spec);
+  Status HandleAssignTask0(const rpc::AssignTaskRequest &request,
+                           const TaskSpecification &task_spec);
 
  private:
   // Worker context.

@@ -1125,15 +1125,55 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
+/// Breaks up a task submit request into one or more batches of task specs.
+/// Each task batch will have the same object dependencies and resource shape.
+std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) {
+  rpc::Task task_message;
+  std::vector<Task> tasks;
+  std::vector<TaskSpecification> taskSpecBatch;
+  for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
+    const auto &task_str = message->task_specs()->Get(i);
+    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
+                                                               task_str->size()));
+    TaskSpecification task_spec(task_message.task_spec());
+    if (taskSpecBatch.empty()) {
+      taskSpecBatch.push_back(task_spec);
+    } else {
+      // TODO(ekl) check the dependencies as well
+      if (taskSpecBatch[0].GetRequiredResources() == task_spec.GetRequiredResources()) {
+        taskSpecBatch.push_back(task_spec);
+      } else {
+        tasks.push_back(
+            Task(TaskExecutionSpecification(task_message.task_execution_spec()),
+                 taskSpecBatch));
+        RAY_LOG(INFO) << "Created task batch of size " << taskSpecBatch.size();
+        taskSpecBatch.clear();
+      }
+    }
+  }
+  if (!taskSpecBatch.empty()) {
+    RAY_LOG(INFO) << "Created task batch of size " << taskSpecBatch.size();
+    tasks.push_back(Task(TaskExecutionSpecification(task_message.task_execution_spec()),
+                         taskSpecBatch));
+  }
+  return tasks;
+}
+
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
   auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
-    const auto &task_str = message->task_specs()->Get(i);
-    rpc::Task task_message;
-    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
-                                                               task_str->size()));
-    SubmitTask(Task(task_message), Lineage());
+  if (initial_config_.single_node) {
+    for (const auto &task : TryVectorizeTasks(message)) {
+      SubmitTask(task, Lineage());
+    }
+  } else {
+    for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
+      rpc::Task task_message;
+      const auto &task_str = message->task_specs()->Get(i);
+      RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
+                                                                 task_str->size()));
+      SubmitTask(Task(task_message), Lineage());
+    }
   }
 }
 

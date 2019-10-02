@@ -122,13 +122,21 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     // Use push mode.
     RAY_CHECK(port_ > 0);
     rpc::AssignTaskRequest request;
-    // TODO(ekl) handle vector tasks
-    auto t = request.add_tasks();
-    t->mutable_task_spec()->CopyFrom(
-        task.GetTaskSpecification().GetMessage());
-    t->mutable_task_execution_spec()->CopyFrom(
-        task.GetTaskExecutionSpec().GetMessage());
     request.set_resource_ids(resource_id_set.Serialize());
+
+    if (task.IsVectorTask()) {
+      for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+        auto task_msg = request.add_tasks();
+        task_msg->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+        task_msg->mutable_task_execution_spec()->CopyFrom(
+            task.GetTaskExecutionSpec().GetMessage());
+      }
+    } else {
+      auto task_msg = request.add_tasks();
+      task_msg->mutable_task_spec()->CopyFrom(task.GetTaskSpecification().GetMessage());
+      task_msg->mutable_task_execution_spec()->CopyFrom(
+          task.GetTaskExecutionSpec().GetMessage());
+    }
 
     auto status = rpc_client_->AssignTask(request, [](Status status,
                                                       const rpc::AssignTaskReply &reply) {
@@ -148,6 +156,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                      << " to worker " << worker_id_;
     }
   } else {
+    RAY_CHECK(!task.IsVectorTask());
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
     flatbuffers::FlatBufferBuilder fbb;

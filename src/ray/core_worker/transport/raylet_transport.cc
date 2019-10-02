@@ -41,8 +41,8 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const auto &task_spec = task.GetTaskSpecification();
     RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
     if (task_spec.IsActorTask() && worker_context_.CurrentActorUseDirectCall()) {
-      send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
-                          nullptr);
+      send_reply_callback(Status::Invalid("This actor only accepts direct calls."),
+                          nullptr, nullptr);
       return;
     }
 
@@ -66,7 +66,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 }
 
 Status CoreWorkerRayletTaskReceiver::HandleAssignTask0(
-    const rpc::AssignTaskRequest &request, const TaskSpecification& task_spec) {
+    const rpc::AssignTaskRequest &request, const TaskSpecification &task_spec) {
   // Set the resource IDs for this task.
   ResourceMappingType resource_ids;
   auto resource_infos =

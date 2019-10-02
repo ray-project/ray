@@ -30,6 +30,16 @@ class Task {
     ComputeDependencies();
   }
 
+  /// Construct a vector Task. All task specs should have the same object
+  /// dependencies and resource requirements as the first.
+  Task(TaskExecutionSpecification task_execution_spec,
+       std::vector<TaskSpecification> specs)
+      : task_spec_(specs[0]),
+        task_execution_spec_(std::move(task_execution_spec)),
+        task_spec_vector_(std::move(specs)) {
+    ComputeDependencies();
+  }
+
   /// Construct a `Task` object from a `TaskSpecification` and a
   /// `TaskExecutionSpecification`.
   Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
@@ -64,6 +74,15 @@ class Task {
 
   std::string DebugString() const;
 
+  /// Whether this task has any coscheduled tasks.
+  bool IsVectorTask() const { return !task_spec_vector_.empty(); }
+
+  /// Return the list of coscheduled tasks, including the base task spec.
+  const std::vector<TaskSpecification> &GetTaskSpecificationVector() const {
+    RAY_CHECK(IsVectorTask());
+    return task_spec_vector_;
+  }
+
  private:
   void ComputeDependencies();
 
@@ -74,6 +93,9 @@ class Task {
   /// Task execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time.
   TaskExecutionSpecification task_execution_spec_;
+  /// If this is a vector task, list of all task specs including the first one.
+  /// In this case task_spec_ == task_spec_vector_[0];
+  std::vector<TaskSpecification> task_spec_vector_;
   /// A cached copy of the task's object dependencies, including arguments from
   /// the TaskSpecification and execution dependencies from the
   /// TaskExecutionSpecification.
