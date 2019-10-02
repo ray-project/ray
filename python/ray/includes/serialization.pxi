@@ -19,45 +19,45 @@ cdef extern from "google/protobuf/repeated_field.h" nogil:
         Element *mutable_data()
 
 cdef extern from "ray/protobuf/serialization.pb.h" nogil:
-  cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
-    void set_address(uint64_t value)
-    uint64_t address() const
-    void set_length(int64_t value)
-    int64_t length() const
-    void set_itemsize(int64_t value)
-    int64_t itemsize()
-    void set_ndim(int32_t value)
-    int32_t ndim()
-    void set_readonly(c_bool value)
-    c_bool readonly()
-    void set_format(const c_string& value)
-    const c_string &format()
-    c_string* release_format()
-    void add_shape(int64_t value)
-    int64_t shape(int index)
-    const RepeatedField[int64_t] &shape() const
-    int shape_size()
-    void add_strides(int64_t value)
-    int64_t strides(int index)
-    const RepeatedField[int64_t] &strides() const
-    int strides_size()
+    cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
+        void set_address(uint64_t value)
+        uint64_t address() const
+        void set_length(int64_t value)
+        int64_t length() const
+        void set_itemsize(int64_t value)
+        int64_t itemsize()
+        void set_ndim(int32_t value)
+        int32_t ndim()
+        void set_readonly(c_bool value)
+        c_bool readonly()
+        void set_format(const c_string& value)
+        const c_string &format()
+        c_string* release_format()
+        void add_shape(int64_t value)
+        int64_t shape(int index)
+        const RepeatedField[int64_t] &shape() const
+        int shape_size()
+        void add_strides(int64_t value)
+        int64_t strides(int index)
+        const RepeatedField[int64_t] &strides() const
+        int strides_size()
 
-  cdef cppclass CPythonObject "ray::serialization::PythonObject":
-    uint64_t inband_data_offset() const
-    void set_inband_data_offset(uint64_t value)
-    uint64_t inband_data_size() const
-    void set_inband_data_size(uint64_t value)
-    uint64_t raw_buffers_offset() const
-    void set_raw_buffers_offset(uint64_t value)
-    uint64_t raw_buffers_size() const
-    void set_raw_buffers_size(uint64_t value)
-    CPythonBuffer* add_buffer()
-    CPythonBuffer& buffer(int index) const
-    int buffer_size() const
-    size_t ByteSizeLong() const
-    int GetCachedSize() const
-    uint8_t *SerializeWithCachedSizesToArray(uint8_t *target)
-    c_bool ParseFromArray(void* data, int size)
+    cdef cppclass CPythonObject "ray::serialization::PythonObject":
+        uint64_t inband_data_offset() const
+        void set_inband_data_offset(uint64_t value)
+        uint64_t inband_data_size() const
+        void set_inband_data_size(uint64_t value)
+        uint64_t raw_buffers_offset() const
+        void set_raw_buffers_offset(uint64_t value)
+        uint64_t raw_buffers_size() const
+        void set_raw_buffers_size(uint64_t value)
+        CPythonBuffer* add_buffer()
+        CPythonBuffer& buffer(int index) const
+        int buffer_size() const
+        size_t ByteSizeLong() const
+        int GetCachedSize() const
+        uint8_t *SerializeWithCachedSizesToArray(uint8_t *target)
+        c_bool ParseFromArray(void* data, int size)
 
 
 cdef int64_t padded_length(int64_t offset, int64_t alignment):
@@ -131,13 +131,13 @@ cdef class SubBuffer:
 
     cdef copy_shape(self, const Py_ssize_t *shape):
         cdef size_t size = sizeof(Py_ssize_t) * self.ndim
-        self._shape =  <Py_ssize_t *>malloc(size)
+        self._shape = <Py_ssize_t *>malloc(size)
         memcpy(self._shape, shape, size)
         self._shape_allocated = True
 
     cdef copy_strides(self, const Py_ssize_t *strides):
         cdef size_t size = sizeof(Py_ssize_t) * self.ndim
-        self._strides =  <Py_ssize_t *>malloc(size)
+        self._strides = <Py_ssize_t *>malloc(size)
         memcpy(self._strides, strides, size)
         self._strides_allocated = True
 
