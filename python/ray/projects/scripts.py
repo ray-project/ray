@@ -238,7 +238,7 @@ class SessionRunner(object):
             stop=False,
             start=False,
             override_cluster_name=self.session_name,
-            port_forward=None,
+            port_forward=config.get("port_forward", None),
         )
 
 

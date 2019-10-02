@@ -20,6 +20,10 @@
         "type": "string"
       }
     },
+    "documentation": {
+      "description": "Link to the documentation of this project",
+      "type": "string"
+    },
     "cluster": {
       "description": "Path to a .yaml cluster configuration file (relative to the project root)",
       "type": "string"
