@@ -51,8 +51,8 @@ CoreWorker::CoreWorker(
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   // Initialize profiler.
-  profiler_ = std::unique_ptr<worker::Profiler>(
-      new worker::Profiler(worker_context_, node_ip_address, io_service_, gcs_client_));
+  profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
+                                                 io_service_, gcs_client_);
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
