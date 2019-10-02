@@ -35,15 +35,38 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const Task task(request.task());
-  const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (task_spec.IsActorTask() && worker_context_.CurrentActorUseDirectCall()) {
-    send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
-                        nullptr);
-    return;
+  Status status;
+  for (int i = 0; i < request.tasks_size(); i++) {
+    Task task(request.tasks(i));
+    const auto &task_spec = task.GetTaskSpecification();
+    RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+    if (task_spec.IsActorTask() && worker_context_.CurrentActorUseDirectCall()) {
+      send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
+                          nullptr);
+      return;
+    }
+
+    status = HandleAssignTask0(request, task_spec);
   }
 
+  // Notify raylet that current task is done via a `TaskDone` message. This is to
+  // ensure that the task is marked as finished by raylet only after previous
+  // raylet client calls are completed. For example, if the worker sends a
+  // NotifyUnblocked message that it is no longer blocked in a `ray.get`
+  // on the normal raylet socket, then completes an assigned task, we
+  // need to guarantee that raylet gets the former message first before
+  // marking the task as completed. This is why a `TaskDone` message
+  // is required - without it, it's possible that raylet receives
+  // rpc reply first before the NotifyUnblocked message arrives,
+  // as they use different connections, the `TaskDone` message is sent
+  // to raylet via the same connection so the order is guaranteed.
+  RAY_UNUSED(raylet_client_->TaskDone());
+  // Send rpc reply.
+  send_reply_callback(status, nullptr, nullptr);
+}
+
+Status CoreWorkerRayletTaskReceiver::HandleAssignTask0(
+    const rpc::AssignTaskRequest &request, const TaskSpecification& task_spec) {
   // Set the resource IDs for this task.
   ResourceMappingType resource_ids;
   auto resource_infos =
@@ -100,20 +123,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     }
   }
 
-  // Notify raylet that current task is done via a `TaskDone` message. This is to
-  // ensure that the task is marked as finished by raylet only after previous
-  // raylet client calls are completed. For example, if the worker sends a
-  // NotifyUnblocked message that it is no longer blocked in a `ray.get`
-  // on the normal raylet socket, then completes an assigned task, we
-  // need to guarantee that raylet gets the former message first before
-  // marking the task as completed. This is why a `TaskDone` message
-  // is required - without it, it's possible that raylet receives
-  // rpc reply first before the NotifyUnblocked message arrives,
-  // as they use different connections, the `TaskDone` message is sent
-  // to raylet via the same connection so the order is guaranteed.
-  RAY_UNUSED(raylet_client_->TaskDone());
-  // Send rpc reply.
-  send_reply_callback(status, nullptr, nullptr);
+  return status;
 }
 
 }  // namespace ray

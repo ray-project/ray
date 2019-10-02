@@ -122,9 +122,11 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     // Use push mode.
     RAY_CHECK(port_ > 0);
     rpc::AssignTaskRequest request;
-    request.mutable_task()->mutable_task_spec()->CopyFrom(
+    // TODO(ekl) handle vector tasks
+    auto t = request.add_tasks();
+    t->mutable_task_spec()->CopyFrom(
         task.GetTaskSpecification().GetMessage());
-    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
+    t->mutable_task_execution_spec()->CopyFrom(
         task.GetTaskExecutionSpec().GetMessage());
     request.set_resource_ids(resource_id_set.Serialize());
 

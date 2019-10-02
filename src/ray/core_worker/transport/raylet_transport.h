@@ -3,6 +3,7 @@
 
 #include <list>
 
+#include "ray/common/task/task.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
@@ -49,6 +50,8 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
+
+  Status HandleAssignTask0(const rpc::AssignTaskRequest &request, const TaskSpecification& task_spec);
 
  private:
   // Worker context.

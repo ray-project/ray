@@ -1322,6 +1322,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
+         single_node_optimizations=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1406,6 +1407,8 @@ def init(address=None,
             directory for the Ray process.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
+        single_node_optimizations: Whether to enable single-node performance
+            optimizations.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1489,7 +1492,7 @@ def init(address=None,
             head=True,
             shutdown_at_exit=False,
             ray_params=ray_params,
-            single_node=True)
+            single_node=single_node_optimizations)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
