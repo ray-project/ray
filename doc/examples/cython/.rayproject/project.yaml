@@ -4,12 +4,11 @@ name: ray-example-cython
 
 description: "Example of how to use Cython with ray"
 tags: ["ray-example", "cython"]
+documentation: https://ray.readthedocs.io/en/latest/advanced.html#cython-code-in-ray
 
 cluster: .rayproject/cluster.yaml
 
 environment:
-  # dockerfile: The dockerfile to be built and ran the commands with.
-  # dockerimage: The docker image to be used to run the project in, e.g. ubuntu:18.04.
   requirements: .rayproject/requirements.txt
 
   shell: # Shell commands to be ran for environment setup.
