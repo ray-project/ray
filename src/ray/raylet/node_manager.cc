@@ -67,6 +67,9 @@ namespace ray {
 
 namespace raylet {
 
+/// The max size of any batch of tasks to coschedule.
+const int kMaxTaskBatchSize = 128;
+
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::RedisGcsClient> gcs_client,
@@ -1140,14 +1143,15 @@ std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) 
       taskSpecBatch.push_back(task_spec);
     } else {
       // TODO(ekl) check the dependencies as well
-      if (taskSpecBatch[0].GetRequiredResources() == task_spec.GetRequiredResources()) {
-        taskSpecBatch.push_back(task_spec);
-      } else {
+      if (taskSpecBatch.size() >= kMaxTaskBatchSize ||
+          taskSpecBatch[0].GetRequiredResources() != task_spec.GetRequiredResources()) {
         tasks.push_back(
             Task(TaskExecutionSpecification(task_message.task_execution_spec()),
                  taskSpecBatch));
         RAY_LOG(INFO) << "Created task batch of size " << taskSpecBatch.size();
         taskSpecBatch.clear();
+      } else {
+        taskSpecBatch.push_back(task_spec);
       }
     }
   }
