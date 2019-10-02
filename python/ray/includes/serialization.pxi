@@ -77,31 +77,20 @@ cdef class SubBuffer:
         void *buf
         Py_ssize_t len
         int readonly
-        char *_format
+        c_string _format
         int ndim
-        Py_ssize_t *_shape
-        Py_ssize_t *_strides
+        c_vector[Py_ssize_t] _shape
+        c_vector[Py_ssize_t] _strides
         Py_ssize_t *suboffsets
         Py_ssize_t itemsize
         void *internal
         object buffer
-        # True if these memory fields are allocated,
-        # False if referenced or not assigned.
-        c_bool _format_allocated
-        c_bool _shape_allocated
-        c_bool _strides_allocated
 
     def __cinit__(self, Buffer buffer):
         # Increase ref count.
         self.buffer = buffer
-        self._format = NULL
-        self._shape = NULL
-        self._strides = NULL
         self.suboffsets = NULL
         self.internal = NULL
-        self._format_allocated = False
-        self._shape_allocated = False
-        self._strides_allocated = False
 
     def __len__(self):
         return self.len // self.itemsize
@@ -120,38 +109,17 @@ cdef class SubBuffer:
         return PyBytes_FromStringAndSize(
             <const char*> self.buf, self.len)
 
-    cdef copy_format(self, const c_string &format_str):
-        # TODO(suquark): We could further improve it
-        # by caching common formats.
-        cdef size_t size = format_str.length()
-        self._format = <char *>malloc(size + 1)
-        format_str.copy(self._format, size, 0)
-        self._format[size] = 0
-        self._format_allocated = True
-
-    cdef copy_shape(self, const Py_ssize_t *shape):
-        cdef size_t size = sizeof(Py_ssize_t) * self.ndim
-        self._shape = <Py_ssize_t *>malloc(size)
-        memcpy(self._shape, shape, size)
-        self._shape_allocated = True
-
-    cdef copy_strides(self, const Py_ssize_t *strides):
-        cdef size_t size = sizeof(Py_ssize_t) * self.ndim
-        self._strides = <Py_ssize_t *>malloc(size)
-        memcpy(self._strides, strides, size)
-        self._strides_allocated = True
-
     def __getbuffer__(self, Py_buffer* buffer, int flags):
         buffer.readonly = self.readonly
         buffer.buf = self.buf
-        buffer.format = self._format
+        buffer.format = <char *>self._format.c_str()
         buffer.internal = self.internal
         buffer.itemsize = self.itemsize
         buffer.len = self.len
         buffer.ndim = self.ndim
         buffer.obj = self  # This is important for GC.
-        buffer.shape = self._shape
-        buffer.strides = self._strides
+        buffer.shape = self._shape.data()
+        buffer.strides = self._strides.data()
         buffer.suboffsets = self.suboffsets
 
     def __getsegcount__(self, Py_ssize_t *len_out):
@@ -172,14 +140,6 @@ cdef class SubBuffer:
         if p != NULL:
             p[0] = self.buf
         return self.size
-
-    def __dealloc__(self):
-        if self._shape_allocated:
-            free(self._shape)
-        if self._strides_allocated:
-            free(self._strides)
-        if self._format_allocated:
-            free(self._format)
 
 
 cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
@@ -255,12 +215,13 @@ def unpack_pickle5_buffers(Buffer buf):
         buffer.itemsize = buffer_meta.itemsize()
         buffer.readonly = buffer_meta.readonly()
         buffer.ndim = buffer_meta.ndim()
-        if buffer_meta.format().size() > 0:
-            buffer.copy_format(buffer_meta.format())
-        if buffer_meta.shape_size() > 0:
-            buffer.copy_shape(<Py_ssize_t *>buffer_meta.shape().data())
-        if buffer_meta.strides_size() > 0:
-            buffer.copy_strides(<Py_ssize_t *>buffer_meta.strides().data())
+        buffer._format = buffer_meta.format()
+        buffer._shape = c_vector[Py_ssize_t](buffer_meta.shape().begin(), buffer_meta.shape().end())
+        buffer._strides = c_vector[Py_ssize_t](buffer_meta.strides().begin(), buffer_meta.strides().end())
+        # if buffer_meta.shape_size() > 0:
+        #     buffer.copy_shape(<Py_ssize_t *>buffer_meta.shape().data())
+        # if buffer_meta.strides_size() > 0:
+        #     buffer.copy_strides(<Py_ssize_t *>buffer_meta.strides().data())
         buffer.internal = NULL
         buffer.suboffsets = NULL
         pickled_buffers.append(buffer)
