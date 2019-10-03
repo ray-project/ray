@@ -1,6 +1,5 @@
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
-from cython.parallel cimport prange
 
 # This is the default alignment value for len(buffer) < 2048.
 DEF kMinorBufferAlign = 8
