@@ -57,7 +57,7 @@ def _configure_namespace(provider_config):
 
     namespace = provider_config[namespace_field]
     field_selector = "metadata.name={}".format(namespace)
-    namespaces = core_api.list_namespace(field_selector=field_selector).items
+    namespaces = core_api().list_namespace(field_selector=field_selector).items
     if len(namespaces) > 0:
         assert len(namespaces) == 1
         logger.info(log_prefix +
@@ -67,7 +67,7 @@ def _configure_namespace(provider_config):
     logger.info(log_prefix + not_found_msg(namespace_field, namespace))
     namespace_config = client.V1Namespace(
         metadata=client.V1ObjectMeta(name=namespace))
-    core_api.create_namespace(namespace_config)
+    core_api().create_namespace(namespace_config)
     logger.info(log_prefix + created_msg(namespace_field, namespace))
     return namespace
 
@@ -86,7 +86,7 @@ def _configure_autoscaler_service_account(namespace, provider_config):
 
     name = account["metadata"]["name"]
     field_selector = "metadata.name={}".format(name)
-    accounts = core_api.list_namespaced_service_account(
+    accounts = core_api().list_namespaced_service_account(
         namespace, field_selector=field_selector).items
     if len(accounts) > 0:
         assert len(accounts) == 1
@@ -94,7 +94,7 @@ def _configure_autoscaler_service_account(namespace, provider_config):
         return
 
     logger.info(log_prefix + not_found_msg(account_field, name))
-    core_api.create_namespaced_service_account(namespace, account)
+    core_api().create_namespaced_service_account(namespace, account)
     logger.info(log_prefix + created_msg(account_field, name))
 
 
@@ -112,7 +112,7 @@ def _configure_autoscaler_role(namespace, provider_config):
 
     name = role["metadata"]["name"]
     field_selector = "metadata.name={}".format(name)
-    accounts = auth_api.list_namespaced_role(
+    accounts = auth_api().list_namespaced_role(
         namespace, field_selector=field_selector).items
     if len(accounts) > 0:
         assert len(accounts) == 1
@@ -120,7 +120,7 @@ def _configure_autoscaler_role(namespace, provider_config):
         return
 
     logger.info(log_prefix + not_found_msg(role_field, name))
-    auth_api.create_namespaced_role(namespace, role)
+    auth_api().create_namespaced_role(namespace, role)
     logger.info(log_prefix + created_msg(role_field, name))
 
 
@@ -145,7 +145,7 @@ def _configure_autoscaler_role_binding(namespace, provider_config):
 
     name = binding["metadata"]["name"]
     field_selector = "metadata.name={}".format(name)
-    accounts = auth_api.list_namespaced_role_binding(
+    accounts = auth_api().list_namespaced_role_binding(
         namespace, field_selector=field_selector).items
     if len(accounts) > 0:
         assert len(accounts) == 1
@@ -153,5 +153,5 @@ def _configure_autoscaler_role_binding(namespace, provider_config):
         return
 
     logger.info(log_prefix + not_found_msg(binding_field, name))
-    auth_api.create_namespaced_role_binding(namespace, binding)
+    auth_api().create_namespaced_role_binding(namespace, binding)
     logger.info(log_prefix + created_msg(binding_field, name))
