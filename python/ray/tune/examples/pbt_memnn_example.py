@@ -136,13 +136,11 @@ class MemNNModel(Trainable):
         # Reserve 0 for masking via pad_sequences
         vocab_size = len(vocab) + 1
         story_maxlen = max(
-            map(len,
-                (x for x, _, _ in self.train_stories + self.test_stories)))
+            len(x) for x, _, _ in self.train_stories + self.test_stories)
         query_maxlen = max(
-            map(len,
-                (x for _, x, _ in self.train_stories + self.test_stories)))
+            len(x) for _, x, _ in self.train_stories + self.test_stories)
 
-        word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
+        word_idx = {c: i + 1 for i, c in enumerate(vocab)}
         self.inputs_train, self.queries_train, self.answers_train = (
             vectorize_stories(word_idx, story_maxlen, query_maxlen,
                               self.train_stories))
