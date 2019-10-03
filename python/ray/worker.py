@@ -434,9 +434,9 @@ class Worker(object):
                     value, object_id, memcopy_threads=self.memcopy_threads)
             else:
                 writer = Pickle5Writer()
-                meta = pickle.dumps(
+                inband = pickle.dumps(
                     value, protocol=5, buffer_callback=writer.buffer_callback)
-                self.core_worker.put_pickle5_buffers(object_id, meta, writer,
+                self.core_worker.put_pickle5_buffers(object_id, inband, writer,
                                                      self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
