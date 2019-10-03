@@ -217,7 +217,7 @@ def validate_args(func, args, kwargs):
     try:
         funcsigs_signature.bind(*args, **kwargs)
     except TypeError as exc:
-        raise TypeError(exc.message)
+        raise TypeError(str(exc))
 
 
 def extend_args(function_signature, args, kwargs):
