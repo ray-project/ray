@@ -50,6 +50,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
+from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
@@ -88,9 +89,6 @@ try:
     import setproctitle
 except ImportError:
     setproctitle = None
-
-if USE_NEW_SERIALIZER:
-    from _pickle import PickleBuffer
 
 
 class ActorCheckpointInfo(object):
@@ -435,18 +433,11 @@ class Worker(object):
                 self.core_worker.put_raw_buffer(
                     value, object_id, memcopy_threads=self.memcopy_threads)
             else:
-                buffers = []
+                writer = Pickle5Writer()
                 meta = pickle.dumps(
-                    value, protocol=5, buffer_callback=buffers.append)
-                # TODO(suquark): This could involve more copies.
-                # Should implement zero-copy for PickleBuffer.
-                buffers = [b.raw().tobytes() for b in buffers]
-                value = (meta, buffers)
-
-                self.core_worker.put_serialized_object(
-                    pyarrow.serialize(value),
-                    object_id,
-                    memcopy_threads=self.memcopy_threads)
+                    value, protocol=5, buffer_callback=writer.buffer_callback)
+                self.core_worker.put_pickle5_buffers(object_id, meta, writer,
+                                                     self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare hashes
@@ -522,6 +513,10 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
+            if (USE_NEW_SERIALIZER
+                    and metadata == ray_constants.PICKLE5_BUFFER_METADATA):
+                in_band, buffers = unpack_pickle5_buffers(data)
+                return pickle.loads(in_band, buffers=buffers)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -540,12 +535,7 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            if USE_NEW_SERIALIZER:
-                r, buffers = pyarrow.deserialize(data, serialization_context)
-                buffers = [PickleBuffer(b) for b in buffers]
-                return pickle.loads(r, buffers=buffers)
-            else:
-                return pyarrow.deserialize(data, serialization_context)
+            return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable

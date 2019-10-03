@@ -58,6 +58,7 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
+    PICKLE5_BUFFER_METADATA,
 )
 
 # pyarrow cannot be imported until after _raylet finishes initializing
@@ -75,6 +76,7 @@ include "includes/ray_config.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 
 
@@ -471,6 +473,36 @@ cdef class CoreWorker:
         stream.set_memcopy_threads(memcopy_threads)
         stream.write(pyarrow.py_buffer(value))
 
+        with nogil:
+            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+
+    def put_pickle5_buffers(self, ObjectID object_id, c_string inband,
+                            Pickle5Writer writer,
+                            int memcopy_threads):
+        cdef:
+            shared_ptr[CBuffer] data
+            c_string metadata_str = PICKLE5_BUFFER_METADATA
+            shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
+            CObjectID c_object_id = object_id.native()
+            size_t data_size
+
+        data_size = writer.get_total_bytes(inband)
+
+        with nogil:
+            check_status(self.core_worker.get().Objects().Create(
+                        metadata, data_size, c_object_id, &data))
+
+        # If data is nullptr, that means the ObjectID already existed,
+        # which we ignore.
+        # TODO(edoakes): this is hacky, we should return the error instead
+        # and deal with it here.
+        if not data:
+            return
+
+        writer.write_to(inband, data, memcopy_threads)
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
