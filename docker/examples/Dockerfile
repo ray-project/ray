@@ -17,3 +17,5 @@ RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm x
 RUN pip install -U tabulate mlflow
 RUN pip install -U pytest-remotedata>=0.3.1
 RUN conda install pytorch-cpu torchvision-cpu -c pytorch
+
+ENV TUNE_TEST_MODE 1

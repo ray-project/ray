@@ -146,7 +146,7 @@ def tf2_compat_logger(config, logdir, trial=None):
     else:
         import tensorflow as tf
         use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
-                       distutils.version.LooseVersion("2.0.0"))
+                       distutils.version.LooseVersion("1.14.0"))
         if use_tf2_api:
             tf = tf.compat.v2  # setting this for TF2.0
             return TF2Logger(config, logdir, trial)
@@ -341,6 +341,8 @@ class UnifiedLogger(Logger):
             except Exception as exc:
                 logger.warning("Could not instantiate {}: {}.".format(
                     cls.__name__, str(exc)))
+                if os.environ.get("TUNE_TEST_MODE"):
+                    raise exc
         self._log_syncer = get_log_syncer(
             self.logdir,
             remote_dir=self.logdir,

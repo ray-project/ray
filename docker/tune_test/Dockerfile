@@ -26,4 +26,6 @@ ADD ray.tar /ray
 ADD git-rev /ray/git-rev
 RUN python /ray/python/ray/setup-dev.py --yes
 
+ENV TUNE_TEST_MODE 1
+
 WORKDIR /ray
