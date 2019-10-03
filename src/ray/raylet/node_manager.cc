@@ -1151,9 +1151,8 @@ std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) 
                  taskSpecBatch));
         RAY_LOG(INFO) << "Created task batch of size " << taskSpecBatch.size();
         taskSpecBatch.clear();
-      } else {
-        taskSpecBatch.push_back(task_spec);
       }
+      taskSpecBatch.push_back(task_spec);
     }
   }
   if (!taskSpecBatch.empty()) {
