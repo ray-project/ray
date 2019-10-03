@@ -286,11 +286,6 @@ class ActorClass(object):
         self._method_signatures = {}
         self._actor_method_num_return_vals = {}
         for method_name, method in self._actor_methods:
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
-            signature.check_signature_supported(method, warn=True)
             self._method_signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not ray.utils.is_class_method(method))
             # Set the default number of return values for this method.

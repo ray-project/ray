@@ -73,8 +73,6 @@ class RemoteFunction(object):
                            if max_calls is None else max_calls)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
-
-        ray.signature.check_signature_supported(self._function)
         self._last_export_session_and_job = None
         # Override task.remote's signature and docstring
         @wraps(function)
