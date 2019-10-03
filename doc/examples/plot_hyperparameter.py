@@ -18,7 +18,7 @@ their results to be ready.
 Setup: Dependencies
 -------------------
 First, import some dependencies and define functions to generate
-random hyperpaameters and retrieve data.
+random hyperparameters and retrieve data.
 """
 import os
 import numpy as np
