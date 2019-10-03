@@ -55,7 +55,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   std::vector<TaskArg> args = BuildArgsForExecutor(task_spec);
 
   std::vector<ObjectID> return_ids;
-  for (int i = 0; i < task_spec.NumReturns(); i++) {
+  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
     return_ids.push_back(task_spec.ReturnId(i));
   }
 
