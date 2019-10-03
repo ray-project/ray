@@ -98,6 +98,16 @@ cc_proto_library(
     deps = ["direct_actor_proto"],
 )
 
+proto_library(
+    name = "serialization_proto",
+    srcs = ["src/ray/protobuf/serialization.proto"],
+)
+
+cc_proto_library(
+    name = "serialization_cc_proto",
+    deps = ["serialization_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -735,6 +745,7 @@ pyx_library(
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
+        "//:serialization_cc_proto",
     ],
 )
 
