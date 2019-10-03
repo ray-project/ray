@@ -25,6 +25,7 @@ import random
 # Ray modules
 import pyarrow
 import pyarrow.plasma as plasma
+import pickle as native_pickle
 import ray.cloudpickle as pickle
 from ray.cloudpickle import USE_NEW_SERIALIZER
 import ray.experimental.signal as ray_signal
@@ -434,9 +435,15 @@ class Worker(object):
                     value, object_id, memcopy_threads=self.memcopy_threads)
             else:
                 writer = Pickle5Writer()
-                meta = pickle.dumps(
-                    value, protocol=5, buffer_callback=writer.buffer_callback)
-                self.core_worker.put_pickle5_buffers(object_id, meta, writer,
+                try:
+                    inband = native_pickle.dumps(
+                        value, protocol=5,
+                        buffer_callback=writer.buffer_callback)
+                except native_pickle.PicklingError:
+                    inband = pickle.dumps(
+                        value, protocol=5,
+                        buffer_callback=writer.buffer_callback)
+                self.core_worker.put_pickle5_buffers(object_id, inband, writer,
                                                      self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no

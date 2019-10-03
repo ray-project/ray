@@ -1,4 +1,3 @@
-from libc.stdlib cimport malloc, free
 from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 from cython.parallel cimport prange
@@ -166,14 +165,15 @@ cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
     # We have chunk_size = k * block_size, therefore the data layout is
     # | prefix | num_threads * chunk_size | suffix |.
     # Each thread gets a "chunk" of k blocks.
-
-    for i in prange(num_threads, nogil=True, num_threads=num_threads):
-        memcpy(dst + prefix + i * chunk_size, left + i * chunk_size,
-               chunk_size)
-        if i == 0:
+    # We also make use of the current thread, thus 'num_threads + 1'.
+    # This trick is also used in PyArrow.
+    for i in prange(num_threads + 1, nogil=True, num_threads=num_threads + 1):
+        if i == num_threads:
             memcpy(dst, src, prefix)
-        if i == num_threads - 1:
             memcpy(dst + prefix + num_threads * chunk_size, right, suffix)
+        else:
+            memcpy(dst + prefix + i * chunk_size, left + i * chunk_size,
+                   chunk_size)
 
 
 # See 'serialization.proto' for the memory layout in the Plasma buffer.
