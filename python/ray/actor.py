@@ -576,10 +576,11 @@ class ActorHandle(object):
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
 
+        local_function = getattr(worker.actors[self._ray_actor_id], method_name)
+        ray.signature.validate_args(local_function, args, kwargs)
         if worker.mode == ray.LOCAL_MODE:
-            function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
-                function, function_descriptor, args, kwargs, num_return_vals)
+                local_function, function_descriptor, args, kwargs, num_return_vals)
         else:
             with self._ray_actor_lock:
                 object_ids = worker.submit_task(
