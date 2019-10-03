@@ -391,7 +391,7 @@ class ActorClass(object):
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
             # Increment task_index, otherwise done via the worker.submit_task
-            # call in non local mode.
+            # call in non-local mode.
             worker.task_context.task_index += 1
             worker.actors[actor_id] = self._modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
