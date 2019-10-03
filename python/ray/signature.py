@@ -158,6 +158,7 @@ def extract_signature(func, ignore_first=False):
     return FunctionSignature(arg_names, arg_defaults, arg_is_positionals,
                              keyword_names, func.__name__)
 
+
 def flatten_args(args, kwargs):
     """Generates a serializable format for the arguments.
 
