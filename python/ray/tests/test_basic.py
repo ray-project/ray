@@ -760,8 +760,9 @@ def test_star_kwargs(ray_start_regular):
         return a, x, kwargs
 
     remote_fn = ray.remote(hello)
-    assert hello(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
     assert hello(1, x=2, y=3) == ray.get(remote_fn.remote(1, x=2, y=3))
+    assert hello(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
+    assert hello(1, y=3) == ray.get(remote_fn.remote(1, y=3))
 
     assert hello(1, ) == ray.get(remote_fn.remote(1, ))
     assert hello(1) == ray.get(remote_fn.remote(1))
@@ -770,7 +771,7 @@ def test_star_kwargs(ray_start_regular):
         remote_fn.remote(3)
 
     with pytest.raises(TypeError):
-        remote_fn.remote(1, 2, y=3)
+        remote_fn.remote(1, 2, x=3)
 
     def args_intertwined(a, *args, x="hello", **kwargs):
         return a, args, x, kwargs
