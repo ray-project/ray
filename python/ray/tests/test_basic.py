@@ -753,7 +753,7 @@ def test_star_kwargs(ray_start_regular):
 
     remote_fn = ray.remote(starkwargs)
     assert ray.get(remote_fn.remote(1, 2, x=3)) == starkwargs(1, 2, x=3)
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         remote_fn.remote(3)
 
     def hello(a, x="hello", **kwargs):
