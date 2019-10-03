@@ -23,11 +23,16 @@ package ray.serialization;
 // Unfortunately, no frame info is included in protobuf data, so we have to specify
 // the length and offset of PythonObject.
 // ---------------------
-// i64 offset(PythonObject)   // offset of the PythonObject relative to the start of this buffer
-// i64 len(PythonObject)      // length of the PythonObject
-// inband_data | pad(64)      // Inband data, padded with 64 bytes for the alignment of buffers
-// buffers | pad(8)           // the raw data of buffers, padded with 8 bytes for the alignment of PythonObject
-// PythonObject               // PythonObject is stored at the end because its size will be variable.
+// i64 offset(PythonObject):
+//     Offset of the PythonObject relative to the start of this buffer.
+// i64 len(PythonObject):
+//     Length of the PythonObject.
+// inband_data | pad(64)
+//     Inband data, padded with 64 bytes for the alignment of buffers.
+// buffers | pad(8)
+//     Raw data of buffers, padded with 8 bytes for the alignment of PythonObject.
+// PythonObject
+//     PythonObject is stored at the end because its size will be variable.
 // ---------------------
 
 // The message for metadata of python buffer objects.
