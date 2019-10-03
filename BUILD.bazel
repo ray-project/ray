@@ -100,7 +100,7 @@ cc_proto_library(
 
 proto_library(
     name = "serialization_proto",
-    srcs = ["src/ray/protobuf/serialization.proto"]
+    srcs = ["src/ray/protobuf/serialization.proto"],
 )
 
 cc_proto_library(
