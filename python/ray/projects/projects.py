@@ -101,7 +101,10 @@ class ProjectDefinition:
                 if param["type"] in types:
                     param["type"] = types[param["type"]]
                 else:
-                    raise ValueError("Parameter {} has type {} which is not supported. Type must be one of {}".format(name, param["type"], list(types.keys())))
+                    raise ValueError(
+                        "Parameter {} has type {} which is not supported. "
+                        "Type must be one of {}".format(
+                            name, param["type"], list(types.keys())))
             parser.add_argument("--" + name, **param)
 
         parsed_args = parser.parse_args(list(args)).__dict__
