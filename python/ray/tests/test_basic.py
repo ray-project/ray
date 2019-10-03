@@ -758,10 +758,24 @@ def test_star_kwargs(ray_start_regular):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
-    remote_fn = ray.remote(starkwargs)
-    assert ray.get(remote_fn.remote(1, 2, x=3)) == starkwargs(1, 2, x=3)
-    with pytest.raises(TypeError):
-        remote_fn.remote(3)
+    class TestActor():
+        def starkwargs(self, a, b, **kwargs):
+            return a, b, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
+        with pytest.raises(TypeError):
+            remote_fn.remote(3)
+
+    remote_starkwargs = ray.remote(starkwargs)
+    test_function(starkwargs, remote_starkwargs)
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.starkwargs
+    local_actor = TestActor()
+    local_method = local_actor.starkwargs
+    test_function(local_method, actor_method)
 
 
 @pytest.mark.parametrize(
@@ -775,16 +789,30 @@ def test_named_and_star(ray_start_regular):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
-    remote_fn = ray.remote(hello)
-    assert hello(1, x=2, y=3) == ray.get(remote_fn.remote(1, x=2, y=3))
-    assert hello(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
-    assert hello(1, y=3) == ray.get(remote_fn.remote(1, y=3))
+    class TestActor():
+        def hello(self, a, x="hello", **kwargs):
+            return a, x, kwargs
 
-    assert hello(1, ) == ray.get(remote_fn.remote(1, ))
-    assert hello(1) == ray.get(remote_fn.remote(1))
+    def test_function(fn, remote_fn):
+        assert fn(1, x=2, y=3) == ray.get(remote_fn.remote(1, x=2, y=3))
+        assert fn(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
+        assert fn(1, y=3) == ray.get(remote_fn.remote(1, y=3))
 
-    with pytest.raises(TypeError):
-        remote_fn.remote(1, 2, x=3)
+        assert fn(1, ) == ray.get(remote_fn.remote(1, ))
+        assert fn(1) == ray.get(remote_fn.remote(1))
+
+        with pytest.raises(TypeError):
+            remote_fn.remote(1, 2, x=3)
+
+    remote_hello = ray.remote(hello)
+    test_function(hello, remote_hello)
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.hello
+    local_actor = TestActor()
+    local_method = local_actor.hello
+    test_function(local_method, actor_method)
 
 
 @pytest.mark.parametrize(
@@ -798,17 +826,31 @@ def test_args_intertwined(ray_start_regular):
     def args_intertwined(a, *args, x="hello", **kwargs):
         return a, args, x, kwargs
 
-    remote_fn = ray.remote(args_intertwined)
-    assert args_intertwined(
-        1, 2, 3, x="hi", y="hello") == ray.get(
-            remote_fn.remote(1, 2, 3, x="hi", y="hello"))
-    assert args_intertwined(
-        1, 2, 3, y="1hello") == ray.get(remote_fn.remote(1, 2, 3, y="1hello"))
-    assert args_intertwined(
-        1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
+    class TestActor():
+        def args_intertwined(self, a, *args, x="hello", **kwargs):
+            return a, args, x, kwargs
 
-    with pytest.raises(TypeError):
-        remote_fn.remote(1, 2, x=3)
+    def test_function(fn, remote_fn):
+        assert fn(
+            1, 2, 3, x="hi", y="hello") == ray.get(
+                remote_fn.remote(1, 2, 3, x="hi", y="hello"))
+        assert fn(
+            1, 2, 3, y="1hello") == ray.get(remote_fn.remote(1, 2, 3, y="1hello"))
+        assert fn(
+            1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
+
+        with pytest.raises(TypeError):
+            remote_fn.remote(1, 2, x=3)
+
+    remote_args_intertwined = ray.remote(args_intertwined)
+    test_function(args_intertwined, remote_args_intertwined)
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.args_intertwined
+    local_actor = TestActor()
+    local_method = local_actor.args_intertwined
+    test_function(local_method, actor_method)
 
 
 @pytest.mark.parametrize(
@@ -822,13 +864,27 @@ def test_star_args_after(ray_start_regular):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
+    class TestActor():
+        def star_args_after(self, a="hello", b="heo", *args, **kwargs):
+            return a, b, args, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn("hi", "hello", 2) == ray.get(
+            remote_fn.remote("hi", "hello", 2))
+        assert fn(
+            "hi", "hello", 2, hi="hi") == ray.get(
+                remote_fn.remote("hi", "hello", 2, hi="hi"))
+        assert fn(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
+
     remote_fn = ray.remote(star_args_after)
-    assert star_args_after("hi", "hello", 2) == ray.get(
-        remote_fn.remote("hi", "hello", 2))
-    assert star_args_after(
-        "hi", "hello", 2, hi="hi") == ray.get(
-            remote_fn.remote("hi", "hello", 2, hi="hi"))
-    assert star_args_after(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
+    test_function(star_args_after, remote_star_args_after)
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.star_args_after
+    local_actor = TestActor()
+    local_method = local_actor.star_args_after
+    test_function(local_method, actor_method)
 
 
 @pytest.mark.parametrize(
@@ -842,11 +898,26 @@ def test_force_positional(ray_start_regular):
     def force_positional(*, a="hello", b="helxo", **kwargs):
         return a, b, kwargs
 
+    class TestActor():
+        def force_positional(self, a="hello", b="heo", *args, **kwargs):
+            return a, b, args, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn(
+            a=1, b=3, c=5) == ray.get(remote_fn.remote(a=1, b=3, c=5))
+        assert fn(a=1) == ray.get(remote_fn.remote(a=1))
+        assert fn(a=1) == ray.get(remote_fn.remote(a=1))
+
+
     remote_fn = ray.remote(force_positional)
-    assert force_positional(
-        a=1, b=3, c=5) == ray.get(remote_fn.remote(a=1, b=3, c=5))
-    assert force_positional(a=1) == ray.get(remote_fn.remote(a=1))
-    assert force_positional(a=1) == ray.get(remote_fn.remote(a=1))
+    test_function(force_positional, remote_force_positional)
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.force_positional
+    local_actor = TestActor()
+    local_method = local_actor.force_positional
+    test_function(local_method, actor_method)
 
 
 def test_variable_number_of_args(shutdown_only):
