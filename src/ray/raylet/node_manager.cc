@@ -1134,29 +1134,33 @@ std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) 
   rpc::Task task_message;
   std::vector<Task> tasks;
   std::vector<TaskSpecification> taskSpecBatch;
+  std::vector<ObjectID> batchDeps;
   for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
     const auto &task_str = message->task_specs()->Get(i);
     RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
                                                                task_str->size()));
     TaskSpecification task_spec(task_message.task_spec());
+    auto taskDeps = task_spec.ComputeDependencies();
     if (taskSpecBatch.empty()) {
       taskSpecBatch.push_back(task_spec);
+      batchDeps = taskDeps;  // new batch
     } else {
-      // TODO(ekl) check the dependencies as well
       if (taskSpecBatch.size() >= kMaxTaskBatchSize ||
           !taskSpecBatch[0].GetRequiredResources().IsEqual(
-              task_spec.GetRequiredResources())) {
+              task_spec.GetRequiredResources()) ||
+          taskDeps != batchDeps) {
+        RAY_LOG(DEBUG) << "Created task batch of size " << taskSpecBatch.size();
         tasks.push_back(
             Task(TaskExecutionSpecification(task_message.task_execution_spec()),
                  taskSpecBatch));
-        RAY_LOG(INFO) << "Created task batch of size " << taskSpecBatch.size();
         taskSpecBatch.clear();
+        batchDeps = taskDeps;  // new batch
       }
       taskSpecBatch.push_back(task_spec);
     }
   }
   if (!taskSpecBatch.empty()) {
-    RAY_LOG(INFO) << "Created task batch of size " << taskSpecBatch.size();
+    RAY_LOG(DEBUG) << "Created task batch of size " << taskSpecBatch.size();
     tasks.push_back(Task(TaskExecutionSpecification(task_message.task_execution_spec()),
                          taskSpecBatch));
   }
@@ -1166,7 +1170,7 @@ std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) 
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
   auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  if (initial_config_.single_node) {
+  if (initial_config_.single_node && message->task_specs()->size() > 1) {
     for (const auto &task : TryVectorizeTasks(message)) {
       SubmitTask(task, Lineage());
     }

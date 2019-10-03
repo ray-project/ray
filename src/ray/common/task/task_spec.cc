@@ -159,6 +159,17 @@ bool TaskSpecification::IsDirectCall() const {
   return message_->actor_creation_task_spec().is_direct_call();
 }
 
+std::vector<ObjectID> TaskSpecification::ComputeDependencies() const {
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    int count = ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(ArgId(i, j));
+    }
+  }
+  return dependencies;
+}
+
 std::string TaskSpecification::DebugString() const {
   std::ostringstream stream;
   stream << "Type=" << TaskType_Name(message_->type())
