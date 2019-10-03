@@ -7,6 +7,9 @@ split incoming traffic to multiple implementations.
 
 With Ray Serve, you can deploy your services at any scale.
 
+.. warning::
+  Ray Serve is Python 3 only.
+
 Quickstart
 ----------
 .. literalinclude:: ../../python/ray/experimental/serve/examples/echo_full.py
