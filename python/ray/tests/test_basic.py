@@ -763,6 +763,7 @@ def test_args_starkwargs(ray_start_regular):
             return a, b, kwargs
 
     def test_function(fn, remote_fn):
+        import ipdb; ipdb.set_trace()
         assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
         with pytest.raises(TypeError):
             remote_fn.remote(3)
