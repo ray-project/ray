@@ -760,25 +760,26 @@ def test_star_kwargs(ray_start_regular):
         return a, x, kwargs
 
     remote_fn = ray.remote(hello)
-    assert ray.get(remote_fn.remote(1, 2, x=3)) == hello(1, 2, x=3)
-    assert ray.get(remote_fn.remote(1, x=2, y=3)) == hello(1, x=2, y=3)
-    assert ray.get(remote_fn.remote(1, 2, y=3)) == hello(1, 2, y=3)
-    assert ray.get(remote_fn.remote(1,)) == hello(1,)
-    assert ray.get(remote_fn.remote(1)) == hello(1)
+    assert hello(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
+    assert hello(1, x=2, y=3) == ray.get(remote_fn.remote(1, x=2, y=3))
+    assert hello(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
+    assert hello(1, ) == ray.get(remote_fn.remote(1, ))
+    assert hello(1) == ray.get(remote_fn.remote(1))
+
+    with pytest.raises(TypeError):
+        remote_fn.remote(3)
 
     def args_intertwined(a, *args, x="hello", **kwargs):
         return a, args, x, kwargs
 
     remote_fn = ray.remote(args_intertwined)
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, x="hi", y="hello")) == args_intertwined(
-            1, 2, 3, x="hi", y="hello")
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, y="1hello")) == args_intertwined(
-            1, 2, 3, y="1hello")
-    assert ray.get(remote_fn.remote(
-        1, y="1hello")) == args_intertwined(
-            1, y="1hello")
+    assert args_intertwined(
+        1, 2, 3, x="hi", y="hello") == ray.get(
+            remote_fn.remote(1, 2, 3, x="hi", y="hello"))
+    assert args_intertwined(
+        1, 2, 3, y="1hello") == ray.get(remote_fn.remote(1, 2, 3, y="1hello"))
+    assert args_intertwined(
+        1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
 
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
@@ -790,35 +791,35 @@ def test_star_kwargs(ray_start_regular):
         return a, b, kwargs
 
     remote_fn = ray.remote(force_positional)
-    assert ray.get(
-        remote_fn.remote(a=1, b=3, c=5)) == force_positional(a=1, b=3, c=5)
+    assert force_positional(
+        a=1, b=3, c=5) == ray.get(remote_fn.remote(a=1, b=3, c=5))
 
     def last_args(a, b, c, d=4, e=5, f=6, *args):
         return a, b, c, d, e, f, args
 
     remote_fn = ray.remote(last_args)
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, 4, 5, 6, 7)) == last_args(1, 2, 3, 4, 5, 6, 7)
+    assert last_args(1, 2, 3, 4, 5, 6, 7) == ray.get(
+        remote_fn.remote(1, 2, 3, 4, 5, 6, 7))
 
     def middle_args(a, b, c, *args, d=4, e=5, f=6):
         return a, b, c, d, e, f, args
 
     remote_fn = ray.remote(middle_args)
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, 4, 5, 6, 7)) == middle_args(1, 2, 3, 4, 5, 6, 7)
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, 4, 5, d=6, f=7)) == middle_args(1, 2, 3, 4, 5, d=6, f=7)
+    assert middle_args(1, 2, 3, 4, 5, 6, 7) == ray.get(
+        remote_fn.remote(1, 2, 3, 4, 5, 6, 7))
+    assert middle_args(
+        1, 2, 3, 4, 5, d=6, f=7) == ray.get(
+            remote_fn.remote(1, 2, 3, 4, 5, d=6, f=7))
 
     def front_args(*args, x="helxo", y="hello"):
         return args, x, y
 
     remote_fn = ray.remote(front_args)
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, 4, 5, x=6, y=7)) == front_args(1, 2, 3, 4, 5, x=6, y=7)
-    assert ray.get(remote_fn.remote(
-        1, 2, 3, 4, y=7)) == front_args(1, 2, 3, 4, y=7)
-
-
+    assert front_args(
+        1, 2, 3, 4, 5, x=6, y=7) == ray.get(
+            remote_fn.remote(1, 2, 3, 4, 5, x=6, y=7))
+    assert front_args(
+        1, 2, 3, 4, y=7) == ray.get(remote_fn.remote(1, 2, 3, 4, y=7))
 
 
 def test_variable_number_of_args(shutdown_only):
