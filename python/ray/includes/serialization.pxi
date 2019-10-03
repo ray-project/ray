@@ -11,6 +11,9 @@ DEF kMajorBufferSize = 2048
 DEF kMemcopyDefaultBlocksize = 64
 DEF kMemcopyDefaultThreshold = 1024 * 1024
 
+cdef extern from "arrow/util/memory.h" namespace "arrow::internal" nogil:
+    void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
+                          uintptr_t block_size, int num_threads);
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
@@ -64,10 +67,6 @@ cdef int64_t padded_length(int64_t offset, int64_t alignment):
 
 cdef int64_t padded_length_u64(uint64_t offset, uint64_t alignment):
     return ((offset + alignment - 1) // alignment) * alignment
-
-
-cdef uint8_t* pointer_logical_and(const uint8_t *address, uintptr_t bits):
-    return <uint8_t*> ((<uintptr_t> address) & bits)
 
 
 cdef class SubBuffer:
@@ -138,42 +137,6 @@ cdef class SubBuffer:
         if p != NULL:
             p[0] = self.buf
         return self.size
-
-
-cdef void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
-                           uintptr_t block_size, int num_threads):
-    cdef:
-        uint8_t *left = pointer_logical_and(src + block_size - 1,
-                                            ~(block_size - 1))
-        uint8_t *right = pointer_logical_and(src + nbytes, ~(block_size - 1))
-        int64_t num_blocks = (right - left) // block_size
-        size_t chunk_size
-        int64_t prefix, suffix
-        int i
-
-    # Update right address
-    right = right - (num_blocks % num_threads) * block_size
-
-    # Now we divide these blocks between available threads. The remainder is
-    # handled separately.
-    chunk_size = (right - left) // num_threads
-    prefix = left - src
-    suffix = src + nbytes - right
-    # Now the data layout is
-    # | prefix | k * num_threads * block_size | suffix |.
-    #
-    # We have chunk_size = k * block_size, therefore the data layout is
-    # | prefix | num_threads * chunk_size | suffix |.
-    # Each thread gets a "chunk" of k blocks.
-    # We also make use of the current thread, thus 'num_threads + 1'.
-    # This trick is also used in PyArrow.
-    for i in prange(num_threads + 1, nogil=True, num_threads=num_threads + 1):
-        if i == num_threads:
-            memcpy(dst, src, prefix)
-            memcpy(dst + prefix + num_threads * chunk_size, right, suffix)
-        else:
-            memcpy(dst + prefix + i * chunk_size, left + i * chunk_size,
-                   chunk_size)
 
 
 # See 'serialization.proto' for the memory layout in the Plasma buffer.
