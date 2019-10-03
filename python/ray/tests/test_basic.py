@@ -835,9 +835,9 @@ def test_args_intertwined(ray_start_regular):
             1, 2, 3, x="hi", y="hello") == ray.get(
                 remote_fn.remote(1, 2, 3, x="hi", y="hello"))
         assert fn(
-            1, 2, 3, y="1hello") == ray.get(remote_fn.remote(1, 2, 3, y="1hello"))
-        assert fn(
-            1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
+            1, 2, 3, y="1hello") == ray.get(
+                remote_fn.remote(1, 2, 3, y="1hello"))
+        assert fn(1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
 
         with pytest.raises(TypeError):
             remote_fn.remote(1, 2, x=3)
@@ -876,7 +876,7 @@ def test_args_stars_after(ray_start_regular):
                 remote_fn.remote("hi", "hello", 2, hi="hi"))
         assert fn(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
 
-    remote_fn = ray.remote(star_args_after)
+    remote_star_args_after = ray.remote(star_args_after)
     test_function(star_args_after, remote_star_args_after)
 
     remote_actor_class = ray.remote(TestActor)
@@ -903,13 +903,11 @@ def test_args_force_positional(ray_start_regular):
             return a, b, args, kwargs
 
     def test_function(fn, remote_fn):
-        assert fn(
-            a=1, b=3, c=5) == ray.get(remote_fn.remote(a=1, b=3, c=5))
+        assert fn(a=1, b=3, c=5) == ray.get(remote_fn.remote(a=1, b=3, c=5))
         assert fn(a=1) == ray.get(remote_fn.remote(a=1))
         assert fn(a=1) == ray.get(remote_fn.remote(a=1))
 
-
-    remote_fn = ray.remote(force_positional)
+    remote_force_positional = ray.remote(force_positional)
     test_function(force_positional, remote_force_positional)
 
     remote_actor_class = ray.remote(TestActor)
