@@ -111,6 +111,10 @@ def train(model, optimizer, train_loader, device=torch.device("cpu")):
 
 
 def test(model, test_loader, device=torch.device("cpu")):
+    """Checks the validation accuracy of the model.
+    
+    Cuts off at 512 samples for simplicity.
+    """
     model.eval()
     correct = 0
     total = 0
