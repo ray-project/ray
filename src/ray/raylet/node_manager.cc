@@ -327,7 +327,8 @@ void NodeManager::Heartbeat() {
   }
 
   std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
-  int64_t max_size = RayConfig::instance().raylet_active_object_ids_size();
+  size_t max_size =
+      static_cast<size_t>(RayConfig::instance().raylet_active_object_ids_size());
   if (active_object_ids.size() <= max_size) {
     for (const auto &object_id : active_object_ids) {
       std::string object_id_bytes = object_id.Binary();

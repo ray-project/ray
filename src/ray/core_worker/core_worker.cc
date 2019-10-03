@@ -143,7 +143,7 @@ void CoreWorker::SendActiveObjectIDsHeartbeat() {
     std::cout << "Sending " << active_object_ids_.size() << " object IDs to raylet."
               << std::endl;
     if (active_object_ids_.size() >
-        RayConfig::instance().raylet_active_object_ids_size()) {
+        static_cast<size_t>(RayConfig::instance().raylet_active_object_ids_size())) {
       RAY_LOG(WARNING) << active_object_ids_.size()
                        << "object IDs are currently in scope. "
                        << "This may lead to required objects being garbage collected.";
