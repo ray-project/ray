@@ -7,13 +7,13 @@ from __future__ import print_function
 
 from tensorflow.python.keras.models import Sequential, Model, load_model
 from tensorflow.python.keras.layers.embeddings import Embedding
-from tensorflow.python.keras.layers import Input, Activation, Dense, Permute, Dropout
+from tensorflow.python.keras.layers import (Input, Activation, Dense, Permute,
+                                            Dropout)
 from tensorflow.python.keras.layers import add, dot, concatenate
 from tensorflow.python.keras.layers import LSTM
 from tensorflow.python.keras.optimizers import RMSprop
 from tensorflow.python.keras.utils.data_utils import get_file
 from tensorflow.python.keras.preprocessing.sequence import pad_sequences
-from functools import reduce
 from ray.tune import Trainable
 import argparse
 import tarfile
@@ -70,8 +70,11 @@ def get_stories(f, only_supporting=False, max_length=None):
     If max_length is supplied,
     any stories longer than max_length tokens will be discarded.
     """
+
+    def flatten(data):
+        return sum(data, [])
+
     data = parse_stories(f.readlines(), only_supporting=only_supporting)
-    flatten = lambda data: reduce(lambda x, y: x + y, data)
     data = [(flatten(story), q, answer) for story, q, answer in data
             if not max_length or len(flatten(story)) < max_length]
     return data
@@ -86,6 +89,7 @@ def vectorize_stories(word_idx, story_maxlen, query_maxlen, data):
     return (pad_sequences(inputs, maxlen=story_maxlen),
             pad_sequences(queries, maxlen=query_maxlen), np.array(answers))
 
+
 def read_data():
     # Get the file
     try:
@@ -93,12 +97,12 @@ def read_data():
             "babi-tasks-v1-2.tar.gz",
             origin="https://s3.amazonaws.com/text-datasets/"
             "babi_tasks_1-20_v1-2.tar.gz")
-    except:
+    except Exception:
         print(
             "Error downloading dataset, please download it manually:\n"
-            "$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2"
+            "$ wget http://www.thespermwhale.com/jaseweston/babi/tasks_1-20_v1-2"  # noqa: E501
             ".tar.gz\n"
-            "$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz"
+            "$ mv tasks_1-20_v1-2.tar.gz ~/.keras/datasets/babi-tasks-v1-2.tar.gz"  # noqa: E501
         )
         raise
 
@@ -115,12 +119,11 @@ def read_data():
     challenge = challenges[challenge_type]
 
     with tarfile.open(path) as tar:
-        train_stories = get_stories(
-            tar.extractfile(challenge.format("train")))
-        test_stories = get_stories(
-            tar.extractfile(challenge.format("test")))
+        train_stories = get_stories(tar.extractfile(challenge.format("train")))
+        test_stories = get_stories(tar.extractfile(challenge.format("test")))
 
     return train_stories, test_stories
+
 
 class MemNNModel(Trainable):
     def build_model(self):
@@ -140,10 +143,12 @@ class MemNNModel(Trainable):
                 (x for _, x, _ in self.train_stories + self.test_stories)))
 
         word_idx = dict((c, i + 1) for i, c in enumerate(vocab))
-        self.inputs_train, self.queries_train, self.answers_train = vectorize_stories(
-            word_idx, story_maxlen, query_maxlen, self.train_stories)
-        self.inputs_test, self.queries_test, self.answers_test = vectorize_stories(
-            word_idx, story_maxlen, query_maxlen, self.test_stories)
+        self.inputs_train, self.queries_train, self.answers_train = (
+            vectorize_stories(word_idx, story_maxlen, query_maxlen,
+                              self.train_stories))
+        self.inputs_test, self.queries_test, self.answers_test = (
+            vectorize_stories(word_idx, story_maxlen, query_maxlen,
+                              self.test_stories))
 
         # placeholders
         input_sequence = Input((story_maxlen, ))
@@ -193,7 +198,7 @@ class MemNNModel(Trainable):
         # concatenate the match matrix with the question vector sequence
         answer = concatenate([response, question_encoded])
 
-        # the original paper uses a matrix multiplication for this reduction step.
+        # the original paper uses a matrix multiplication.
         # we choose to use a RNN instead.
         answer = LSTM(32)(answer)  # (samples, 32)
 
@@ -210,7 +215,8 @@ class MemNNModel(Trainable):
     def _setup(self, config):
         self.train_stories, self.test_stories = read_data()
         model = self.build_model()
-        rmsprop = RMSprop(lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9))
+        rmsprop = RMSprop(
+            lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9))
         model.compile(
             optimizer=rmsprop,
             loss="sparse_categorical_crossentropy",
@@ -224,7 +230,8 @@ class MemNNModel(Trainable):
             self.answers_train,
             batch_size=self.config.get("batch_size", 32),
             epochs=self.config.get("epochs", 1),
-            validation_data=([self.inputs_test, self.queries_test], self.answers_test),
+            validation_data=([self.inputs_test, self.queries_test],
+                             self.answers_test),
             verbose=0)
         _, accuracy = self.model.evaluate(
             [self.inputs_train, self.queries_train],
@@ -265,7 +272,8 @@ if __name__ == "__main__":
             "rho": lambda: np.random.uniform(0, 1)
         })
 
-    results = run(MemNNModel,
+    results = run(
+        MemNNModel,
         name="pbt_babi_memnn",
         scheduler=pbt,
         stop={"training_iteration": 20 if args.smoke_test else 100},
