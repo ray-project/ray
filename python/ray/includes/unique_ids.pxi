@@ -148,7 +148,7 @@ cdef class ObjectID(BaseID):
 
     def __dealloc__(self):
         worker = ray.worker.global_worker
-        if self.in_core_worker:
+        if self.in_core_worker and hasattr(worker, "core_worker"):
             worker.core_worker.remove_active_object_id(self)
 
     cdef CObjectID native(self):
