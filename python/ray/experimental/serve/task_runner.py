@@ -21,9 +21,10 @@ def wrap_to_ray_error(callable_obj, *args):
     """Utility method that catch and seal exceptions in execution"""
     try:
         return callable_obj(*args)
-    except Exception:
+    except Exception as e:
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(str(callable_obj), traceback_str)
+        return ray.exceptions.RayTaskError(
+            str(callable_obj), traceback_str, e.__class__)
 
 
 class RayServeMixin:

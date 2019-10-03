@@ -12,8 +12,8 @@ void TaskSpecification::ComputeResources() {
   if (required_placement_resources.empty()) {
     required_placement_resources = required_resources;
   }
-  required_resources_ = ResourceSet(required_resources);
-  required_placement_resources_ = ResourceSet(required_placement_resources);
+  required_resources_.reset(new ResourceSet(required_resources));
+  required_placement_resources_.reset(new ResourceSet(required_placement_resources));
 }
 
 // Task specification getter methods.
@@ -69,12 +69,12 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
-const ResourceSet TaskSpecification::GetRequiredResources() const {
-  return required_resources_;
+const ResourceSet &TaskSpecification::GetRequiredResources() const {
+  return *required_resources_;
 }
 
-const ResourceSet TaskSpecification::GetRequiredPlacementResources() const {
-  return required_placement_resources_;
+const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
+  return *required_placement_resources_;
 }
 
 bool TaskSpecification::IsDriverTask() const {

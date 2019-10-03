@@ -347,6 +347,12 @@ void NodeManager::Heartbeat() {
   });
 }
 
+// TODO(edoakes): this function is problematic because it both sends warnings spuriously
+// under normal conditions and sometimes doesn't send a warning under actual deadlock
+// conditions. The current logic is to push a warning when: all running tasks are
+// blocked, there is at least one ready task, and a warning hasn't been pushed in
+// debug_dump_period_ milliseconds.
+// See https://github.com/ray-project/ray/issues/5790 for details.
 void NodeManager::WarnResourceDeadlock() {
   // Check if any progress is being made on this raylet.
   for (const auto &task : local_queues_.GetTasks(TaskState::RUNNING)) {

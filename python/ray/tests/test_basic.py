@@ -6,6 +6,7 @@ from __future__ import print_function
 import collections
 from concurrent.futures import ThreadPoolExecutor
 import glob
+import io
 import json
 import logging
 from multiprocessing import Process
@@ -31,6 +32,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
+
+from ray.tests.utils import RayTestTimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +306,13 @@ def test_complex_serialization(ray_start_regular):
     for obj in RAY_TEST_OBJECTS:
         assert_equal(obj, ray.get(f.remote(obj)))
         assert_equal(obj, ray.get(ray.put(obj)))
+
+    # Test StringIO serialization
+    s = io.StringIO(u"Hello, world!\n")
+    s.seek(0)
+    line = s.readline()
+    s.seek(0)
+    assert ray.get(ray.put(s)).readline() == line
 
 
 def test_nested_functions(ray_start_regular):
@@ -1226,10 +1236,8 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile(
-                "custom_event",
-                extra_data={"name": "custom name"}) as ray_prof:
-            ray_prof.set_attribute("key", "value")
+        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+            pass
 
     ray.put(1)
     object_id = f.remote()
@@ -1241,9 +1249,6 @@ def test_profiling_api(ray_start_2_cpus):
     timeout_seconds = 20
     start_time = time.time()
     while True:
-        if time.time() - start_time > timeout_seconds:
-            raise Exception("Timed out while waiting for information in "
-                            "profile table.")
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
@@ -1265,6 +1270,15 @@ def test_profiling_api(ray_start_2_cpus):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
+
+        if time.time() - start_time > timeout_seconds:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for information in "
+                "profile table. Missing events: {}.".format(
+                    set(expected_types) - set(event_types)))
+
+        # The profiling information only flushes once every second.
+        time.sleep(1.1)
 
 
 def test_wait_cluster(ray_start_cluster):
@@ -1944,8 +1958,9 @@ def test_gpu_ids(shutdown_only):
         if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
             break
         if time.time() > start_time + 10:
-            raise Exception("Timed out while waiting for workers to start "
-                            "up.")
+            raise RayTestTimeoutException(
+                "Timed out while waiting for workers to start "
+                "up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -2542,7 +2557,7 @@ def wait_for_num_tasks(num_tasks, timeout=10):
         if len(ray.tasks()) >= num_tasks:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def wait_for_num_objects(num_objects, timeout=10):
@@ -2551,7 +2566,7 @@ def wait_for_num_objects(num_objects, timeout=10):
         if len(ray.objects()) >= num_objects:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 @pytest.mark.skipif(
@@ -2644,8 +2659,9 @@ def test_global_state_api(shutdown_only):
             if tables_ready:
                 return
             time.sleep(0.1)
-        raise Exception("Timed out while waiting for object table to "
-                        "update.")
+        raise RayTestTimeoutException(
+            "Timed out while waiting for object table to "
+            "update.")
 
     object_table = ray.objects()
     assert len(object_table) == 2

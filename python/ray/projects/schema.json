@@ -76,6 +76,20 @@
                 }
               }
             }
+          },
+          "config": {
+            "type": "object",
+            "items": {
+              "description": "Configuration options for the command",
+              "type": "object",
+              "properties": {
+                "tmux": {
+                  "description": "If true, the command will be run inside of tmux",
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
           }
         }
       }

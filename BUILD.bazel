@@ -98,6 +98,16 @@ cc_proto_library(
     deps = ["direct_actor_proto"],
 )
 
+proto_library(
+    name = "serialization_proto",
+    srcs = ["src/ray/protobuf/serialization.proto"],
+)
+
+cc_proto_library(
+    name = "serialization_cc_proto",
+    deps = ["serialization_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -735,6 +745,7 @@ pyx_library(
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
+        "//:serialization_cc_proto",
     ],
 )
 
@@ -796,13 +807,13 @@ filegroup(
         "python/ray/core/generated/ray/__init__.py",
         "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/dashboard.py",
-        "python/ray/dashboard/index.html",
-        "python/ray/dashboard/res/main.css",
-        "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
         "python/ray/projects/*.py",
         "python/ray/projects/schema.json",
+        "python/ray/projects/templates/cluster_template.yaml",
+        "python/ray/projects/templates/project_template.yaml",
+        "python/ray/projects/templates/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )

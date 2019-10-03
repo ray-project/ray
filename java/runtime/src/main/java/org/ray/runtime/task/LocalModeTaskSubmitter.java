@@ -210,6 +210,10 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     }
   }
 
+  public void shutdown() {
+    exec.shutdown();
+  }
+
   public static ActorId getActorId(TaskSpec taskSpec) {
     ByteString actorId = null;
     if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
