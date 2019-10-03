@@ -5,12 +5,12 @@ RLlib is an open-source library for reinforcement learning that offers both high
 
 .. image:: rllib-stack.svg
 
-To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-training.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
+To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
 
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. See also the full `table of contents <rllib-toc.html>`__ for a more in-depth guide including the `list of built-in algorithms <rllib-toc.html#algorithms>`__.
+The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__.
 
 Running RLlib
 ~~~~~~~~~~~~~
@@ -25,7 +25,7 @@ Then, you can try out training in the following equivalent ways:
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0  # add --eager for eager execution
+  rllib train --run=PPO --env=CartPole-v0  # --eager [--trace] for eager execution
 
 .. code-block:: python
 

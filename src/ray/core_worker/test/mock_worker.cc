@@ -24,6 +24,7 @@ class MockWorker {
              const gcs::GcsClientOptions &gcs_options)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
                 JobID::FromInt(1), gcs_options, /*log_dir=*/"",
+                /*node_id_address=*/"127.0.0.1",
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {
