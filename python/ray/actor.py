@@ -579,7 +579,7 @@ class ActorHandle(object):
         if worker.mode == ray.LOCAL_MODE:
             function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
-                function, function_descriptor, [args, kwargs], num_return_vals)
+                function, function_descriptor, args, kwargs, num_return_vals)
         else:
             with self._ray_actor_lock:
                 object_ids = worker.submit_task(

@@ -142,7 +142,7 @@ class RemoteFunction(object):
             #                                  kwargs)
             if worker.mode == ray.worker.LOCAL_MODE:
                 object_ids = worker.local_mode_manager.execute(
-                    self._function, self._function_descriptor, [args, kwargs],
+                    self._function, self._function_descriptor, args, kwargs,
                     num_return_vals)
             else:
                 object_ids = worker.submit_task(

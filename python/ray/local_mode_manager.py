@@ -29,7 +29,7 @@ class LocalModeManager(object):
     def __init__(self):
         """Initialize a LocalModeManager."""
 
-    def execute(self, function, function_descriptor, args, num_return_vals):
+    def execute(self, function, function_descriptor, args, kwargs, num_return_vals):
         """Synchronously executes a "remote" function or actor method.
 
         Stores results directly in the generated and returned
@@ -42,6 +42,7 @@ class LocalModeManager(object):
             function_descriptor: Metadata about the function.
             args: Arguments to the function. These will not be modified by
                 the function execution.
+            kwargs: Keyword arguments to the function.
             num_return_vals: Number of expected return values specified in the
                 function's decorator.
 
@@ -52,7 +53,7 @@ class LocalModeManager(object):
             LocalModeObjectID.from_random() for _ in range(num_return_vals)
         ]
         try:
-            results = function(*copy.deepcopy(args))
+            results = function(*copy.deepcopy(args), **copy.deepcopy(kwargs))
             if num_return_vals == 1:
                 object_ids[0].value = results
             else:
