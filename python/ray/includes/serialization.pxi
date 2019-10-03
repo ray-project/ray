@@ -12,7 +12,7 @@ DEF kMemcopyDefaultThreshold = 1024 * 1024
 
 cdef extern from "arrow/util/memory.h" namespace "arrow::internal" nogil:
     void parallel_memcopy(uint8_t* dst, const uint8_t* src, int64_t nbytes,
-                          uintptr_t block_size, int num_threads);
+                          uintptr_t block_size, int num_threads)
 
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:

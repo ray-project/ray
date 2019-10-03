@@ -435,8 +435,7 @@ class Worker(object):
             else:
                 writer = Pickle5Writer()
                 inband = pickle.dumps(
-                    value, protocol=5,
-                    buffer_callback=writer.buffer_callback)
+                    value, protocol=5, buffer_callback=writer.buffer_callback)
                 self.core_worker.put_pickle5_buffers(object_id, inband, writer,
                                                      self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
