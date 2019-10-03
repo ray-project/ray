@@ -589,7 +589,7 @@ class ActorHandle(object):
 
         if worker.mode == ray.LOCAL_MODE:
             # Increment task_index, otherwise done via the worker.submit_task
-            # call in non local mode.
+            # call in non-local mode.
             worker.task_context.task_index += 1
             function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
