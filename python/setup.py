@@ -42,6 +42,8 @@ ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
+    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
 ]
 
 ray_project_files = [

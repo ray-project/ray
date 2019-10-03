@@ -77,6 +77,12 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
+            "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
+
+            # k8s autoscaler permissions, if using k8s
+            "autoscaler_service_account": (dict, OPTIONAL),
+            "autoscaler_role": (dict, OPTIONAL),
+            "autoscaler_role_binding": (dict, OPTIONAL),
             "extra_config": (dict, OPTIONAL),  # provider-specific config
 
             # Whether to try to reuse previously stopped nodes instead of
@@ -89,10 +95,10 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": (
         {
-            "ssh_user": (str, REQUIRED),  # e.g. ubuntu
+            "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
             "ssh_private_key": (str, OPTIONAL),
         },
-        REQUIRED),
+        OPTIONAL),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
@@ -812,6 +818,7 @@ def fillout_defaults(config):
     defaults.update(config)
     merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
+    defaults["auth"] = defaults.get("auth", {})
     return defaults
 
 
