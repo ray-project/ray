@@ -436,8 +436,8 @@ class Worker(object):
                 writer = Pickle5Writer()
                 meta = pickle.dumps(
                     value, protocol=5, buffer_callback=writer.buffer_callback)
-                self.core_worker.put_pickle5_buffers(
-                    object_id, meta, writer, self.memcopy_threads)
+                self.core_worker.put_pickle5_buffers(object_id, meta, writer,
+                                                     self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare hashes
