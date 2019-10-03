@@ -310,7 +310,16 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Task execution " << task_id << " pending";
+  if (task.IsVectorTask()) {
+    for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+      TaskPending0(task_spec.TaskId());
+    }
+  } else {
+    TaskPending0(task_id);
+  }
+}
 
+void TaskDependencyManager::TaskPending0(const TaskID &task_id) {
   // Record that the task is pending execution.
   auto inserted =
       pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
@@ -374,14 +383,24 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                                      RayConfig::instance().max_task_lease_timeout_ms());
 }
 
-void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
+void TaskDependencyManager::TaskCanceled(const Task &task) {
+  if (task.IsVectorTask()) {
+    for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+      TaskCanceled0(task_spec.TaskId());
+    }
+  } else {
+    TaskCanceled0(task.GetTaskSpecification().TaskId());
+  }
+}
+
+void TaskDependencyManager::TaskCanceled0(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Task execution " << task_id << " canceled";
   // Record that the task is no longer pending execution.
   auto it = pending_tasks_.find(task_id);
   if (it == pending_tasks_.end()) {
     return;
   }
-  pending_tasks_.erase(it);
+  pending_tasks_.erase(it);  // TODO(ekl) handle vector tasks
 
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
@@ -410,7 +429,7 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
     // The task no longer depends on anything.
     task_dependencies_.erase(*it);
     // The task is no longer pending execution.
-    pending_tasks_.erase(*it);
+    pending_tasks_.erase(*it);  // TODO(ekl) handle vector tasks
   }
 
   // Cancel all of the objects that were required by the removed tasks.

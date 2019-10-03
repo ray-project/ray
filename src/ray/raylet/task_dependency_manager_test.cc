@@ -261,7 +261,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
       ASSERT_EQ(ready_tasks.front(), tasks.front().GetTaskSpecification().TaskId());
     }
     // Simulate the task finishing execution.
-    task_dependency_manager_.TaskCanceled(task_id);
+    task_dependency_manager_.TaskCanceled(task);
   }
 }
 
@@ -312,7 +312,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   // cancel the forwarded task, since the second task depends on it.
   EXPECT_CALL(object_manager_mock_, Pull(return_id));
   EXPECT_CALL(reconstruction_policy_mock_, ListenAndMaybeReconstruct(return_id));
-  task_dependency_manager_.TaskCanceled(task_id);
+  task_dependency_manager_.TaskCanceled(task);
 
   // Simulate the task executing on a remote node and its return value
   // appearing locally.
@@ -451,7 +451,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   // The second task should be ready to run.
   ASSERT_EQ(ready_tasks.size(), 1);
   // Simulate the task finishing execution.
-  task_dependency_manager_.TaskCanceled(task_id);
+  task_dependency_manager_.TaskCanceled(task);
 
   // Remove all tasks from the manager except the first task, which already
   // finished executing.

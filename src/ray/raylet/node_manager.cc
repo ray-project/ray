@@ -1529,7 +1529,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
-  task_dependency_manager_.TaskCanceled(spec.TaskId());
+  task_dependency_manager_.TaskCanceled(task);
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
   // here. However, we don't know at this point if the task was in the WAITING
@@ -1953,7 +1953,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  task_dependency_manager_.TaskCanceled(task_id);
+  task_dependency_manager_.TaskCanceled(task);
 
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::Nil());
@@ -2446,7 +2446,7 @@ void NodeManager::ForwardTask(
 
       // Notify the task dependency manager that we are no longer responsible
       // for executing this task.
-      task_dependency_manager_.TaskCanceled(task_id);
+      task_dependency_manager_.TaskCanceled(task);
       // Preemptively push any local arguments to the receiving node. For now, we
       // only do this with actor tasks, since actor tasks must be executed by a
       // specific process and therefore have affinity to the receiving node.

@@ -105,7 +105,7 @@ class TaskDependencyManager {
   /// objects will be requested.
   ///
   /// \param task_id The ID of the task to cancel.
-  void TaskCanceled(const TaskID &task_id);
+  void TaskCanceled(const Task &task);
 
   /// Handle an object becoming locally available. If there are any subscribed
   /// tasks that depend on this object, then the object will be canceled.
@@ -151,6 +151,9 @@ class TaskDependencyManager {
   void RecordMetrics() const;
 
  private:
+  void TaskPending0(const TaskID &task_id);
+  void TaskCanceled0(const TaskID &task_id);
+
   struct ObjectDependencies {
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
