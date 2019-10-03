@@ -138,8 +138,6 @@ class RemoteFunction(object):
             ray.signature.validate_args(self._function, args, kwargs)
             list_args = ray.signature.flatten_args(args, kwargs)
 
-            # args = ray.signature.extend_args(self._function_signature, args,
-            #                                  kwargs)
             if worker.mode == ray.worker.LOCAL_MODE:
                 object_ids = worker.local_mode_manager.execute(
                     self._function, self._function_descriptor, args, kwargs,
