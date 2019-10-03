@@ -747,6 +747,8 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True)
 def test_star_kwargs(ray_start_regular):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
@@ -756,6 +758,9 @@ def test_star_kwargs(ray_start_regular):
     with pytest.raises(TypeError):
         remote_fn.remote(3)
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True)
+def test_named_and_star(ray_start_regular):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
@@ -770,6 +775,10 @@ def test_star_kwargs(ray_start_regular):
     with pytest.raises(TypeError):
         remote_fn.remote(1, 2, x=3)
 
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True)
+def test_args_intertwined(ray_start_regular):
     def args_intertwined(a, *args, x="hello", **kwargs):
         return a, args, x, kwargs
 
@@ -782,45 +791,34 @@ def test_star_kwargs(ray_start_regular):
     assert args_intertwined(
         1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
 
+    with pytest.raises(TypeError):
+        remote_fn.remote(1, 2, x=3)
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True)
+def test_star_args_after(ray_start_regular):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
     remote_fn = ray.remote(star_args_after)
-    assert ray.get(remote_fn.remote("hi", "hello", 2, 3, 4, 5))
+    assert star_args_after("hi", "hello", 2) == ray.get(remote_fn.remote("hi", "hello", 2))
+    assert star_args_after("hi", "hello", 2, hi="hi") == ray.get(remote_fn.remote("hi", "hello", 2, hi="hi"))
+    assert star_args_after(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
 
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"local_mode": True}, {"local_mode": False}], indirect=True)
+def test_force_positional(ray_start_regular):
     def force_positional(*, a="hello", b="helxo", **kwargs):
         return a, b, kwargs
 
     remote_fn = ray.remote(force_positional)
     assert force_positional(
         a=1, b=3, c=5) == ray.get(remote_fn.remote(a=1, b=3, c=5))
-
-    def last_args(a, b, c, d=4, e=5, f=6, *args):
-        return a, b, c, d, e, f, args
-
-    remote_fn = ray.remote(last_args)
-    assert last_args(1, 2, 3, 4, 5, 6, 7) == ray.get(
-        remote_fn.remote(1, 2, 3, 4, 5, 6, 7))
-
-    def middle_args(a, b, c, *args, d=4, e=5, f=6):
-        return a, b, c, d, e, f, args
-
-    remote_fn = ray.remote(middle_args)
-    assert middle_args(1, 2, 3, 4, 5, 6, 7) == ray.get(
-        remote_fn.remote(1, 2, 3, 4, 5, 6, 7))
-    assert middle_args(
-        1, 2, 3, 4, 5, d=6, f=7) == ray.get(
-            remote_fn.remote(1, 2, 3, 4, 5, d=6, f=7))
-
-    def front_args(*args, x="helxo", y="hello"):
-        return args, x, y
-
-    remote_fn = ray.remote(front_args)
-    assert front_args(
-        1, 2, 3, 4, 5, x=6, y=7) == ray.get(
-            remote_fn.remote(1, 2, 3, 4, 5, x=6, y=7))
-    assert front_args(
-        1, 2, 3, 4, y=7) == ray.get(remote_fn.remote(1, 2, 3, 4, y=7))
+    assert force_positional(
+        a=1) == ray.get(remote_fn.remote(a=1))
+    assert force_positional(
+        a=1) == ray.get(remote_fn.remote(a=1))
 
 
 def test_variable_number_of_args(shutdown_only):
@@ -831,25 +829,12 @@ def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
-
-    try:
-
-        @ray.remote
-        def kwargs_throw_exception(**c):
-            return ()
-
-        kwargs_exception_thrown = False
-    except Exception:
-        kwargs_exception_thrown = True
-
     ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
     x = varargs_fct2.remote(0, 1, 2)
     assert ray.get(x) == "1 2"
-
-    assert kwargs_exception_thrown
 
     @ray.remote
     def f1(*args):
