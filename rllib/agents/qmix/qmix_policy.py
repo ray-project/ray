@@ -412,6 +412,7 @@ class QMixTorchPolicy(Policy):
     def get_state(self):
         state = self.get_weights()
         state["cur_epsilon"] = self.cur_epsilon
+        return state
 
     @override(Policy)
     def set_state(self, state):
