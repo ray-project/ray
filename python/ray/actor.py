@@ -575,7 +575,7 @@ class ActorHandle(object):
 
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
-
+        import ipdb; ipdb.set_trace()
         if worker.mode == ray.LOCAL_MODE:
             function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
