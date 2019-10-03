@@ -1001,6 +1001,7 @@ void NodeManager::HandleWorkerAvailable(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
   DispatchTasks(local_queues_.GetReadyTasksWithResources());
+  RebalanceVectorTasksAmongWorkers();
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -2525,6 +2526,39 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::READY);
     DispatchTasks(MakeTasksWithResources({assigned_task}));
+  }
+  RebalanceVectorTasksAmongWorkers();
+}
+
+void NodeManager::RebalanceVectorTasksAmongWorkers() {
+  // Only enabled in single node mode.
+  if (!initial_config_.single_node) return;
+  // Steal tasks IPC in progress.
+  if (stealing_) return;
+  // No need to rebalance if there is a queue of tasks still.
+  if (!local_queues_.GetTasks(TaskState::READY).empty()) return;
+
+  // Try to find a running vector task and redistributed its load.
+  auto victim = worker_pool_.FindWorker([](std::shared_ptr<Worker> worker) {
+    return worker->HasAssignedTask() && worker->GetAssignedTask().IsVectorTask();
+  });
+  if (victim != nullptr) {
+    auto task = victim->GetAssignedTask();
+    stealing_ = true;
+    victim->StealTasks([this, task](std::vector<TaskID> stolen_task_ids) {
+      stealing_ = false;
+      RAY_LOG(INFO) << "Rebalancing " << stolen_task_ids.size()
+                    << " tasks from worker running vector of "
+                    << task.GetTaskSpecificationVector().size() << " tasks.";
+      if (stolen_task_ids.empty()) {
+        RebalanceVectorTasksAmongWorkers();
+      } else {
+        // TODO(ekl) can we avoid mutating the task object?
+        for (const auto &task_spec : task.RemoveTaskSpecsFromVector(stolen_task_ids)) {
+          SubmitTask(Task(task_spec, task.GetTaskExecutionSpec()), Lineage());
+        }
+      }
+    });
   }
 }
 

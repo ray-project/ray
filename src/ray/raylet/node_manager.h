@@ -496,6 +496,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
 
+  /// Break up assigned vector tasks if there are free workers that could take
+  /// on the work.
+  void RebalanceVectorTasksAmongWorkers();
+
   // GCS client ID for this node.
   ClientID client_id_;
   boost::asio::io_service &io_service_;
@@ -516,6 +520,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   int64_t debug_dump_period_;
   /// Whether we have printed out a resource deadlock warning.
   bool resource_deadlock_warned_ = false;
+  /// Whether we are currently stealing tasks from a worker.
+  bool stealing_ = false;
   /// The path to the ray temp dir.
   std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and

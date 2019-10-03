@@ -38,6 +38,8 @@ class Worker {
   int Port() const;
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
+  bool HasAssignedTask() const;
+  Task &GetAssignedTask() const;
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
@@ -61,6 +63,13 @@ class Worker {
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                   const std::function<void(Status)> finish_assign_callback);
 
+  /// Try to steal tasks from this worker (if it is running a vector task).
+  /// Stolen tasks are atomically removed from the worker's queue, and it is
+  /// the responsibility of the caller to properly resubmit them.
+  ///
+  /// \return list of zero or more task ids stolen from this worker.
+  void StealTasks(const std::function<void(std::vector<TaskID>)> finish_steal_callback);
+
  private:
   /// The worker's ID.
   WorkerID worker_id_;
@@ -74,6 +83,8 @@ class Worker {
   /// Connection state of a worker.
   std::shared_ptr<LocalClientConnection> connection_;
   /// The worker's currently assigned task.
+  Task assigned_task_;
+  /// The worker's currently assigned task id.
   TaskID assigned_task_id_;
   /// Job ID for the worker's current assigned task.
   JobID assigned_job_id_;

@@ -49,6 +49,10 @@ void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; 
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
+bool Worker::HasAssignedTask() const { return !assigned_task_id_.IsNil(); }
+
+Task &Worker::GetAssignedTask() const { return assigned_task_; }
+
 bool Worker::AddBlockedTaskId(const TaskID &task_id) {
   auto inserted = blocked_task_ids_.insert(task_id);
   return inserted.second;
@@ -118,6 +122,7 @@ bool Worker::UsePush() const { return rpc_client_ != nullptr; }
 void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
   const TaskSpecification &spec = task.GetTaskSpecification();
+  assigned_task_ = task;
   if (rpc_client_ != nullptr) {
     // Use push mode.
     RAY_CHECK(port_ > 0);
@@ -170,6 +175,26 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     Connection()->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
         fbb.GetBufferPointer(), finish_assign_callback);
+  }
+}
+
+void Worker::StealTasks(
+    const std::function<void(std::vector<TaskID>)> finish_steal_callback) {
+  RAY_CHECK(rpc_client_ != nullptr);
+  rpc::StealTasksRequest request;
+  auto status = rpc_client_->StealTasks(
+      request, [finish_steal_callback](Status status, const rpc::StealTasksReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to steal tasks from worker.";
+        }
+        std::vector<TaskID> task_ids;
+        for (int i=0; i < reply.task_ids_size(); i++) {
+          task_ids.push_back(TaskID::FromBinary(reply.task_ids(i)));
+        }
+        finish_steal_callback(task_ids);
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to steal tasks from worker " << worker_id_;
   }
 }
 
