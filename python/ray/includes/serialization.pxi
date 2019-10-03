@@ -16,7 +16,6 @@ DEF kMemcopyDefaultThreshold = 1024 * 1024
 cdef extern from "google/protobuf/repeated_field.h" nogil:
     cdef cppclass RepeatedField[Element]:
         const Element* data() const
-        Element *mutable_data()
 
 cdef extern from "ray/protobuf/serialization.pb.h" nogil:
     cdef cppclass CPythonBuffer "ray::serialization::PythonBuffer":
@@ -216,12 +215,12 @@ def unpack_pickle5_buffers(Buffer buf):
         buffer.readonly = buffer_meta.readonly()
         buffer.ndim = buffer_meta.ndim()
         buffer._format = buffer_meta.format()
-        buffer._shape = c_vector[Py_ssize_t](buffer_meta.shape().begin(), buffer_meta.shape().end())
-        buffer._strides = c_vector[Py_ssize_t](buffer_meta.strides().begin(), buffer_meta.strides().end())
-        # if buffer_meta.shape_size() > 0:
-        #     buffer.copy_shape(<Py_ssize_t *>buffer_meta.shape().data())
-        # if buffer_meta.strides_size() > 0:
-        #     buffer.copy_strides(<Py_ssize_t *>buffer_meta.strides().data())
+        buffer._shape.assign(
+          buffer_meta.shape().data(),
+          buffer_meta.shape().data() + buffer_meta.ndim())
+        buffer._strides.assign(
+          buffer_meta.strides().data(),
+          buffer_meta.strides().data() + buffer_meta.ndim())
         buffer.internal = NULL
         buffer.suboffsets = NULL
         pickled_buffers.append(buffer)
