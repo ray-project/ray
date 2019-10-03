@@ -1144,7 +1144,8 @@ std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) 
     } else {
       // TODO(ekl) check the dependencies as well
       if (taskSpecBatch.size() >= kMaxTaskBatchSize ||
-          taskSpecBatch[0].GetRequiredResources() != task_spec.GetRequiredResources()) {
+          !taskSpecBatch[0].GetRequiredResources().IsEqual(
+              task_spec.GetRequiredResources())) {
         tasks.push_back(
             Task(TaskExecutionSpecification(task_message.task_execution_spec()),
                  taskSpecBatch));
