@@ -55,6 +55,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     std::lock_guard<std::mutex> lock(mutex_);
     assigned_req_ = request;
     assigned_tasks_ = assigned;
+    num_assigned_ = assigned.size();
   }
 
   // Let the main thread handle the actual task execution, so that we don't block
@@ -160,9 +161,12 @@ void CoreWorkerRayletTaskReceiver::HandleStealTasks(
     const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::unique_lock<std::mutex> lock(mutex_);
-  while (!assigned_tasks_.empty()) {
+  int num_stolen = 0;
+  // Avoid stealing all the tasks (steal up to N-1).
+  while (!assigned_tasks_.empty() && num_stolen < num_assigned_ - 1) {
     reply->add_task_ids(assigned_tasks_.back().TaskId().Binary());
     assigned_tasks_.pop_back();
+    num_stolen += 1;
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
