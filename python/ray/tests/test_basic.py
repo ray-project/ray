@@ -817,9 +817,9 @@ def test_args_named_and_star(ray_start_regular):
 
 @pytest.mark.parametrize(
     "ray_start_regular", [{
-        "local_mode": True
-    }, {
         "local_mode": False
+    }, {
+        "local_mode": True
     }],
     indirect=True)
 def test_args_intertwined(ray_start_regular):
