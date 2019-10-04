@@ -825,7 +825,8 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::TaskDone: {
     RAY_CHECK(registered_worker->UsePush());
-    HandleWorkerAvailable(client);
+    auto message = flatbuffers::GetRoot<protocol::TaskDone>(message_data);
+    HandleWorkerAvailable(client, message->num_tasks_completed());
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client);
@@ -985,12 +986,13 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 }
 
 void NodeManager::HandleWorkerAvailable(
-    const std::shared_ptr<LocalClientConnection> &client) {
+    const std::shared_ptr<LocalClientConnection> &client, int num_tasks_completed) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker);
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
-    FinishAssignedTask(*worker);
+    RAY_CHECK(num_tasks_completed > 0);
+    FinishAssignedTask(*worker, num_tasks_completed);
   }
 
   // Return the worker to the idle pool.
@@ -1530,7 +1532,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
-  task_dependency_manager_.TaskCanceled(task);
+  task_dependency_manager_.TaskCanceled(task, -1);
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
   // here. However, we don't know at this point if the task was in the WAITING
@@ -1925,7 +1927,7 @@ bool NodeManager::AssignTask(const Task &task) {
   return true;
 }
 
-void NodeManager::FinishAssignedTask(Worker &worker) {
+void NodeManager::FinishAssignedTask(Worker &worker, int num_tasks_completed) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -1954,7 +1956,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  task_dependency_manager_.TaskCanceled(task);
+  task_dependency_manager_.TaskCanceled(task, num_tasks_completed);
 
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::Nil());
@@ -2447,7 +2449,7 @@ void NodeManager::ForwardTask(
 
       // Notify the task dependency manager that we are no longer responsible
       // for executing this task.
-      task_dependency_manager_.TaskCanceled(task);
+      task_dependency_manager_.TaskCanceled(task, -1);
       // Preemptively push any local arguments to the receiving node. For now, we
       // only do this with actor tasks, since actor tasks must be executed by a
       // specific process and therefore have affinity to the receiving node.
@@ -2551,9 +2553,9 @@ void NodeManager::RebalanceVectorTasksAmongWorkers() {
         // Retry, we may have gotten unlucky and the tasks finished already.
         RebalanceVectorTasksAmongWorkers();
       } else {
-        RAY_LOG(ERROR) << "Rebalancing " << stolen_task_ids.size()
-                       << " tasks from worker running vector of "
-                       << task.GetTaskSpecificationVector().size() << " tasks.";
+        RAY_LOG(INFO) << "Rebalancing " << stolen_task_ids.size()
+                      << " tasks from worker running vector of "
+                      << task.GetTaskSpecificationVector().size() << " tasks.";
         // TODO(ekl) can we avoid mutating the task object?
         for (auto &task_spec : task.RemoveTaskSpecsFromVector(stolen_task_ids)) {
           SubmitTask(Task(task_spec, task.GetTaskExecutionSpec()), Lineage());

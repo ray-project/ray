@@ -101,6 +101,12 @@ table SubmitTaskRequest {
 table SubmitTaskReply {
 }
 
+table TaskDone {
+  // The number of tasks completed, which may be less than the number of
+  // assigned tasks in the batch if some tasks were stolen.
+  num_tasks_completed: int;
+}
+
 // This message describes a given resource that is reserved for a worker.
 table ResourceIdSetInfo {
   // The name of the resource.

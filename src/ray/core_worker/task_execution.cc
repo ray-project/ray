@@ -8,8 +8,7 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface,
-    boost::asio::io_service &io_service,
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     const std::shared_ptr<worker::Profiler> profiler,
     const NormalTaskCallback &normal_task_callback,
     const ActorTaskCallback &actor_task_callback)

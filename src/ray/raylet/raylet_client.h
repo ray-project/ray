@@ -101,7 +101,7 @@ class RayletClient {
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
-  ray::Status TaskDone();
+  ray::Status TaskDone(int num_tasks_completed);
 
   /// Tell the raylet to reconstruct or fetch objects.
   ///

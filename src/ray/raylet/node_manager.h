@@ -216,8 +216,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
+  /// \param num_tasks_completed The number of tasks in the batch that were
+  ///                            executed (not stolen).
   /// \return Void.
-  void FinishAssignedTask(Worker &worker);
+  void FinishAssignedTask(Worker &worker, int num_tasks_completed);
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the
@@ -398,8 +400,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle the case that a worker is available.
   ///
   /// \param client The connection for the worker.
+  /// \param num_tasks_completed If the worker is done executing a task, the number of
+  ///                            tasks in the batch that were completed (not stolen).
   /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client,
+                             int num_tasks_completed = -1);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client

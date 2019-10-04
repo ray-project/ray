@@ -105,7 +105,9 @@ class TaskDependencyManager {
   /// objects will be requested.
   ///
   /// \param task_id The ID of the task to cancel.
-  void TaskCanceled(const Task &task);
+  /// \param num_tasks_completed The number of tasks in the batch completed, or
+  ///                            -1 for all tasks.
+  void TaskCanceled(const Task &task, int num_tasks_completed);
 
   /// Handle an object becoming locally available. If there are any subscribed
   /// tasks that depend on this object, then the object will be canceled.

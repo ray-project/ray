@@ -383,10 +383,16 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                                      RayConfig::instance().max_task_lease_timeout_ms());
 }
 
-void TaskDependencyManager::TaskCanceled(const Task &task) {
+void TaskDependencyManager::TaskCanceled(const Task &task, int num_tasks_completed) {
+  RAY_CHECK(num_tasks_completed != 0);
   if (task.IsVectorTask()) {
+    int i = 0;
     for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+      if (num_tasks_completed > 0 && i >= num_tasks_completed) {
+        break;
+      }
       TaskCanceled0(task_spec.TaskId());
+      i += 1;
     }
   } else {
     TaskCanceled0(task.GetTaskSpecification().TaskId());

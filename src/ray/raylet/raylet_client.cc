@@ -276,8 +276,11 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   return ray::Status::OK();
 }
 
-ray::Status RayletClient::TaskDone() {
-  return conn_->WriteMessage(MessageType::TaskDone);
+ray::Status RayletClient::TaskDone(int num_tasks_completed) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateTaskDone(fbb, num_tasks_completed);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::TaskDone, &fbb);
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,

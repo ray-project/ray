@@ -67,6 +67,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 void CoreWorkerRayletTaskReceiver::ProcessAssignedTasks(
     rpc::SendReplyCallback send_reply_callback) {
   // Process each assigned task in order.
+  int num_tasks_completed = 0;
   while (true) {
     std::unique_lock<std::mutex> lock(mutex_);
     if (assigned_tasks_.empty()) {
@@ -78,6 +79,7 @@ void CoreWorkerRayletTaskReceiver::ProcessAssignedTasks(
     // steal remaining tasks from us while we are processing this one.
     lock.unlock();
     HandleAssignTask0(assigned_req_, task_spec);
+    num_tasks_completed += 1;
   }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
@@ -91,7 +93,7 @@ void CoreWorkerRayletTaskReceiver::ProcessAssignedTasks(
   // rpc reply first before the NotifyUnblocked message arrives,
   // as they use different connections, the `TaskDone` message is sent
   // to raylet via the same connection so the order is guaranteed.
-  RAY_UNUSED(raylet_client_->TaskDone());
+  RAY_UNUSED(raylet_client_->TaskDone(num_tasks_completed));
   // Send rpc reply.
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
