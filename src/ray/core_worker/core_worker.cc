@@ -1,5 +1,7 @@
-#include "ray/core_worker/core_worker.h"
+#include <boost/asio/signal_set.hpp>
+
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 
 namespace ray {
 
@@ -8,7 +10,8 @@ CoreWorker::CoreWorker(
     const std::string &store_socket, const std::string &raylet_socket,
     const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
     const std::string &log_dir, const std::string &node_ip_address,
-    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+    const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
+    const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
     bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
@@ -26,14 +29,31 @@ CoreWorker::CoreWorker(
     RayLog::InstallFailureSignalHandler();
   }
 
+  boost::asio::signal_set sigint(io_service_, SIGINT);
+  sigint.async_wait(
+      [](const boost::system::error_code &error, int signal_number) -> void {
+        if (!error) {
+          RAY_LOG(WARNING) << "Got SIGINT " << signal_number << ", ignoring it.";
+        }
+      });
+
+  boost::asio::signal_set sigterm(io_service_, SIGTERM);
+  sigterm.async_wait(
+      [this](const boost::system::error_code &error, int signal_number) -> void {
+        if (!error) {
+          RAY_LOG(WARNING) << "Got SIGTERM " << signal_number << ", shutting down.";
+          io_service_.stop();
+        }
+      });
+
   // Initialize gcs client.
   gcs_client_ =
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   // Initialize profiler.
-  profiler_ =
-      std::make_shared<worker::Profiler>(worker_context_, node_ip_address, gcs_client_);
+  profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
+                                                 io_service_, gcs_client_);
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
@@ -44,11 +64,10 @@ CoreWorker::CoreWorker(
   // Initialize task execution.
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
-    RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
                                              *object_interface_, io_service_, profiler_,
-                                             execution_callback));
+                                             normal_task_callback, actor_task_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
 
@@ -108,5 +127,11 @@ void CoreWorker::Disconnect() {
 }
 
 void CoreWorker::StartIOService() { io_service_.run(); }
+
+std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
+    const std::string &event_type) {
+  return std::unique_ptr<worker::ProfileEvent>(
+      new worker::ProfileEvent(profiler_, event_type));
+}
 
 }  // namespace ray

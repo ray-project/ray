@@ -28,7 +28,7 @@ class CoreWorker {
   /// \param[in] gcs_options Options for the GCS client.
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
-  /// \param[in] node_ip_address IP address of the node..
+  /// \param[in] node_ip_address IP address of the node.
   /// \param[in] execution_callback Language worker callback to execute tasks.
   /// \param[in] use_memory_store Whether or not to use the in-memory object store
   ///            in addition to the plasma store.
@@ -37,12 +37,14 @@ class CoreWorker {
   /// NOTE(edoakes): the use_memory_store flag is a stop-gap solution to the issue
   ///                that randomly generated ObjectIDs may use the memory store
   ///                instead of the plasma store.
-  CoreWorker(const WorkerType worker_type, const Language language,
-             const std::string &store_socket, const std::string &raylet_socket,
-             const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-             const std::string &log_dir, const std::string &node_ip_address,
-             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
-             bool use_memory_store = true);
+  CoreWorker(
+      const WorkerType worker_type, const Language language,
+      const std::string &store_socket, const std::string &raylet_socket,
+      const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
+      const std::string &log_dir, const std::string &node_ip_address,
+      const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
+      const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
+      bool use_memory_store = true);
 
   ~CoreWorker();
 
@@ -66,7 +68,8 @@ class CoreWorker {
   /// store.
   CoreWorkerObjectInterface &Objects() { return *object_interface_; }
 
-  const std::shared_ptr<worker::Profiler> &Profiler() { return profiler_; }
+  /// Create a profile event with a reference to the core worker's profiler.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.

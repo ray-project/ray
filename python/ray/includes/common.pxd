@@ -16,6 +16,25 @@ from ray.includes.unique_ids cimport (
 )
 
 
+cdef extern from * namespace "polyfill":
+    """
+    namespace polyfill {
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T& t) {
+        return std::move(t);
+    }
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T&& t) {
+        return std::move(t);
+    }
+
+    }  // namespace polyfill
+    """
+    cdef T move[T](T)
+
+
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef cppclass StatusCode:
         pass
@@ -165,6 +184,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
+
+        c_bool IsPassedByReference() const
+        const CObjectID &GetReference() const
+        const CRayObject &GetValue() const
 
 cdef extern from "ray/core_worker/task_interface.h" nogil:
     cdef cppclass CTaskOptions "ray::TaskOptions":

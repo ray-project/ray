@@ -9,6 +9,7 @@ import logging
 
 from libc.stdint cimport uint8_t, int32_t, int64_t
 from libcpp cimport bool as c_bool
+from libcpp.cast cimport const_cast
 from libcpp.memory cimport (
     dynamic_pointer_cast,
     make_shared,
@@ -30,6 +31,7 @@ from ray.includes.common cimport (
     CTaskArg,
     CRayFunction,
     LocalMemoryBuffer,
+    move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
@@ -43,11 +45,14 @@ from ray.includes.libraylet cimport (
     WaitResultPair,
 )
 from ray.includes.unique_ids cimport (
+    CActorID,
     CActorCheckpointID,
     CObjectID,
     CClientID,
 )
 import ray
+import ray.experimental.signal as ray_signal
+from ray import profiling
 from ray.includes.libcoreworker cimport (
     CCoreWorker, CTaskOptions, ResourceMappingType)
 from ray.includes.task cimport CTaskSpec
@@ -255,6 +260,20 @@ cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
     return out
 
 
+# Required because the Cython parser rejects 'unordered_map[c_string, double]*'
+# as a template parameter.
+ctypedef unordered_map[c_string, double]* ResourceMapPtr
+
+cdef dict resource_map_to_dict(const unordered_map[c_string, double] &map):
+    result = {}
+    # This const_cast is required because Cython doesn't properly support
+    # const_iterators.
+    for key, value in dereference(const_cast[ResourceMapPtr](&map)):
+        result[key.decode("ascii")] = value
+
+    return result
+
+
 cdef c_vector[c_string] string_vector_from_list(list string_list):
     cdef:
         c_vector[c_string] out
@@ -329,14 +348,136 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
-cdef CRayStatus execute_task(const CRayFunction &ray_function,
-                             const c_vector[shared_ptr[CRayObject]] &args,
-                             int num_returns,
-                             const CTaskSpec &c_task_spec,
-                             c_vector[shared_ptr[CRayObject]] *returns) nogil:
+cdef list deserialize_args(const c_vector[CTaskArg] &args):
+    with profiling.profile("task:deserialize_arguments"):
+        result = []
+        for i in range(args.size()):
+            if args[i].IsPassedByReference():
+                result.append(
+                    ray.get(ObjectID(args[i].GetReference().Binary())))
+            else:
+                data = Buffer.make(args[i].GetValue().GetData())
+                if (args[i].GetValue().HasMetadata()
+                    and Buffer.make(
+                        args[i].GetValue().GetMetadata()).to_pybytes()
+                        == RAW_BUFFER_METADATA):
+                    result.append(data)
+                else:
+                    result.append(pickle.loads(data))
+
+    return result
+
+cdef CRayStatus execute_normal_task(
+        const CRayFunction &ray_function,
+        const CJobID &c_job_id, const CTaskID &c_task_id,
+        const c_vector[CTaskArg] &args,
+        const c_vector[CObjectID] &return_ids,
+        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+
     with gil:
-        ray.worker.global_worker._wait_for_and_process_task(
-            TaskSpec.make(c_task_spec))
+        worker = ray.worker.global_worker
+
+        # Automatically restrict the GPUs available to this task.
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+        job_id = JobID(c_job_id.Binary())
+        task_id = TaskID(c_task_id.Binary())
+
+        assert worker.current_task_id.is_nil()
+        assert worker.task_context.task_index == 0
+        assert worker.task_context.put_index == 1
+        # If this worker is not an actor, check that `current_job_id`
+        # was reset when the worker finished the previous task.
+        assert worker.current_job_id.is_nil()
+        # Set the driver ID of the current running task. This is
+        # needed so that if the task throws an exception, we propagate
+        # the error message to the correct driver.
+        worker.current_job_id = job_id
+        worker.core_worker.set_current_job_id(job_id)
+        worker.task_context.current_task_id = task_id
+        worker.core_worker.set_current_task_id(task_id)
+
+        worker.current_job_id = job_id
+        worker._process_normal_task(
+            ray_function.GetFunctionDescriptor(),
+            job_id,
+            task_id,
+            deserialize_args(args),
+            VectorToObjectIDs(return_ids),
+        )
+
+        # Reset the state fields so the next task can run.
+        worker.task_context.current_task_id = TaskID.nil()
+        worker.core_worker.set_current_task_id(TaskID.nil())
+        worker.task_context.task_index = 0
+        worker.task_context.put_index = 1
+        # Don't need to reset `current_job_id` if the worker is an
+        # actor. Because the following tasks should all have the
+        # same driver id.
+        worker.current_job_id = WorkerID.nil()
+        worker.core_worker.set_current_job_id(JobID.nil())
+        # Reset signal counters so that the next task can get
+        # all past signals.
+        ray_signal.reset()
+
+    return CRayStatus.OK()
+
+cdef CRayStatus execute_actor_task(
+        const CRayFunction &ray_function,
+        const CJobID &c_job_id, const CTaskID &c_task_id,
+        const CActorID &c_actor_id, c_bool create_actor,
+        const unordered_map[c_string, double] &resources,
+        const c_vector[CTaskArg] &args,
+        const c_vector[CObjectID] &return_ids,
+        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+
+    with gil:
+        worker = ray.worker.global_worker
+
+        # Automatically restrict the GPUs available to this task.
+        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+        job_id = JobID(c_job_id.Binary())
+        task_id = TaskID(c_task_id.Binary())
+
+        assert worker.current_task_id.is_nil()
+        assert worker.task_context.task_index == 0
+        assert worker.task_context.put_index == 1
+        if create_actor:
+            # If this worker is not an actor, check that
+            # `current_job_id` was reset when the worker finished the
+            # previous task.
+            assert worker.current_job_id.is_nil()
+            # Set the driver ID of the current running task. This is
+            # needed so that if the task throws an exception, we
+            # propagate the error message to the correct driver.
+            worker.current_job_id = job_id
+            worker.core_worker.set_current_job_id(job_id)
+        else:
+            # If this worker is an actor, current_job_id wasn't reset.
+            # Check that current task's driver ID equals the previous
+            # one.
+            assert worker.current_job_id == job_id
+
+        worker.task_context.current_task_id = task_id
+        worker.core_worker.set_current_task_id(task_id)
+
+        worker._process_actor_task(
+            ray_function.GetFunctionDescriptor(),
+            job_id,
+            task_id,
+            ActorID(c_actor_id.Binary()),
+            resource_map_to_dict(resources),
+            deserialize_args(args),
+            VectorToObjectIDs(return_ids),
+            create_actor,
+        )
+
+        # Reset the state fields so the next task can run.
+        worker.task_context.current_task_id = TaskID.nil()
+        worker.core_worker.set_current_task_id(TaskID.nil())
+        worker.task_context.task_index = 0
+        worker.task_context.put_index = 1
 
     return CRayStatus.OK()
 
@@ -355,8 +496,8 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), execute_task, False))
-        self.core_worker.get().Profiler().get().Start()
+            node_ip_address.encode("utf-8"), execute_normal_task,
+            execute_actor_task, False))
 
     def disconnect(self):
         with nogil:
@@ -586,5 +727,9 @@ cdef class CoreWorker:
         return resources_dict
 
     def profile_event(self, event_type, dict extra_data):
-        return ProfileEvent.make(self.core_worker.get().Profiler(),
-                                 event_type.encode("ascii"), extra_data)
+        cdef:
+            c_string c_event_type = event_type.encode("ascii")
+
+        return ProfileEvent.make(
+            self.core_worker.get().CreateProfileEvent(c_event_type),
+            extra_data)

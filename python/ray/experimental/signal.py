@@ -69,7 +69,7 @@ def send(signal):
     Args:
         signal: Signal to be sent.
     """
-    if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
+    if ray.worker.global_worker.actor_id.is_nil():
         source_key = ray.worker.global_worker.actor_id.hex()
     else:
         # No actors; this function must have been called from a task
