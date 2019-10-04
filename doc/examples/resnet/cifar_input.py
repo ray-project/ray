@@ -47,7 +47,7 @@ def build_data(data_path, size, dataset):
 
     # Read examples from files in the filename queue.
     data_files = tf.gfile.Glob(data_path)
-    data = tf.contrib.data.FixedLengthRecordDataset(
+    data = tf.data.FixedLengthRecordDataset(
         data_files, record_bytes=record_bytes)
     data = data.map(load_transform)
     data = data.batch(size)
@@ -76,7 +76,7 @@ def build_input(data, batch_size, dataset, train):
     num_classes = 10 if dataset == "cifar10" else 100
     images, labels = data
     num_samples = images.shape[0] - images.shape[0] % batch_size
-    dataset = tf.contrib.data.Dataset.from_tensor_slices(
+    dataset = tf.data.Dataset.from_tensor_slices(
         (images[:num_samples], labels[:num_samples]))
 
     def map_train(image, label):

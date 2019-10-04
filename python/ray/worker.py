@@ -50,6 +50,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
+from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
@@ -89,9 +90,6 @@ try:
 except ImportError:
     setproctitle = None
 
-if USE_NEW_SERIALIZER:
-    from _pickle import PickleBuffer
-
 
 class ActorCheckpointInfo(object):
     """Information used to maintain actor checkpoints."""
@@ -126,7 +124,6 @@ class Worker(object):
             WORKER_MODE.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        profiler: the profiler used to aggregate profiling information.
     """
 
     def __init__(self):
@@ -146,7 +143,6 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -437,18 +433,11 @@ class Worker(object):
                 self.core_worker.put_raw_buffer(
                     value, object_id, memcopy_threads=self.memcopy_threads)
             else:
-                buffers = []
-                meta = pickle.dumps(
-                    value, protocol=5, buffer_callback=buffers.append)
-                # TODO(suquark): This could involve more copies.
-                # Should implement zero-copy for PickleBuffer.
-                buffers = [b.raw().tobytes() for b in buffers]
-                value = (meta, buffers)
-
-                self.core_worker.put_serialized_object(
-                    pyarrow.serialize(value),
-                    object_id,
-                    memcopy_threads=self.memcopy_threads)
+                writer = Pickle5Writer()
+                inband = pickle.dumps(
+                    value, protocol=5, buffer_callback=writer.buffer_callback)
+                self.core_worker.put_pickle5_buffers(object_id, inband, writer,
+                                                     self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare hashes
@@ -524,6 +513,10 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
+            if (USE_NEW_SERIALIZER
+                    and metadata == ray_constants.PICKLE5_BUFFER_METADATA):
+                in_band, buffers = unpack_pickle5_buffers(data)
+                return pickle.loads(in_band, buffers=buffers)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -542,12 +535,7 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            if USE_NEW_SERIALIZER:
-                r, buffers = pyarrow.deserialize(data, serialization_context)
-                buffers = [PickleBuffer(b) for b in buffers]
-                return pickle.loads(r, buffers=buffers)
-            else:
-                return pyarrow.deserialize(data, serialization_context)
+            return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
@@ -1832,8 +1820,6 @@ def connect(node,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
-
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
@@ -1973,6 +1959,7 @@ def connect(node,
         worker.current_job_id,
         gcs_options,
         node.get_logs_dir_path(),
+        node.node_ip_address,
     )
     worker.task_context.current_task_id = (
         worker.core_worker.get_current_task_id())
@@ -2022,11 +2009,6 @@ def connect(node,
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    # If we are using the raylet code path and we are not in local mode, start
-    # a background thread to periodically flush profiling data to the GCS.
-    if mode != LOCAL_MODE:
-        worker.profiler.start_flush_thread()
-
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2069,8 +2051,6 @@ def disconnect():
         worker.threads_stopped.set()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
-        if hasattr(worker, "profiler") and hasattr(worker.profiler, "t"):
-            worker.profiler.join_flush_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "printer_thread"):
