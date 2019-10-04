@@ -830,6 +830,10 @@ def test_args_intertwined(ray_start_regular):
         def args_intertwined(self, a, *args, x="hello", **kwargs):
             return a, args, x, kwargs
 
+        @classmethod
+        def cls_args_intertwined(cls, a, *args, x="hello", **kwargs):
+            return a, args, x, kwargs
+
     def test_function(fn, remote_fn):
         assert fn(
             1, 2, 3, x="hi", y="hello") == ray.get(
@@ -847,6 +851,11 @@ def test_args_intertwined(ray_start_regular):
     actor_method = remote_actor.args_intertwined
     local_actor = TestActor()
     local_method = local_actor.args_intertwined
+    test_function(local_method, actor_method)
+
+    actor_method = remote_actor.cls_args_intertwined
+    local_actor = TestActor()
+    local_method = local_actor.cls_args_intertwined
     test_function(local_method, actor_method)
 
 
