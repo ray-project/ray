@@ -209,7 +209,7 @@ def recover_args(flattened_args):
     return args, kwargs
 
 
-def validate_args(funcsigs_signature, args, kwargs):
+def validate_args(funcsigs_signature, args, kwargs, actor_call=False):
     """Validates that this function can be called with given arguments.
 
     Wrapper around funcsigs.Signature.bind.
@@ -219,6 +219,8 @@ def validate_args(funcsigs_signature, args, kwargs):
 
     """
     try:
+        if actor_call:
+            args = [None] + list(args)  # use dummy for 'self'
         funcsigs_signature.bind(*args, **kwargs)
     except TypeError as exc:
         print(args, kwargs)

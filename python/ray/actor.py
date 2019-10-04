@@ -287,7 +287,7 @@ class ActorClass(object):
         self._actor_method_num_return_vals = {}
         for method_name, method in self._actor_methods:
             self._method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not ray.utils.is_class_method(method))
+                method, actor_call=not ray.utils.is_class_method(method))
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
                 self._actor_method_num_return_vals[method_name] = (
@@ -415,7 +415,8 @@ class ActorClass(object):
 
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
-            signature.validate_args(function_signature, args, kwargs)
+            signature.validate_args(
+                function_signature, args, kwargs, actor_call=True)
             creation_args = signature.flatten_args(args, kwargs)
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
@@ -573,7 +574,7 @@ class ActorHandle(object):
         args = args or []
         kwargs = kwargs or {}
 
-        signature.validate_args(function_signature, args, kwargs)
+        signature.validate_args(function_signature, args, kwargs, actor_call=True)
         list_args = signature.flatten_args(args, kwargs)
 
         function_descriptor = FunctionDescriptor(
