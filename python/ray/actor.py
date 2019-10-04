@@ -287,7 +287,7 @@ class ActorClass(object):
         self._actor_method_num_return_vals = {}
         for method_name, method in self._actor_methods:
             self._method_signatures[method_name] = signature.extract_signature(
-                method, actor_call=not ray.utils.is_class_method(method))
+                method, ignore_first=not ray.utils.is_class_method(method))
             # Set the default number of return values for this method.
             if hasattr(method, "__ray_num_return_vals__"):
                 self._actor_method_num_return_vals[method_name] = (
