@@ -7,8 +7,6 @@ namespace ray {
 
 namespace raylet {
 
-const bool single_node_ = true;
-
 LineageEntry::LineageEntry(const Task &task, GcsStatus status)
     : status_(status), task_(task) {
   ComputeParentTaskIds();
