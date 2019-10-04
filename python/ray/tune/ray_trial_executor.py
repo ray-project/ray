@@ -303,14 +303,11 @@ class RayTrialExecutor(TrialExecutor):
 
     def get_next_available_trial(self):
         if ray.worker._mode() != ray.worker.LOCAL_MODE:
+            # Detect trials on failed nodes first.
             live_cluster_ips = self.get_alive_node_ips()
             if live_cluster_ips - self.get_current_trial_ips():
                 for trial in self.get_running_trials():
                     if trial.node_ip and trial.node_ip not in live_cluster_ips:
-                        logger.warning(
-                            "{} (ip: {}) detected as stale. This is likely "
-                            "because the node was lost. Processing this "
-                            "trial first.".format(trial, trial.node_ip))
                         return trial
 
         shuffled_results = list(self._running.keys())

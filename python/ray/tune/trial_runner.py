@@ -503,6 +503,15 @@ class TrialRunner(object):
 
     def _process_trial(self, trial):
         try:
+            live_cluster_ips = self.trial_executor.get_alive_node_ips()
+            if trial.node_ip and trial.node_ip not in live_cluster_ips:
+                error_msg = """
+                            {} (ip: {}) detected as stale. This is likely
+                            because the node was lost.
+                            """.format(trial, trial.node_ip)
+                self._handle_trial_failure(trial, error_msg)
+                return
+
             result = self.trial_executor.fetch_result(trial)
 
             is_duplicate = RESULT_DUPLICATE in result
@@ -558,16 +567,7 @@ class TrialRunner(object):
                     decision)
         except Exception:
             logger.exception("Error processing event.")
-            error_msg = traceback.format_exc()
-            if trial.status == Trial.RUNNING:
-                if trial.should_recover():
-                    self._try_recover(trial, error_msg)
-                else:
-                    self._scheduler_alg.on_trial_error(self, trial)
-                    self._search_alg.on_trial_complete(
-                        trial.trial_id, error=True)
-                    self.trial_executor.stop_trial(
-                        trial, error=True, error_msg=error_msg)
+            self._handle_trial_failure(trial, traceback.format_exc())
 
     def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""
@@ -576,6 +576,24 @@ class TrialRunner(object):
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
             self.trial_executor.try_checkpoint_metadata(trial)
+
+    def _handle_trial_failure(self, trial, error_msg):
+        """Handle trial failure.
+
+        Attempt trial recovery if possible, clean up state otherwise.
+
+        Args:
+            trial (Trial): Failed trial.
+            error_msg (str): Error message prior to invoking this method.
+        """
+        if trial.status == Trial.RUNNING:
+            if trial.should_recover():
+                self._try_recover(trial, error_msg)
+            else:
+                self._scheduler_alg.on_trial_error(self, trial)
+                self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self.trial_executor.stop_trial(
+                    trial, error=True, error_msg=error_msg)
 
     def _try_recover(self, trial, error_msg):
         """Tries to recover trial.
