@@ -180,7 +180,6 @@ setup(
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
-    python_requires=">=3.5",
     install_requires=requires,
     setup_requires=["cython >= 0.29"],
     extras_require=extras,
