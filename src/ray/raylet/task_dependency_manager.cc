@@ -400,7 +400,7 @@ void TaskDependencyManager::TaskCanceled0(const TaskID &task_id) {
   if (it == pending_tasks_.end()) {
     return;
   }
-  pending_tasks_.erase(it);  // TODO(ekl) handle vector tasks
+  pending_tasks_.erase(it);
 
   // Find any subscribed tasks that are dependent on objects created by the
   // canceled task.
@@ -414,6 +414,7 @@ void TaskDependencyManager::TaskCanceled0(const TaskID &task_id) {
   }
 }
 
+// TODO(ekl) this should handle vector tasks too
 void TaskDependencyManager::RemoveTasksAndRelatedObjects(
     const std::unordered_set<TaskID> &task_ids) {
   // Collect a list of all the unique objects that these tasks were subscribed
@@ -429,7 +430,7 @@ void TaskDependencyManager::RemoveTasksAndRelatedObjects(
     // The task no longer depends on anything.
     task_dependencies_.erase(*it);
     // The task is no longer pending execution.
-    pending_tasks_.erase(*it);  // TODO(ekl) handle vector tasks
+    pending_tasks_.erase(*it);
   }
 
   // Cancel all of the objects that were required by the removed tasks.
