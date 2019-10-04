@@ -395,7 +395,7 @@ class TrialRunner(object):
             self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
 
-    def debug_string(self, delim='\n'):
+    def debug_string(self, delim="\n"):
         messages = [
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string()

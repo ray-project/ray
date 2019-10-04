@@ -6,7 +6,6 @@ from ray.tune.util import flatten_dict
 
 
 class ProgressReporter(object):
-
     def report(self, trial_runner):
         """Reports progress across all trials of the trial runner.
 
@@ -17,7 +16,6 @@ class ProgressReporter(object):
 
 
 class JupyterNotebookReporter(ProgressReporter):
-
     def __init__(self, verbosity):
         self.verbosity = verbosity
 
@@ -37,7 +35,6 @@ class JupyterNotebookReporter(ProgressReporter):
 
 
 class CLIReporter(ProgressReporter):
-
     def report(self, trial_runner):
         messages = [
             "== Status ==",

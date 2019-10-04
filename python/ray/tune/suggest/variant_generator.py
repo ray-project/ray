@@ -40,8 +40,10 @@ def generate_variants(unresolved_spec):
         "activation": {"grid_search": ["relu", "tanh"]}
         "cpu": {"eval": "spec.config.num_workers"}
 
+    Use `format_vars` to format the returned dict of hyperparameters.
+
     Yields:
-        (Dict of resolved variables, Trial specification)
+        (Dict of resolved variables, Spec object)
     """
     for resolved_vars, spec in _generate_variants(unresolved_spec):
         assert not _unresolved_values(spec)
