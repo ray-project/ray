@@ -1553,7 +1553,8 @@ def init(address=None,
             head=True,
             shutdown_at_exit=False,
             ray_params=ray_params,
-            single_node=single_node_optimizations)
+            single_node=single_node_optimizations
+            and "DISABLE_SINGLE_NODE" not in os.environ)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
