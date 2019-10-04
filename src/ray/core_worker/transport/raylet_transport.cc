@@ -22,13 +22,15 @@ Status CoreWorkerRayletTaskSubmitter::SubmitTaskBatch(
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &rpc_io_service,
+    boost::asio::io_service &main_io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       object_interface_(object_interface),
-      task_service_(io_service, *this),
-      task_handler_(task_handler) {
+      task_service_(rpc_io_service, *this),
+      task_handler_(task_handler),
+      task_main_io_service_(main_io_service) {
   server.RegisterService(task_service_);
 }
 
@@ -36,6 +38,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   Status status;
+  std::list<TaskSpecification> assigned;
   for (int i = 0; i < request.tasks_size(); i++) {
     Task task(request.tasks(i));
     const auto &task_spec = task.GetTaskSpecification();
@@ -45,8 +48,35 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
                           nullptr, nullptr);
       return;
     }
+    assigned.push_back(task_spec);
+  }
 
-    status = HandleAssignTask0(request, task_spec);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    assigned_req_ = request;
+    assigned_tasks_ = assigned;
+  }
+
+  // Let the main thread handle the actual task execution, so that we don't block
+  // other RPCs such as StealTasks().
+  task_main_io_service_.post(
+      [this, send_reply_callback]() { ProcessAssignedTasks(send_reply_callback); });
+}
+
+void CoreWorkerRayletTaskReceiver::ProcessAssignedTasks(
+    rpc::SendReplyCallback send_reply_callback) {
+  // Process each assigned task in order.
+  while (true) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (assigned_tasks_.empty()) {
+      return;
+    }
+    auto task_spec = assigned_tasks_.front();
+    assigned_tasks_.pop_front();
+    // Don't hold the lock while processing the task. This allows other RPCs to
+    // steal remaining tasks from us while we are processing this one.
+    lock.unlock();
+    HandleAssignTask0(assigned_req_, task_spec);
   }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
@@ -62,7 +92,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   // to raylet via the same connection so the order is guaranteed.
   RAY_UNUSED(raylet_client_->TaskDone());
   // Send rpc reply.
-  send_reply_callback(status, nullptr, nullptr);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 Status CoreWorkerRayletTaskReceiver::HandleAssignTask0(
@@ -124,6 +154,18 @@ Status CoreWorkerRayletTaskReceiver::HandleAssignTask0(
   }
 
   return status;
+}
+
+void CoreWorkerRayletTaskReceiver::HandleStealTasks(
+    const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "Got steal tasks request";
+  std::unique_lock<std::mutex> lock(mutex_);
+  while (!assigned_tasks_.empty()) {
+    reply->add_task_ids(assigned_tasks_.back().TaskId().Binary());
+    assigned_tasks_.pop_back();
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

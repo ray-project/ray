@@ -47,7 +47,7 @@ CoreWorker::CoreWorker(
     RAY_CHECK(execution_callback != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
         new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                             *object_interface_, profiler_,
+                                             *object_interface_, io_service_, profiler_,
                                              execution_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }

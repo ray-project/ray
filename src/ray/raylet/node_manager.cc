@@ -2543,18 +2543,18 @@ void NodeManager::RebalanceVectorTasksAmongWorkers() {
     return worker->HasAssignedTask() && worker->GetAssignedTask().IsVectorTask();
   });
   if (victim != nullptr) {
-    auto task = victim->GetAssignedTask();
+    Task task = victim->GetAssignedTask();
     stealing_ = true;
-    victim->StealTasks([this, task](std::vector<TaskID> stolen_task_ids) {
+    victim->StealTasks([this, task](std::vector<TaskID> stolen_task_ids) mutable {
       stealing_ = false;
-      RAY_LOG(INFO) << "Rebalancing " << stolen_task_ids.size()
-                    << " tasks from worker running vector of "
-                    << task.GetTaskSpecificationVector().size() << " tasks.";
+      RAY_LOG(ERROR) << "Rebalancing " << stolen_task_ids.size()
+                     << " tasks from worker running vector of "
+                     << task.GetTaskSpecificationVector().size() << " tasks.";
       if (stolen_task_ids.empty()) {
         RebalanceVectorTasksAmongWorkers();
       } else {
         // TODO(ekl) can we avoid mutating the task object?
-        for (const auto &task_spec : task.RemoveTaskSpecsFromVector(stolen_task_ids)) {
+        for (auto &task_spec : task.RemoveTaskSpecsFromVector(stolen_task_ids)) {
           SubmitTask(Task(task_spec, task.GetTaskExecutionSpec()), Lineage());
         }
       }

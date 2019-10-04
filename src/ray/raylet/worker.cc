@@ -51,7 +51,7 @@ const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
 bool Worker::HasAssignedTask() const { return !assigned_task_id_.IsNil(); }
 
-Task &Worker::GetAssignedTask() const { return assigned_task_; }
+Task &Worker::GetAssignedTask() { return assigned_task_; }
 
 bool Worker::AddBlockedTaskId(const TaskID &task_id) {
   auto inserted = blocked_task_ids_.insert(task_id);
@@ -183,12 +183,13 @@ void Worker::StealTasks(
   RAY_CHECK(rpc_client_ != nullptr);
   rpc::StealTasksRequest request;
   auto status = rpc_client_->StealTasks(
-      request, [finish_steal_callback](Status status, const rpc::StealTasksReply &reply) {
+      request,
+      [this, finish_steal_callback](Status status, const rpc::StealTasksReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to steal tasks from worker.";
+          RAY_LOG(ERROR) << "Failed to steal tasks from worker " << worker_id_;
         }
         std::vector<TaskID> task_ids;
-        for (int i=0; i < reply.task_ids_size(); i++) {
+        for (int i = 0; i < reply.task_ids_size(); i++) {
           task_ids.push_back(TaskID::FromBinary(reply.task_ids(i)));
         }
         finish_steal_callback(task_ids);

@@ -39,7 +39,7 @@ class Worker {
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   bool HasAssignedTask() const;
-  Task &GetAssignedTask() const;
+  Task &GetAssignedTask();
   bool AddBlockedTaskId(const TaskID &task_id);
   bool RemoveBlockedTaskId(const TaskID &task_id);
   const std::unordered_set<TaskID> &GetBlockedTaskIds() const;

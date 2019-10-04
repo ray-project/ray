@@ -8,13 +8,14 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface,
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     const std::shared_ptr<worker::Profiler> profiler, const TaskExecutor &executor)
     : worker_context_(worker_context),
       object_interface_(object_interface),
       profiler_(profiler),
       execution_callback_(executor),
       worker_server_("Worker", 0 /* let grpc choose port */),
+      rpc_io_service_(io_service),
       main_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*main_service_) {
   RAY_CHECK(execution_callback_ != nullptr);
@@ -25,13 +26,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          worker_context_, raylet_client, object_interface_, *main_service_,
-          worker_server_, func)));
+          worker_context_, raylet_client, object_interface_, rpc_io_service_,
+          *main_service_, worker_server_, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
           new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                                *main_service_, worker_server_, func)));
+                                                rpc_io_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
