@@ -69,7 +69,7 @@ void CoreWorkerRayletTaskReceiver::ProcessAssignedTasks(
   while (true) {
     std::unique_lock<std::mutex> lock(mutex_);
     if (assigned_tasks_.empty()) {
-      return;
+      break;
     }
     auto task_spec = assigned_tasks_.front();
     assigned_tasks_.pop_front();
@@ -159,7 +159,6 @@ Status CoreWorkerRayletTaskReceiver::HandleAssignTask0(
 void CoreWorkerRayletTaskReceiver::HandleStealTasks(
     const rpc::StealTasksRequest &request, rpc::StealTasksReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "Got steal tasks request";
   std::unique_lock<std::mutex> lock(mutex_);
   while (!assigned_tasks_.empty()) {
     reply->add_task_ids(assigned_tasks_.back().TaskId().Binary());
