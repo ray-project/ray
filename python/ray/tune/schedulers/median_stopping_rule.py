@@ -27,7 +27,8 @@ class MedianStoppingRule(FIFOScheduler):
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         grace_period (float): Only stop trials at least this old in time.
-            The units are the same as the attribute named by `time_attr`.
+            The mean will only be computed from this time onwards. The units
+            are the same as the attribute named by `time_attr`.
         min_samples_required (int): Minimum number of trials to compute median
             over.
         min_time_slice (float): Each trial runs at least this long before
@@ -83,6 +84,9 @@ class MedianStoppingRule(FIFOScheduler):
         value by step `t` is strictly worse than the median of the running
         averages of all completed trials' objectives reported up to step `t`.
         """
+        if self._time_attr not in result or self._metric not in result:
+            return TrialScheduler.CONTINUE
+
         if trial in self._stopped_trials:
             assert not self._hard_stop
             # Fall back to FIFO
@@ -155,7 +159,10 @@ class MedianStoppingRule(FIFOScheduler):
         results = self._results[trial]
         # TODO(ekl) we could do interpolation to be more precise, but for now
         # assume len(results) is large and the time diffs are roughly equal
-        scoped_results = [r for r in results if r[self._time_attr] <= time]
+        scoped_results = [
+            r for r in results
+            if self._grace_period <= r[self._time_attr] <= time
+        ]
         return np.mean([r[self._metric] for r in scoped_results])
 
     def _best_result(self, trial):
