@@ -250,7 +250,7 @@ void CoreWorkerTaskInterface::SendTasksInBatch() {
 
   io_service_.post([this, copy]() {
     RAY_LOG(DEBUG) << "Flush task batch of size " << copy.size();
-    task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(copy);
+    RAY_IGNORE_EXPR(task_submitters_[TaskTransportType::RAYLET]->SubmitTaskBatch(copy));
     std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
     flushing_ = false;
     SendTasksInBatch();
