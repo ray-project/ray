@@ -415,6 +415,7 @@ class ActorClass(object):
 
             function_name = "__init__"
             function_signature = self._method_signatures[function_name]
+            signature.validate_args(function_signature, args, kwargs)
             creation_args = signature.flatten_args(args, kwargs)
             function_descriptor = FunctionDescriptor(
                 self._modified_class.__module__, function_name,
@@ -571,11 +572,12 @@ class ActorHandle(object):
         function_signature = self._ray_method_signatures[method_name]
         args = args or []
         kwargs = kwargs or {}
+
+        signature.validate_args(function_signature, args, kwargs)
         list_args = signature.flatten_args(args, kwargs)
 
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
-        import ipdb; ipdb.set_trace()
         if worker.mode == ray.LOCAL_MODE:
             function = getattr(worker.actors[self._ray_actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(

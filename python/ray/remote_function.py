@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import funcsigs
 from functools import wraps
 
 from ray.function_manager import FunctionDescriptor
@@ -134,8 +135,10 @@ class RemoteFunction(object):
             self._object_store_memory, self._resources, num_cpus, num_gpus,
             memory, object_store_memory, resources)
 
+        function_signature = funcsigs.signature(self._function)
+
         def invocation(args, kwargs):
-            ray.signature.validate_args(self._function, args, kwargs)
+            ray.signature.validate_args(function_signature, args, kwargs)
             list_args = ray.signature.flatten_args(args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:

@@ -29,7 +29,8 @@ class LocalModeManager(object):
     def __init__(self):
         """Initialize a LocalModeManager."""
 
-    def execute(self, function, function_descriptor, args, kwargs, num_return_vals):
+    def execute(self, function, function_descriptor, args, kwargs,
+                num_return_vals):
         """Synchronously executes a "remote" function or actor method.
 
         Stores results directly in the generated and returned
