@@ -13,18 +13,10 @@ from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
-
-try:
-    class_name = get_ipython().__class__.__name__
-    if "Terminal" in class_name:
-        IS_NOTEBOOK = False
-    else:
-        IS_NOTEBOOK = True
-except NameError:
-    IS_NOTEBOOK = False
 
 logger = logging.getLogger(__name__)
 
@@ -35,15 +27,11 @@ _SCHEDULERS = {
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
 
-
-def _print_progress(trial_runner):
-    if IS_NOTEBOOK:
-        from IPython.display import clear_output
-        from IPython.core.display import display, HTML
-        clear_output(wait=True)
-        display(HTML(trial_runner.debug_string(format="html")))
-    else:
-        print(trial_runner.debug_string())
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
 
 
 def _make_scheduler(args):
@@ -78,7 +66,7 @@ def run(run_or_experiment,
         scheduler=None,
         with_server=False,
         server_port=TuneServer.DEFAULT_PORT,
-        verbose=1,
+        verbose=2,
         resume=False,
         queue_trials=False,
         reuse_actors=False,
@@ -200,13 +188,13 @@ def run(run_or_experiment,
         >>> tune.run(mytrainable, num_samples=5, reuse_actors=True)
 
         >>> tune.run(
-                "PG",
-                num_samples=5,
-                config={
-                    "env": "CartPole-v0",
-                    "lr": tune.sample_from(lambda _: np.random.rand())
-                }
-            )
+        >>>     "PG",
+        >>>     num_samples=5,
+        >>>     config={
+        >>>         "env": "CartPole-v0",
+        >>>         "lr": tune.sample_from(lambda _: np.random.rand())
+        >>>     }
+        >>> )
     """
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
@@ -257,12 +245,17 @@ def run(run_or_experiment,
 
     runner.add_experiment(experiment)
 
+    if IS_NOTEBOOK:
+        reporter = JupyterNotebookReporter(verbosity=verbose)
+    else:
+        reporter = CLIReporter()
+
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
             if verbose:
-                _print_progress(runner)
+                reporter.report(runner)
             last_debug = time.time()
 
     try:
@@ -271,7 +264,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        _print_progress(runner)
+        reporter.report(runner)
 
     wait_for_sync()
 

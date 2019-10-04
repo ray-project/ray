@@ -3,13 +3,11 @@ from __future__ import division
 from __future__ import print_function
 
 import click
-import collections
 from datetime import datetime
 import json
 import logging
 import os
 import re
-from tabulate import tabulate
 import time
 import traceback
 import types
@@ -18,13 +16,12 @@ import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT, DEFAULT_RESULT_KEYS,
-                             DEFAULT_EXPERIMENT_INFO_KEYS, CONFIG_PREFIX)
+                             SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.util import warn_if_slow, flatten_dict, memory_debug_string
+from ray.tune.util import warn_if_slow, flatten_dict
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
 
@@ -398,65 +395,11 @@ class TrialRunner(object):
             self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
 
-    def debug_string(self,
-                     parameters=None,
-                     metrics=None,
-                     format="psql",
-                     max_rows=100):
-        """Returns a human readable message for printing to the console.
-
-        This contains a table where each row represents a trial, its parameters
-        and the current values of its metrics.
-
-        Args:
-            parameters (List[str]): Names of trial parameters to include.
-                Defaults to all parameters across all trials.
-            metrics (List[str]): Names of metrics to include. Defaults to
-                metrics defined in DEFAULT_RESULT_KEYS.
-            format (str): Output format (see tablefmt in tabulate API).
-            max_rows (int): Maximum number of rows in the trial table.
-        """
-        messages = ["== Status =="]
-        messages.append(self._scheduler_alg.debug_string())
-        messages.append(self.trial_executor.debug_string())
-        messages.append(memory_debug_string())
-
-        delim = "<br>" if format == "html" else "\n"
-        trials = self.get_trials()
-
-        if len(trials) < 1:
-            return delim.join(messages) + delim
-
-        num_trials = len(trials)
-        num_trials_per_state = collections.defaultdict(int)
-        for t in trials:
-            num_trials_per_state[t.status] += 1
-        messages.append("Number of trials: {} ({})"
-                        "".format(num_trials, num_trials_per_state))
-        if num_trials > max_rows:
-            messages.append("Table truncated to {} rows.".format(max_rows))
-
-        trial_table = []
-        if not parameters:
-            parameters = set().union(*[t.evaluated_params for t in trials])
-        metrics = list(metrics or DEFAULT_RESULT_KEYS)
-
-        for i in range(min(num_trials, max_rows)):
-            trial = trials[i]
-            result = flatten_dict(trial.last_result)
-            trial_info = [trial.trial_id, trial.status]
-            trial_info += [
-                result.get(CONFIG_PREFIX + param) for param in parameters
-            ]
-            trial_info += [result.get(metric) for metric in metrics]
-            trial_table.append(trial_info)
-
-        parsed_parameters = [param for param in parameters]
-        keys = ["Trial ID", "Status"] + parsed_parameters + metrics
-        messages.append(
-            tabulate(
-                trial_table, headers=keys, tablefmt=format, showindex=False))
-
+    def debug_string(self, delim='\n'):
+        messages = [
+            self._scheduler_alg.debug_string(),
+            self.trial_executor.debug_string()
+        ]
         return delim.join(messages) + delim
 
     def has_resources(self, resources):
