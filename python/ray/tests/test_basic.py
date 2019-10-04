@@ -839,9 +839,6 @@ def test_args_intertwined(ray_start_regular):
                 remote_fn.remote(1, 2, 3, y="1hello"))
         assert fn(1, y="1hello") == ray.get(remote_fn.remote(1, y="1hello"))
 
-        with pytest.raises(TypeError):
-            remote_fn.remote(1, 2, x=3)
-
     remote_args_intertwined = ray.remote(args_intertwined)
     test_function(args_intertwined, remote_args_intertwined)
 
