@@ -3,7 +3,7 @@ Training Language Model on Cloud with Fairseq and Ray Autoscaler
 
 This document provides a walkthrough of using Ray Autoscaler with the `Fairseq library <https://github.com/pytorch/fairseq>`__ to train language models on AWS spot instances. As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
 
-To run this example, you will need to install Ray on your local machine to use Ray Autoscaler. 
+To run this example, you will need to install Ray on your local machine to use Ray Autoscaler.
 
 You can view the `code for this example`_.
 
@@ -14,7 +14,7 @@ To use Ray Autoscaler on AWS, install boto (``pip install boto3``) and configure
 
 In this config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.
 
-We also mount an `Amazon EFS <https://aws.amazon.com/efs/>`__ to store code, data and checkpoints. 
+We also mount an `Amazon EFS <https://aws.amazon.com/efs/>`__ to store code, data and checkpoints.
 
 .. note::
 
@@ -38,29 +38,6 @@ If you want to build Fairseq from the source, replace the ``pip install -U fairs
   cd fairseq;
   pip install --editable .;
 
-We also install EFS utilities and mount the EFS in ``setup_commands``:
-
-.. code-block:: bash
-
-  sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`; 
-  sudo pkill -9 apt-get; 
-  sudo pkill -9 dpkg; 
-  sudo dpkg --configure -a; 
-  sudo apt-get -y install binutils; 
-  cd $HOME; 
-  git clone https://github.com/aws/efs-utils; 
-  cd $HOME/efs-utils; 
-  ./build-deb.sh; 
-  sudo apt-get -y install ./build/amazon-efs-utils*deb; 
-  cd $HOME; 
-  mkdir efs; 
-  sudo mount -t efs {{FileSystemId}}:/ efs; 
-  sudo chmod 777 efs;
-
-
-.. note::
-
-  You need to replace the ``{{FileSystemId}}`` to your own EFS ID (and correspondingly set the ``{{SecurityGroupId}}``) before using the conifg.
 
 The following parts of config will also start Ray server on the head node.
 
@@ -79,7 +56,7 @@ Once the cluster is started, you can then SSH into the head node using ``ray att
   # download the dataset
   wget https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-raw-v1.zip
   unzip wikitext-103-raw-v1.zip
-  
+
   # encode it with the GPT-2 BPE
   mkdir -p gpt2_bpe
   wget -O gpt2_bpe/encoder.json https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/encoder.json
@@ -94,7 +71,7 @@ Once the cluster is started, you can then SSH into the head node using ``ray att
           --keep-empty \
           --workers 60; \
   done
-  
+
   # preprocess/binarize the data using the GPT-2 fairseq dictionary
   wget -O gpt2_bpe/dict.txt https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/dict.txt
   fairseq-preprocess \
@@ -122,9 +99,9 @@ To start training, run `following commands <https://github.com/ray-project/ray/t
   MAX_SENTENCES=16           # Number of sequences per batch on one GPU (batch size)
   FIX_BATCH_SZIE=2048        # Number of batch size in total (max_sentences * update_freq * n_gpus)
   SAVE_INTERVAL_UPDATES=1000 # save a checkpoint every N updates
-  
+
   LOG_DIR=log/
-  DATA_DIR=data-bin/wikitext-103  
+  DATA_DIR=data-bin/wikitext-103
   mkdir -p $LOG_DIR
 
   python ray_train.py --fp16 $DATA_DIR \
