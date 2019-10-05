@@ -14,29 +14,19 @@ To use Ray Autoscaler on AWS, install boto (``pip install boto3``) and configure
 
 In this config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.
 
-We also mount an `Amazon EFS <https://aws.amazon.com/efs/>`__ to store code, data and checkpoints.
+We also mount `Amazon EFS <autoscaling.html#using-amazon-efs>`__ to store code, data and checkpoints.
 
 .. note::
 
-  The ``{{SecurityGroupId}}`` and ``{{FileSystemId}}`` fileds in the config file should be replaced by your own IDs.
+  The ``{{SecurityGroupId}}`` and ``{{FileSystemId}}`` fields in the config file should be replaced by your own IDs.
 
 
 In ``setup_commands``, we use the PyTorch environment in the Deep Learning AMI, and install Ray and Fairseq with
 
 .. code-block:: bash
 
-  echo 'export PATH="$HOME/anaconda3/envs/pytorch_p36/bin:$PATH"' >> ~/.bashrc;
-  source ~/.bashrc;
-  pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl;
+  pip install ray pytorch;
   pip install -U fairseq==0.8.0;
-
-If you want to build Fairseq from the source, replace the ``pip install -U fairseq==0.8.0`` with
-
-.. code-block:: bash
-
-  git clone https://github.com/pytorch/fairseq;
-  cd fairseq;
-  pip install --editable .;
 
 
 The following parts of config will also start Ray server on the head node.
@@ -46,6 +36,9 @@ Running the following command on your local machine to start the Ray cluster:
 .. code-block:: bash
 
   ray up lm-cluster.yaml
+
+Preprocessing Data
+------------------
 
 Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. Following `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__, we run the following commands to preprocess the dataset:
 
@@ -83,6 +76,9 @@ Once the cluster is started, you can then SSH into the head node using ``ray att
       --destdir data-bin/wikitext-103 \
       --workers 60
 
+Training
+--------
+
 We provide ``ray_train.py`` as an entrence to the fairseq library. The code is cloned from ``train.py`` in the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use them by restarting. See `the code <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__ for more details.
 
 To start training, run `following commands <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.sh>`__ (``ray_train.sh``) on the head machine:
@@ -97,7 +93,7 @@ To start training, run `following commands <https://github.com/ray-project/ray/t
   TOKENS_PER_SAMPLE=512      # Max sequence length
   MAX_POSITIONS=512          # Num. positional embeddings (usually same as above)
   MAX_SENTENCES=16           # Number of sequences per batch on one GPU (batch size)
-  FIX_BATCH_SZIE=2048        # Number of batch size in total (max_sentences * update_freq * n_gpus)
+  FIX_BATCH_SIZE=2048        # Number of batch size in total (max_sentences * update_freq * n_gpus)
   SAVE_INTERVAL_UPDATES=1000 # save a checkpoint every N updates
 
   LOG_DIR=log/
@@ -111,12 +107,15 @@ To start training, run `following commands <https://github.com/ray-project/ray/t
       --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
       --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
       --max-sentences $MAX_SENTENCES \
-      --fix-batch-size $FIX_BATCH_SZIE \
+      --fix-batch-size $FIX_BATCH_SIZE \
       --max-update $TOTAL_UPDATES --log-format simple --log-interval 1 \
       --save-interval-updates $SAVE_INTERVAL_UPDATES \
       --save-dir $LOG_DIR --ddp-backend=no_c10d
 
-``SAVE_INTERVAL_UPDATES`` controls how often to save a checkpoint, which can be tuned based on the `stability of chosed instances <https://aws.amazon.com/ec2/spot/instance-advisor/>`__. ``FIX_BATCH_SZIE`` controls the total batch size to be a roughly fixed number.
+``SAVE_INTERVAL_UPDATES`` controls how often to save a checkpoint, which can be tuned based on the `stability of chosed instances <https://aws.amazon.com/ec2/spot/instance-advisor/>`__. ``FIX_BATCH_SIZE`` controls the total batch size to be a roughly fixed number.
+
+Helpful Ray Commands
+--------------------
 
 To let Ray automatically stop the cluster after the training finished, you can download the ``ray_train.sh`` to ``~/efs`` of the remote machine, and run the following command on your local machine:
 
