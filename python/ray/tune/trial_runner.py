@@ -497,21 +497,20 @@ class TrialRunner(object):
         return trial
 
     def _process_events(self):
-        trial = self.trial_executor.get_next_available_trial()  # blocking
-        with warn_if_slow("process_trial"):
-            self._process_trial(trial)
+        trial = self.trial_executor.get_next_failed_trial()  # non-blocking
+        if trial:
+            with warn_if_slow("handle_failed_trial"):
+                self._process_trial_failure(
+                    trial,
+                    error_msg="{} (ip: {}) detected as stale. This is likely"
+                    "because the node was lost".format(trial, trial.node_ip))
+        else:
+            trial = self.trial_executor.get_next_available_trial()  # blocking
+            with warn_if_slow("process_trial"):
+                self._process_trial(trial)
 
     def _process_trial(self, trial):
         try:
-            live_cluster_ips = self.trial_executor.get_alive_node_ips()
-            if trial.node_ip and trial.node_ip not in live_cluster_ips:
-                error_msg = """
-                            {} (ip: {}) detected as stale. This is likely
-                            because the node was lost.
-                            """.format(trial, trial.node_ip)
-                self._handle_trial_failure(trial, error_msg)
-                return
-
             result = self.trial_executor.fetch_result(trial)
 
             is_duplicate = RESULT_DUPLICATE in result
@@ -567,17 +566,9 @@ class TrialRunner(object):
                     decision)
         except Exception:
             logger.exception("Error processing event.")
-            self._handle_trial_failure(trial, traceback.format_exc())
+            self._process_trial_failure(trial, traceback.format_exc())
 
-    def _checkpoint_trial_if_needed(self, trial, force=False):
-        """Checkpoints trial based off trial.last_result."""
-        if trial.should_checkpoint() or force:
-            # Save trial runtime if possible
-            if hasattr(trial, "runner") and trial.runner:
-                self.trial_executor.save(trial, storage=Checkpoint.DISK)
-            self.trial_executor.try_checkpoint_metadata(trial)
-
-    def _handle_trial_failure(self, trial, error_msg):
+    def _process_trial_failure(self, trial, error_msg):
         """Handle trial failure.
 
         Attempt trial recovery if possible, clean up state otherwise.
@@ -594,6 +585,14 @@ class TrialRunner(object):
                 self._search_alg.on_trial_complete(trial.trial_id, error=True)
                 self.trial_executor.stop_trial(
                     trial, error=True, error_msg=error_msg)
+
+    def _checkpoint_trial_if_needed(self, trial, force=False):
+        """Checkpoints trial based off trial.last_result."""
+        if trial.should_checkpoint() or force:
+            # Save trial runtime if possible
+            if hasattr(trial, "runner") and trial.runner:
+                self.trial_executor.save(trial, storage=Checkpoint.DISK)
+            self.trial_executor.try_checkpoint_metadata(trial)
 
     def _try_recover(self, trial, error_msg):
         """Tries to recover trial.
