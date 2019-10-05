@@ -214,11 +214,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
             pass
 
         register_trainable("foo", train)
+        Experiment("test", train)
         register_trainable("foo", B)
+        Experiment("test", B)
         self.assertRaises(TypeError, lambda: register_trainable("foo", B()))
+        self.assertRaises(TuneError, lambda: Experiment("foo", B()))
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
+        self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
-    def testRegisterTrainableCallable(self):
+    def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
             reporter(timesteps_total=steps, done=True)
 
@@ -230,6 +234,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 "run": "test",
             }
         })
+        self.assertEqual(trial.status, Trial.TERMINATED)
+        self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
+        [trial] = tune.run(partial(dummy_fn, steps=steps)).trials
         self.assertEqual(trial.status, Trial.TERMINATED)
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
@@ -445,6 +452,46 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 }).trials
         [trial] = tune.run(train, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
+
+    def testStoppingFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        def stop(trial_id, result):
+            return result["test"] > 6
+
+        [trial] = tune.run(train, stop=stop).trials
+        self.assertEqual(trial.last_result["training_iteration"], 8)
+
+    def testStoppingMemberFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class Stopper:
+            def stop(self, trial_id, result):
+                return result["test"] > 6
+
+        [trial] = tune.run(train, stop=Stopper().stop).trials
+        self.assertEqual(trial.last_result["training_iteration"], 8)
+
+    def testBadStoppingFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class Stopper:
+            def stop(self, result):
+                return result["test"] > 6
+
+        def stop(result):
+            return result["test"] > 6
+
+        with self.assertRaises(ValueError):
+            tune.run(train, stop=Stopper().stop)
+        with self.assertRaises(ValueError):
+            tune.run(train, stop=stop)
 
     def testEarlyReturn(self):
         def train(config, reporter):

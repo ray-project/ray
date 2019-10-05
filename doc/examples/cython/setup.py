@@ -25,11 +25,10 @@ except ImportError as e:  # noqa
 modules = [os.path.join(pkg_dir, module) for module in modules]
 
 setup(
-        name=pkg_dir,
-        version="0.0.1",
-        description="Cython examples for Ray",
-        packages=[pkg_dir],
-        ext_modules=cythonize(modules),
-        install_requires=install_requires,
-        include_dirs=include_dirs
-        )
+    name=pkg_dir,
+    version="0.0.1",
+    description="Cython examples for Ray",
+    packages=[pkg_dir],
+    ext_modules=cythonize(modules),
+    install_requires=install_requires,
+    include_dirs=include_dirs)

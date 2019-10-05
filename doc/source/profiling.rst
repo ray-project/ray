@@ -52,6 +52,31 @@ documentation:
 
 .. image:: http://goog-perftools.sourceforge.net/doc/pprof-test-big.gif
 
+Running Microbenchmarks
+-----------------------
+
+To run a set of single-node Ray microbenchmarks, use:
+
+.. code-block:: bash
+
+  ray microbenchmark
+
+The following are the results for the 0.7.5 release on a Python 3 / a m4.16xl instance:
+
+.. code-block:: text
+
+  single core get calls per second 12169.8 +- 386.41
+  single core put calls per second 3117.45 +- 94.17
+  single core put gigabytes per second 11.32 +- 3.4
+  multi core put calls per second 16221.06 +- 895.13
+  multi core put gigabytes per second 24.14 +- 0.29
+  single core tasks sync per second 887.77 +- 3.69
+  single core tasks async per second 4524.45 +- 196.39
+  multi core tasks async per second 6963.49 +- 161.31
+  single core actor calls sync per second 762.4 +- 56.47
+  single core actor calls async per second 1030.44 +- 45.42
+  multi core actor calls async per second 6065.92 +- 175.05
+
 References
 ----------
 
