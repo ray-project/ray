@@ -33,6 +33,10 @@ std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
   return VectorFromProtobuf(message_->function_descriptor());
 }
 
+const SchedulingClass TaskSpecification::GetSchedulingClass() const {
+  return std::make_pair(GetRequiredResources(), FunctionDescriptor());
+}
+
 size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }

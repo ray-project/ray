@@ -17,6 +17,9 @@ extern "C" {
 
 namespace ray {
 
+typedef std::vector<std::string> FunctionDescriptor;
+typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClass;
+
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
@@ -77,6 +80,13 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   const uint8_t *ArgMetadata(size_t arg_index) const;
 
   size_t ArgMetadataSize(size_t arg_index) const;
+
+  /// Return the scheduling class of the task. The scheduler makes a best effort
+  /// attempt to fairly dispatch tasks of different classes, preventing
+  /// starvation of any single class of task.
+  ///
+  /// \return The scheduling class used for fair task queueing.
+  const SchedulingClass GetSchedulingClass() const;
 
   /// Return the resources that are to be acquired during the execution of this
   /// task.
@@ -148,5 +158,18 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 };
 
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::SchedulingClass> {
+  size_t operator()(ray::SchedulingClass const &k) const {
+    size_t seed = std::hash<ray::ResourceSet>()(k.first);
+    for (const auto& str : k.second) {
+      seed ^= std::hash<std::string>()(str);
+    }
+    return seed;
+  }
+};
+}  // namespace std
 
 #endif  // RAY_COMMON_TASK_TASK_SPEC_H

@@ -95,23 +95,22 @@ const ResourceSet &TaskQueue::GetCurrentResourceLoad() const {
 }
 
 bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
-  const auto &resources = task.GetTaskSpecification().GetRequiredResources();
-  tasks_with_resources_[resources].push_back(task_id);
+  const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
+  tasks_by_class_[scheduling_class].push_back(task_id);
   return TaskQueue::AppendTask(task_id, task);
 }
 
 bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
   if (task_map_.find(task_id) != task_map_.end()) {
-    const auto &resources =
-        task_map_[task_id]->GetTaskSpecification().GetRequiredResources();
-    tasks_with_resources_[resources].erase(task_id);
+    const auto &scheduling_class = task_map_[task_id]->GetTaskSpecification().GetSchedulingClass();
+    tasks_by_class_[scheduling_class].erase(task_id);
   }
   return TaskQueue::RemoveTask(task_id, removed_tasks);
 }
 
-const std::unordered_map<ResourceSet, ordered_set<TaskID>>
-    &ReadyQueue::GetTasksWithResources() const {
-  return tasks_with_resources_;
+const std::unordered_map<SchedulingClass, ordered_set<TaskID>>
+    &ReadyQueue::GetTasksByClass() const {
+  return tasks_by_class_;
 }
 
 const std::list<Task> &SchedulingQueue::GetTasks(TaskState task_state) const {
@@ -119,9 +118,9 @@ const std::list<Task> &SchedulingQueue::GetTasks(TaskState task_state) const {
   return queue->GetTasks();
 }
 
-const std::unordered_map<ResourceSet, ordered_set<TaskID>>
-    &SchedulingQueue::GetReadyTasksWithResources() const {
-  return ready_queue_->GetTasksWithResources();
+const std::unordered_map<SchedulingClass, ordered_set<TaskID>>
+    &SchedulingQueue::GetReadyTasksByClass() const {
+  return ready_queue_->GetTasksByClass();
 }
 
 const Task &SchedulingQueue::GetTaskOfState(const TaskID &task_id,
@@ -402,6 +401,7 @@ void SchedulingQueue::RemoveBlockedTaskId(const TaskID &task_id) {
 }
 
 void SchedulingQueue::AddDriverTaskId(const TaskID &task_id) {
+
   RAY_LOG(DEBUG) << "Added driver task " << task_id;
   auto inserted = driver_task_ids_.insert(task_id);
   RAY_CHECK(inserted.second);

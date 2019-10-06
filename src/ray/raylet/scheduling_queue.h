@@ -132,12 +132,12 @@ class ReadyQueue : public TaskQueue {
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetTasksWithResources()
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetTasksByClass()
       const;
 
  private:
-  /// Index from resource shape to tasks that require these resources.
-  std::unordered_map<ResourceSet, ordered_set<TaskID>> tasks_with_resources_;
+  /// Index from task description to tasks queued of that type.
+  std::unordered_map<SchedulingClass, ordered_set<TaskID>> tasks_by_class_;
 };
 
 /// \class SchedulingQueue
@@ -183,7 +183,7 @@ class SchedulingQueue {
   /// Get a reference to the queue of ready tasks.
   ///
   /// \return A reference to the queue of ready tasks.
-  const std::unordered_map<ResourceSet, ordered_set<TaskID>> &GetReadyTasksWithResources()
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetReadyTasksByClass()
       const;
 
   /// Get a task from the queue of a given state. The caller must ensure that
