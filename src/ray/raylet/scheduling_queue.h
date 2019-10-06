@@ -132,8 +132,7 @@ class ReadyQueue : public TaskQueue {
   /// \brief Get a mapping from resource shape to tasks.
   ///
   /// \return Mapping from resource set to task IDs with these resource requirements.
-  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetTasksByClass()
-      const;
+  const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &GetTasksByClass() const;
 
  private:
   /// Index from task description to tasks queued of that type.

@@ -774,15 +774,15 @@ void NodeManager::DispatchTasks(
   // Dispatch tasks in priority order by class. This avoids starvation problems where
   // one type of tasks become stuck behind others in the queue, causing Ray to start
   // many workers. See #3644 for a more detailed description of this issue.
-  std::vector<const std::pair<const SchedulingClass, ordered_set<TaskID>>*> fair_order;
+  std::vector<const std::pair<const SchedulingClass, ordered_set<TaskID>> *> fair_order;
   for (auto &it : tasks_by_class) {
     fair_order.emplace_back(&it);
   }
-  std::sort(std::begin(fair_order), std::end(fair_order), [this](
-        const std::pair<const SchedulingClass, ordered_set<ray::TaskID> >*& a,
-        const std::pair<const SchedulingClass, ordered_set<ray::TaskID> >*& b) {
-      return num_scheduled_[a->first] < num_scheduled_[b->first];
-  });
+  std::sort(std::begin(fair_order), std::end(fair_order),
+            [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
+                   const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
+              return num_scheduled_[a->first] < num_scheduled_[b->first];
+            });
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources = it->first.first;
@@ -1897,7 +1897,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
 
-  const auto& spec = task.GetTaskSpecification();
+  const auto &spec = task.GetTaskSpecification();
   if (spec.IsActorCreationTask() || spec.IsActorTask()) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
@@ -2497,9 +2497,9 @@ std::string NodeManager::DebugString() const {
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
   result << "\nScheduledTaskCounts:";
-  for (const auto& pair : num_scheduled_) {
+  for (const auto &pair : num_scheduled_) {
     result << "\n- ";
-    for (const auto& str : pair.first.second) {
+    for (const auto &str : pair.first.second) {
       // Only print the ASCII parts of the function descriptor.
       bool ok = str.size() > 0;
       for (char c : str) {

@@ -102,7 +102,8 @@ bool ReadyQueue::AppendTask(const TaskID &task_id, const Task &task) {
 
 bool ReadyQueue::RemoveTask(const TaskID &task_id, std::vector<Task> *removed_tasks) {
   if (task_map_.find(task_id) != task_map_.end()) {
-    const auto &scheduling_class = task_map_[task_id]->GetTaskSpecification().GetSchedulingClass();
+    const auto &scheduling_class =
+        task_map_[task_id]->GetTaskSpecification().GetSchedulingClass();
     tasks_by_class_[scheduling_class].erase(task_id);
   }
   return TaskQueue::RemoveTask(task_id, removed_tasks);
@@ -401,7 +402,6 @@ void SchedulingQueue::RemoveBlockedTaskId(const TaskID &task_id) {
 }
 
 void SchedulingQueue::AddDriverTaskId(const TaskID &task_id) {
-
   RAY_LOG(DEBUG) << "Added driver task " << task_id;
   auto inserted = driver_task_ids_.insert(task_id);
   RAY_CHECK(inserted.second);

@@ -164,7 +164,7 @@ template <>
 struct hash<ray::SchedulingClass> {
   size_t operator()(ray::SchedulingClass const &k) const {
     size_t seed = std::hash<ray::ResourceSet>()(k.first);
-    for (const auto& str : k.second) {
+    for (const auto &str : k.second) {
       seed ^= std::hash<std::string>()(str);
     }
     return seed;
