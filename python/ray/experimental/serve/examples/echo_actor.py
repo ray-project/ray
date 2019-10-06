@@ -1,5 +1,6 @@
 """
-Example actor that adds number to the end of query string.
+Example actor that adds an increment to a number. This number can
+come from either web (parsing Flask request) or python call.
 
 This actor can be called from HTTP as well as from Python.
 """
