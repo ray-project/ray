@@ -773,13 +773,15 @@ void NodeManager::DispatchTasks(
   std::unordered_set<TaskID> removed_task_ids;
 
   // Dispatch tasks in priority order by class. This avoids starvation problems where
-  // one type of tasks become stuck behind others in the queue, causing Ray to start
+  // one clsas of tasks become stuck behind others in the queue, causing Ray to start
   // many workers. See #3644 for a more detailed description of this issue.
   std::vector<const std::pair<const SchedulingClass, ordered_set<TaskID>> *> fair_order;
   for (auto &it : tasks_by_class) {
     fair_order.emplace_back(&it);
   }
-  // Prioritize classes that have fewer currently running tasks.
+  // Prioritize classes that have fewer currently running tasks. Note that we only
+  // sort once per round of task dispatch, which is less fair then it could be, but
+  // is simpler and faster.
   if (fair_queueing_enabled_) {
     std::sort(
         std::begin(fair_order), std::end(fair_order),
