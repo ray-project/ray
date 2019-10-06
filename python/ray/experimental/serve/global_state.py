@@ -1,6 +1,8 @@
 import time
 from collections import defaultdict, deque
 
+import requests
+
 import ray
 from ray.experimental.serve.kv_store_service import KVStoreProxyActor
 from ray.experimental.serve.queues import CentralizedQueuesActor
@@ -68,12 +70,17 @@ class GlobalState:
             self.router_actor_handle)
 
     def wait_until_http_ready(self, num_retries=5, backoff_time_s=1):
-        routing_table_request_count = 0
+        http_is_ready = False
         retries = num_retries
 
-        while not routing_table_request_count:
-            routing_table_request_count = (ray.get(
-                self.kv_store_actor_handle.get_request_count.remote()))
+        while not http_is_ready:
+            try:
+                resp = requests.get(self.http_address)
+                assert resp.status_code == 200
+                http_is_ready = True
+            except Exception:
+                pass
+
             logger.debug((LOG_PREFIX + "Checking if HTTP server is ready."
                           "{} retries left.").format(retries))
             time.sleep(backoff_time_s)
