@@ -16,8 +16,11 @@ serve.create_endpoint("my_endpoint", "/echo")
 
 
 # a backend can be a function or class.
-def echo_v1(request):
-    return request
+# it can be made to be invoked from web as well as python.
+def echo_v1(flask_request, response="hello from python!"):
+    if serve.context.web:
+        response = flask_request.url
+    return response
 
 
 serve.create_backend(echo_v1, "echo:v1")
@@ -29,14 +32,14 @@ serve.link("my_endpoint", "echo:v1")
 print(requests.get("http://127.0.0.1:8000/echo").json())
 # The service will be reachable from http
 
-print(ray.get(serve.get_handle("my_endpoint").remote("hello")))
+print(ray.get(serve.get_handle("my_endpoint").remote(response="hello")))
 
 # as well as within the ray system.
 
 
 # We can also add a new backend and split the traffic.
-def echo_v2(request):
-    # magic
+def echo_v2(flask_request):
+    # magic, only from web.
     return "something new"
 
 
