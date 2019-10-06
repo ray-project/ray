@@ -773,7 +773,7 @@ void NodeManager::DispatchTasks(
   std::unordered_set<TaskID> removed_task_ids;
 
   // Dispatch tasks in priority order by class. This avoids starvation problems where
-  // one clsas of tasks become stuck behind others in the queue, causing Ray to start
+  // one class of tasks become stuck behind others in the queue, causing Ray to start
   // many workers. See #3644 for a more detailed description of this issue.
   std::vector<const std::pair<const SchedulingClass, ordered_set<TaskID>> *> fair_order;
   for (auto &it : tasks_by_class) {
@@ -2534,7 +2534,6 @@ std::string NodeManager::DebugString() const {
   result << "\n" << reconstruction_policy_.DebugString();
   result << "\n" << task_dependency_manager_.DebugString();
   result << "\n" << lineage_cache_.DebugString();
-
   result << "\nActorRegistry:";
 
   auto statistical_data = GetActorStatisticalData(actor_registry_);
