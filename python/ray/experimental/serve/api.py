@@ -67,7 +67,8 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
             initialization method.
     """
     if inspect.isfunction(func_or_class):
-        runner = TaskRunnerActor.remote(func_or_class)
+        # ignore lint on lambda expression
+        creator = lambda: TaskRunnerActor.remote(func_or_class)  # noqa: E731
     elif inspect.isclass(func_or_class):
         # Python inheritance order is right-to-left. We put RayServeMixin
         # on the left to make sure its methods are not overriden.
@@ -75,19 +76,69 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
         class CustomActor(RayServeMixin, func_or_class):
             pass
 
-        runner = CustomActor.remote(*actor_init_args)
+        # ignore lint on lambda expression
+        creator = lambda: CustomActor.remote(*actor_init_args)  # noqa: E731
     else:
         raise TypeError(
             "Backend must be a function or class, it is {}.".format(
                 type(func_or_class)))
 
-    global_state.backend_actor_handles.append(runner)
-
-    runner._ray_serve_setup.remote(backend_tag,
-                                   global_state.router_actor_handle)
-    runner._ray_serve_main_loop.remote(runner)
+    global_state.backend_creators[backend_tag] = creator
 
     global_state.registered_backends.add(backend_tag)
+
+    scale(backend_tag, 1)
+
+
+def _start_replica(backend_tag):
+    assert backend_tag in global_state.registered_backends, (
+        "Backend {} is not registered.".format(backend_tag))
+
+    creator = global_state.backend_creators[backend_tag]
+
+    runner = creator()
+    setup_done = runner._ray_serve_setup.remote(
+        backend_tag, global_state.router_actor_handle)
+    ray.get(setup_done)
+    runner._ray_serve_main_loop.remote(runner)
+
+    global_state.backend_replicas[backend_tag].append(runner)
+
+
+def _remove_replica(backend_tag):
+    assert backend_tag in global_state.registered_backends, (
+        "Backend {} is not registered.".format(backend_tag))
+    assert len(global_state.backend_replicas[backend_tag]) > 0, (
+        "Backend {} does not have enough replicas to be removed.".format(
+            backend_tag))
+
+    replicas = global_state.backend_replicas[backend_tag]
+    oldest_replica_handle = replicas.popleft()
+    # explicitly terminate that actor
+    del oldest_replica_handle
+
+
+def scale(backend_tag, num_replicas):
+    """Set the number of replicas for backend_tag.
+
+    Args:
+        backend_tag (str): A registered backend.
+        num_replicas (int): Desired number of replicas
+    """
+    assert backend_tag in global_state.registered_backends, (
+        "Backend {} is not registered.".format(backend_tag))
+    assert num_replicas > 0, "Number of replicas must be greater than 1."
+
+    replicas = global_state.backend_replicas[backend_tag]
+    current_num_replicas = len(replicas)
+    delta_num_replicas = num_replicas - current_num_replicas
+
+    if delta_num_replicas > 0:
+        for _ in range(delta_num_replicas):
+            _start_replica(backend_tag)
+    elif delta_num_replicas < 0:
+        for _ in range(-delta_num_replicas):
+            _remove_replica(backend_tag)
 
 
 def link(endpoint_name, backend_tag):
