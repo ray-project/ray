@@ -285,7 +285,7 @@ To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands`
 
 .. note::
 
-  You need to replace the ``{{FileSystemId}}`` to your own EFS ID before using the config.
+  You need to replace the ``{{FileSystemId}}`` to your own EFS ID before using the config. You may also need to set correct ``SecurityGroupIds`` for the instances in the config file.
 
 .. code-block:: bash
 

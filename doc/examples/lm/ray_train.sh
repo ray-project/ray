@@ -4,7 +4,7 @@ PEAK_LR=0.0005             # Peak learning rate, adjust as needed
 TOKENS_PER_SAMPLE=512      # Max sequence length
 MAX_POSITIONS=512          # Num. positional embeddings (usually same as above)
 MAX_SENTENCES=16           # Number of sequences per batch on one GPU (batch size)
-FIX_BATCH_SZIE=2048        # Number of batch size in total (max_sentences * update_freq * n_gpus)
+FIX_BATCH_SIZE=2048        # Number of batch size in total (max_sentences * update_freq * n_gpus)
 SAVE_INTERVAL_UPDATES=1000 # save a checkpoint every N updates
 
 LOG_DIR=$HOME/efs/log/
@@ -18,7 +18,7 @@ python $HOME/efs/ray_train.py --fp16 $DATA_DIR \
     --lr-scheduler polynomial_decay --lr $PEAK_LR --warmup-updates $WARMUP_UPDATES --total-num-update $TOTAL_UPDATES \
     --dropout 0.1 --attention-dropout 0.1 --weight-decay 0.01 \
     --max-sentences $MAX_SENTENCES \
-    --fix-batch-size $FIX_BATCH_SZIE \
+    --fix-batch-size $FIX_BATCH_SIZE \
     --max-update $TOTAL_UPDATES --log-format simple --log-interval 1 \
     --save-interval-updates $SAVE_INTERVAL_UPDATES \
     --save-dir $LOG_DIR --ddp-backend=no_c10d
