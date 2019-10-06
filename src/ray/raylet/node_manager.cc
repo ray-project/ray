@@ -78,6 +78,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
+      fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       initial_config_(config),
@@ -779,11 +780,14 @@ void NodeManager::DispatchTasks(
     fair_order.emplace_back(&it);
   }
   // Prioritize classes that have fewer currently running tasks.
-  std::sort(std::begin(fair_order), std::end(fair_order),
-            [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
-                   const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
-              return num_scheduled_[a->first] < num_scheduled_[b->first];
-            });
+  if (fair_queueing_enabled_) {
+    std::sort(
+        std::begin(fair_order), std::end(fair_order),
+        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
+               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
+          return num_scheduled_[a->first] < num_scheduled_[b->first];
+        });
+  }
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources = it->first.first;
