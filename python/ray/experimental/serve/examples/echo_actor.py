@@ -1,41 +1,47 @@
 """
-Example actor that adds message to the end of query_string.
+Example actor that adds an increment to a number. This number can
+come from either web (parsing Flask request) or python call.
+
+This actor can be called from HTTP as well as from Python.
 """
 
 import time
 
 import requests
-from werkzeug import urls
 
+import ray
 from ray.experimental import serve
 from ray.experimental.serve.utils import pformat_color_json
 
 
-class EchoActor:
-    def __init__(self, message):
-        self.message = message
+class MagicCounter:
+    def __init__(self, increment):
+        self.increment = increment
 
-    def __call__(self, context):
-        query_string_dict = urls.url_decode(context["query_string"])
-        message = ""
-        message += query_string_dict.get("message", "")
-        message += " "
-        message += self.message
-        return message
+    def __call__(self, flask_request, base_number=None):
+        if serve.context.web:
+            base_number = int(flask_request.args.get("base_number", "0"))
+
+        return base_number + self.increment
 
 
 serve.init(blocking=True)
+serve.create_endpoint("magic_counter", "/counter", blocking=True)
+serve.create_backend(MagicCounter, "counter:v1", 42)  # increment=42
+serve.link("magic_counter", "counter:v1")
 
-serve.create_endpoint("my_endpoint", "/echo", blocking=True)
-serve.create_backend(EchoActor, "echo:v1", "world")
-serve.link("my_endpoint", "echo:v1")
-
-while True:
-    resp = requests.get("http://127.0.0.1:8000/echo?message=hello").json()
+print("Sending ten queries via HTTP")
+for i in range(10):
+    url = "http://127.0.0.1:8000/counter?base_number={}".format(i)
+    print("> Pinging {}".format(url))
+    resp = requests.get(url).json()
     print(pformat_color_json(resp))
 
-    resp = requests.get("http://127.0.0.1:8000/echo").json()
-    print(pformat_color_json(resp))
+    time.sleep(0.2)
 
-    print("...Sleeping for 2 seconds...")
-    time.sleep(2)
+print("Sending ten queries via Python")
+handle = serve.get_handle("magic_counter")
+for i in range(10):
+    print("> Pinging handle.remote(base_number={})".format(i))
+    result = ray.get(handle.remote(base_number=i))
+    print("< Result {}".format(result))

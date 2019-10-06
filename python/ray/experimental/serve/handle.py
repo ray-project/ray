@@ -1,5 +1,7 @@
 import ray
 from ray.experimental import serve
+from ray.experimental.serve.context import TaskContext
+from ray.experimental.serve.exceptions import RayServeException
 
 
 class RayServeHandle:
@@ -28,11 +30,17 @@ class RayServeHandle:
         self.router_handle = router_handle
         self.endpoint_name = endpoint_name
 
-    def remote(self, *args):
-        # TODO(simon): Support kwargs once #5606 is merged.
+    def remote(self, *args, **kwargs):
+        if len(args) != 0:
+            raise RayServeException(
+                "handle.remote must be invoked with keyword arguments.")
+
         result_object_id_bytes = ray.get(
-            self.router_handle.enqueue_request.remote(self.endpoint_name,
-                                                      *args))
+            self.router_handle.enqueue_request.remote(
+                service=self.endpoint_name,
+                request_args=(),
+                request_kwargs=kwargs,
+                request_context=TaskContext.Python))
         return ray.ObjectID(result_object_id_bytes)
 
     def get_traffic_policy(self):
