@@ -79,9 +79,9 @@ Once the cluster is started, you can then SSH into the head node using ``ray att
 Training
 --------
 
-We provide ``ray_train.py`` (`link <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrence to the fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use them by restarting. 
+We provide ``ray_train.py`` (`link <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrence to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use them by restarting. 
 
-Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a new main function ``ray_main()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and call the ``main`` of fairseq:
+Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a new main function ``ray_main()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and call the ``main`` of Fairseq:
 
 .. code-block:: python
 
