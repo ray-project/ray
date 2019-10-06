@@ -7,8 +7,15 @@ from ray.experimental.serve.utils import get_custom_object_id, logger
 
 
 class Query:
-    def __init__(self, request_body, result_object_id=None):
-        self.request_body = request_body
+    def __init__(self,
+                 request_args,
+                 request_kwargs,
+                 request_context,
+                 result_object_id=None):
+        self.request_args = request_args
+        self.request_kwargs = request_kwargs
+        self.request_context = request_context
+
         if result_object_id is None:
             self.result_object_id = get_custom_object_id()
         else:
@@ -34,7 +41,8 @@ class CentralizedQueues:
     Behavior:
         >>> # psuedo-code
         >>> queue = CentralizedQueues()
-        >>> queue.enqueue_request('service-name', data)
+        >>> queue.enqueue_request(
+            "service-name", request_args, request_kwargs, request_context)
         # nothing happens, request is queued.
         # returns result ObjectID, which will contains the final result
         >>> queue.dequeue_request('backend-1')
@@ -68,8 +76,9 @@ class CentralizedQueues:
         # backend_name -> worker queue
         self.workers = defaultdict(deque)
 
-    def enqueue_request(self, service, request_data):
-        query = Query(request_data)
+    def enqueue_request(self, service, request_args, request_kwargs,
+                        request_context):
+        query = Query(request_args, request_kwargs, request_context)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()

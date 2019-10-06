@@ -1,6 +1,8 @@
 import traceback
-
 import ray
+from ray.experimental.serve import context as serve_context
+from ray.experimental.serve.context import TaskContext, FakeFlaskQuest
+from ray.experimental.serve.http_util import build_flask_request
 
 
 class TaskRunner:
@@ -13,18 +15,18 @@ class TaskRunner:
     def __init__(self, func_to_run):
         self.func = func_to_run
 
-    def __call__(self, *args):
-        return self.func(*args)
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
 
 
-def wrap_to_ray_error(callable_obj, *args):
+def wrap_to_ray_error(exception):
     """Utility method that catch and seal exceptions in execution"""
     try:
-        return callable_obj(*args)
+        # Raise and catch so we can access traceback.format_exc()
+        raise exception
     except Exception as e:
         traceback_str = ray.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(
-            str(callable_obj), traceback_str, e.__class__)
+        return ray.exceptions.RayTaskError(str(e), traceback_str, e.__class__)
 
 
 class RayServeMixin:
@@ -62,12 +64,28 @@ class RayServeMixin:
                 self._ray_serve_dequeue_requestr_name))
         work_item = ray.get(ray.ObjectID(work_token))
 
-        # TODO(simon):
-        # __call__ should be able to take multiple *args and **kwargs.
-        result = wrap_to_ray_error(self.__call__, work_item.request_body)
-        result_object_id = work_item.result_object_id
-        ray.worker.global_worker.put_object(result_object_id, result)
+        if work_item.request_context == TaskContext.Web:
+            serve_context.web = True
+            asgi_scope, body_bytes = work_item.request_args
+            flask_request = build_flask_request(asgi_scope, body_bytes)
+            args = (flask_request, )
+            kwargs = {}
+        else:
+            serve_context.web = False
+            args = (FakeFlaskQuest(), )
+            kwargs = work_item.request_kwargs
 
+        result_object_id = work_item.result_object_id
+
+        try:
+            result = self.__call__(*args, **kwargs)
+            ray.worker.global_worker.put_object(result_object_id, result)
+        except Exception as e:
+            wrapped_exception = wrap_to_ray_error(e)
+            ray.worker.global_worker.put_object(result_object_id,
+                                                wrapped_exception)
+
+        serve_context.web = False
         # The worker finished one unit of work.
         # It will now tail recursively schedule the main_loop again.
 
