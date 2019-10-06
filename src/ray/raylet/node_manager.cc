@@ -778,6 +778,7 @@ void NodeManager::DispatchTasks(
   for (auto &it : tasks_by_class) {
     fair_order.emplace_back(&it);
   }
+  // Prioritize classes that have fewer currently running tasks.
   std::sort(std::begin(fair_order), std::end(fair_order),
             [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
                    const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
