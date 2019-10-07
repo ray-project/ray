@@ -7,7 +7,7 @@ import numpy
 import time
 import logging
 
-from libc.stdint cimport uint8_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport (
     dynamic_pointer_cast,
@@ -34,6 +34,7 @@ from ray.includes.common cimport (
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
+    LocalMemoryBuffer,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
 )
@@ -49,9 +50,15 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.libcoreworker cimport CCoreWorker, CTaskOptions
+from ray.includes.libcoreworker cimport (
+    CActorCreationOptions,
+    CCoreWorker,
+    CTaskOptions,
+)
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+import ray
+from ray import profiling
 from ray.exceptions import RayletError, ObjectStoreFullError
 from ray.utils import decode
 from ray.ray_constants import (
@@ -246,15 +253,28 @@ cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
 cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
-cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
+cdef int prepare_resources(
+        dict resource_dict,
+        unordered_map[c_string, double] *resource_map) except -1:
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
-    if not isinstance(resource_map, dict):
-        raise TypeError("resource_map must be a dictionary")
-    for key, value in resource_map.items():
-        out[key.encode("ascii")] = float(value)
-    return out
+
+    if resource_dict is None:
+        raise ValueError("Must provide resource map.")
+
+    for key, value in resource_dict.items():
+        if not (isinstance(value, int) or isinstance(value, float)):
+            raise ValueError("Resource quantities may only be ints or floats.")
+        if value < 0:
+            raise ValueError("Resource quantities may not be negative.")
+        if value > 0:
+            if (value >= 1 and isinstance(value, float)
+                    and not value.is_integer()):
+                raise ValueError(
+                    "Resource quantities >1 must be whole numbers.")
+            resource_map[0][key.encode("ascii")] = float(value)
+    return 0
 
 
 cdef c_vector[c_string] string_vector_from_list(list string_list):
@@ -265,6 +285,33 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
             raise TypeError("string_list elements must be bytes")
         out.push_back(s)
     return out
+
+
+cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
+    cdef:
+        c_string pickled_str
+        shared_ptr[CBuffer] arg_data
+        shared_ptr[CBuffer] arg_metadata
+
+    for arg in args:
+        if isinstance(arg, ObjectID):
+            args_vector.push_back(
+                CTaskArg.PassByReference((<ObjectID>arg).native()))
+        elif not ray._raylet.check_simple_value(arg):
+            args_vector.push_back(
+                CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
+        else:
+            pickled_str = pickle.dumps(
+                arg, protocol=pickle.HIGHEST_PROTOCOL)
+            # TODO(edoakes): This makes a copy that could be avoided.
+            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(pickled_str.data()),
+                        pickled_str.size(),
+                        True))
+            args_vector.push_back(
+                CTaskArg.PassByValue(
+                    make_shared[CRayObject](arg_data, arg_metadata)))
 
 
 cdef class RayletClient:
@@ -279,13 +326,6 @@ cdef class RayletClient:
         # to a shared_ptr. This means the core worker *must* be
         # initialized before the raylet client.
         self.client = &core_worker.core_worker.get().GetRayletClient()
-
-    def submit_task(self, TaskSpec task_spec):
-        cdef:
-            CObjectID c_id
-
-        check_status(self.client.SubmitTask(
-            task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:
@@ -384,6 +424,23 @@ cdef class CoreWorker:
     def disconnect(self):
         with nogil:
             self.core_worker.get().Disconnect()
+
+    def set_current_task_id(self, TaskID task_id):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+
+        with nogil:
+            self.core_worker.get().SetCurrentTaskId(c_task_id)
+
+    def get_current_task_id(self):
+        return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
+
+    def set_current_job_id(self, JobID job_id):
+        cdef:
+            CJobID c_job_id = job_id.native()
+
+        with nogil:
+            self.core_worker.get().SetCurrentJobId(c_job_id)
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
@@ -539,65 +596,6 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
-    def get_current_task_id(self):
-        return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
-
-    def set_current_task_id(self, TaskID task_id):
-        cdef:
-            CTaskID c_task_id = task_id.native()
-
-        with nogil:
-            self.core_worker.get().SetCurrentTaskId(c_task_id)
-
-    def set_current_job_id(self, JobID job_id):
-        cdef:
-            CJobID c_job_id = job_id.native()
-
-        with nogil:
-            self.core_worker.get().SetCurrentJobId(c_job_id)
-
-    def submit_task(self,
-                    function_descriptor,
-                    args,
-                    int num_return_vals,
-                    resources):
-        cdef:
-            unordered_map[c_string, double] c_resources
-            CTaskOptions task_options
-            CRayFunction ray_function
-            c_vector[CTaskArg] args_vector
-            c_vector[CObjectID] return_ids
-            c_string pickled_str
-            shared_ptr[CBuffer] arg_data
-            shared_ptr[CBuffer] arg_metadata
-
-        c_resources = resource_map_from_dict(resources)
-        task_options = CTaskOptions(num_return_vals, c_resources)
-        ray_function = CRayFunction(
-            LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-
-        for arg in args:
-            if isinstance(arg, ObjectID):
-                args_vector.push_back(
-                    CTaskArg.PassByReference((<ObjectID>arg).native()))
-            else:
-                pickled_str = pickle.dumps(
-                    arg, protocol=pickle.HIGHEST_PROTOCOL)
-                arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-                        make_shared[LocalMemoryBuffer](
-                            <uint8_t*>(pickled_str.data()),
-                            pickled_str.size(),
-                            True))
-                args_vector.push_back(
-                    CTaskArg.PassByValue(
-                        make_shared[CRayObject](arg_data, arg_metadata)))
-
-        with nogil:
-            check_status(self.core_worker.get().Tasks().SubmitTask(
-                ray_function, args_vector, task_options, &return_ids))
-
-        return VectorToObjectIDs(return_ids)
-
     def set_object_store_client_options(self, c_string client_name,
                                         int64_t limit_bytes):
         with nogil:
@@ -612,6 +610,90 @@ cdef class CoreWorker:
             message = self.core_worker.get().Objects().MemoryUsageString()
 
         return message.decode("utf-8")
+
+    def submit_task(self,
+                    function_descriptor,
+                    args,
+                    int num_return_vals,
+                    resources):
+        cdef:
+            unordered_map[c_string, double] c_resources
+            CTaskOptions task_options
+            CRayFunction ray_function
+            c_vector[CTaskArg] args_vector
+            c_vector[CObjectID] return_ids
+
+        with profiling.profile("submit_task"):
+            prepare_resources(resources, &c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
+
+            with nogil:
+                check_status(self.core_worker.get().Tasks().SubmitTask(
+                    ray_function, args_vector, task_options, &return_ids))
+
+            return VectorToObjectIDs(return_ids)
+
+    def create_actor(self,
+                     function_descriptor,
+                     args,
+                     uint64_t max_reconstructions,
+                     resources,
+                     placement_resources):
+        cdef:
+            ActorHandle actor_handle = ActorHandle.__new__(ActorHandle)
+            CRayFunction ray_function
+            c_vector[CTaskArg] args_vector
+            c_vector[c_string] dynamic_worker_options
+            unordered_map[c_string, double] c_resources
+            unordered_map[c_string, double] c_placement_resources
+
+        with profiling.profile("submit_task"):
+            prepare_resources(resources, &c_resources)
+            prepare_resources(placement_resources, &c_placement_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
+
+            with nogil:
+                check_status(self.core_worker.get().Tasks().CreateActor(
+                    ray_function, args_vector,
+                    CActorCreationOptions(
+                        max_reconstructions, False, c_resources,
+                        c_placement_resources, dynamic_worker_options),
+                    &actor_handle.inner))
+
+            return actor_handle
+
+    def submit_actor_task(self,
+                          ActorHandle handle,
+                          function_descriptor,
+                          args,
+                          int num_return_vals,
+                          resources):
+
+        cdef:
+            unordered_map[c_string, double] c_resources
+            CTaskOptions task_options
+            CRayFunction ray_function
+            c_vector[CTaskArg] args_vector
+            c_vector[CObjectID] return_ids
+
+        with profiling.profile("submit_task"):
+            prepare_resources(resources, &c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
+
+            with nogil:
+                check_status(self.core_worker.get().Tasks().SubmitActorTask(
+                      handle.inner.get()[0], ray_function,
+                      args_vector, task_options, &return_ids))
+
+            return VectorToObjectIDs(return_ids)
 
     def profile_event(self, event_type, dict extra_data):
         cdef:
