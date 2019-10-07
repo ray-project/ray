@@ -27,9 +27,6 @@ class GlobalState:
     """
 
     def __init__(self):
-        #: holds all actor handles.
-        self.backend_actor_handles = []
-
         #: actor handle to KV store actor
         self.kv_store_actor_handle = None
         #: actor handle to HTTP server
@@ -44,6 +41,12 @@ class GlobalState:
 
         #: Mapping of endpoints -> a stack of traffic policy
         self.policy_action_history = defaultdict(deque)
+
+        #: Backend creaters. Mapping backend_tag -> callable creator
+        self.backend_creators = dict()
+        #: Number of replicas per backend.
+        #  Mapping backend_tag -> deque(actor_handles)
+        self.backend_replicas = defaultdict(deque)
 
         #: HTTP address. Currently it's hard coded to localhost with port 8000
         #  In future iteration, HTTP server will be started on every node and
