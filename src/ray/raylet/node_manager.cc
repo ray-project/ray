@@ -1,5 +1,6 @@
 #include "ray/raylet/node_manager.h"
 
+#include <cctype>
 #include <fstream>
 
 #include "ray/common/status.h"
@@ -2510,13 +2511,13 @@ std::string NodeManager::DebugString() const {
       // Only print the ASCII parts of the function descriptor.
       bool ok = str.size() > 0;
       for (char c : str) {
-        if (c < 0 || c >= 128) {
+        if (!isprint(c)) {
           ok = false;
         }
       }
       if (ok) {
         result << str;
-        result << "/";
+        result << ".";
       }
     }
     result << pair.first.first.ToString();
