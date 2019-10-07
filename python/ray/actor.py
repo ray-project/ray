@@ -3,74 +3,22 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import hashlib
 import inspect
 import logging
 import six
 import sys
-import threading
 
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 
 from ray.function_manager import FunctionDescriptor
 import ray.ray_constants as ray_constants
+import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import (ObjectID, ActorID, ActorHandleID, ActorClassID, TaskID)
+from ray import ActorID, ActorHandleID, ActorClassID, profiling
 
 logger = logging.getLogger(__name__)
-
-
-def compute_actor_handle_id(actor_handle_id, num_forks):
-    """Deterministically compute an actor handle ID.
-
-    A new actor handle ID is generated when it is forked from another actor
-    handle. The new handle ID is computed as hash(old_handle_id || num_forks).
-
-    Args:
-        actor_handle_id (common.ObjectID): The original actor handle ID.
-        num_forks: The number of times the original actor handle has been
-                   forked so far.
-
-    Returns:
-        An ID for the new actor handle.
-    """
-    assert isinstance(actor_handle_id, ActorHandleID)
-    handle_id_hash = hashlib.sha1()
-    handle_id_hash.update(actor_handle_id.binary())
-    handle_id_hash.update(str(num_forks).encode("ascii"))
-    handle_id = handle_id_hash.digest()
-    return ActorHandleID(handle_id)
-
-
-def compute_actor_handle_id_non_forked(actor_handle_id, current_task_id):
-    """Deterministically compute an actor handle ID in the non-forked case.
-
-    This code path is used whenever an actor handle is pickled and unpickled
-    (for example, if a remote function closes over an actor handle). Then,
-    whenever the actor handle is used, a new actor handle ID will be generated
-    on the fly as a deterministic function of the actor ID, the previous actor
-    handle ID and the current task ID.
-
-    TODO(rkn): It may be possible to cause problems by closing over multiple
-    actor handles in a remote function, which then get unpickled and give rise
-    to the same actor handle IDs.
-
-    Args:
-        actor_handle_id: The original actor handle ID.
-        current_task_id: The ID of the task that is unpickling the handle.
-
-    Returns:
-        An ID for the new actor handle.
-    """
-    assert isinstance(actor_handle_id, ActorHandleID)
-    assert isinstance(current_task_id, TaskID)
-    handle_id_hash = hashlib.sha1()
-    handle_id_hash.update(actor_handle_id.binary())
-    handle_id_hash.update(current_task_id.binary())
-    handle_id = handle_id_hash.digest()
-    return ActorHandleID(handle_id)
 
 
 def method(*args, **kwargs):
@@ -359,14 +307,6 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
-        actor_id = ActorID.of(worker.current_job_id, worker.current_task_id,
-                              worker.task_context.task_index + 1)
-        # The actor cursor is a dummy object representing the most recent
-        # actor method invocation. For each subsequent method invocation,
-        # the current cursor should be added as a dependency, and then
-        # updated to reflect the new invocation.
-        actor_cursor = None
-
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
         # decorator. Last three conditions are to check that no resources were
@@ -386,12 +326,23 @@ class ActorClass(object):
                            if self._num_cpus is None else self._num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
+        function_name = "__init__"
+        function_descriptor = FunctionDescriptor(
+            self._modified_class.__module__, function_name,
+            self._modified_class.__name__)
+
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
+            actor_id = ActorID.of(worker.current_job_id,
+                                  worker.current_task_id,
+                                  worker.task_context.task_index + 1)
             worker.actors[actor_id] = self._modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
+            core_handle = ray._raylet.ActorHandle(
+                actor_id, ActorHandleID.nil(), worker.current_job_id,
+                function_descriptor.get_function_descriptor_list())
         else:
             # Export the actor.
             if (self._last_export_session_and_job !=
@@ -418,32 +369,25 @@ class ActorClass(object):
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
 
-            function_name = "__init__"
             function_signature = self._method_signatures[function_name]
             creation_args = signature.extend_args(function_signature, args,
                                                   kwargs)
-            function_descriptor = FunctionDescriptor(
-                self._modified_class.__module__, function_name,
-                self._modified_class.__name__)
-            [actor_cursor] = worker.submit_task(
-                function_descriptor,
-                creation_args,
-                actor_creation_id=actor_id,
-                max_actor_reconstructions=self._max_reconstructions,
-                num_return_vals=1,
-                resources=resources,
-                placement_resources=actor_placement_resources)
-            assert isinstance(actor_cursor, ObjectID)
+            core_handle = worker.core_worker.create_actor(
+                function_descriptor.get_function_descriptor_list(),
+                creation_args, self._max_reconstructions, resources,
+                actor_placement_resources)
 
         actor_handle = ActorHandle(
-            actor_id, self._modified_class.__module__, self._class_name,
-            actor_cursor, self._actor_method_names, self._method_decorators,
-            self._method_signatures, self._actor_method_num_return_vals,
-            actor_cursor, actor_method_cpu, worker.current_job_id,
-            worker.current_session_and_job)
-        # We increment the actor counter by 1 to account for the actor creation
-        # task.
-        actor_handle._ray_actor_counter += 1
+            core_handle,
+            self._modified_class.__module__,
+            self._class_name,
+            self._actor_method_names,
+            self._method_decorators,
+            self._method_signatures,
+            self._actor_method_num_return_vals,
+            actor_method_cpu,
+            worker.current_session_and_job,
+            original_handle=True)
 
         return actor_handle
 
@@ -464,23 +408,8 @@ class ActorHandle(object):
     cloudpickle).
 
     Attributes:
-        _ray_actor_id: The ID of the corresponding actor.
+        _ray_core_handle: Core worker actor handle for this actor.
         _ray_module_name: The module name of this actor.
-        _ray_actor_handle_id: The ID of this handle. If this is the "original"
-            handle for an actor (as opposed to one created by passing another
-            handle into a task), then this ID must be NIL_ID. If this
-            ActorHandle was created by forking an existing ActorHandle, then
-            this ID must be computed deterministically via
-            compute_actor_handle_id. If this ActorHandle was created by an
-            out-of-band mechanism (e.g., pickling), then this must be None (in
-            this case, a new actor handle ID will be generated on the fly every
-            time a method is invoked).
-        _ray_actor_cursor: The actor cursor is a dummy object representing the
-            most recent actor method invocation. For each subsequent method
-            invocation, the current cursor should be added as a dependency, and
-            then updated to reflect the new invocation.
-        _ray_actor_counter: The number of actor method invocations that we've
-            called so far.
         _ray_actor_method_names: The names of the actor methods.
         _ray_method_decorators: Optional decorators for the function
             invocation. This can be used to change the behavior on the
@@ -490,63 +419,33 @@ class ActorHandle(object):
         _ray_method_num_return_vals: The default number of return values for
             each method.
         _ray_class_name: The name of the actor class.
-        _ray_actor_forks: The number of times this handle has been forked.
-        _ray_actor_creation_dummy_object_id: The dummy object ID from the actor
-            creation task.
         _ray_actor_method_cpus: The number of CPUs required by actor methods.
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
             this handle goes out of scope.
-        _ray_actor_job_id: The ID of the job that created the actor
-            (it is possible that this ActorHandle exists on a job with a
-            different job ID).
-        _ray_new_actor_handles: The new actor handles that were created from
-            this handle since the last task on this handle was submitted. This
-            is used to garbage-collect dummy objects that are no longer
-            necessary in the backend.
     """
 
     def __init__(self,
-                 actor_id,
+                 core_handle,
                  module_name,
                  class_name,
-                 actor_cursor,
                  actor_method_names,
                  method_decorators,
                  method_signatures,
                  method_num_return_vals,
-                 actor_creation_dummy_object_id,
                  actor_method_cpus,
-                 actor_job_id,
                  session_and_job,
-                 actor_handle_id=None):
-        assert isinstance(actor_id, ActorID)
-        assert isinstance(actor_job_id, ray.JobID)
-        self._ray_actor_id = actor_id
+                 original_handle=False):
+        self._ray_core_handle = core_handle
         self._ray_module_name = module_name
-        # False if this actor handle was created by forking or pickling. True
-        # if it was created by the _serialization_helper function.
-        self._ray_original_handle = actor_handle_id is None
-        if self._ray_original_handle:
-            self._ray_actor_handle_id = ActorHandleID.nil()
-        else:
-            assert isinstance(actor_handle_id, ActorHandleID)
-            self._ray_actor_handle_id = actor_handle_id
-        self._ray_actor_cursor = actor_cursor
-        self._ray_actor_counter = 0
+        self._ray_original_handle = original_handle
         self._ray_actor_method_names = actor_method_names
         self._ray_method_decorators = method_decorators
         self._ray_method_signatures = method_signatures
         self._ray_method_num_return_vals = method_num_return_vals
         self._ray_class_name = class_name
-        self._ray_actor_forks = 0
-        self._ray_actor_creation_dummy_object_id = (
-            actor_creation_dummy_object_id)
         self._ray_actor_method_cpus = actor_method_cpus
-        self._ray_actor_job_id = actor_job_id
         self._ray_session_and_job = session_and_job
-        self._ray_new_actor_handles = []
-        self._ray_actor_lock = threading.Lock()
 
     def _actor_method_call(self,
                            method_name,
@@ -584,38 +483,16 @@ class ActorHandle(object):
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
 
-        if worker.mode == ray.LOCAL_MODE:
-            function = getattr(worker.actors[self._ray_actor_id], method_name)
-            object_ids = worker.local_mode_manager.execute(
-                function, function_descriptor, args, num_return_vals)
-        else:
-            with self._ray_actor_lock:
-                object_ids = worker.submit_task(
-                    function_descriptor,
-                    args,
-                    actor_id=self._ray_actor_id,
-                    actor_handle_id=self._ray_actor_handle_id,
-                    actor_counter=self._ray_actor_counter,
-                    actor_creation_dummy_object_id=(
-                        self._ray_actor_creation_dummy_object_id),
-                    previous_actor_task_dummy_object_id=self._ray_actor_cursor,
-                    new_actor_handles=self._ray_new_actor_handles,
-                    # We add one for the dummy return ID.
-                    num_return_vals=num_return_vals + 1,
-                    resources={"CPU": self._ray_actor_method_cpus},
-                    placement_resources={},
-                    job_id=self._ray_actor_job_id,
-                )
-                # Update the actor counter and cursor to reflect the most
-                # recent invocation.
-                self._ray_actor_counter += 1
-                # The last object returned is the dummy object that should be
-                # passed in to the next actor method. Do not return it to the
-                # user.
-                self._ray_actor_cursor = object_ids.pop()
-                # We have notified the backend of the new actor handles to
-                # expect since the last task was submitted, so clear the list.
-                self._ray_new_actor_handles = []
+        with profiling.profile("submit_task"):
+            if worker.mode == ray.LOCAL_MODE:
+                function = getattr(worker.actors[self._actor_id], method_name)
+                object_ids = worker.local_mode_manager.execute(
+                    function, function_descriptor, args, num_return_vals)
+            else:
+                object_ids = worker.core_worker.submit_actor_task(
+                    self._ray_core_handle,
+                    function_descriptor.get_function_descriptor_list(), args,
+                    num_return_vals, {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -654,7 +531,7 @@ class ActorHandle(object):
 
     def __repr__(self):
         return "Actor({}, {})".format(self._ray_class_name,
-                                      self._ray_actor_id.hex())
+                                      self._actor_id.hex())
 
     def __del__(self):
         """Kill the worker that is running this actor."""
@@ -674,8 +551,8 @@ class ActorHandle(object):
             # and we don't need to send `__ray_terminate__` again.
             logger.warning(
                 "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.", self._ray_actor_id,
-                self._ray_class_name)
+                " Actor id = %s, class name = %s.",
+                self._ray_core_handle.actor_id(), self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
@@ -684,11 +561,11 @@ class ActorHandle(object):
 
     @property
     def _actor_id(self):
-        return self._ray_actor_id
+        return self._ray_core_handle.actor_id()
 
     @property
     def _actor_handle_id(self):
-        return self._ray_actor_handle_id
+        return self._ray_core_handle.actor_handle_id()
 
     def _serialization_helper(self, ray_forking):
         """This is defined in order to make pickling work.
@@ -700,47 +577,16 @@ class ActorHandle(object):
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
-        if ray_forking:
-            actor_handle_id = compute_actor_handle_id(
-                self._ray_actor_handle_id, self._ray_actor_forks)
-        else:
-            actor_handle_id = self._ray_actor_handle_id
-
-        # Note: _ray_actor_cursor and _ray_actor_creation_dummy_object_id
-        # could be None.
         state = {
-            "actor_id": self._ray_actor_id,
-            "actor_handle_id": actor_handle_id,
+            "core_handle": self._ray_core_handle.fork(ray_forking).to_bytes(),
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
-            "actor_cursor": self._ray_actor_cursor,
             "actor_method_names": self._ray_actor_method_names,
             "method_decorators": self._ray_method_decorators,
             "method_signatures": self._ray_method_signatures,
             "method_num_return_vals": self._ray_method_num_return_vals,
-            # Actors in local mode don't have dummy objects.
-            "actor_creation_dummy_object_id": self.
-            _ray_actor_creation_dummy_object_id,
-            "actor_method_cpus": self._ray_actor_method_cpus,
-            "actor_job_id": self._ray_actor_job_id,
-            "ray_forking": ray_forking
+            "actor_method_cpus": self._ray_actor_method_cpus
         }
-
-        if ray_forking:
-            self._ray_actor_forks += 1
-            new_actor_handle_id = actor_handle_id
-        else:
-            # The execution dependency for a pickled actor handle is never safe
-            # to release, since it could be unpickled and submit another
-            # dependent task at any time. Therefore, we notify the backend of a
-            # random handle ID that will never actually be used.
-            new_actor_handle_id = ActorHandleID.from_random()
-        # Notify the backend to expect this new actor handle. The backend will
-        # not release the cursor for any new handles until the first task for
-        # each of the new handles is submitted.
-        # NOTE(swang): There is currently no garbage collection for actor
-        # handles until the actor itself is removed.
-        self._ray_new_actor_handles.append(new_actor_handle_id)
 
         return state
 
@@ -755,39 +601,19 @@ class ActorHandle(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
-        if state["ray_forking"]:
-            actor_handle_id = state["actor_handle_id"]
-        else:
-            # Right now, if the actor handle has been pickled, we create a
-            # temporary actor handle id for invocations.
-            # TODO(pcm): This still leads to a lot of actor handles being
-            # created, there should be a better way to handle pickled
-            # actor handles.
+        self.__init__(
             # TODO(swang): Accessing the worker's current task ID is not
             # thread-safe.
-            # TODO(swang): Unpickling the same actor handle twice in the same
-            # task will break the application, and unpickling it twice in the
-            # same actor is likely a performance bug. We should consider
-            # logging a warning in these cases.
-            actor_handle_id = compute_actor_handle_id_non_forked(
-                state["actor_handle_id"], worker.current_task_id)
-
-        self.__init__(
-            state["actor_id"],
+            ray._raylet.ActorHandle.from_bytes(state["core_handle"],
+                                               worker.current_task_id),
             state["module_name"],
             state["class_name"],
-            state["actor_cursor"],
             state["actor_method_names"],
             state["method_decorators"],
             state["method_signatures"],
             state["method_num_return_vals"],
-            state["actor_creation_dummy_object_id"],
             state["actor_method_cpus"],
-            # This is the ID of the job that owns the actor, not
-            # necessarily the job that owns this actor handle.
-            state["actor_job_id"],
-            worker.current_session_and_job,
-            actor_handle_id=actor_handle_id)
+            worker.current_session_and_job)
 
     def __getstate__(self):
         """This code path is used by pickling but not by Ray forking."""
