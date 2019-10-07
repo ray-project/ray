@@ -95,7 +95,7 @@ std::shared_ptr<TaskTableData> CreateTaskTableData(const TaskID &task_id,
   return data;
 }
 
-/// A helper function that compare wether 2 `TaskTableData` objects are equal.
+/// A helper function that compare whether 2 `TaskTableData` objects are equal.
 /// Note, this function only compares fields set by `CreateTaskTableData`.
 bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) {
   const auto &spec1 = data1.task().task_spec();

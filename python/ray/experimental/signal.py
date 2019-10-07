@@ -50,7 +50,7 @@ def _get_task_id(source):
         - If source is a task id, return same task id.
     """
     if type(source) is ray.actor.ActorHandle:
-        return source._ray_actor_id
+        return source._actor_id
     else:
         if type(source) is ray.TaskID:
             return source

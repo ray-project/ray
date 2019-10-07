@@ -20,8 +20,7 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  auto new_actor_handle = GetActorHandle(nativeActorHandle).Fork();
-  return reinterpret_cast<jlong>(new ray::ActorHandle(new_actor_handle));
+  return reinterpret_cast<jlong>(GetActorHandle(nativeActorHandle).Fork().release());
 }
 
 /*
@@ -32,7 +31,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorId(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return IdToJavaByteArray<ray::ActorID>(env,
-                                         GetActorHandle(nativeActorHandle).ActorID());
+                                         GetActorHandle(nativeActorHandle).GetActorID());
 }
 
 /*
@@ -44,7 +43,7 @@ JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorHandleId(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return IdToJavaByteArray<ray::ActorHandleID>(
-      env, GetActorHandle(nativeActorHandle).ActorHandleID());
+      env, GetActorHandle(nativeActorHandle).GetActorHandleID());
 }
 
 /*
@@ -62,7 +61,8 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
  * Method:    nativeIsDirectCallActor
  * Signature: (J)Z
  */
-JNIEXPORT jboolean JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
+JNIEXPORT jboolean JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeActorHandle) {
   return GetActorHandle(nativeActorHandle).IsDirectCallActor();
 }
@@ -104,8 +104,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserial
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
   auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
-  return reinterpret_cast<jlong>(
-      new ray::ActorHandle(ray::ActorHandle::Deserialize(binary)));
+  return reinterpret_cast<jlong>(new ray::ActorHandle(binary, TaskID::Nil()));
 }
 
 /*

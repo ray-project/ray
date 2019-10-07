@@ -84,7 +84,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     max_reconstructions = static_cast<uint64_t>(env->GetIntField(
         actorCreationOptions, java_actor_creation_options_max_reconstructions));
     use_direct_call = env->GetBooleanField(actorCreationOptions,
-                                          java_actor_creation_options_use_direct_call);
+                                           java_actor_creation_options_use_direct_call);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -101,7 +101,7 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
 
   ray::ActorCreationOptions action_creation_options{
-      static_cast<uint64_t>(max_reconstructions), use_direct_call, resources,
+      static_cast<uint64_t>(max_reconstructions), use_direct_call, resources, resources,
       dynamic_worker_options};
   return action_creation_options;
 }
