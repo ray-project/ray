@@ -19,7 +19,7 @@ def init(blocking=False, object_store_memory=int(1e8), gc_window_seconds=3600):
 
     Args:
         blocking (bool): If true, the function will wait for the HTTP server to
-            be healthy before returns.
+            be healthy, and other components to be ready before returns.
         object_store_memory (int): Allocated shared memory size in bytes. The
             default is 100MiB. The default is kept low for latency stability
             reason.
@@ -40,6 +40,9 @@ def init(blocking=False, object_store_memory=int(1e8), gc_window_seconds=3600):
 
     if blocking:
         global_state.wait_until_http_ready()
+        ray.get(global_state.router_actor_handle.is_ready.remote())
+        ray.get(global_state.kv_store_actor_handle.is_ready.remote())
+        ray.get(global_state.metric_monitor_handle.is_ready.remote())
 
 
 def create_endpoint(endpoint_name, route_expression, blocking=True):

@@ -171,3 +171,6 @@ class KVStoreProxy:
 class KVStoreProxyActor(KVStoreProxy):
     def __init__(self, kv_class=RayInternalKVStore):
         super().__init__(kv_class=kv_class)
+
+    def is_ready(self):
+        return True
