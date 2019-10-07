@@ -116,8 +116,8 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
 
     # Pre-process trials to figure out what columns to show.
     keys = list(metrics or DEFAULT_PROGRESS_KEYS)
-    keys = [k for k in keys if any([t.last_result.get(k) for t in trials])]
-    has_failed = any([t.error_file for t in trials])
+    keys = [k for k in keys if any(t.last_result.get(k) for t in trials)]
+    has_failed = any(t.error_file for t in trials)
     # Build rows.
     trial_table = []
     params = list(set().union(*[t.evaluated_params for t in trials]))
