@@ -10,7 +10,7 @@ from ray.experimental.serve.global_state import GlobalState
 global_state = GlobalState()
 
 
-def init(blocking=False, object_store_memory=int(1e8)):
+def init(blocking=False, object_store_memory=int(1e8), gc_window_seconds=3600):
     """Initialize a serve cluster.
 
     Calling `ray.init` before `serve.init` is optional. When there is not a ray
@@ -19,22 +19,30 @@ def init(blocking=False, object_store_memory=int(1e8)):
 
     Args:
         blocking (bool): If true, the function will wait for the HTTP server to
-            be healthy before returns.
+            be healthy, and other components to be ready before returns.
         object_store_memory (int): Allocated shared memory size in bytes. The
             default is 100MiB. The default is kept low for latency stability
             reason.
+        gc_window_seconds(int): How long will we keep the metric data in
+            memory. Data older than the gc_window will be deleted. The default
+            is 3600 seconds, which is 1 hour.
     """
     if not ray.is_initialized():
         ray.init(object_store_memory=object_store_memory)
 
     # NOTE(simon): Currently the initialization order is fixed.
     # HTTP server depends on the API server.
+    # Metric monitor depends on the router.
     global_state.init_api_server()
     global_state.init_router()
     global_state.init_http_server()
+    global_state.init_metric_monitor()
 
     if blocking:
         global_state.wait_until_http_ready()
+        ray.get(global_state.router_actor_handle.is_ready.remote())
+        ray.get(global_state.kv_store_actor_handle.is_ready.remote())
+        ray.get(global_state.metric_monitor_handle.is_ready.remote())
 
 
 def create_endpoint(endpoint_name, route_expression, blocking=True):
@@ -103,6 +111,7 @@ def _start_replica(backend_tag):
     runner._ray_serve_main_loop.remote(runner)
 
     global_state.backend_replicas[backend_tag].append(runner)
+    global_state.metric_monitor_handle.add_target.remote(runner)
 
 
 def _remove_replica(backend_tag):
@@ -114,6 +123,9 @@ def _remove_replica(backend_tag):
 
     replicas = global_state.backend_replicas[backend_tag]
     oldest_replica_handle = replicas.popleft()
+
+    global_state.metric_monitor_handle.remove_target.remote(
+        oldest_replica_handle)
     # explicitly terminate that actor
     del oldest_replica_handle
 
@@ -236,3 +248,19 @@ def get_handle(endpoint_name):
     from ray.experimental.serve.handle import RayServeHandle
 
     return RayServeHandle(global_state.router_actor_handle, endpoint_name)
+
+
+def stat(percentiles=[50, 90, 95],
+         agg_windows_seconds=[10, 60, 300, 600, 3600]):
+    """Retrieve metric statistics about ray serve system.
+
+    Args:
+        percentiles(List[int]): The percentiles for aggregation operations.
+            Default is 50th, 90th, 95th percentile.
+        agg_windows_seconds(List[int]): The aggregation windows in seconds.
+            The longest aggregation window must be shorter or equal to the
+            gc_window_seconds.
+    """
+    return ray.get(
+        global_state.metric_monitor_handle.collect.remote(
+            percentiles, agg_windows_seconds))

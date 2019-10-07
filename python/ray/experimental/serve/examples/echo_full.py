@@ -4,6 +4,7 @@ Full example of ray.serve module
 
 import ray
 import ray.experimental.serve as serve
+from ray.experimental.serve.utils import pformat_color_json
 import requests
 import time
 
@@ -56,3 +57,6 @@ for _ in range(10):
 # You can also scale each backend independently.
 serve.scale("echo:v1", 2)
 serve.scale("echo:v2", 2)
+
+# As well as retrieving relevant system metrics
+print(pformat_color_json(serve.stat()))

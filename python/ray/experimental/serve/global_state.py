@@ -8,6 +8,8 @@ from ray.experimental.serve.kv_store_service import KVStoreProxyActor
 from ray.experimental.serve.queues import CentralizedQueuesActor
 from ray.experimental.serve.utils import logger
 from ray.experimental.serve.server import HTTPActor
+from ray.experimental.serve.metric import (MetricMonitor,
+                                           start_metric_monitor_loop)
 
 # TODO(simon): Global state currently is designed to resides in the driver
 #     process. In the next iteration, we will move all mutable states into
@@ -53,6 +55,9 @@ class GlobalState:
         #  use random/available port in a pre-defined port range. TODO(simon)
         self.http_address = ""
 
+        #: Metric monitor handle
+        self.metric_monitor_handle = None
+
     def init_api_server(self):
         logger.info(LOG_PREFIX + "Initalizing routing table")
         self.kv_store_actor_handle = KVStoreProxyActor.remote()
@@ -71,6 +76,12 @@ class GlobalState:
         self.router_actor_handle = CentralizedQueuesActor.remote()
         self.router_actor_handle.register_self_handle.remote(
             self.router_actor_handle)
+
+    def init_metric_monitor(self, gc_window_seconds=3600):
+        logger.info(LOG_PREFIX + "Initializing metric monitor")
+        self.metric_monitor_handle = MetricMonitor.remote(gc_window_seconds)
+        start_metric_monitor_loop.remote(self.metric_monitor_handle)
+        self.metric_monitor_handle.add_target.remote(self.router_actor_handle)
 
     def wait_until_http_ready(self, num_retries=5, backoff_time_s=1):
         http_is_ready = False
