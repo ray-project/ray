@@ -161,7 +161,7 @@ def validate_args(funcsigs_signature, args, kwargs, actor_call=False):
             args = [None] + list(args)  # use dummy for 'self'
         funcsigs_signature.bind(*args, **kwargs)
     except TypeError as exc:
-        print(args, kwargs)
+        # Hide the stack trace from funcsigs.
         raise TypeError(str(exc))
 
 

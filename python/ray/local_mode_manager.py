@@ -54,6 +54,7 @@ class LocalModeManager(object):
             LocalModeObjectID.from_random() for _ in range(num_return_vals)
         ]
         try:
+            print("Local Mode Fn:", args, kwargs)
             results = function(*copy.deepcopy(args), **copy.deepcopy(kwargs))
             if num_return_vals == 1:
                 object_ids[0].value = results
