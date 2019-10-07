@@ -140,7 +140,7 @@ matrix:
 
 install:
   - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-  - if [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
+  - if [ $RAY_CI_SERVE_AFFECTED != "1" ] && [ $RAY_CI_TUNE_AFFECTED != "1" ] && [ $RAY_CI_RLLIB_AFFECTED != "1" ] && [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
   - ./ci/suppress_output ./ci/travis/install-dependencies.sh
