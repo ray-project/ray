@@ -76,6 +76,18 @@ class CentralizedQueues:
         # backend_name -> worker queue
         self.workers = defaultdict(deque)
 
+    def is_ready(self):
+        return True
+
+    def _serve_metric(self):
+        return {
+            "service_{}_queue_size".format(service_name): {
+                "value": len(queue),
+                "type": "counter",
+            }
+            for service_name, queue in self.queues.items()
+        }
+
     def enqueue_request(self, service, request_args, request_kwargs,
                         request_context):
         query = Query(request_args, request_kwargs, request_context)
