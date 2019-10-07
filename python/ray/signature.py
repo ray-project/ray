@@ -165,10 +165,10 @@ def validate_args(funcsigs_signature, args, kwargs, actor_call=False):
         raise TypeError(str(exc))
 
 
-def custom_parameterkind_serializer(obj):
+def parameterkind_serializer(obj):
     return int(obj)
 
-def custom_parameterkind_deserializer(obj):
+def parameterkind_deserializer(obj):
     if obj == 1:
         return funcsigs._POSITIONAL_ONLY
     if obj == 2:
