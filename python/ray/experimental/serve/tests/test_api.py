@@ -33,6 +33,7 @@ def test_e2e(serve_instance):
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
     assert resp == "OK"
 
+
 def test_scaling_replicas(serve_instance):
     class Counter:
         def __init__(self):
