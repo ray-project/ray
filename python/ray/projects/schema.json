@@ -13,6 +13,17 @@
       "description": "The URL of the repo this project is part of",
       "type": "string"
     },
+    "tags": {
+      "description": "Relevant tags for this project",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "documentation": {
+      "description": "Link to the documentation of this project",
+      "type": "string"
+    },
     "cluster": {
       "description": "Path to a .yaml cluster configuration file (relative to the project root)",
       "type": "string"

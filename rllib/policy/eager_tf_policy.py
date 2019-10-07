@@ -236,7 +236,7 @@ def build_eager_tf_policy(name,
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }, [
-                tf.convert_to_tensor([s])
+                tf.convert_to_tensor(np.array([s]))
                 for s in self.model.get_initial_state()
             ], tf.convert_to_tensor([1]))
 

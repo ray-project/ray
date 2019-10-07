@@ -61,7 +61,8 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-  ActorCreationOptions actor_options{max_reconstructions, is_direct_call, resources, {}};
+  ActorCreationOptions actor_options{
+      max_reconstructions, is_direct_call, resources, resources, {}};
 
   // Create an actor.
   RAY_CHECK_OK(worker.Tasks().CreateActor(func, args, actor_options, &actor_handle));
@@ -358,7 +359,7 @@ void CoreWorkerTest::TestActorReconstruction(
   auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
   // Wait for actor alive event.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), true,
                                           30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
@@ -373,9 +374,9 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), false,
+        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), false,
                                                 30 * 1000 /* 30s */));
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), true,
                                                 30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
@@ -649,10 +650,12 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
+  ActorCreationOptions actor_options{
+      0, /*is_direct_call*/ true, resources, resources, {}};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                           ActorHandleID::Nil(), function.GetLanguage(), true,
+                           ActorHandleID::Nil(), job_id, ObjectID::FromRandom(),
+                           function.GetLanguage(), true,
                            function.GetFunctionDescriptor());
 
   // Manually create `num_tasks` task specs, and for each of them create a
@@ -679,13 +682,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
       }
     }
 
-    const auto actor_creation_dummy_object_id =
-        ObjectID::ForTaskReturn(TaskID::ForActorCreationTask(actor_handle.ActorID()),
-                                /*index=*/1, /*transport_type=*/0);
-    builder.SetActorTaskSpec(
-        actor_handle.ActorID(), actor_handle.ActorHandleID(),
-        actor_creation_dummy_object_id,
-        /*previous_actor_task_dummy_object_id=*/actor_handle.ActorCursor(), 0, {});
+    actor_handle.SetActorTaskSpec(builder, TaskTransportType::RAYLET,
+                                  ObjectID::FromRandom());
 
     const auto &task_spec = builder.Build();
 
@@ -712,11 +710,12 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0, /*is_direct_call*/ true, resources, {}};
+  ActorCreationOptions actor_options{
+      0, /*is_direct_call*/ true, resources, resources, {}};
   // Create an actor.
   RAY_CHECK_OK(driver.Tasks().CreateActor(func, args, actor_options, &actor_handle));
   // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->ActorID(), true,
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), true,
                                           30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
@@ -777,37 +776,75 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 }
 
 TEST_F(ZeroNodeTest, TestActorHandle) {
-  const auto job_id = NextJobId();
-  ActorHandle handle1(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
-                      ActorHandleID::FromRandom(), Language::JAVA, false,
-                      {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
+  const JobID job_id = NextJobId();
+  const TaskID task_id = TaskID::ForDriverTask(job_id);
+  const ActorHandleID actor_handle_id = ActorHandleID::FromRandom();
+  ActorHandle parent(ActorID::Of(job_id, task_id, 1), actor_handle_id, job_id,
+                     ObjectID::FromRandom(), Language::JAVA, false,
+                     {"org.ray.exampleClass", "exampleMethod", "exampleSignature"});
 
-  auto forkedHandle1 = handle1.Fork();
-  ASSERT_EQ(1, handle1.NumForks());
-  ASSERT_EQ(handle1.ActorID(), forkedHandle1.ActorID());
-  ASSERT_NE(handle1.ActorHandleID(), forkedHandle1.ActorHandleID());
-  ASSERT_EQ(handle1.ActorLanguage(), forkedHandle1.ActorLanguage());
-  ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
-            forkedHandle1.ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(handle1.ActorCursor(), forkedHandle1.ActorCursor());
-  ASSERT_EQ(0, forkedHandle1.TaskCounter());
-  ASSERT_EQ(0, forkedHandle1.NumForks());
-  auto forkedHandle2 = handle1.Fork();
-  ASSERT_EQ(2, handle1.NumForks());
-  ASSERT_EQ(0, forkedHandle2.TaskCounter());
-  ASSERT_EQ(0, forkedHandle2.NumForks());
+  // Test in-band forking logic.
+  std::unique_ptr<ActorHandle> forkedHandle1 = parent.Fork();
+  ASSERT_EQ(1, parent.num_forks_);
+  ASSERT_EQ(parent.GetActorID(), forkedHandle1->GetActorID());
+  ASSERT_EQ(actor_handle_id, parent.GetActorHandleID());
+  ASSERT_NE(parent.GetActorHandleID(), forkedHandle1->GetActorHandleID());
+  ASSERT_EQ(parent.ActorLanguage(), forkedHandle1->ActorLanguage());
+  ASSERT_EQ(parent.ActorCreationTaskFunctionDescriptor(),
+            forkedHandle1->ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(parent.ActorCursor(), forkedHandle1->ActorCursor());
+  ASSERT_EQ(0, forkedHandle1->task_counter_);
+  ASSERT_EQ(0, forkedHandle1->num_forks_);
+  ASSERT_EQ(parent.new_actor_handles_.size(), 1);
+  ASSERT_EQ(parent.new_actor_handles_.back(), forkedHandle1->GetActorHandleID());
+  parent.new_actor_handles_.clear();
 
-  std::string buffer;
-  handle1.Serialize(&buffer);
-  auto handle2 = ActorHandle::Deserialize(buffer);
-  ASSERT_EQ(handle1.ActorID(), handle2.ActorID());
-  ASSERT_EQ(handle1.ActorHandleID(), handle2.ActorHandleID());
-  ASSERT_EQ(handle1.ActorLanguage(), handle2.ActorLanguage());
-  ASSERT_EQ(handle1.ActorCreationTaskFunctionDescriptor(),
-            handle2.ActorCreationTaskFunctionDescriptor());
-  ASSERT_EQ(handle1.ActorCursor(), handle2.ActorCursor());
-  ASSERT_EQ(handle1.TaskCounter(), handle2.TaskCounter());
-  ASSERT_EQ(handle1.NumForks(), handle2.NumForks());
+  std::unique_ptr<ActorHandle> forkedHandle2 = parent.Fork();
+  ASSERT_EQ(2, parent.num_forks_);
+  ASSERT_EQ(0, forkedHandle2->task_counter_);
+  ASSERT_EQ(0, forkedHandle2->num_forks_);
+  ASSERT_EQ(parent.new_actor_handles_.size(), 1);
+  ASSERT_EQ(parent.new_actor_handles_.back(), forkedHandle2->GetActorHandleID());
+  parent.new_actor_handles_.clear();
+
+  // Test serialization and deserialization for in-band fork.
+  std::string buffer1;
+  forkedHandle2->Serialize(&buffer1);
+  ActorHandle deserializedHandle1(buffer1, task_id);
+  ASSERT_EQ(forkedHandle2->GetActorID(), deserializedHandle1.GetActorID());
+  ASSERT_EQ(forkedHandle2->GetActorHandleID(), deserializedHandle1.GetActorHandleID());
+  ASSERT_EQ(forkedHandle2->ActorLanguage(), deserializedHandle1.ActorLanguage());
+  ASSERT_EQ(forkedHandle2->ActorCreationTaskFunctionDescriptor(),
+            deserializedHandle1.ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(forkedHandle2->ActorCursor(), deserializedHandle1.ActorCursor());
+
+  // Test out-of-band forking logic.
+  std::unique_ptr<ActorHandle> forkedHandle3 = parent.ForkForSerialization();
+  ASSERT_EQ(2, parent.num_forks_);
+  ASSERT_EQ(parent.GetActorID(), forkedHandle3->GetActorID());
+  ASSERT_EQ(actor_handle_id, parent.GetActorHandleID());
+  ASSERT_NE(parent.GetActorHandleID(), forkedHandle3->GetActorHandleID());
+  ASSERT_NE(forkedHandle2->GetActorHandleID(), forkedHandle3->GetActorHandleID());
+  ASSERT_EQ(parent.ActorLanguage(), forkedHandle3->ActorLanguage());
+  ASSERT_EQ(parent.ActorCreationTaskFunctionDescriptor(),
+            forkedHandle3->ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(parent.ActorCursor(), forkedHandle3->ActorCursor());
+  ASSERT_EQ(0, forkedHandle3->task_counter_);
+  ASSERT_EQ(0, forkedHandle3->num_forks_);
+  ASSERT_EQ(parent.new_actor_handles_.size(), 1);
+  ASSERT_NE(parent.new_actor_handles_.back(), forkedHandle3->GetActorHandleID());
+  parent.new_actor_handles_.clear();
+
+  // Test serialization and deserialization for out-of-band fork.
+  std::string buffer2;
+  forkedHandle3->Serialize(&buffer2);
+  ActorHandle deserializedHandle2(buffer2, task_id);
+  ASSERT_EQ(forkedHandle3->GetActorID(), deserializedHandle2.GetActorID());
+  ASSERT_NE(forkedHandle3->GetActorHandleID(), deserializedHandle2.GetActorHandleID());
+  ASSERT_EQ(forkedHandle3->ActorLanguage(), deserializedHandle2.ActorLanguage());
+  ASSERT_EQ(forkedHandle3->ActorCreationTaskFunctionDescriptor(),
+            deserializedHandle2.ActorCreationTaskFunctionDescriptor());
+  ASSERT_EQ(forkedHandle3->ActorCursor(), deserializedHandle2.ActorCursor());
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {

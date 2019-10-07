@@ -167,7 +167,10 @@ class KVStoreProxy:
         return self.request_count
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class KVStoreProxyActor(KVStoreProxy):
     def __init__(self, kv_class=RayInternalKVStore):
         super().__init__(kv_class=kv_class)
+
+    def is_ready(self):
+        return True
