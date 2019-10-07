@@ -168,6 +168,7 @@ def validate_args(funcsigs_signature, args, kwargs, actor_call=False):
 def parameterkind_serializer(obj):
     return int(obj)
 
+
 def parameterkind_deserializer(obj):
     if obj == 1:
         return funcsigs._POSITIONAL_ONLY

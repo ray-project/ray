@@ -1275,8 +1275,8 @@ def _initialize_serialization(job_id, worker=global_worker):
             use_pickle=False,
             local=True,
             job_id=job_id,
-            custom_serializer=ray.signature.parameterkind_serializer,
-            custom_deserializer=ray.signature.parameterkind_deserializer,
+            serializer=ray.signature.parameterkind_serializer,
+            deserializer=ray.signature.parameterkind_deserializer,
             class_id="funcsigs._ParameterKind")
         # Tell Ray to serialize StringIO with pickle. We do this because
         # Ray's default __dict__ serialization is incorrect for this type
