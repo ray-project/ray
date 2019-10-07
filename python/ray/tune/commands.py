@@ -125,7 +125,7 @@ def list_trials(experiment_path,
         raise click.ClickException("No trial data found!")
 
     def key_filter(k):
-        return k in DEFAULT_EXPERIMENT_INFO_KEYS or k.startswith(CONFIG_PREFIX)
+        return k in DEFAULT_CLI_KEYS or k.startswith(CONFIG_PREFIX)
 
     col_keys = [k for k in checkpoints_df.columns if key_filter(k)]
 

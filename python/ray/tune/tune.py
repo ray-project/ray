@@ -246,7 +246,7 @@ def run(run_or_experiment,
     runner.add_experiment(experiment)
 
     if IS_NOTEBOOK:
-        reporter = JupyterNotebookReporter(verbosity=verbose)
+        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
     else:
         reporter = CLIReporter()
 

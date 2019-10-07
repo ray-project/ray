@@ -400,7 +400,7 @@ class TrialRunner(object):
             self._scheduler_alg.debug_string(),
             self.trial_executor.debug_string()
         ]
-        return delim.join(messages) + delim
+        return delim.join(messages)
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""

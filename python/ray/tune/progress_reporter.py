@@ -1,8 +1,20 @@
-import collections
+import os
 from tabulate import tabulate
 
-from ray.tune.result import DEFAULT_RESULT_KEYS, CONFIG_PREFIX
+from ray.tune.result import (DEFAULT_RESULT_KEYS, CONFIG_PREFIX, PID,
+                             EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
+                             HOSTNAME, TRAINING_ITERATION, TIME_TOTAL_S)
 from ray.tune.util import flatten_dict
+
+DEFAULT_PROGRESS_KEYS = DEFAULT_RESULT_KEYS + (EPISODE_REWARD_MEAN, )
+# Truncated representations of column names (to accommodate small screens).
+REPORTED_REPRESENTATIONS = {
+    EPISODE_REWARD_MEAN: "reward",
+    MEAN_ACCURACY: "acc",
+    MEAN_LOSS: "loss",
+    TIME_TOTAL_S: "time (s)",
+    TRAINING_ITERATION: "iter",
+}
 
 
 class ProgressReporter(object):
@@ -16,8 +28,13 @@ class ProgressReporter(object):
 
 
 class JupyterNotebookReporter(ProgressReporter):
-    def __init__(self, verbosity):
-        self.verbosity = verbosity
+    def __init__(self, overwrite):
+        """Initializes a new JupyterNotebookReporter.
+
+        Args:
+            overwrite (bool): Flag for overwriting the last reported progress.
+        """
+        self.overwrite = overwrite
 
     def report(self, trial_runner):
         delim = "<br>"
@@ -29,7 +46,7 @@ class JupyterNotebookReporter(ProgressReporter):
         ]
         from IPython.display import clear_output
         from IPython.core.display import display, HTML
-        if self.verbosity < 2:
+        if self.overwrite:
             clear_output(wait=True)
         display(HTML(delim.join(messages) + delim))
 
@@ -66,11 +83,7 @@ def memory_debug_str():
                 "(or ray[debug]) to resolve)")
 
 
-def trial_progress_str(trials,
-                       parameters=None,
-                       metrics=None,
-                       fmt="psql",
-                       max_rows=100):
+def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
     """Returns a human readable message for printing to the console.
 
     This contains a table where each row represents a trial, its parameters
@@ -78,8 +91,6 @@ def trial_progress_str(trials,
 
     Args:
         trials (List[Trial]): List of trials to get progress string for.
-        parameters (List[str]): Names of trial parameters to include.
-            Defaults to all parameters across all trials.
         metrics (List[str]): Names of metrics to include. Defaults to
             metrics defined in DEFAULT_RESULT_KEYS.
         fmt (str): Output format (see tablefmt in tabulate API).
@@ -88,14 +99,14 @@ def trial_progress_str(trials,
     messages = []
     delim = "<br>" if fmt == "html" else "\n"
     if len(trials) < 1:
-        return delim.join(messages) + delim
+        return delim.join(messages)
 
     num_trials = len(trials)
-    num_trials_per_state = collections.defaultdict(int)
+    trials_per_state = {}
     for t in trials:
-        num_trials_per_state[t.status] += 1
-    messages.append("Number of trials: {} ({})"
-                    "".format(num_trials, num_trials_per_state))
+        trials_per_state[t.status] = trials_per_state.get(t.status, 0) + 1
+    messages.append("Number of trials: {} ({})".format(num_trials,
+                                                       trials_per_state))
 
     if num_trials > max_rows:
         overflow = num_trials - max_rows
@@ -103,23 +114,50 @@ def trial_progress_str(trials,
         messages.append("Table truncated to {} rows ({} overflow).".format(
             max_rows, overflow))
 
+    # Pre-process trials to figure out what columns to show.
+    keys = list(metrics or DEFAULT_PROGRESS_KEYS)
+    keys = [k for k in keys if any([t.last_result.get(k) for t in trials])]
+    has_failed = any([t.error_file for t in trials])
+    # Build rows.
     trial_table = []
-    if not parameters:
-        parameters = set().union(*[t.evaluated_params for t in trials])
-    metrics = list(metrics or DEFAULT_RESULT_KEYS)
-
-    for i in range(min(num_trials, max_rows)):
-        trial = trials[i]
-        result = flatten_dict(trial.last_result)
-        trial_info = [trial.trial_id, trial.status]
-        trial_info += [
-            result.get(CONFIG_PREFIX + param) for param in parameters
-        ]
-        trial_info += [result.get(metric) for metric in metrics]
-        trial_table.append(trial_info)
-
-    parsed_parameters = [param for param in parameters]
-    keys = ["Trial ID", "Status"] + parsed_parameters + metrics
+    params = list(set().union(*[t.evaluated_params for t in trials]))
+    for trial in trials[:min(num_trials, max_rows)]:
+        trial_table.append(_get_trial_info(trial, params, keys, has_failed))
+    # Parse columns.
+    parsed_columns = [REPORTED_REPRESENTATIONS.get(k, k) for k in keys]
+    columns = ["Trial ID", "status", "loc"]
+    columns += ["failures", "error file"] if has_failed else []
+    columns += params + parsed_columns
     messages.append(
-        tabulate(trial_table, headers=keys, tablefmt=fmt, showindex=False))
-    return delim.join(messages) + delim
+        tabulate(trial_table, headers=columns, tablefmt=fmt, showindex=False))
+    return delim.join(messages)
+
+
+def _get_trial_info(trial, parameters, metrics, include_error_data=False):
+    """Returns the following information about a trial:
+
+    ID | status | loc | # failures | error_file | params ... | metrics ...
+
+    Args:
+        trial (Trial): Trial to get information for.
+        parameters (List[str]): Names of trial parameters to include.
+        metrics (List[str]): Names of metrics to include.
+        include_error_data (bool): Include error file and # of failures.
+    """
+    result = flatten_dict(trial.last_result)
+    trial_info = [trial.trial_id, trial.status]
+    trial_info += [_location_str(result.get(HOSTNAME), result.get(PID))]
+    if include_error_data:
+        trial_info += [trial.num_failures, trial.error_file]
+    trial_info += [result.get(CONFIG_PREFIX + param) for param in parameters]
+    trial_info += [result.get(metric) for metric in metrics]
+    return trial_info
+
+
+def _location_str(hostname, pid):
+    if not pid:
+        return ""
+    elif hostname == os.uname()[1]:
+        return "pid={}".format(pid)
+    else:
+        return "{}:{}".format(hostname, pid)
