@@ -163,3 +163,19 @@ def validate_args(funcsigs_signature, args, kwargs, actor_call=False):
     except TypeError as exc:
         print(args, kwargs)
         raise TypeError(str(exc))
+
+
+def custom_parameterkind_serializer(obj):
+    return int(obj)
+
+def custom_parameterkind_deserializer(obj):
+    if obj == 1:
+        return funcsigs._POSITIONAL_ONLY
+    if obj == 2:
+        return funcsigs._POSITIONAL_OR_KEYWORD
+    if obj == 3:
+        return funcsigs._VAR_POSITIONAL
+    if obj == 4:
+        return funcsigs._KEYWORD_ONLY
+    if obj == 5:
+        return funcsigs._VAR_KEYWORD
