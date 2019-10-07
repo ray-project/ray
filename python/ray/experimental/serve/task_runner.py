@@ -1,4 +1,6 @@
 import traceback
+import time
+
 import ray
 from ray.experimental.serve import context as serve_context
 from ray.experimental.serve.context import TaskContext, FakeFlaskQuest
@@ -50,6 +52,27 @@ class RayServeMixin:
     _ray_serve_setup_completed = False
     _ray_serve_dequeue_requestr_name = None
 
+    _serve_metric_error_counter = 0
+    _serve_metric_latency_list = []
+
+    def _serve_metric(self):
+        # Make a copy of the latency list and clear current list
+        latency_lst = self._serve_metric_latency_list[:]
+        self._serve_metric_latency_list = []
+
+        my_name = self._ray_serve_dequeue_requestr_name
+
+        return {
+            "{}_error_counter".format(my_name): {
+                "value": self._serve_metric_error_counter,
+                "type": "counter",
+            },
+            "{}_latency_s".format(my_name): {
+                "value": latency_lst,
+                "type": "list",
+            },
+        }
+
     def _ray_serve_setup(self, my_name, _ray_serve_router_handle):
         self._ray_serve_dequeue_requestr_name = my_name
         self._ray_serve_router_handle = _ray_serve_router_handle
@@ -77,13 +100,16 @@ class RayServeMixin:
 
         result_object_id = work_item.result_object_id
 
+        start_timestamp = time.time()
         try:
             result = self.__call__(*args, **kwargs)
             ray.worker.global_worker.put_object(result_object_id, result)
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
+            self._serve_metric_error_counter += 1
             ray.worker.global_worker.put_object(result_object_id,
                                                 wrapped_exception)
+        self._serve_metric_latency_list.append(time.time() - start_timestamp)
 
         serve_context.web = False
         # The worker finished one unit of work.
