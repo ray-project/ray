@@ -302,8 +302,13 @@ class RayTrialExecutor(TrialExecutor):
         return {t.node_ip for t in self.get_running_trials()}
 
     def get_next_failed_trial(self):
+        """Gets the first trial found to be running on a node presumed dead.
+
+        Returns:
+            A Trial object that is ready for failure processing. None if
+            no failure detected.
+        """
         if ray.worker._mode() != ray.worker.LOCAL_MODE:
-            # Detect trials on failed nodes first.
             live_cluster_ips = self.get_alive_node_ips()
             if live_cluster_ips - self.get_current_trial_ips():
                 for trial in self.get_running_trials():
