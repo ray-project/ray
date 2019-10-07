@@ -40,7 +40,7 @@ class MetricMonitor:
 
         curr_time = time.time()
         result = [
-            handle._serve_metric.remote() for handle in self.actor_handles
+            handle._serve_metric.remote() for handle in self.actor_handles.values()
         ]
         for handle_result in ray.get(result):
             for metric_name, metric_info in handle_result.items():
