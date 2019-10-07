@@ -52,6 +52,12 @@ class RayServeMixin:
     _ray_serve_setup_completed = False
     _ray_serve_dequeue_requestr_name = None
 
+    # Work token can be unfullfilled from last iteration.
+    # This cache will be used to determine whether or not we should
+    # work on the same task as previous iteration or we are ready to
+    # move on.
+    _ray_serve_cached_work_token = None
+
     _serve_metric_error_counter = 0
     _serve_metric_latency_list = []
 
@@ -82,10 +88,24 @@ class RayServeMixin:
         assert self._ray_serve_setup_completed
         self._ray_serve_self_handle = my_handle
 
-        work_token = ray.get(
-            self._ray_serve_router_handle.dequeue_request.remote(
-                self._ray_serve_dequeue_requestr_name))
-        work_item = ray.get(ray.ObjectID(work_token))
+        # Only retrieve the next task if we have completed previous task.
+        if self._ray_serve_cached_work_token is None:
+            work_token = ray.get(
+                self._ray_serve_router_handle.dequeue_request.remote(
+                    self._ray_serve_dequeue_requestr_name))
+        else:
+            work_token = self._ray_serve_cached_work_token
+
+        work_token_id = ray.ObjectID(work_token)
+        ready, not_ready = ray.wait(
+            [work_token_id], num_returns=1, timeout=0.5)
+        if len(ready) == 1:
+            work_item = ray.get(work_token_id)
+            self._ray_serve_cached_work_token = None
+        else:
+            self._ray_serve_cached_work_token = work_token
+            self._ray_serve_self_handle._ray_serve_main_loop.remote(my_handle)
+            return
 
         if work_item.request_context == TaskContext.Web:
             serve_context.web = True
