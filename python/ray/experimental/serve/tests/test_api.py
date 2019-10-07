@@ -32,3 +32,42 @@ def test_e2e(serve_instance):
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
     assert resp == "OK"
+
+
+def test_scaling_replicas(serve_instance):
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self, _):
+            self.count += 1
+            return self.count
+
+    serve.create_endpoint("counter", "/increment")
+
+    # Keep checking the routing table until /increment is populated
+    while "/increment" not in requests.get("http://127.0.0.1:8000/").json():
+        time.sleep(0.2)
+
+    serve.create_backend(Counter, "counter:v1")
+    serve.link("counter", "counter:v1")
+
+    serve.scale("counter:v1", 2)
+
+    counter_result = []
+    for _ in range(10):
+        resp = requests.get("http://127.0.0.1:8000/increment").json()["result"]
+        counter_result.append(resp)
+
+    # If the load is shared among two replicas. The max result cannot be 10.
+    assert max(counter_result) < 10
+
+    serve.scale("counter:v1", 1)
+
+    counter_result = []
+    for _ in range(10):
+        resp = requests.get("http://127.0.0.1:8000/increment").json()["result"]
+        counter_result.append(resp)
+    # Give some time for a replica to spin down. But majority of the request
+    # should be served by the only remaining replica.
+    assert max(counter_result) - min(counter_result) > 6
