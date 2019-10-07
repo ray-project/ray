@@ -15,7 +15,8 @@ class MetricMonitor:
             gc_window_seconds(int): How long will we keep the metric data in
                 memory. Data older than the gc_window will be deleted.
         """
-        self.actor_handles = []
+        #: Mapping actor ID (hex) -> actor handle
+        self.actor_handles = dict()
 
         self.data_entries = []
 
@@ -23,16 +24,12 @@ class MetricMonitor:
         self.latest_gc_time = time.time()
 
     def add_target(self, target_handle):
-        self.actor_handles.append(target_handle)
+        hex_id = target_handle._ray_actor_id.hex()
+        self.actor_handles[hex_id] = target_handle
 
     def remove_target(self, target_handle):
-        found_idx = None
-        for i, handle in enumerate(self.actor_handles):
-            if handle._ray_actor_id.hex() == target_handle._ray_actor_id.hex():
-                found_idx = i
-
-        if found_idx is not None:
-            self.actor_handles.pop(found_idx)
+        hex_id = target_handle._ray_actor_id.hex()
+        self.actor_handles.pop(hex_id)
 
     def scrape(self):
         # If expected gc time has passed, we will perform metric value GC.
