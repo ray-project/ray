@@ -223,6 +223,10 @@ void SchedulingQueue::RemoveTasksFromQueue(ray::raylet::TaskState task_state,
     if (queue->RemoveTask(task_id, removed_tasks)) {
       RAY_LOG(DEBUG) << "Removed task " << task_id << " from "
                      << GetTaskStateString(task_state) << " queue";
+      if (task_state == TaskState::RUNNING) {
+        num_running_tasks_
+            [removed_tasks->back().GetTaskSpecification().GetSchedulingClass()] -= 1;
+      }
       it = task_ids.erase(it);
     } else {
       it++;
@@ -351,6 +355,9 @@ void SchedulingQueue::QueueTasks(const std::vector<Task> &tasks, TaskState task_
   for (const auto &task : tasks) {
     RAY_LOG(DEBUG) << "Added task " << task.GetTaskSpecification().TaskId() << " to "
                    << GetTaskStateString(task_state) << " queue";
+    if (task_state == TaskState::RUNNING) {
+      num_running_tasks_[task.GetTaskSpecification().GetSchedulingClass()] += 1;
+    }
     queue->AppendTask(task.GetTaskSpecification().TaskId(), task);
   }
 }
@@ -417,6 +424,15 @@ const std::unordered_set<TaskID> &SchedulingQueue::GetDriverTaskIds() const {
   return driver_task_ids_;
 }
 
+int SchedulingQueue::NumRunning(const SchedulingClass &cls) const {
+  auto it = num_running_tasks_.find(cls);
+  if (it == num_running_tasks_.end()) {
+    return 0;
+  } else {
+    return it->second;
+  }
+}
+
 std::string SchedulingQueue::DebugString() const {
   std::stringstream result;
   result << "SchedulingQueue:";
@@ -426,6 +442,29 @@ std::string SchedulingQueue::DebugString() const {
            << " tasks: " << GetTaskQueue(task_state)->GetTasks().size();
   }
   result << "\n- num tasks blocked: " << blocked_task_ids_.size();
+  result << "\nScheduledTaskCounts:";
+  size_t total = 0;
+  for (const auto &pair : num_running_tasks_) {
+    result << "\n- ";
+    for (const auto &str : pair.first.second) {
+      // Only print the ASCII parts of the function descriptor.
+      bool ok = str.size() > 0;
+      for (char c : str) {
+        if (!isprint(c)) {
+          ok = false;
+        }
+      }
+      if (ok) {
+        result << str;
+        result << ".";
+      }
+    }
+    result << pair.first.first.ToString();
+    result << ": " << pair.second;
+    total += pair.second;
+  }
+  RAY_CHECK(total == GetTaskQueue(TaskState::RUNNING)->GetTasks().size())
+      << total << " vs " << GetTaskQueue(TaskState::RUNNING)->GetTasks().size();
   return result.str();
 }
 

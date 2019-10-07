@@ -301,6 +301,11 @@ class SchedulingQueue {
   /// \return Aggregate resource demand from ready tasks.
   ResourceSet GetReadyQueueResources() const;
 
+  /// Returns the number of running tasks in this class.
+  ///
+  /// \return int.
+  int NumRunning(const SchedulingClass &cls) const;
+
   /// Returns debug string for class.
   ///
   /// \return string.
@@ -330,6 +335,8 @@ class SchedulingQueue {
 
   // A pointer to the ready queue.
   const std::shared_ptr<ReadyQueue> ready_queue_;
+  /// Track the breakdown of tasks by class in the RUNNING queue.
+  std::unordered_map<SchedulingClass, int32_t> num_running_tasks_;
   // A pointer to the task queues. These contain all tasks that have a task
   // state < TaskState::kNumTaskQueues.
   std::array<std::shared_ptr<TaskQueue>, static_cast<int>(TaskState::kNumTaskQueues)>

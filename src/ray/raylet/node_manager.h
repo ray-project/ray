@@ -553,9 +553,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// restore the actor.
   std::unordered_map<ActorID, ActorCheckpointID> checkpoint_id_to_restore_;
 
-  /// Tracks the number of assigned tasks per class.
-  std::unordered_map<SchedulingClass, int32_t> num_scheduled_;
-
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;
 

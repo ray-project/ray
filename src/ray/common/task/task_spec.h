@@ -159,6 +159,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
 }  // namespace ray
 
+/// Define a hash so that we can keep a map of queues per scheduling class.
 namespace std {
 template <>
 struct hash<ray::SchedulingClass> {

@@ -788,7 +788,7 @@ void NodeManager::DispatchTasks(
         std::begin(fair_order), std::end(fair_order),
         [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
                const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
-          return num_scheduled_[a->first] < num_scheduled_[b->first];
+          return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
   // Approximate fair round robin between classes.
@@ -1880,7 +1880,6 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
   worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
-  num_scheduled_[spec.GetSchedulingClass()] += 1;
 
   // We assigned this task to a worker.
   // (Note this means that we sent the task to the worker. The assignment
@@ -1921,7 +1920,6 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
 
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::Nil());
-  num_scheduled_[spec.GetSchedulingClass()] -= 1;
   // Unset the worker's assigned job Id if this is not an actor.
   if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
     worker.AssignJobId(JobID::Nil());
@@ -2504,25 +2502,6 @@ std::string NodeManager::DebugString() const {
   std::stringstream result;
   uint64_t now_ms = current_time_ms();
   result << "NodeManager:";
-  result << "\nScheduledTaskCounts:";
-  for (const auto &pair : num_scheduled_) {
-    result << "\n- ";
-    for (const auto &str : pair.first.second) {
-      // Only print the ASCII parts of the function descriptor.
-      bool ok = str.size() > 0;
-      for (char c : str) {
-        if (!isprint(c)) {
-          ok = false;
-        }
-      }
-      if (ok) {
-        result << str;
-        result << ".";
-      }
-    }
-    result << pair.first.first.ToString();
-    result << ": " << pair.second;
-  }
   result << "\nInitialConfigResources: " << initial_config_.resource_config.ToString();
   result << "\nClusterResources:";
   for (auto &pair : cluster_resource_map_) {
