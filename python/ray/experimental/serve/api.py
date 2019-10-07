@@ -113,6 +113,7 @@ def _start_replica(backend_tag):
     global_state.backend_replicas[backend_tag].append(runner)
     global_state.metric_monitor_handle.add_target.remote(runner)
 
+
 def _remove_replica(backend_tag):
     assert backend_tag in global_state.registered_backends, (
         "Backend {} is not registered.".format(backend_tag))
@@ -122,8 +123,9 @@ def _remove_replica(backend_tag):
 
     replicas = global_state.backend_replicas[backend_tag]
     oldest_replica_handle = replicas.popleft()
-    
-    global_state.metric_monitor_handle.remove_target.remote(oldest_replica_handle)
+
+    global_state.metric_monitor_handle.remove_target.remote(
+        oldest_replica_handle)
     # explicitly terminate that actor
     del oldest_replica_handle
 
@@ -149,7 +151,6 @@ def scale(backend_tag, num_replicas):
     elif delta_num_replicas < 0:
         for _ in range(-delta_num_replicas):
             _remove_replica(backend_tag)
-
 
 
 def link(endpoint_name, backend_tag):
