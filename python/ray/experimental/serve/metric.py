@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class MetricMonitor:
     def __init__(self, gc_window_seconds=3600):
         """Metric monitor scrapes metrics from ray serve actors
