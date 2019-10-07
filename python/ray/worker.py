@@ -10,6 +10,7 @@ import hashlib
 import inspect
 import io
 import json
+import funcsigs
 import logging
 import numpy as np
 import os
