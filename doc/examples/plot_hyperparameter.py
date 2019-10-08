@@ -156,10 +156,9 @@ def evaluate_hyperparameters(config):
 # Synchronous Evaluation of Randomly Generated Hyperparameters
 # ------------------------------------------------------------
 #
-# Launch asynchronous parallel tasks for evaluating different 
-# hyperparameters. accuracy_id is an ObjectID that acts as a handle to 
-# the remote task. It is used later to fetch the result of the task 
-# when the task finishes.
+# We will create multiple sets of random hyperparameters for our neural
+# network that will be trained in parallel. These trained networks will
+# then be tested for accuracy to find the best set of hyperparameters.
 
 
 # Keep track of the best hyperparameters and the best accuracy.
@@ -173,8 +172,10 @@ remaining_ids = []
 hyperparameters_mapping = {}
 
 ###########################################################################
-# Compute accuracy for different randomly generated hyperparameters, and 
-# store each hyperparameter with its corresponding accuracy
+# Launch asynchronous parallel tasks for evaluating different 
+# hyperparameters. accuracy_id is an ObjectID that acts as a handle to 
+# the remote task. It is used later to fetch the result of the task 
+# when the task finishes.
 
 # Randomly generate sets of hyperparameters and launch a task to test each set.
 for i in range(num_evaluations):
