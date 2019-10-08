@@ -696,6 +696,7 @@ class BOHBSuite(unittest.TestCase):
 class _MockTrial(Trial):
     def __init__(self, i, config):
         self.trainable_name = "trial_{}".format(i)
+        self.trial_id = Trial.generate_id()
         self.config = config
         self.experiment_tag = "{}tag".format(i)
         self.trial_name_creator = None

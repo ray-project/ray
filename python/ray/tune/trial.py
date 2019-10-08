@@ -17,9 +17,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 import ray.tune.registry
-from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, HOSTNAME, PID,
-                             TIME_TOTAL_S, TRAINING_ITERATION, TIMESTEPS_TOTAL,
-                             EPISODE_REWARD_MEAN, MEAN_LOSS, MEAN_ACCURACY)
+from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 
@@ -313,54 +311,6 @@ class Trial(object):
         else:
             return False
 
-    def progress_string(self):
-        """Returns a progress message for printing out to the console."""
-
-        if not self.last_result:
-            return self._status_string()
-
-        def location_string(hostname, pid):
-            if hostname == os.uname()[1]:
-                return "pid={}".format(pid)
-            else:
-                return "{} pid={}".format(hostname, pid)
-
-        pieces = [
-            "{}".format(self._status_string()), "[{}]".format(
-                self.resources.summary_string()), "[{}]".format(
-                    location_string(
-                        self.last_result.get(HOSTNAME),
-                        self.last_result.get(PID))), "{} s".format(
-                            int(self.last_result.get(TIME_TOTAL_S, 0)))
-        ]
-
-        if self.last_result.get(TRAINING_ITERATION) is not None:
-            pieces.append("{} iter".format(
-                self.last_result[TRAINING_ITERATION]))
-
-        if self.last_result.get(TIMESTEPS_TOTAL) is not None:
-            pieces.append("{} ts".format(self.last_result[TIMESTEPS_TOTAL]))
-
-        if self.last_result.get(EPISODE_REWARD_MEAN) is not None:
-            pieces.append("{} rew".format(
-                format(self.last_result[EPISODE_REWARD_MEAN], ".3g")))
-
-        if self.last_result.get(MEAN_LOSS) is not None:
-            pieces.append("{} loss".format(
-                format(self.last_result[MEAN_LOSS], ".3g")))
-
-        if self.last_result.get(MEAN_ACCURACY) is not None:
-            pieces.append("{} acc".format(
-                format(self.last_result[MEAN_ACCURACY], ".3g")))
-
-        return ", ".join(pieces)
-
-    def _status_string(self):
-        return "{}{}".format(
-            self.status, ", {} failures: {}".format(self.num_failures,
-                                                    self.error_file)
-            if self.error_file else "")
-
     def has_checkpoint(self):
         return self._checkpoint.value is not None
 
@@ -380,6 +330,8 @@ class Trial(object):
 
     def update_last_result(self, result, terminate=False):
         result.update(trial_id=self.trial_id, done=terminate)
+        if self.experiment_tag:
+            result.update(experiment_tag=self.experiment_tag)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
@@ -429,7 +381,7 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+        """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
         Can be overriden with a custom string creator.
         """
@@ -443,8 +395,7 @@ class Trial(object):
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        if self.experiment_tag:
-            identifier += "_" + self.experiment_tag
+        identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
     def __getstate__(self):
