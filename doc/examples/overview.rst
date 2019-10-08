@@ -26,9 +26,5 @@ Examples Overview
    :description: :doc:`/auto_examples/plot_newsreader`
 
 .. customgalleryitem::
-   :tooltip: Using Ray to train ResNet across multiple GPUs.
-   :description: :doc:`/auto_examples/plot_resnet`
-
-.. customgalleryitem::
    :tooltip: Implement a simple streaming application using Ray’s actors.
    :description: :doc:`/auto_examples/plot_streaming`
