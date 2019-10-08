@@ -33,6 +33,14 @@ void TaskSpecification::ComputeResources() {
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
     sched_cls_id_ = ++next_sched_id_;
+    // TODO(ekl) we might want to try cleaning up task types in these cases
+    if (sched_cls_id_ > 100) {
+      RAY_LOG(WARNING) << "More than " << sched_cls_id_
+                       << " types of tasks seen, this may reduce performance.";
+    } else if (sched_cls_id_ > 1000) {
+      RAY_LOG(ERROR) << "More than " << sched_cls_id_
+                     << " types of tasks seen, this may reduce performance.";
+    }
     sched_cls_to_id_[sched_cls] = sched_cls_id_;
     sched_id_to_cls_[sched_cls_id_] = sched_cls;
   } else {
