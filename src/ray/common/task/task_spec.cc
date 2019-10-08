@@ -5,6 +5,16 @@
 
 namespace ray {
 
+std::unordered_map<SchedulingClassDescriptor, SchedulingClass> TaskSpecification::sched_cls_to_id_;
+std::unordered_map<SchedulingClass, SchedulingClassDescriptor> TaskSpecification::sched_id_to_cls_;
+int TaskSpecification::next_sched_id_;
+
+SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(SchedulingClass id) {
+  auto it = sched_id_to_cls_.find(id);
+  RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
+  return it->second;
+}
+
 void TaskSpecification::ComputeResources() {
   auto required_resources = MapFromProtobuf(message_->required_resources());
   auto required_placement_resources =
@@ -14,6 +24,17 @@ void TaskSpecification::ComputeResources() {
   }
   required_resources_.reset(new ResourceSet(required_resources));
   required_placement_resources_.reset(new ResourceSet(required_placement_resources));
+
+  // Map the scheduling class descriptor to an integer for performance.
+  auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
+  auto it = sched_cls_to_id_.find(sched_cls);
+  if (it == sched_cls_to_id_.end()) {
+    sched_cls_id_ = ++next_sched_id_;
+    sched_cls_to_id_[sched_cls] = sched_cls_id_;
+    sched_id_to_cls_[sched_cls_id_] = sched_cls;
+  } else {
+    sched_cls_id_ = it->second;
+  }
 }
 
 // Task specification getter methods.
@@ -34,7 +55,8 @@ std::vector<std::string> TaskSpecification::FunctionDescriptor() const {
 }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
-  return std::make_pair(GetRequiredResources(), FunctionDescriptor());
+  RAY_CHECK(sched_cls_id_ > 0);
+  return sched_cls_id_;
 }
 
 size_t TaskSpecification::NumArgs() const { return message_->args_size(); }

@@ -446,7 +446,8 @@ std::string SchedulingQueue::DebugString() const {
   size_t total = 0;
   for (const auto &pair : num_running_tasks_) {
     result << "\n- ";
-    for (const auto &str : pair.first.second) {
+    auto desc = TaskSpecification::GetSchedulingClassDescriptor(pair.first);
+    for (const auto &str : desc.second) {
       // Only print the ASCII parts of the function descriptor.
       bool ok = str.size() > 0;
       for (char c : str) {
@@ -459,7 +460,7 @@ std::string SchedulingQueue::DebugString() const {
         result << ".";
       }
     }
-    result << pair.first.first.ToString();
+    result << desc.first.ToString();
     result << ": " << pair.second;
     total += pair.second;
   }

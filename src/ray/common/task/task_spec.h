@@ -18,7 +18,8 @@ extern "C" {
 namespace ray {
 
 typedef std::vector<std::string> FunctionDescriptor;
-typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClass;
+typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClassDescriptor;
+typedef int SchedulingClass;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
@@ -147,23 +148,33 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string DebugString() const;
 
+  static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
+
  private:
   void ComputeResources();
+
   /// Field storing required resources. Initalized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared ptrs here.
   std::shared_ptr<ResourceSet> required_resources_;
   /// Field storing required placement resources. Initalized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
+  /// Cached scheduling class of this task.
+  SchedulingClass sched_cls_id_;
+
+  /// Keep global static id mappings for SchedulingClass for performance.
+  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_;
+  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_;
+  static int next_sched_id_;
 };
 
 }  // namespace ray
 
-/// Define a hash so that we can keep a map of queues per scheduling class.
+/// We must define the hash since it's not auto-defined for vectors.
 namespace std {
 template <>
-struct hash<ray::SchedulingClass> {
-  size_t operator()(ray::SchedulingClass const &k) const {
+struct hash<ray::SchedulingClassDescriptor> {
+  size_t operator()(ray::SchedulingClassDescriptor const &k) const {
     size_t seed = std::hash<ray::ResourceSet>()(k.first);
     for (const auto &str : k.second) {
       seed ^= std::hash<std::string>()(str);
