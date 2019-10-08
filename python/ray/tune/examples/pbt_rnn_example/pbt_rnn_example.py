@@ -201,7 +201,6 @@ class PBTExperiment(Trainable):
         self.accuracy = 0
         self.epoch = 0
         self.plot_every = 1000
-        track.init()
         self.model = RNN(n_letters, self.n_hidden, n_categories)
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=config["lr"])
