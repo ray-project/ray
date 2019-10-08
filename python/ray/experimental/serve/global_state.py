@@ -77,7 +77,7 @@ class GlobalState:
         routing_pipeline_request_count = 0
         retries = num_retries
 
-        while  not routing_table_request_count and not routing_pipeline_request_count:
+        while  not routing_table_request_count or not routing_pipeline_request_count:
             if routing_table_request_count == 0:
                 routing_table_request_count = (ray.get(
                     self.kv_store_actor_handle.get_request_count.remote()))
