@@ -593,3 +593,98 @@ tune.run(
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
     ray.shutdown()
     cluster.shutdown()
+
+
+def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
+    """Tests run_experiment on cluster shutdown with actual interrupt.
+
+    This is an end-to-end test.
+    """
+    cluster = start_connected_cluster
+    dirpath = str(tmpdir)
+
+    # Needs to be in scope for pytest
+    class _Mock(tune.Trainable):
+        """Finishes on the 4th iteration."""
+
+        def _setup(self, config):
+            self.state = {"hi": 0}
+
+        def _train(self):
+            self.state["hi"] += 1
+            time.sleep(0.5)
+            return {"done": self.state["hi"] >= 4}
+
+        def _save(self, path):
+            return self.state
+
+        def _restore(self, state):
+            self.state = state
+
+    # Removes indent from class.
+    reformatted = "\n".join(line[4:] if len(line) else line
+                            for line in inspect.getsource(_Mock).split("\n"))
+
+    script = """
+import time
+import ray
+from ray import tune
+ray.init(address="{address}")
+{fail_class_code}
+space =
+{{
+    "x": hp.uniform("x", 0, 10),
+    "y": hp.uniform("y", -10, 10),
+    "z": hp.uniform("z", -10, 0)
+}}
+# def cost(space, reporter):
+#     loss = space["x"]**2 + space["y"]**2 + space["z"]**2
+#     reporter(loss=loss)
+
+searcher = HyperOptSearch(
+    space,
+    max_concurrent=1,
+    metric="loss",
+    mode="min",
+    random_state_seed=5)
+
+tune.run(
+    {fail_class},
+    name="experiment",
+    stop=dict(training_iteration=5),
+    search_alg=searcher,
+    local_dir="{checkpoint_dir}",
+    checkpoint_freq=1,
+    global_checkpoint_period=0,
+    max_failures=1,
+    raise_on_failed_trial=False)
+""".format(
+        address=cluster.address,
+        checkpoint_dir=dirpath,
+        fail_class_code=reformatted,
+        fail_class=_Mock.__name__)
+    run_string_as_driver_nonblocking(script)
+
+    # Wait until the right checkpoint is saved.
+    # The trainable returns every 0.5 seconds, so this should not miss
+    # the checkpoint.
+    local_checkpoint_dir = os.path.join(dirpath, "experiment")
+    for i in range(50):
+        if TrialRunner.checkpoint_exists(local_checkpoint_dir):
+            # Inspect the internal trialrunner
+            runner = TrialRunner(
+                resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
+            trials = runner.get_trials()
+            last_res = trials[0].last_result
+            if last_res and last_res.get("training_iteration") == 3:
+                break
+        time.sleep(0.2)
+
+    if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
+        raise RuntimeError("Checkpoint file didn't appear.")
+
+    if not TrialRunner.searcher_checkpoint_exists(local_checkpoint_dir):
+        raise RuntimeError("Searcher checkpoint file didn't appear.")
+
+    ray.shutdown()
+    cluster.shutdown()

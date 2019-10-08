@@ -21,7 +21,8 @@ from ray.tune.syncer import get_syncer
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.util import warn_if_slow, flatten_dict
+from ray.tune.util import (warn_if_slow, flatten_dict, file_exists,
+                           find_newest_dated_path)
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.web_server import TuneServer
 
@@ -34,25 +35,6 @@ def _naturalize(string):
     """Provides a natural representation for string for nice sorting."""
     splits = re.split("([0-9]+)", string)
     return [int(text) if text.isdigit() else text.lower() for text in splits]
-
-
-def _find_newest_ckpt(ckpt_dir):
-    """Returns path to most recently modified checkpoint."""
-    full_paths = [
-        os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
-        if fname.startswith("experiment_state") and fname.endswith(".json")
-    ]
-    return max(full_paths)
-
-
-def _find_newest_searcher_ckpt(ckpt_dir):
-    """Returns path to most recently modified checkpoint."""
-    full_paths = [
-        os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
-        if fname.startswith("experiment_state_searcher_ckpt")
-        and fname.endswith(".pkl")
-    ]
-    return max(full_paths)
 
 
 class _TuneFunctionEncoder(json.JSONEncoder):
@@ -108,7 +90,9 @@ class TrialRunner(object):
     misleading benchmark results.
     """
 
+    CKPT_FILE_REGEX = "experiment_state-*.json"
     CKPT_FILE_TMPL = "experiment_state-{}.json"
+    SEARCHER_CKPT_FILE_REGEX = "experiment_state_searcher_ckpt-*.pkl"
     SEARCHER_CKPT_FILE_TMPL = "experiment_state_searcher_ckpt-{}.pkl"
     VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT"]
 
@@ -242,19 +226,17 @@ class TrialRunner(object):
 
     @classmethod
     def checkpoint_exists(cls, directory):
-        if not os.path.exists(directory):
-            return False
-        return any(
-            (fname.startswith("experiment_state") and fname.endswith(".json"))
-            for fname in os.listdir(directory))
+        return file_exists(directory, cls.CKPT_FILE_REGEX)
 
     @classmethod
     def searcher_checkpoint_exists(cls, directory):
-        if not os.path.exists(directory):
-            return False
-        return any((fname.startswith("experiment_state_searcher_ckpt")
-                    and fname.endswith(".pkl"))
-                   for fname in os.listdir(directory))
+        return file_exists(directory, cls.SEARCHER_CKPT_FILE_REGEX)
+
+    def _find_newest_ckpt(cls, directory):
+        return find_newest_dated_path(directory, cls.CKPT_FILE_REGEX)
+
+    def _find_newest_searcher_ckpt(cls, directory):
+        return find_newest_dated_path(directory, cls.SEARCHER_CKPT_FILE_REGEX)
 
     def add_experiment(self, experiment):
         if not self._resumed:
@@ -317,7 +299,7 @@ class TrialRunner(object):
         all ongoing trials.
         """
 
-        newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
+        newest_ckpt_path = self._find_newest_ckpt(self._local_checkpoint_dir)
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=_TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
@@ -341,7 +323,7 @@ class TrialRunner(object):
             self.add_trial(trial)
 
         try:
-            newest_searcher_ckpt_path = _find_newest_searcher_ckpt(
+            newest_searcher_ckpt_path = self._find_newest_searcher_ckpt(
                 self._local_checkpoint_dir)
             self._search_alg.restore(newest_searcher_ckpt_path)
         except NotImplementedError:
