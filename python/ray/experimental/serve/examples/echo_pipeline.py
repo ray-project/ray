@@ -17,7 +17,7 @@ serve.init(blocking=True)
 
 serve.create_endpoint_pipeline("pipeline1", "/echo", blocking=True)
 
-serve.create_backend(echo, "echo:v1")
+serve.create_backend(echo1, "echo:v1")
 serve.create_no_http_service("serve1")
 serve.link_service("serve1", "echo:v1")
 serve.add_service_to_pipeline("pipeline1","serve1")
