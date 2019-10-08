@@ -42,6 +42,8 @@ ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
+    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
 ]
 
 ray_project_files = [
@@ -75,7 +77,7 @@ extras = {
     ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "psutil", "setproctitle"],
-    "serve": ["uvicorn", "pygments", "werkzeug"],
+    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
 }
 
 
