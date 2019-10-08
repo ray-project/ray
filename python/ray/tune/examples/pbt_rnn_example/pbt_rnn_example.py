@@ -58,6 +58,8 @@ for filename in all_filenames:
     lines = readLines(filename)
     category_lines[category] = lines
 
+n_categories = len(all_categories)
+
 
 
 # # Turning Names into Tensors
@@ -120,46 +122,7 @@ class RNN(nn.Module):
     def init_hidden(self):
         return Variable(torch.zeros(1, self.hidden_size))
 
-
-# ## Manually testing the network
-#
-# With our custom `RNN` class defined, we can create a new instance:
-
-n_hidden = 128
-rnn = RNN(n_letters, n_hidden, n_categories)
-
-
-# To run a step of this network we need to pass an input (in our case, the Tensor for the current letter) and a previous hidden state (which we initialize as zeros at first). We'll get back the output (probability of each language) and a next hidden state (which we keep for the next step).
-#
-# Remember that PyTorch modules operate on Variables rather than straight up Tensors.
-
-# In[10]:
-
-
-input = Variable(letter_to_tensor('A'))
-hidden = rnn.init_hidden()
-
-output, next_hidden = rnn(input, hidden)
-
-# For the sake of efficiency we don't want to be creating a new Tensor for every step, so we will use `line_to_tensor` instead of `letter_to_tensor` and use slices. This could be further optimized by pre-computing batches of Tensors.
-
-# In[11]:
-
-
-input = Variable(line_to_tensor('Albert'))
-hidden = Variable(torch.zeros(1, n_hidden))
-
-output, next_hidden = rnn(input[0], hidden)
-print(output)
-
-
-# As you can see the output is a `<1 x n_categories>` Tensor, where every item is the likelihood of that category (higher is more likely).
-
 # # Preparing for Training
-#
-# Before going into training we should make a few helper functions. The first is to interpret the output of the network, which we know to be a likelihood of each category. We can use `Tensor.topk` to get the index of the greatest value:
-
-# In[12]:
 
 
 def category_from_output(output):
@@ -239,7 +202,7 @@ class PBTExperiment(Trainable):
         self.epoch = 0
         self.plot_every = 1000
         track.init()
-        self.model = RNN(n_letters, n_hidden, n_categories)
+        self.model = RNN(n_letters, self.n_hidden, n_categories)
         self.optimizer = torch.optim.Adam(
             self.model.parameters(), lr=config["lr"])
 
