@@ -1766,6 +1766,28 @@ def test_local_mode(shutdown_only):
     with pytest.raises(Exception, match=exception_str):
         ray.get(obj2)
 
+    # Check that Actors are not overwritten by remote calls from different
+    # classes.
+    @ray.remote
+    class RemoteActor1(object):
+        def __init__(self):
+            pass
+
+        def function1(self):
+            return 0
+
+    @ray.remote
+    class RemoteActor2(object):
+        def __init__(self):
+            pass
+
+        def function2(self):
+            return 1
+
+    actor1 = RemoteActor1.remote()
+    _ = RemoteActor2.remote()
+    assert ray.get(actor1.function1.remote()) == 0
+
 
 def test_resource_constraints(shutdown_only):
     num_workers = 20
