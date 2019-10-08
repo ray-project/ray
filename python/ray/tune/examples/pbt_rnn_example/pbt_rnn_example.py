@@ -175,6 +175,8 @@ def test(model):
     print(num_correct, total)
     return num_correct/total
 
+criterion = nn.NLLLoss()
+
 def train(model, category_tensor, line_tensor, optimizer, counter):
     model.zero_grad()
     hidden = model.init_hidden()
