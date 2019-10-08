@@ -7,7 +7,7 @@ from ray.experimental.serve.utils import pformat_color_json
 
 
 def echo1(context):
-	context["query_string"] += 'FROM MODEL1 -> '
+	# context["query_string"] += 'FROM MODEL1 -> '
 	return context
 def echo2(context):
 	context["query_string"] += 'FROM MODEL2 -> '

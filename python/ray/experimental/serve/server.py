@@ -100,19 +100,19 @@ class HTTPProxy:
         elif current_path in self.route_table:
             pipeline_name = self.route_table[current_path]
             services_list = self.pipeline_table[pipeline_name]
-            await JSONResponse({"result": str(services_list)})(scope, receive, send)
-            # result = scope
-            # for service in services_list:
-            #     result_object_id_bytes = await as_future(
-            #         self.router.enqueue_request.remote(service, result))
-            #     result = await as_future(ray.ObjectID(result_object_id_bytes))
+            # await JSONResponse({"result": str(services_list)})(scope, receive, send)
+            result = scope
+            for service in services_list:
+                result_object_id_bytes = await as_future(
+                    self.router.enqueue_request.remote(service, result))
+                result = await as_future(ray.ObjectID(result_object_id_bytes))
 
-            # if isinstance(result, ray.exceptions.RayTaskError):
-            #     await JSONResponse({
-            #         "error": "internal error, please use python API to debug"
-            #     })(scope, receive, send)
-            # else:
-            #     await JSONResponse({"result": result})(scope, receive, send)
+            if isinstance(result, ray.exceptions.RayTaskError):
+                await JSONResponse({
+                    "error": "internal error, please use python API to debug"
+                })(scope, receive, send)
+            else:
+                await JSONResponse({"result": result})(scope, receive, send)
         else:
             error_message = ("Path {} not found. "
                              "Please ping http://.../ for routing table"
