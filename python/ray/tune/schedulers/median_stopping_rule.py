@@ -39,8 +39,6 @@ class MedianStoppingRule(FIFOScheduler):
         hard_stop (bool): If False, pauses trials instead of stopping
             them. When all other trials are complete, paused trials will be
             resumed and allowed to run FIFO.
-        verbose (bool): If True, will output the median and best result each
-            time a trial reports. Defaults to True.
     """
 
     def __init__(self,
@@ -51,8 +49,7 @@ class MedianStoppingRule(FIFOScheduler):
                  grace_period=60.0,
                  min_samples_required=3,
                  min_time_slice=0,
-                 hard_stop=True,
-                 verbose=True):
+                 hard_stop=True):
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
         if reward_attr is not None:
             mode = "max"
@@ -72,7 +69,6 @@ class MedianStoppingRule(FIFOScheduler):
         self._compare_op = max if mode == "max" else min
         self._time_attr = time_attr
         self._hard_stop = hard_stop
-        self._verbose = verbose
         self._trial_state = {}
         self._last_pause = collections.defaultdict(lambda: float("-inf"))
         self._results = collections.defaultdict(list)
@@ -116,9 +112,8 @@ class MedianStoppingRule(FIFOScheduler):
 
         median_result = self._median_result(trials, time)
         best_result = self._best_result(trial)
-        if self._verbose:
-            logger.info("Trial {} best res={} vs median res={} at t={}".format(
-                trial, best_result, median_result, time))
+        logger.debug("Trial {} best res={} vs median res={} at t={}".format(
+            trial, best_result, median_result, time))
 
         if self._compare_op(median_result, best_result) != best_result:
             logger.debug("MedianStoppingRule: early stopping {}".format(trial))
