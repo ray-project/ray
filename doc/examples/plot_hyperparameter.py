@@ -135,7 +135,9 @@ def test(model, test_loader, device=torch.device("cpu")):
 # -------------------------------
 #
 # For a given configuration, the neural network created previously
-# will be trained and return the accuracy of the model.
+# will be trained and return the accuracy of the model. These trained 
+# networks will then be tested for accuracy to find the best set of 
+# hyperparameters
 #
 # The ``@ray.remote`` decorator defines a remote process.
 
@@ -154,9 +156,10 @@ def evaluate_hyperparameters(config):
 # Synchronous Evaluation of Randomly Generated Hyperparameters
 # ------------------------------------------------------------
 #
-# We will create multiple sets of random hyperparameters for our neural
-# network that will be trained in parallel. These trained networks will
-# then be tested for accuracy to find the best set of hyperparameters.
+# Launch asynchronous parallel tasks for evaluating different 
+# hyperparameters. accuracy_id is an ObjectID that acts as a handle to 
+# the remote task. It is used later to fetch the result of the task 
+# when the task finishes.
 
 
 # Keep track of the best hyperparameters and the best accuracy.
@@ -182,8 +185,7 @@ for i in range(num_evaluations):
 
 ###########################################################################
 # Process each hyperparameter and corresponding accuracy in the order that 
-# they finish training and testing the neural network to store the 
-# hyperparameters with the best accuracy
+# they finish to store the hyperparameters with the best accuracy.
 
 # Fetch and print the results of the tasks in the order that they complete.
 while remaining_ids:
