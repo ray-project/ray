@@ -17,9 +17,7 @@ def echo1(context):
 	# context["query_string"] += 'FROM MODEL1 -> '
 	# return context
 def echo2(context):
-	result = context['result']
-	result += 'FROM MODEL2 -> '
-	return result
+	return context
 
 serve.init(blocking=True)
 
