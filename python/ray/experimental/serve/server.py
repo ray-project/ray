@@ -54,7 +54,7 @@ class HTTPProxy:
     # blocks forever
     """
 
-    def __init__(self, kv_store_actor_handle, router_handle):
+    def __init__(self, kv_store_actor_handle,kv_store_actor_pipeline_handle ,router_handle):
         """
         Args:
             kv_store_actor_handle (ray.actor.ActorHandle): handle to routing
@@ -67,14 +67,18 @@ class HTTPProxy:
         assert ray.is_initialized()
 
         self.admin_actor = kv_store_actor_handle
+        self.pipeline_actor = kv_store_actor_pipeline_handle
         self.router = router_handle
         self.route_table = dict()
+        self.pipeline_table = dict()
 
     async def route_checker(self, interval):
         while True:
             try:
                 self.route_table = await as_future(
                     self.admin_actor.list_service.remote())
+                self.pipeline_table = await as_future(
+                    self.pipeline_actor.list_pipeline_service.remote())
             except ray.exceptions.RayletError:  # Gracefully handle termination
                 return
 
@@ -94,10 +98,13 @@ class HTTPProxy:
         if current_path == "/":
             await JSONResponse(self.route_table)(scope, receive, send)
         elif current_path in self.route_table:
-            endpoint_name = self.route_table[current_path]
-            result_object_id_bytes = await as_future(
-                self.router.enqueue_request.remote(endpoint_name, scope))
-            result = await as_future(ray.ObjectID(result_object_id_bytes))
+            pipeline_name = self.route_table[current_path]
+            services_list = self.pipeline_table[pipeline_name]
+            result = scope
+            for service in services_list:
+                result_object_id_bytes = await as_future(
+                    self.router.enqueue_request.remote(endpoint_name, result))
+                result = await as_future(ray.ObjectID(result_object_id_bytes))
 
             if isinstance(result, ray.exceptions.RayTaskError):
                 await JSONResponse({

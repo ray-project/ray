@@ -37,7 +37,7 @@ def init(blocking=False, object_store_memory=int(1e8)):
         global_state.wait_until_http_ready()
 
 
-def create_endpoint(endpoint_name, route_expression, blocking=True):
+def create_endpoint_pipeline(pipeline_name, route_expression, blocking=True):
     """Create a service endpoint given route_expression.
 
     Args:
@@ -49,11 +49,13 @@ def create_endpoint(endpoint_name, route_expression, blocking=True):
             registered before returning
     """
     future = global_state.kv_store_actor_handle.register_service.remote(
-        route_expression, endpoint_name)
+        route_expression, pipeline_name)
     if blocking:
         ray.get(future)
-    global_state.registered_endpoints.add(endpoint_name)
+    global_state.registered_endpoints.add(pipeline_name)
 
+def create_no_http_service(service_name):
+    global_state.registered_services.add(service_name)
 
 def create_backend(func_or_class, backend_tag, *actor_init_args):
     """Create a backend using func_or_class and assign backend_tag.
@@ -89,8 +91,16 @@ def create_backend(func_or_class, backend_tag, *actor_init_args):
 
     global_state.registered_backends.add(backend_tag)
 
+def add_service_to_pipeline(pipeline_name,service_name,blocking=True):
+    assert service_name in global_state.registered_services
+    assert pipeline_name in global_state.registered_endpoints
 
-def link(endpoint_name, backend_tag):
+    future = global_state.kv_store_actor_handle_pipeline.add_node.remote(pipeline_name,service_name)
+    if blocking:
+        ray.get(future)
+
+
+def link_service(service_name, backend_tag):
     """Associate a service endpoint with backend tag.
 
     Example:
@@ -102,10 +112,10 @@ def link(endpoint_name, backend_tag):
 
     >>> serve.split("service-name", {"backend:v1": 1.0})
     """
-    assert endpoint_name in global_state.registered_endpoints
+    assert service_name in global_state.registered_services
 
-    global_state.router_actor_handle.link.remote(endpoint_name, backend_tag)
-    global_state.policy_action_history[endpoint_name].append({backend_tag: 1})
+    global_state.router_actor_handle.link.remote(service_name, backend_tag)
+    global_state.policy_action_history[service_name].append({backend_tag: 1})
 
 
 def split(endpoint_name, traffic_policy_dictionary):

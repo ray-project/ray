@@ -2,7 +2,7 @@ import time
 from collections import defaultdict, deque
 
 import ray
-from ray.experimental.serve.kv_store_service import KVStoreProxyActor
+from ray.experimental.serve.kv_store_service import KVPipelineProxyActor,KVStoreProxyActor
 from ray.experimental.serve.queues import CentralizedQueuesActor
 from ray.experimental.serve.utils import logger
 from ray.experimental.serve.server import HTTPActor
@@ -29,7 +29,9 @@ class GlobalState:
         self.backend_actor_handles = []
 
         #: actor handle to KV store actor
+
         self.kv_store_actor_handle = None
+        self.kv_store_actor_handle_pipeline = None
         #: actor handle to HTTP server
         self.http_actor_handle = None
         #: actor handle the router actor
@@ -39,6 +41,7 @@ class GlobalState:
         self.registered_backends = set()
         #: Set[str] list of service endpoint names, used for deduplication
         self.registered_endpoints = set()
+        self.registered_services = set()
 
         #: Mapping of endpoints -> a stack of traffic policy
         self.policy_action_history = defaultdict(deque)
@@ -51,12 +54,14 @@ class GlobalState:
     def init_api_server(self):
         logger.info(LOG_PREFIX + "Initalizing routing table")
         self.kv_store_actor_handle = KVStoreProxyActor.remote()
+        self.kv_store_actor_handle_pipeline = KVPipelineProxyActor.remote()
         logger.info((LOG_PREFIX + "Health checking routing table {}").format(
             ray.get(self.kv_store_actor_handle.get_request_count.remote())), )
 
     def init_http_server(self):
         logger.info(LOG_PREFIX + "Initializing HTTP server")
         self.http_actor_handle = HTTPActor.remote(self.kv_store_actor_handle,
+                                                  self.kv_store_actor_handle_pipeline,
                                                   self.router_actor_handle)
         self.http_actor_handle.run.remote(host="0.0.0.0", port=8000)
         self.http_address = "http://localhost:8000"
@@ -69,11 +74,16 @@ class GlobalState:
 
     def wait_until_http_ready(self, num_retries=5, backoff_time_s=1):
         routing_table_request_count = 0
+        routing_pipeline_request_count = 0
         retries = num_retries
 
-        while not routing_table_request_count:
-            routing_table_request_count = (ray.get(
-                self.kv_store_actor_handle.get_request_count.remote()))
+        while  not routing_table_request_count and not routing_pipeline_request_count:
+            if routing_table_request_count == 0:
+                routing_table_request_count = (ray.get(
+                    self.kv_store_actor_handle.get_request_count.remote()))
+            if routing_pipeline_request_count == 0:
+                routing_pipeline_request_count = (ray.get(
+                    self.kv_store_actor_handle_pipeline.get_request_count.remote()))
             logger.debug((LOG_PREFIX + "Checking if HTTP server is ready."
                           "{} retries left.").format(retries))
             time.sleep(backoff_time_s)
