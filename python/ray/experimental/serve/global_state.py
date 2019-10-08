@@ -84,7 +84,7 @@ class GlobalState:
             if routing_pipeline_request_count == 0:
                 routing_pipeline_request_count = (ray.get(
                     self.kv_store_actor_handle_pipeline.get_request_count.remote()))
-            logger.debug((LOG_PREFIX + "Checking if HTTP server is ready."
+            logger.info((LOG_PREFIX + "Checking if HTTP server is ready."
                           "{} retries left.").format(retries))
             time.sleep(backoff_time_s)
             retries -= 1
