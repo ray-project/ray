@@ -1786,7 +1786,7 @@ def test_local_mode(shutdown_only):
 
     actor1 = RemoteActor1.remote()
     _ = RemoteActor2.remote()
-    assert ray.get(actor1.dummy1.remote()) == 0
+    assert ray.get(actor1.function1.remote()) == 0
 
 
 def test_resource_constraints(shutdown_only):
