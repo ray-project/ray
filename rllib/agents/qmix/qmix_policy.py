@@ -476,7 +476,7 @@ class QMixTorchPolicy(Policy):
                 dtype=np.float32)
 
         if self.has_env_global_state:
-            state = unpacked[0]["state"]
+            state = unpacked[0][ENV_STATE]
         else:
             state = None
         return obs, action_mask, state

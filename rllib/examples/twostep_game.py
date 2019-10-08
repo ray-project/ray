@@ -21,6 +21,7 @@ import ray
 from ray import tune
 from ray.tune import register_env, grid_search
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.agents.qmix.qmix_policy import ENV_STATE
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--stop", type=int, default=50000)
@@ -50,7 +51,7 @@ class TwoStepGame(MultiAgentEnv):
             if self.with_state:
                 self.observation_space = Dict({
                     "obs": MultiDiscrete([2, 2, 2, 3]),
-                    "state": MultiDiscrete([2, 2, 2])
+                    ENV_STATE: MultiDiscrete([2, 2, 2])
                 })
             else:
                 self.observation_space = MultiDiscrete([2, 2, 2, 3])
@@ -104,11 +105,11 @@ class TwoStepGame(MultiAgentEnv):
             return {
                 self.agent_1: {
                     "obs": self.agent_1_obs(),
-                    "state": self.state
+                    ENV_STATE: self.state
                 },
                 self.agent_2: {
                     "obs": self.agent_2_obs(),
-                    "state": self.state
+                    ENV_STATE: self.state
                 }
             }
         else:
@@ -139,11 +140,11 @@ if __name__ == "__main__":
     obs_space = Tuple([
         Dict({
             "obs": MultiDiscrete([2, 2, 2, 3]),
-            "state": MultiDiscrete([2, 2, 2])
+            ENV_STATE: MultiDiscrete([2, 2, 2])
         }),
         Dict({
             "obs": MultiDiscrete([2, 2, 2, 3]),
-            "state": MultiDiscrete([2, 2, 2])
+            ENV_STATE: MultiDiscrete([2, 2, 2])
         }),
     ])
     act_space = Tuple([
