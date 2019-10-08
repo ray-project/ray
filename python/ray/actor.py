@@ -117,39 +117,105 @@ class ActorMethod(object):
         return invocation(args, kwargs)
 
 
+class ActorClassMetadata(object):
+    """Metadata for an actor class.
+
+    Attributes:
+        modified_class: The original class that was decorated (with some
+            additional methods added like __ray_terminate__).
+        class_id: The ID of this actor class.
+        class_name: The name of this class.
+        num_cpus: The default number of CPUs required by the actor creation
+            task.
+        num_gpus: The default number of GPUs required by the actor creation
+            task.
+        memory: The heap memory quota for this actor.
+        object_store_memory: The object store memory quota for this actor.
+        resources: The default resources required by the actor creation task.
+        actor_method_cpus: The number of CPUs required by actor method tasks.
+        last_export_session_and_job: A pair of the last exported session
+            and job to help us to know whether this function was exported.
+            This is an imperfect mechanism used to determine if we need to
+            export the remote function again. It is imperfect in the sense that
+            the actor class definition could be exported multiple times by
+            different workers.
+        actor_methods: The actor methods.
+        method_decorators: Optional decorators that should be applied to the
+            method invocation function before invoking the actor methods. These
+            can be set by attaching the attribute
+            "__ray_invocation_decorator__" to the actor method.
+        method_signatures: The signatures of the methods.
+        actor_method_names: The names of the actor methods.
+        actor_method_num_return_vals: The default number of return values for
+            each actor method.
+    """
+
+    def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
+                 num_gpus, memory, object_store_memory, resources):
+        self.modified_class = modified_class
+        self.class_id = class_id
+        self.class_name = modified_class.__name__
+        self.max_reconstructions = max_reconstructions
+        self.num_cpus = num_cpus
+        self.num_gpus = num_gpus
+        self.memory = memory
+        self.object_store_memory = object_store_memory
+        self.resources = resources
+        self.last_export_session_and_job = None
+
+        self.actor_methods = inspect.getmembers(
+            self.modified_class, ray.utils.is_function_or_method)
+        self.actor_method_names = [
+            method_name for method_name, _ in self.actor_methods
+        ]
+
+        constructor_name = "__init__"
+        if constructor_name not in self.actor_method_names:
+            # Add __init__ if it does not exist.
+            # Actor creation will be executed with __init__ together.
+
+            # Assign an __init__ function will avoid many checks later on.
+            def __init__(self):
+                pass
+
+            self.modified_class.__init__ = __init__
+            self.actor_method_names.append(constructor_name)
+            self.actor_methods.append((constructor_name, __init__))
+
+        # Extract the signatures of each of the methods. This will be used
+        # to catch some errors if the methods are called with inappropriate
+        # arguments.
+        self.method_decorators = {}
+        self.method_signatures = {}
+        self.actor_method_num_return_vals = {}
+        for method_name, method in self.actor_methods:
+            # Print a warning message if the method signature is not
+            # supported. We don't raise an exception because if the actor
+            # inherits from a class that has a method whose signature we
+            # don't support, there may not be much the user can do about it.
+            signature.check_signature_supported(method, warn=True)
+            self.method_signatures[method_name] = signature.extract_signature(
+                method, ignore_first=not ray.utils.is_class_method(method))
+            # Set the default number of return values for this method.
+            if hasattr(method, "__ray_num_return_vals__"):
+                self.actor_method_num_return_vals[method_name] = (
+                    method.__ray_num_return_vals__)
+            else:
+                self.actor_method_num_return_vals[method_name] = (
+                    ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
+
+            if hasattr(method, "__ray_invocation_decorator__"):
+                self.method_decorators[method_name] = (
+                    method.__ray_invocation_decorator__)
+
+
 class ActorClass(object):
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
 
     Attributes:
-        _modified_class: The original class that was decorated (with some
-            additional methods added like __ray_terminate__).
-        _class_id: The ID of this actor class.
-        _class_name: The name of this class.
-        _num_cpus: The default number of CPUs required by the actor creation
-            task.
-        _num_gpus: The default number of GPUs required by the actor creation
-            task.
-        _memory: The heap memory quota for this actor.
-        _object_store_memory: The object store memory quota for this actor.
-        _resources: The default resources required by the actor creation task.
-        _actor_method_cpus: The number of CPUs required by actor method tasks.
-        _last_export_session_and_job: A pair of the last exported session
-            and job to help us to know whether this function was exported.
-            This is an imperfect mechanism used to determine if we need to
-            export the remote function again. It is imperfect in the sense that
-            the actor class definition could be exported multiple times by
-            different workers.
-        _actor_methods: The actor methods.
-        _method_decorators: Optional decorators that should be applied to the
-            method invocation function before invoking the actor methods. These
-            can be set by attaching the attribute
-            "__ray_invocation_decorator__" to the actor method.
-        _method_signatures: The signatures of the methods.
-        _actor_method_names: The names of the actor methods.
-        _actor_method_num_return_vals: The default number of return values for
-            each actor method.
+        __ray_metadata__: Contains metadata for the actor.
     """
 
     def __init__(cls, name, bases, attr):
@@ -157,7 +223,7 @@ class ActorClass(object):
 
         This will be called when a class is defined with an ActorClass object
         as one of its base classes. To intentionally construct an ActorClass,
-        use the '_from_modified_class' classmethod.
+        use the '_ray_from_modified_class' classmethod.
 
         Raises:
             TypeError: Always.
@@ -169,7 +235,8 @@ class ActorClass(object):
                                 "not currently supported. You can instead "
                                 "inherit from a non-actor base class and make "
                                 "the derived class an actor class (with "
-                                "@ray.remote).".format(name, base._class_name))
+                                "@ray.remote).".format(
+                                    name, base.__ray_metadata__.class_name))
 
         # This shouldn't be reached because one of the base classes must be
         # an actor class if this was meant to be subclassed.
@@ -188,70 +255,35 @@ class ActorClass(object):
         """
         raise Exception("Actors cannot be instantiated directly. "
                         "Instead of '{}()', use '{}.remote()'.".format(
-                            self._class_name, self._class_name))
+                            self.__ray_metadata__.class_name,
+                            self.__ray_metadata__.class_name))
 
     @classmethod
-    def _from_modified_class(cls, modified_class, class_id,
-                             max_reconstructions, num_cpus, num_gpus, memory,
-                             object_store_memory, resources):
+    def _ray_from_modified_class(cls, modified_class, class_id,
+                                 max_reconstructions, num_cpus, num_gpus,
+                                 memory, object_store_memory, resources):
+        for attribute in ["remote", "_remote", "_ray_from_modified_class"]:
+            if hasattr(modified_class, attribute):
+                logger.warning("Creating an actor from class {} overwrites "
+                               "attribute {} of that class".format(
+                                   modified_class.__name__, attribute))
+
+        # Make sure the actor class we are constructing inherits from the
+        # original class so it retains all class properties.
+        class DerivedActorClass(cls, modified_class):
+            pass
+
+        name = "ActorClass({})".format(modified_class.__name__)
+        DerivedActorClass.__module__ = modified_class.__module__
+        DerivedActorClass.__name__ = name
+        DerivedActorClass.__qualname__ = name
+
         # Construct the base object.
-        self = cls.__new__(cls)
+        self = DerivedActorClass.__new__(DerivedActorClass)
 
-        self._modified_class = modified_class
-        self._class_id = class_id
-        self._class_name = modified_class.__name__
-        self._max_reconstructions = max_reconstructions
-        self._num_cpus = num_cpus
-        self._num_gpus = num_gpus
-        self._memory = memory
-        self._object_store_memory = object_store_memory
-        self._resources = resources
-        self._last_export_session_and_job = None
-
-        self._actor_methods = inspect.getmembers(
-            self._modified_class, ray.utils.is_function_or_method)
-        self._actor_method_names = [
-            method_name for method_name, _ in self._actor_methods
-        ]
-
-        constructor_name = "__init__"
-        if constructor_name not in self._actor_method_names:
-            # Add __init__ if it does not exist.
-            # Actor creation will be executed with __init__ together.
-
-            # Assign an __init__ function will avoid many checks later on.
-            def __init__(self):
-                pass
-
-            self._modified_class.__init__ = __init__
-            self._actor_method_names.append(constructor_name)
-            self._actor_methods.append((constructor_name, __init__))
-
-        # Extract the signatures of each of the methods. This will be used
-        # to catch some errors if the methods are called with inappropriate
-        # arguments.
-        self._method_decorators = {}
-        self._method_signatures = {}
-        self._actor_method_num_return_vals = {}
-        for method_name, method in self._actor_methods:
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
-            signature.check_signature_supported(method, warn=True)
-            self._method_signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not ray.utils.is_class_method(method))
-            # Set the default number of return values for this method.
-            if hasattr(method, "__ray_num_return_vals__"):
-                self._actor_method_num_return_vals[method_name] = (
-                    method.__ray_num_return_vals__)
-            else:
-                self._actor_method_num_return_vals[method_name] = (
-                    ray_constants.DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS)
-
-            if hasattr(method, "__ray_invocation_decorator__"):
-                self._method_decorators[method_name] = (
-                    method.__ray_invocation_decorator__)
+        self.__ray_metadata__ = ActorClassMetadata(
+            modified_class, class_id, max_reconstructions, num_cpus, num_gpus,
+            memory, object_store_memory, resources)
 
         return self
 
@@ -307,12 +339,14 @@ class ActorClass(object):
             raise Exception("Actors cannot be created before ray.init() "
                             "has been called.")
 
+        meta = self.__ray_metadata__
+
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
         # decorator. Last three conditions are to check that no resources were
         # specified when _remote() was called.
-        if (self._num_cpus is None and self._num_gpus is None
-                and self._resources is None and num_cpus is None
+        if (meta.num_cpus is None and meta.num_gpus is None
+                and meta.resources is None and num_cpus is None
                 and num_gpus is None and resources is None):
             # In the default case, actors acquire no resources for
             # their lifetime, and actor methods will require 1 CPU.
@@ -323,13 +357,13 @@ class ActorClass(object):
             # all resources are acquired for the actor's lifetime and no
             # resources are associated with methods.
             cpus_to_use = (ray_constants.DEFAULT_ACTOR_CREATION_CPU_SPECIFIED
-                           if self._num_cpus is None else self._num_cpus)
+                           if meta.num_cpus is None else meta.num_cpus)
             actor_method_cpu = ray_constants.DEFAULT_ACTOR_METHOD_CPU_SPECIFIED
 
         function_name = "__init__"
         function_descriptor = FunctionDescriptor(
-            self._modified_class.__module__, function_name,
-            self._modified_class.__name__)
+            meta.modified_class.__module__, function_name,
+            meta.modified_class.__name__)
 
         # Do not export the actor class or the actor if run in LOCAL_MODE
         # Instead, instantiate the actor locally and add it to the worker's
@@ -338,26 +372,26 @@ class ActorClass(object):
             actor_id = ActorID.of(worker.current_job_id,
                                   worker.current_task_id,
                                   worker.task_context.task_index + 1)
-            worker.actors[actor_id] = self._modified_class(
+            worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
             core_handle = ray._raylet.ActorHandle(
                 actor_id, ActorHandleID.nil(), worker.current_job_id,
                 function_descriptor.get_function_descriptor_list())
         else:
             # Export the actor.
-            if (self._last_export_session_and_job !=
+            if (meta.last_export_session_and_job !=
                     worker.current_session_and_job):
                 # If this actor class was not exported in this session and job,
                 # we need to export this function again, because current GCS
                 # doesn't have it.
-                self._last_export_session_and_job = (
+                meta.last_export_session_and_job = (
                     worker.current_session_and_job)
                 worker.function_actor_manager.export_actor_class(
-                    self._modified_class, self._actor_method_names)
+                    meta.modified_class, meta.actor_method_names)
 
             resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, self._num_gpus, self._memory,
-                self._object_store_memory, self._resources, num_cpus, num_gpus,
+                cpus_to_use, meta.num_gpus, meta.memory,
+                meta.object_store_memory, meta.resources, num_cpus, num_gpus,
                 memory, object_store_memory, resources)
 
             # If the actor methods require CPU resources, then set the required
@@ -369,31 +403,27 @@ class ActorClass(object):
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
 
-            function_signature = self._method_signatures[function_name]
+            function_signature = meta.method_signatures[function_name]
             creation_args = signature.extend_args(function_signature, args,
                                                   kwargs)
             core_handle = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
-                creation_args, self._max_reconstructions, resources,
+                creation_args, meta.max_reconstructions, resources,
                 actor_placement_resources)
 
         actor_handle = ActorHandle(
             core_handle,
-            self._modified_class.__module__,
-            self._class_name,
-            self._actor_method_names,
-            self._method_decorators,
-            self._method_signatures,
-            self._actor_method_num_return_vals,
+            meta.modified_class.__module__,
+            meta.class_name,
+            meta.actor_method_names,
+            meta.method_decorators,
+            meta.method_signatures,
+            meta.actor_method_num_return_vals,
             actor_method_cpu,
             worker.current_session_and_job,
             original_handle=True)
 
         return actor_handle
-
-    @property
-    def class_id(self):
-        return self._class_id
 
 
 class ActorHandle(object):
@@ -672,7 +702,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     Class.__module__ = cls.__module__
     Class.__name__ = cls.__name__
 
-    return ActorClass._from_modified_class(
+    return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
         num_gpus, memory, object_store_memory, resources)
 

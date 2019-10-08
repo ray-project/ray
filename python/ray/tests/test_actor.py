@@ -264,6 +264,41 @@ def test_custom_classes(ray_start_regular):
     assert results2[2].x == 3
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_actor_class_attributes(ray_start_regular):
+    class Grandparent(object):
+        GRANDPARENT = 2
+
+    class Parent1(Grandparent):
+        PARENT1 = 6
+
+    class Parent2(object):
+        PARENT2 = 7
+
+    @ray.remote
+    class TestActor(Parent1, Parent2):
+        X = 3
+
+        @classmethod
+        def f(cls):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.X == 3
+            return 4
+
+        def g(self):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.f() == 4
+            return TestActor.X
+
+    t = TestActor.remote()
+    assert ray.get(t.g.remote()) == 3
+
+
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
