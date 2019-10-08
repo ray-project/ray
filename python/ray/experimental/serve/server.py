@@ -125,8 +125,8 @@ class HTTPProxy:
 
 @ray.remote
 class HTTPActor:
-    def __init__(self, kv_store_actor_handle, router_handle):
-        self.app = HTTPProxy(kv_store_actor_handle, router_handle)
+    def __init__(self, kv_store_actor_handle,kv_store_actor_pipeline_handle ,router_handle):
+        self.app = HTTPProxy(kv_store_actor_handle,kv_store_actor_pipeline_handle,router_handle)
 
     def run(self, host="0.0.0.0", port=8000):
         uvicorn.run(self.app, host=host, port=port, lifespan="on")
