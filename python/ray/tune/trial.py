@@ -330,6 +330,8 @@ class Trial(object):
 
     def update_last_result(self, result, terminate=False):
         result.update(trial_id=self.trial_id, done=terminate)
+        if self.experiment_tag:
+            result.update(experiment_tag=self.experiment_tag)
         if self.verbose and (terminate or time.time() - self.last_debug >
                              DEBUG_PRINT_INTERVAL):
             print("Result for {}:".format(self))
@@ -379,7 +381,7 @@ class Trial(object):
         return str(self)
 
     def __str__(self):
-        """Combines ``env`` with ``trainable_name`` and ``experiment_tag``.
+        """Combines ``env`` with ``trainable_name`` and ``trial_id``.
 
         Can be overriden with a custom string creator.
         """
@@ -393,8 +395,7 @@ class Trial(object):
             identifier = "{}_{}".format(self.trainable_name, env)
         else:
             identifier = self.trainable_name
-        if self.experiment_tag:
-            identifier += "_" + self.experiment_tag
+        identifier += "_" + self.trial_id
         return identifier.replace("/", "_")
 
     def __getstate__(self):

@@ -158,6 +158,7 @@ def _get_trial_info(trial, parameters, metrics, include_error_data=False):
     trial_info = [str(trial), trial.trial_id, trial.status]
     trial_info += [_location_str(result.get(HOSTNAME), result.get(PID))]
     if include_error_data:
+        # TODO(ujvl): File path is too long to display in a single row.
         trial_info += [trial.num_failures, trial.error_file]
     trial_info += [result.get(CONFIG_PREFIX + param) for param in parameters]
     trial_info += [result.get(metric) for metric in metrics]
