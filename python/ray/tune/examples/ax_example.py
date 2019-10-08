@@ -10,7 +10,6 @@ import numpy as np
 
 import ray
 from ray.tune import run
-from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
 
 
@@ -112,5 +111,4 @@ if __name__ == "__main__":
         outcome_constraints=["l2norm <= 1.25"],  # Optional.
     )
     algo = AxSearch(client, max_concurrent=4)
-    scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="max")
     run(easy_objective, name="ax", search_alg=algo, **config)
