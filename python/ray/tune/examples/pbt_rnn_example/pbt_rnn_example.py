@@ -27,6 +27,7 @@ from ray.tune import track
 import numpy as np
 
 all_filenames = glob.glob('/names/*.txt')
+print(all_filenames)
 
 
 all_letters = string.ascii_letters + " .,;'"
