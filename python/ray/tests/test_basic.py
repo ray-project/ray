@@ -1769,7 +1769,7 @@ def test_local_mode(shutdown_only):
     # Check that Actors are not overwritten by remote calls from different
     # classes.
     @ray.remote
-    class RemoteWorker1(object):
+    class RemoteActor1(object):
         def __init__(self):
             pass
 
@@ -1777,16 +1777,17 @@ def test_local_mode(shutdown_only):
             return 0
 
     @ray.remote
-    class RemoteWorker2(object):
+    class RemoteActor2(object):
         def __init__(self):
             pass
 
         def function2(self):
             return 1
 
-    worker1 = RemoteWorker1.remote()
-    worker2 = RemoteWorker2.remote()
-    assert ray.get(worker1.dummy1.remote()) == 0
+    actor1 = RemoteActor1.remote()
+    _ = RemoteActor2.remote()
+    assert ray.get(actor1.dummy1.remote()) == 0
+
 
 def test_resource_constraints(shutdown_only):
     num_workers = 20
