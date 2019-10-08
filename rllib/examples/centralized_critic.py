@@ -17,6 +17,7 @@ modifies the environment.
 
 import argparse
 import numpy as np
+from gym.spaces import Discrete
 
 from ray import tune
 from ray.rllib.agents.ppo.ppo import PPOTrainer
@@ -209,10 +210,8 @@ if __name__ == "__main__":
             "num_workers": 0,
             "multiagent": {
                 "policies": {
-                    "pol1": (None, TwoStepGame.observation_space,
-                             TwoStepGame.action_space, {}),
-                    "pol2": (None, TwoStepGame.observation_space,
-                             TwoStepGame.action_space, {}),
+                    "pol1": (None, Discrete(6), TwoStepGame.action_space, {}),
+                    "pol2": (None, Discrete(6), TwoStepGame.action_space, {}),
                 },
                 "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
