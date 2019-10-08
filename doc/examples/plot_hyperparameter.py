@@ -137,7 +137,7 @@ def test(model, test_loader, device=torch.device("cpu")):
 # For a given configuration, the neural network created previously
 # will be trained and return the accuracy of the model. These trained 
 # networks will then be tested for accuracy to find the best set of 
-# hyperparameters
+# hyperparameters.
 #
 # The ``@ray.remote`` decorator defines a remote process.
 
@@ -157,8 +157,7 @@ def evaluate_hyperparameters(config):
 # ------------------------------------------------------------
 #
 # We will create multiple sets of random hyperparameters for our neural
-# network that will be trained in parallel. These trained networks will
-# then be tested for accuracy to find the best set of hyperparameters.
+# network that will be evaluated in parallel.
 
 
 # Keep track of the best hyperparameters and the best accuracy.
