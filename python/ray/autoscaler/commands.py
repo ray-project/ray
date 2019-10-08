@@ -76,13 +76,12 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     config = yaml.safe_load(open(config_file).read())
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
-    validate_config(config)
     config = fillout_defaults(config)
+    validate_config(config)
 
     confirm("This will destroy your cluster", yes)
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
-
     try:
 
         def remaining_nodes():
@@ -215,9 +214,10 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         logger.info("get_or_create_head_node: Updating files on head node...")
 
         # Rewrite the auth config so that the head node can update the workers
-        remote_key_path = "~/ray_bootstrap_key.pem"
         remote_config = copy.deepcopy(config)
-        remote_config["auth"]["ssh_private_key"] = remote_key_path
+        if config["provider"]["type"] != "kubernetes":
+            remote_key_path = "~/ray_bootstrap_key.pem"
+            remote_config["auth"]["ssh_private_key"] = remote_key_path
 
         # Adjust for new file locations
         new_mounts = {}
@@ -232,9 +232,12 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         remote_config_file.write(json.dumps(remote_config))
         remote_config_file.flush()
         config["file_mounts"].update({
-            remote_key_path: config["auth"]["ssh_private_key"],
             "~/ray_bootstrap_config.yaml": remote_config_file.name
         })
+        if config["provider"]["type"] != "kubernetes":
+            config["file_mounts"].update({
+                remote_key_path: config["auth"]["ssh_private_key"],
+            })
 
         if restart_only:
             init_commands = []
@@ -278,7 +281,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             "Head node up-to-date, IP address is: {}".format(head_node_ip))
 
         monitor_str = "tail -n 100 -f /tmp/ray/session_*/logs/monitor*"
-        use_docker = bool(config["docker"]["container_name"])
+        use_docker = "docker" in config and bool(
+            config["docker"]["container_name"])
         if override_cluster_name:
             modifiers = " --cluster-name={}".format(
                 quote(override_cluster_name))
@@ -291,10 +295,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
         print("To open a console on the cluster:\n\n"
               "  ray attach {}{}\n".format(config_file, modifiers))
 
-        print("To ssh manually to the cluster, run:\n\n"
-              "  ssh -i {} {}@{}\n".format(config["auth"]["ssh_private_key"],
-                                           config["auth"]["ssh_user"],
-                                           head_node_ip))
+        print("To get a remote shell to the cluster manually, run:\n\n"
+              "  {}\n".format(updater.cmd_runner.remote_shell_command_str()))
     finally:
         provider.cleanup()
 
@@ -424,7 +426,7 @@ def _exec(updater, cmd, screen, tmux, port_forward=None):
                 quote(cmd + "; exec bash")
             ]
             cmd = " ".join(cmd)
-        updater.ssh_cmd(
+        updater.cmd_runner.run(
             cmd,
             allocate_tty=True,
             exit_on_fail=True,

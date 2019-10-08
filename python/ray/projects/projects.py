@@ -96,6 +96,15 @@ class ProjectDefinition:
             if wildcards and "choices" in param:
                 choices[name] = copy.deepcopy(param["choices"])
                 param["choices"] = param["choices"] + ["*"]
+            if "type" in param:
+                types = {"int": int, "str": str, "float": float}
+                if param["type"] in types:
+                    param["type"] = types[param["type"]]
+                else:
+                    raise ValueError(
+                        "Parameter {} has type {} which is not supported. "
+                        "Type must be one of {}".format(
+                            name, param["type"], list(types.keys())))
             parser.add_argument("--" + name, **param)
 
         parsed_args = parser.parse_args(list(args)).__dict__

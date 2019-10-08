@@ -381,7 +381,7 @@ def test_random_id_generation(ray_start_regular):
     random.seed(1234)
     f2 = Foo.remote()
 
-    assert f1._ray_actor_id != f2._ray_actor_id
+    assert f1._actor_id != f2._actor_id
 
 
 def test_actor_class_name(ray_start_regular):
@@ -2695,14 +2695,14 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert error_message1 in errors[0]["message"]
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 2
     assert error_message1 in errors[1]["message"]

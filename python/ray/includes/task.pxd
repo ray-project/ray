@@ -77,36 +77,6 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         c_vector[CActorHandleID] NewActorHandles() const
 
 
-cdef extern from "ray/common/task/task_util.h" nogil:
-    cdef cppclass TaskSpecBuilder "ray::TaskSpecBuilder":
-        TaskSpecBuilder &SetCommonTaskSpec(
-            const CTaskID &task_id, const CLanguage &language,
-            const c_vector[c_string] &function_descriptor,
-            const CJobID &job_id, const CTaskID &parent_task_id,
-            uint64_t parent_counter, uint64_t num_returns,
-            const unordered_map[c_string, double] &required_resources,
-            const unordered_map[c_string, double] &required_placement_resources)  # noqa: E501
-
-        TaskSpecBuilder &AddByRefArg(const CObjectID &arg_id)
-
-        TaskSpecBuilder &AddByValueArg(const c_string &data,
-                                       const c_string &metadata)
-
-        TaskSpecBuilder &SetActorCreationTaskSpec(
-            const CActorID &actor_id, uint64_t max_reconstructions,
-            const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_direct_call)
-
-        TaskSpecBuilder &SetActorTaskSpec(
-            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-            const CObjectID &actor_creation_dummy_object_id,
-            const CObjectID &previous_actor_task_dummy_object_id,
-            uint64_t actor_counter,
-            const c_vector[CActorHandleID] &new_handle_ids)
-
-        RpcTaskSpec GetMessage()
-
-
 cdef extern from "ray/common/task/task_execution_spec.h" nogil:
     cdef cppclass CTaskExecutionSpec "ray::TaskExecutionSpecification":
         CTaskExecutionSpec(RpcTaskExecutionSpec message)
