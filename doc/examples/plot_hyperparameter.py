@@ -74,8 +74,8 @@ def get_data_loaders(batch_size):
 # Setup: Defining the Neural Network
 # ----------------------------------
 #
-# We define a small neural network to use in training. In addition, 
-# we created methods to train and test this neural network 
+# We define a small neural network to use in training. In addition,
+# we created methods to train and test this neural network.
 
 
 class ConvNet(nn.Module):
@@ -135,8 +135,8 @@ def test(model, test_loader, device=torch.device("cpu")):
 # -------------------------------
 #
 # For a given configuration, the neural network created previously
-# will be trained and return the accuracy of the model. These trained 
-# networks will then be tested for accuracy to find the best set of 
+# will be trained and return the accuracy of the model. These trained
+# networks will then be tested for accuracy to find the best set of
 # hyperparameters.
 #
 # The ``@ray.remote`` decorator defines a remote process.
@@ -171,12 +171,12 @@ remaining_ids = []
 hyperparameters_mapping = {}
 
 ###########################################################################
-# Launch asynchronous parallel tasks for evaluating different 
-# hyperparameters. accuracy_id is an ObjectID that acts as a handle to 
-# the remote task. It is used later to fetch the result of the task 
+# Launch asynchronous parallel tasks for evaluating different
+# hyperparameters. ``accuracy_id`` is an ObjectID that acts as a handle to
+# the remote task. It is used later to fetch the result of the task
 # when the task finishes.
 
-# Randomly generate sets of hyperparameters and launch a task to test each set.
+# Randomly generate sets of hyperparameters and launch a task to evaluate it.
 for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
     accuracy_id = evaluate_hyperparameters.remote(hyperparameters)
@@ -184,7 +184,7 @@ for i in range(num_evaluations):
     hyperparameters_mapping[accuracy_id] = hyperparameters
 
 ###########################################################################
-# Process each hyperparameter and corresponding accuracy in the order that 
+# Process each hyperparameter and corresponding accuracy in the order that
 # they finish to store the hyperparameters with the best accuracy.
 
 # Fetch and print the results of the tasks in the order that they complete.
