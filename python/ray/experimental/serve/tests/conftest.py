@@ -6,8 +6,7 @@ from ray.experimental import serve
 
 @pytest.fixture(scope="session")
 def serve_instance():
-    serve.init()
-    serve.global_state.wait_until_http_ready()
+    serve.init(blocking=True)
     yield
 
 

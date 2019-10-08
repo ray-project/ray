@@ -117,7 +117,7 @@ class RemoteFunction(object):
                 memory=None,
                 object_store_memory=None,
                 resources=None):
-        """An experimental alternate way to submit remote functions."""
+        """Submit the remote function for execution."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
@@ -148,11 +148,9 @@ class RemoteFunction(object):
                     self._function, self._function_descriptor, args,
                     num_return_vals)
             else:
-                object_ids = worker.submit_task(
-                    self._function_descriptor,
-                    args,
-                    num_return_vals=num_return_vals,
-                    resources=resources)
+                object_ids = worker.core_worker.submit_task(
+                    self._function_descriptor.get_function_descriptor_list(),
+                    args, num_return_vals, resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

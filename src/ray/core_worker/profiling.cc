@@ -6,7 +6,7 @@ namespace ray {
 
 namespace worker {
 
-ProfileEvent::ProfileEvent(const std::unique_ptr<Profiler> &profiler,
+ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> profiler,
                            const std::string &event_type)
     : profiler_(profiler) {
   rpc_event_.set_event_type(event_type);

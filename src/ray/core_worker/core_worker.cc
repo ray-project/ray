@@ -22,7 +22,7 @@ CoreWorker::CoreWorker(
       heartbeat_timer_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
-  if (!log_dir_.empty()) {
+  if (log_dir_ != "") {
     std::stringstream app_name;
     app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
              << worker_context_.GetWorkerID();
@@ -30,20 +30,11 @@ CoreWorker::CoreWorker(
     RayLog::InstallFailureSignalHandler();
   }
 
-  boost::asio::signal_set sigint(io_service_, SIGINT);
-  sigint.async_wait(
+  boost::asio::signal_set signals(io_service_, SIGINT, SIGTERM);
+  signals.async_wait(
       [](const boost::system::error_code &error, int signal_number) -> void {
         if (!error) {
-          RAY_LOG(WARNING) << "Got SIGINT " << signal_number << ", ignoring it.";
-        }
-      });
-
-  boost::asio::signal_set sigterm(io_service_, SIGTERM);
-  sigterm.async_wait(
-      [this](const boost::system::error_code &error, int signal_number) -> void {
-        if (!error) {
-          RAY_LOG(WARNING) << "Got SIGTERM " << signal_number << ", shutting down.";
-          io_service_.stop();
+          exit(signal_number);
         }
       });
 
@@ -53,8 +44,8 @@ CoreWorker::CoreWorker(
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
   // Initialize profiler.
-  profiler_ = std::unique_ptr<worker::Profiler>(
-      new worker::Profiler(worker_context_, node_ip_address, io_service_, gcs_client_));
+  profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
+                                                 io_service_, gcs_client_);
 
   object_interface_ =
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
