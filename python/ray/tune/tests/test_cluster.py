@@ -8,6 +8,7 @@ import time
 import os
 import pytest
 import shutil
+import sys
 
 import ray
 from ray import tune
@@ -19,6 +20,11 @@ from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.suggest import BasicVariantGenerator
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import MagicMock
+else:
+    from mock import MagicMock
 
 
 def _start_new_cluster():
@@ -96,6 +102,26 @@ def test_counting_resources(start_connected_cluster):
 
     runner.step()  # 1 result
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2
+
+
+def test_trial_processed_after_node_failure(start_connected_emptyhead_cluster):
+    """Tests that Tune processes a trial as failed if its node died."""
+    cluster = start_connected_emptyhead_cluster
+    node = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    runner = TrialRunner(BasicVariantGenerator())
+    mock_process_failure = MagicMock(side_effect=runner._process_trial_failure)
+    runner._process_trial_failure = mock_process_failure
+
+    runner.add_trial(Trial("__fake"))
+    runner.step()
+    runner.step()
+    assert not mock_process_failure.called
+
+    cluster.remove_node(node)
+    runner.step()
+    assert mock_process_failure.called
 
 
 def test_remove_node_before_result(start_connected_emptyhead_cluster):
