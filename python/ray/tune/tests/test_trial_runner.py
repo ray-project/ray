@@ -464,6 +464,35 @@ class TrainableFunctionApiTest(unittest.TestCase):
         [trial] = tune.run(train, stop=stop).trials
         self.assertEqual(trial.last_result["training_iteration"], 8)
 
+    def testStoppingMemberFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class Stopper:
+            def stop(self, trial_id, result):
+                return result["test"] > 6
+
+        [trial] = tune.run(train, stop=Stopper().stop).trials
+        self.assertEqual(trial.last_result["training_iteration"], 8)
+
+    def testBadStoppingFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class Stopper:
+            def stop(self, result):
+                return result["test"] > 6
+
+        def stop(result):
+            return result["test"] > 6
+
+        with self.assertRaises(ValueError):
+            tune.run(train, stop=Stopper().stop)
+        with self.assertRaises(ValueError):
+            tune.run(train, stop=stop)
+
     def testEarlyReturn(self):
         def train(config, reporter):
             reporter(timesteps_total=100, done=True)

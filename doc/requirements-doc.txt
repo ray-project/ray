@@ -18,3 +18,7 @@ sphinx-gallery
 sphinx-jsonschema
 sphinx_rtd_theme
 pandas
+flask
+uvicorn
+pygments
+werkzeug
