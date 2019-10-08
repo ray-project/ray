@@ -377,8 +377,6 @@ def update_context(app, pagename, templatename, context, doctree):
     """Update the page rendering context to include ``feedback_form_url``."""
     context['feedback_form_url'] = feedback_form_url(app.config.project,
                                                      pagename)
-# see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
-
 
 # see also http://searchvoidstar.tumblr.com/post/125486358368/making-pdfs-from-markdown-on-readthedocsorg-using
 
