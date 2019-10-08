@@ -103,7 +103,7 @@ class HTTPProxy:
             result = scope
             for service in services_list:
                 result_object_id_bytes = await as_future(
-                    self.router.enqueue_request.remote(endpoint_name, result))
+                    self.router.enqueue_request.remote(service, result))
                 result = await as_future(ray.ObjectID(result_object_id_bytes))
 
             if isinstance(result, ray.exceptions.RayTaskError):
