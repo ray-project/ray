@@ -14,6 +14,10 @@ then be passed back to each Ray actor for more gradient calculation.
 This application is adapted, with minimal modifications, from
 Andrej Karpathy's `source code`_ (see the accompanying `blog post`_).
 
+.. image:: ../images/pong-arch.svg
+    :align: center
+
+
 To run the application, first install some dependencies.
 
 .. code-block:: bash
