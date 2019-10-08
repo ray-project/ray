@@ -1,10 +1,18 @@
+from __future__ import print_function
+
 import os
-from tabulate import tabulate
 
 from ray.tune.result import (DEFAULT_RESULT_KEYS, CONFIG_PREFIX, PID,
                              EPISODE_REWARD_MEAN, MEAN_ACCURACY, MEAN_LOSS,
                              HOSTNAME, TRAINING_ITERATION, TIME_TOTAL_S)
 from ray.tune.util import flatten_dict
+
+try:
+    from tabulate import tabulate
+except ImportError:
+    raise ImportError("ray.tune in ray > 0.7.5 requires 'tabulate'. "
+                      "Please re-run 'pip install ray[tune]' or "
+                      "'pip install ray[rllib]'.")
 
 DEFAULT_PROGRESS_KEYS = DEFAULT_RESULT_KEYS + (EPISODE_REWARD_MEAN, )
 # Truncated representations of column names (to accommodate small screens).
@@ -12,7 +20,7 @@ REPORTED_REPRESENTATIONS = {
     EPISODE_REWARD_MEAN: "reward",
     MEAN_ACCURACY: "acc",
     MEAN_LOSS: "loss",
-    TIME_TOTAL_S: "time (s)",
+    TIME_TOTAL_S: "total time (s)",
     TRAINING_ITERATION: "iter",
 }
 
@@ -107,6 +115,8 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
         trials_per_state[t.status] = trials_per_state.get(t.status, 0) + 1
     messages.append("Number of trials: {} ({})".format(num_trials,
                                                        trials_per_state))
+    for local_dir in sorted({t.local_dir for t in trials}):
+        messages.append("Result logdir: {}".format(local_dir))
 
     if num_trials > max_rows:
         overflow = num_trials - max_rows
@@ -125,7 +135,7 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
         trial_table.append(_get_trial_info(trial, params, keys, has_failed))
     # Parse columns.
     parsed_columns = [REPORTED_REPRESENTATIONS.get(k, k) for k in keys]
-    columns = ["Trial ID", "status", "loc"]
+    columns = ["Trial name", "ID", "status", "loc"]
     columns += ["failures", "error file"] if has_failed else []
     columns += params + parsed_columns
     messages.append(
@@ -136,7 +146,7 @@ def trial_progress_str(trials, metrics=None, fmt="psql", max_rows=100):
 def _get_trial_info(trial, parameters, metrics, include_error_data=False):
     """Returns the following information about a trial:
 
-    ID | status | loc | # failures | error_file | params ... | metrics ...
+    name | ID | status | loc | # failures | error_file | params... | metrics...
 
     Args:
         trial (Trial): Trial to get information for.
@@ -145,7 +155,7 @@ def _get_trial_info(trial, parameters, metrics, include_error_data=False):
         include_error_data (bool): Include error file and # of failures.
     """
     result = flatten_dict(trial.last_result)
-    trial_info = [trial.trial_id, trial.status]
+    trial_info = [str(trial), trial.trial_id, trial.status]
     trial_info += [_location_str(result.get(HOSTNAME), result.get(PID))]
     if include_error_data:
         trial_info += [trial.num_failures, trial.error_file]
