@@ -268,9 +268,7 @@ class QMixTorchPolicy(Policy):
         with th.no_grad():
             q_values, hiddens = _mac(
                 self.model,
-                th.as_tensor(
-                    obs_batch, dtype=th.float, device=self.device),
-                [
+                th.as_tensor(obs_batch, dtype=th.float, device=self.device), [
                     th.as_tensor(
                         np.array(s), dtype=th.float, device=self.device)
                     for s in state_batches
@@ -284,7 +282,7 @@ class QMixTorchPolicy(Policy):
             pick_random = (random_numbers < self.cur_epsilon).long()
             random_actions = Categorical(avail).sample().long()
             actions = (pick_random * random_actions +
-                        (1 - pick_random) * masked_q_values.argmax(dim=2))
+                       (1 - pick_random) * masked_q_values.argmax(dim=2))
             actions = actions.cpu().numpy()
             hiddens = [s.cpu().numpy() for s in hiddens]
 
@@ -355,10 +353,10 @@ class QMixTorchPolicy(Policy):
                 B, T, self.n_agents)
 
         # Compute loss
-        loss_out, mask, masked_td_error, chosen_action_qvals, targets = \
-            self.loss(rewards, actions, terminated, mask, obs,
-                        next_obs, action_mask, next_action_mask,
-                        env_global_state, next_env_global_state)
+        loss_out, mask, masked_td_error, chosen_action_qvals, targets = (
+            self.loss(rewards, actions, terminated, mask, obs, next_obs,
+                      action_mask, next_action_mask, env_global_state,
+                      next_env_global_state))
 
         # Optimise
         self.optimiser.zero_grad()
@@ -372,8 +370,7 @@ class QMixTorchPolicy(Policy):
             "loss": loss_out.item(),
             "grad_norm": grad_norm
             if isinstance(grad_norm, float) else grad_norm.item(),
-            "td_error_abs": masked_td_error.abs().sum().item() /
-            mask_elems,
+            "td_error_abs": masked_td_error.abs().sum().item() / mask_elems,
             "q_taken_mean": (chosen_action_qvals * mask).sum().item() /
             mask_elems,
             "target_mean": (targets * mask).sum().item() / mask_elems,
@@ -552,7 +549,7 @@ def _unroll_mac(model, obs_tensor):
 def _drop_agent_dim(T):
     shape = list(T.shape)
     B, n_agents = shape[0], shape[1]
-    return T.reshape([B*n_agents] + shape[2:])
+    return T.reshape([B * n_agents] + shape[2:])
 
 
 def _add_agent_dim(T, n_agents):
