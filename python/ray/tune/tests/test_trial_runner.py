@@ -24,7 +24,8 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
                              HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
                              TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
-                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
+                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID,
+                             EXPERIMENT_TAG)
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
@@ -117,6 +118,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             HOSTNAME,
             NODE_IP,
             TRIAL_ID,
+            EXPERIMENT_TAG,
             PID,
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
