@@ -22,6 +22,12 @@ def _internal_kv_get(key):
     return worker.redis_client.hget(key, "value")
 
 
+def _internal_kv_exists(key):
+    worker = ray.worker.get_global_worker()
+    if worker.mode == ray.worker.LOCAL_MODE:
+        return key in _local
+    return worker.redis_client.hexists(key,"value")
+
 def _internal_kv_put(key, value, overwrite=False):
     """Globally associates a value with a given binary key.
 
