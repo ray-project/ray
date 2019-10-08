@@ -26,7 +26,7 @@ from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune import track
 import numpy as np
 
-all_filenames = glob.glob('/names/*.txt')
+all_filenames = glob.glob('names/*.txt')
 print(all_filenames)
 
 
