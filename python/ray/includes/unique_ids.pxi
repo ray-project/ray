@@ -315,6 +315,10 @@ cdef class ActorID(BaseID):
         return cls(CActorID.Nil().Binary())
 
     @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CActorID.Size()))
+
+    @classmethod
     def size(cls):
         return CActorID.Size()
 
