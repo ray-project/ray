@@ -73,11 +73,13 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 
 extras = {
     "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
+        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
+        "tabulate"
     ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
+    "tune": ["tabulate"],
 }
 
 
