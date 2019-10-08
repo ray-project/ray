@@ -7,7 +7,7 @@ We are going to define a buggy function that raise some exception:
 
 The expected behavior is:
 - HTTP server should respond with "internal error" in the response JSON
-- ray.get(handle.remote(33)) should raise RayTaskError with traceback.
+- ray.get(handle.remote()) should raise RayTaskError with traceback.
 
 This shows that error is hidden from HTTP side but always visible when calling
 from Python.
@@ -40,5 +40,5 @@ for _ in range(2):
     time.sleep(2)
 
 handle = serve.get_handle("my_endpoint")
-
-ray.get(handle.remote(33))
+print("Invoke from python will raise exception with traceback:")
+ray.get(handle.remote())

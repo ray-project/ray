@@ -1,7 +1,7 @@
 Tune: A Scalable Hyperparameter Tuning Library
 ==============================================
 
-.. important:: Take the 3 minute `2019 Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
+.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
 .. image:: images/tune.png
     :scale: 30%
@@ -47,6 +47,10 @@ If TensorBoard is installed, automatically visualize all trial results:
 
 
 .. image:: images/tune-start-tb.png
+
+If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard HParams output:
+
+.. image:: images/tune-hparams-coord.png
 
 Distributed Quick Start
 -----------------------

@@ -59,8 +59,8 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     }
     if (plasma::IsPlasmaStoreFull(status)) {
       std::ostringstream message;
-      message << "Failed to put object " << object_id
-              << " in object store because it is full: " << status.message();
+      message << "Failed to put object " << object_id << " in object store because it "
+              << "is full. Object size is " << data_size << " bytes.";
       return Status::ObjectStoreFull(message.str());
     }
     RAY_ARROW_RETURN_NOT_OK(status);

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import os
 import re
 import shutil
@@ -27,9 +28,6 @@ ray_files = [
     "ray/core/src/ray/raylet/raylet_monitor",
     "ray/core/src/ray/raylet/raylet",
     "ray/dashboard/dashboard.py",
-    "ray/dashboard/index.html",
-    "ray/dashboard/res/main.css",
-    "ray/dashboard/res/main.js",
 ]
 
 # These are the directories where automatically generated Python protobuf
@@ -44,6 +42,8 @@ ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
+    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
 ]
 
 ray_project_files = [
@@ -52,6 +52,18 @@ ray_project_files = [
     "ray/projects/templates/requirements.txt"
 ]
 
+ray_dashboard_files = [
+    "ray/dashboard/client/build/favicon.ico",
+    "ray/dashboard/client/build/index.html",
+]
+for dirname in ["css", "js", "media"]:
+    ray_dashboard_files += glob.glob(
+        "ray/dashboard/client/build/static/{}/*".format(dirname))
+
+optional_ray_files += ray_autoscaler_files
+optional_ray_files += ray_project_files
+optional_ray_files += ray_dashboard_files
+
 if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
     ray_files += [
         "ray/core/src/credis/build/src/libmember.so",
@@ -59,16 +71,13 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
         "ray/core/src/credis/redis/src/redis-server"
     ]
 
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
-
 extras = {
     "rllib": [
         "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
     ],
-    "debug": ["psutil", "setproctitle", "py-spy"],
-    "dashboard": ["psutil", "aiohttp"],
-    "serve": ["uvicorn", "pygments", "werkzeug"],
+    "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
+    "dashboard": ["aiohttp", "psutil", "setproctitle"],
+    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
 }
 
 

@@ -3,12 +3,19 @@ Release Process
 
 This document describes the process for creating new releases.
 
-1. **Increment the Python version:** Create a PR that increments the Python
-   package version. See `this example`_.
+1. **Create a release branch:** Create the branch from the desired commit on master
+   In order to create the branch, locally checkout the commit ID i.e.,
+   ``git checkout <hash>``. Then checkout a new branch of the format
+   ``releases/<release-version>``. Then push that branch to the ray repo:
+   ``git push upstream releases/<release-version>``.
 
-2. **Bump version on Ray master branch again:** Create a pull request to
-   increment the version of the master branch, see `this PR`_. The format of
-   the new version is as follows:
+2. **Update the release branch version:** Push a commit that increments the Python
+   package version in python/ray/__init__.py. You can push this directly to the
+   release branch.
+
+3. **Update the master branch version:** Create a pull request to
+   increment the version of the master branch, see `this PR`_.
+   The format of the new version is as follows:
 
    New minor release (e.g., 0.7.0): Increment the minor version and append
    ``.dev0`` to the version. For example, if the version of the new release is
@@ -26,12 +33,6 @@ This document describes the process for creating new releases.
    in the documentation keep working and the master stays on the development
    version.
 
-3. **Create a release branch:** Create the branch from the version bump PR (the
-   one from step 1, not step 2). In order to create the branch, locally checkout
-   the commit ID i.e., ``git checkout <hash>``. Then checkout a new branch of
-   the format ``releases/<release-version>``. Then push that branch to the ray
-   repo: ``git push upstream releases/<release-version>``.
-
 4. **Testing:** Before a release is created, significant testing should be done.
    Run the following scripts
 
@@ -43,6 +44,17 @@ This document describes the process for creating new releases.
    and make sure they pass. If they pass, it will be obvious that they passed.
    This will use the autoscaler to start a bunch of machines and run some tests.
    **Caution!**: By default, the stress tests will require expensive GPU instances.
+
+   You'll also want to kick off the long-running tests:
+
+   .. code-block:: bash
+
+       ray/ci/long_running_tests/start_workloads.sh
+
+   You can use the `check_workloads.sh` script to verify the workloads are running.
+   Let them run for at least 24 hours, and check them again. They should all still
+   be running (printing new iterations), and their CPU load should be stable when
+   you view them in the AWS monitoring console (not increasing over time).
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
@@ -129,7 +141,7 @@ This document describes the process for creating new releases.
 
 
     At the end of the release note, you can add a list of contributors that help
-    creating this release. Use the ``dev/get_contributors.py`` to generate this
+    creating this release. Use the ``doc/dev/get_contributors.py`` to generate this
     list. You will need to create a GitHub token for this task. Example usage:
 
     .. code-block:: bash
@@ -140,6 +152,13 @@ This document describes the process for creating new releases.
         --ray-path=$HOME/ray/ray \
         --prev-branch="ray-0.7.1" \
         --curr-branch="ray-0.7.2"
+
+    Run `ray microbenchmark` to get the latest microbenchmark numbers, and
+    update their numbers in `profiling.rst`.
+
+    .. code-block:: bash
+
+      ray microbenchmark
 
 10. **Update version numbers throughout codebase:** Suppose we just released
     0.7.1. The previous release version number (in this case 0.7.0) and the

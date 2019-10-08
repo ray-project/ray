@@ -25,6 +25,7 @@ from ray.tests.utils import (
     relevant_errors,
     wait_for_condition,
     wait_for_errors,
+    wait_for_pid_to_exit,
 )
 
 
@@ -74,16 +75,19 @@ def ray_checkpointable_actor_cls(request):
             if not os.path.isfile(filename):
                 return None
 
+            available_checkpoint_ids = [
+                c.checkpoint_id for c in available_checkpoints
+            ]
             with open(filename, "r") as f:
-                lines = f.readlines()
-                checkpoint_id, value = lines[-1].split(" ")
-                self.value = int(value)
-                self.resumed_from_checkpoint = True
-                checkpoint_id = ray.ActorCheckpointID(
-                    ray.utils.hex_to_binary(checkpoint_id))
-                assert any(checkpoint_id == checkpoint.checkpoint_id
-                           for checkpoint in available_checkpoints)
-                return checkpoint_id
+                for line in f:
+                    checkpoint_id, value = line.strip().split(" ")
+                    checkpoint_id = ray.ActorCheckpointID(
+                        ray.utils.hex_to_binary(checkpoint_id))
+                    if checkpoint_id in available_checkpoint_ids:
+                        self.value = int(value)
+                        self.resumed_from_checkpoint = True
+                        return checkpoint_id
+                return None
 
         def checkpoint_expired(self, actor_id, checkpoint_id):
             pass
@@ -260,6 +264,41 @@ def test_custom_classes(ray_start_regular):
     assert results2[2].x == 3
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_actor_class_attributes(ray_start_regular):
+    class Grandparent(object):
+        GRANDPARENT = 2
+
+    class Parent1(Grandparent):
+        PARENT1 = 6
+
+    class Parent2(object):
+        PARENT2 = 7
+
+    @ray.remote
+    class TestActor(Parent1, Parent2):
+        X = 3
+
+        @classmethod
+        def f(cls):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.X == 3
+            return 4
+
+        def g(self):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.f() == 4
+            return TestActor.X
+
+    t = TestActor.remote()
+    assert ray.get(t.g.remote()) == 3
+
+
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -342,7 +381,7 @@ def test_random_id_generation(ray_start_regular):
     random.seed(1234)
     f2 = Foo.remote()
 
-    assert f1._ray_actor_id != f2._ray_actor_id
+    assert f1._actor_id != f2._actor_id
 
 
 def test_actor_class_name(ray_start_regular):
@@ -1185,7 +1224,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 def test_actors_and_tasks_with_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
-    num_gpus_per_raylet = 6
+    num_gpus_per_raylet = 2
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
@@ -1210,7 +1249,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     @ray.remote(num_gpus=1)
     def f1():
         t1 = time.monotonic()
-        time.sleep(0.4)
+        time.sleep(0.1)
         t2 = time.monotonic()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
@@ -1221,7 +1260,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     @ray.remote(num_gpus=2)
     def f2():
         t1 = time.monotonic()
-        time.sleep(0.4)
+        time.sleep(0.1)
         t2 = time.monotonic()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
@@ -1257,8 +1296,6 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     # Run a bunch of GPU tasks.
     locations_to_intervals = locations_to_intervals_for_many_tasks()
-    # Make sure that all GPUs were used.
-    assert (len(locations_to_intervals) == num_nodes * num_gpus_per_raylet)
     # For each GPU, verify that the set of tasks that used this specific
     # GPU did not overlap in time.
     for locations in locations_to_intervals:
@@ -1274,8 +1311,6 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     # Run a bunch of GPU tasks.
     locations_to_intervals = locations_to_intervals_for_many_tasks()
-    # Make sure that all but one of the GPUs were used.
-    assert (len(locations_to_intervals) == num_nodes * num_gpus_per_raylet - 1)
     # For each GPU, verify that the set of tasks that used this specific
     # GPU did not overlap in time.
     for locations in locations_to_intervals:
@@ -1283,28 +1318,9 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     # Make sure that the actor's GPU was not used.
     assert actor_location not in locations_to_intervals
 
-    # Create several more actors that use GPUs.
-    actors = [Actor1.remote() for _ in range(3)]
-    actor_locations = ray.get(
-        [actor.get_location_and_ids.remote() for actor in actors])
-
-    # Run a bunch of GPU tasks.
-    locations_to_intervals = locations_to_intervals_for_many_tasks()
-    # Make sure that all but 11 of the GPUs were used.
-    assert (
-        len(locations_to_intervals) == num_nodes * num_gpus_per_raylet - 1 - 3)
-    # For each GPU, verify that the set of tasks that used this specific
-    # GPU did not overlap in time.
-    for locations in locations_to_intervals:
-        check_intervals_non_overlapping(locations_to_intervals[locations])
-    # Make sure that the GPUs were not used.
-    assert actor_location not in locations_to_intervals
-    for location in actor_locations:
-        assert location not in locations_to_intervals
-
     # Create more actors to fill up all the GPUs.
     more_actors = [
-        Actor1.remote() for _ in range(num_nodes * num_gpus_per_raylet - 1 - 3)
+        Actor1.remote() for _ in range(num_nodes * num_gpus_per_raylet - 1)
     ]
     # Wait for the actors to finish being created.
     ray.get([actor.get_location_and_ids.remote() for actor in more_actors])
@@ -1318,38 +1334,71 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
+    num_gpus = 4
+
     ray.init(
-        num_cpus=10, num_gpus=10, object_store_memory=int(150 * 1024 * 1024))
+        num_cpus=(num_gpus + 1),
+        num_gpus=num_gpus,
+        object_store_memory=int(150 * 1024 * 1024))
+
+    # The point of this actor is to record which GPU IDs have been seen. We
+    # can't just return them from the tasks, because the tasks don't return
+    # for a long time in order to make sure the GPU is not released
+    # prematurely.
+    @ray.remote
+    class RecordGPUs(object):
+        def __init__(self):
+            self.gpu_ids_seen = []
+            self.num_calls = 0
+
+        def add_ids(self, gpu_ids):
+            self.gpu_ids_seen += gpu_ids
+            self.num_calls += 1
+
+        def get_gpu_ids_and_calls(self):
+            return self.gpu_ids_seen, self.num_calls
 
     @ray.remote(num_gpus=1)
-    def f():
-        time.sleep(5)
+    def f(record_gpu_actor):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
-        return gpu_ids[0]
+        record_gpu_actor.add_ids.remote(gpu_ids)
+        # Sleep for a long time so that the GPU never gets released. This task
+        # will be killed by ray.shutdown() before it actually finishes.
+        time.sleep(1000)
 
     @ray.remote(num_gpus=1)
     class Actor(object):
-        def __init__(self):
+        def __init__(self, record_gpu_actor):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
+            record_gpu_actor.add_ids.remote(self.gpu_ids)
 
-        def get_gpu_id(self):
+        def check_gpu_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return self.gpu_ids[0]
 
-    results = []
+    record_gpu_actor = RecordGPUs.remote()
+
     actors = []
-    for _ in range(5):
-        results.append(f.remote())
-        a = Actor.remote()
-        results.append(a.get_gpu_id.remote())
+    actor_results = []
+    for _ in range(num_gpus // 2):
+        f.remote(record_gpu_actor)
+        a = Actor.remote(record_gpu_actor)
+        actor_results.append(a.check_gpu_ids.remote())
         # Prevent the actor handle from going out of scope so that its GPU
         # resources don't get released.
         actors.append(a)
 
-    gpu_ids = ray.get(results)
-    assert set(gpu_ids) == set(range(10))
+    # Make sure that the actor method calls succeeded.
+    ray.get(actor_results)
+
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        seen_gpu_ids, num_calls = ray.get(
+            record_gpu_actor.get_gpu_ids_and_calls.remote())
+        if num_calls == num_gpus:
+            break
+    assert set(seen_gpu_ids) == set(range(num_gpus))
 
 
 def test_blocking_actor_task(shutdown_only):
@@ -2387,14 +2436,14 @@ def kill_actor(actor):
     """A helper function that kills an actor process."""
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
-    time.sleep(1)
+    wait_for_pid_to_exit(pid)
 
 
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
     actor = ray.remote(
         max_reconstructions=2)(ray_checkpointable_actor_cls).remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
@@ -2500,10 +2549,10 @@ def test_checkpointing_save_exception(ray_start_regular,
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
-            raise Exception("Error during save")
+            raise Exception("Intentional error saving checkpoint.")
 
     actor = RemoteCheckpointableActor.remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint that will fail.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
@@ -2528,13 +2577,8 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
-    # Check that checkpointing errors were pushed to the driver.
-    errors = ray.errors()
-    assert len(errors) > 0
-    for error in errors:
-        # An error for the actor process dying may also get pushed.
-        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
+    # Check that the checkpoint error was pushed to the driver.
+    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
 def test_checkpointing_load_exception(ray_start_regular,
@@ -2544,15 +2588,16 @@ def test_checkpointing_load_exception(ray_start_regular,
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def load_checkpoint(self, actor_id, checkpoints):
-            raise Exception("Error during load")
+            raise Exception("Intentional error loading checkpoint.")
 
     actor = RemoteCheckpointableActor.remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint that will succeed.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Assert that the actor wasn't resumed from a checkpoint.
+    # Assert that the actor wasn't resumed from a checkpoint because loading
+    # it failed.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
     kill_actor(actor)
@@ -2572,13 +2617,8 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
-    # Check that checkpointing errors were pushed to the driver.
-    errors = ray.errors()
-    assert len(errors) > 0
-    for error in errors:
-        # An error for the actor process dying may also get pushed.
-        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
+    # Check that the checkpoint error was pushed to the driver.
+    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
 @pytest.mark.parametrize(
@@ -2655,14 +2695,14 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert error_message1 in errors[0]["message"]
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 2
     assert error_message1 in errors[1]["message"]

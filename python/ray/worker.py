@@ -8,6 +8,7 @@ import atexit
 import faulthandler
 import hashlib
 import inspect
+import io
 import json
 import logging
 import numpy as np
@@ -40,7 +41,6 @@ import ray.signature
 import ray.state
 
 from ray import (
-    ActorHandleID,
     ActorID,
     WorkerID,
     JobID,
@@ -49,6 +49,7 @@ from ray import (
 )
 from ray import import_thread
 from ray import profiling
+from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
 from ray.gcs_utils import ErrorType
 from ray.exceptions import (
@@ -88,9 +89,6 @@ try:
 except ImportError:
     setproctitle = None
 
-if USE_NEW_SERIALIZER:
-    from _pickle import PickleBuffer
-
 
 class ActorCheckpointInfo(object):
     """Information used to maintain actor checkpoints."""
@@ -125,7 +123,6 @@ class Worker(object):
             WORKER_MODE.
         cached_functions_to_run (List): A list of functions to run on all of
             the workers that should be exported as soon as connect is called.
-        profiler: the profiler used to aggregate profiling information.
     """
 
     def __init__(self):
@@ -145,7 +142,6 @@ class Worker(object):
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
-        self.profiler = None
         self.memory_monitor = memory_monitor.MemoryMonitor()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -436,18 +432,11 @@ class Worker(object):
                 self.core_worker.put_raw_buffer(
                     value, object_id, memcopy_threads=self.memcopy_threads)
             else:
-                buffers = []
-                meta = pickle.dumps(
-                    value, protocol=5, buffer_callback=buffers.append)
-                # TODO(suquark): This could involve more copies.
-                # Should implement zero-copy for PickleBuffer.
-                buffers = [b.raw().tobytes() for b in buffers]
-                value = (meta, buffers)
-
-                self.core_worker.put_serialized_object(
-                    pyarrow.serialize(value),
-                    object_id,
-                    memcopy_threads=self.memcopy_threads)
+                writer = Pickle5Writer()
+                inband = pickle.dumps(
+                    value, protocol=5, buffer_callback=writer.buffer_callback)
+                self.core_worker.put_pickle5_buffers(object_id, inband, writer,
+                                                     self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
             # The object already exists in the object store, so there is no
             # need to add it again. TODO(rkn): We need to compare hashes
@@ -523,6 +512,10 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
+            if (USE_NEW_SERIALIZER
+                    and metadata == ray_constants.PICKLE5_BUFFER_METADATA):
+                in_band, buffers = unpack_pickle5_buffers(data)
+                return pickle.loads(in_band, buffers=buffers)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -541,12 +534,7 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            if USE_NEW_SERIALIZER:
-                r, buffers = pyarrow.deserialize(data, serialization_context)
-                buffers = [PickleBuffer(b) for b in buffers]
-                return pickle.loads(r, buffers=buffers)
-            else:
-                return pyarrow.deserialize(data, serialization_context)
+            return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
@@ -579,164 +567,6 @@ class Worker(object):
         results = self.retrieve_and_deserialize(object_ids)
         assert len(results) == len(object_ids)
         return results
-
-    def submit_task(self,
-                    function_descriptor,
-                    args,
-                    actor_id=None,
-                    actor_handle_id=None,
-                    actor_counter=0,
-                    actor_creation_id=None,
-                    actor_creation_dummy_object_id=None,
-                    previous_actor_task_dummy_object_id=None,
-                    max_actor_reconstructions=0,
-                    new_actor_handles=None,
-                    num_return_vals=None,
-                    resources=None,
-                    placement_resources=None,
-                    job_id=None):
-        """Submit a remote task to the scheduler.
-
-        Tell the scheduler to schedule the execution of the function with
-        function_descriptor with arguments args. Retrieve object IDs for the
-        outputs of the function from the scheduler and immediately return them.
-
-        Args:
-            function_descriptor: The function descriptor to execute.
-            args: The arguments to pass into the function. Arguments can be
-                object IDs or they can be values. If they are values, they must
-                be serializable objects.
-            actor_id: The ID of the actor that this task is for.
-            actor_counter: The counter of the actor task.
-            actor_creation_id: The ID of the actor to create, if this is an
-                actor creation task.
-            actor_creation_dummy_object_id: If this task is an actor method,
-                then this argument is the dummy object ID associated with the
-                actor creation task for the corresponding actor.
-            previous_actor_task_dummy_object_id: If this task is an actor,
-                then this argument is the dummy object ID associated with the
-                task previously submitted to the corresponding actor.
-            num_return_vals: The number of return values this function should
-                have.
-            resources: The resource requirements for this task.
-            placement_resources: The resources required for placing the task.
-                If this is not provided or if it is an empty dictionary, then
-                the placement resources will be equal to resources.
-            job_id: The ID of the relevant job. This is almost always the
-                job ID of the job that is currently running. However, in
-                the exceptional case that an actor task is being dispatched to
-                an actor created by a different job, this should be the
-                job ID of the job that created the actor.
-
-        Returns:
-            The return object IDs for this task.
-        """
-        with profiling.profile("submit_task"):
-            if actor_id is None:
-                assert actor_handle_id is None
-                actor_id = ActorID.nil()
-                actor_handle_id = ActorHandleID.nil()
-            else:
-                assert actor_handle_id is not None
-
-            if actor_creation_id is None:
-                actor_creation_id = ActorID.nil()
-
-            if actor_creation_dummy_object_id is None:
-                actor_creation_dummy_object_id = ObjectID.nil()
-
-            # Put large or complex arguments that are passed by value in the
-            # object store first.
-            args_for_raylet = []
-            for arg in args:
-                if isinstance(arg, ObjectID):
-                    args_for_raylet.append(arg)
-                elif ray._raylet.check_simple_value(arg):
-                    args_for_raylet.append(arg)
-                else:
-                    args_for_raylet.append(put(arg))
-
-            if new_actor_handles is None:
-                new_actor_handles = []
-
-            if job_id is None:
-                job_id = self.current_job_id
-
-            if resources is None:
-                raise ValueError("The resources dictionary is required.")
-            for value in resources.values():
-                assert (isinstance(value, int) or isinstance(value, float))
-                if value < 0:
-                    raise ValueError(
-                        "Resource quantities must be nonnegative.")
-                if (value >= 1 and isinstance(value, float)
-                        and not value.is_integer()):
-                    raise ValueError(
-                        "Resource quantities must all be whole numbers.")
-
-            # Remove any resources with zero quantity requirements
-            resources = {
-                resource_label: resource_quantity
-                for resource_label, resource_quantity in resources.items()
-                if resource_quantity > 0
-            }
-
-            if placement_resources is None:
-                placement_resources = {}
-
-            # Increment the worker's task index to track how many tasks
-            # have been submitted by the current task so far.
-            self.task_context.task_index += 1
-            # The parent task must be set for the submitted task.
-            assert not self.current_task_id.is_nil()
-            # Current driver id must not be nil when submitting a task.
-            # Because every task must belong to a driver.
-            assert not self.current_job_id.is_nil()
-            # Submit the task to raylet.
-            function_descriptor_list = (
-                function_descriptor.get_function_descriptor_list())
-            assert isinstance(job_id, JobID)
-
-            if actor_creation_id is not None and not actor_creation_id.is_nil(
-            ):
-                # This is an actor creation task.
-                task_id = TaskID.for_actor_creation_task(actor_creation_id)
-            elif actor_id is not None and not actor_id.is_nil():
-                # This is an actor task.
-                task_id = TaskID.for_actor_task(
-                    self.current_job_id, self.current_task_id,
-                    self.task_context.task_index, actor_id)
-            else:
-                # Normal tasks are submitted through the core worker (in the
-                # future, all tasks will be).
-                return self.core_worker.submit_task(function_descriptor_list,
-                                                    args_for_raylet,
-                                                    num_return_vals, resources)
-
-            # Actor creation tasks and actor tasks are submitted directly to
-            # the raylet.
-            task = ray._raylet.TaskSpec(
-                task_id,
-                job_id,
-                function_descriptor_list,
-                args_for_raylet,
-                num_return_vals,
-                self.current_task_id,
-                self.task_context.task_index,
-                actor_creation_id,
-                actor_creation_dummy_object_id,
-                previous_actor_task_dummy_object_id,
-                max_actor_reconstructions,
-                actor_id,
-                actor_handle_id,
-                actor_counter,
-                new_actor_handles,
-                resources,
-                placement_resources,
-            )
-            self.raylet_client.submit_task(task)
-
-            return task.returns()
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):
@@ -1001,7 +831,13 @@ class Worker(object):
     def _handle_process_task_failure(self, function_descriptor,
                                      return_object_ids, error, backtrace):
         function_name = function_descriptor.function_name
-        failure_object = RayTaskError(function_name, backtrace)
+        if isinstance(error, RayTaskError):
+            # avoid recursively nesting of RayTaskError
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.cause_cls)
+        else:
+            failure_object = RayTaskError(function_name, backtrace,
+                                          error.__class__)
         failure_objects = [
             failure_object for _ in range(len(return_object_ids))
         ]
@@ -1278,6 +1114,16 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="ray.signature.FunctionSignature")
+        # Tell Ray to serialize StringIO with pickle. We do this because
+        # Ray's default __dict__ serialization is incorrect for this type
+        # (the object's __dict__ is empty and therefore doesn't
+        # contain the full state of the object).
+        register_custom_serializer(
+            io.StringIO,
+            use_pickle=True,
+            local=True,
+            job_id=job_id,
+            class_id="io.StringIO")
 
 
 def init(address=None,
@@ -1405,13 +1251,9 @@ def init(address=None,
             arguments is passed in.
     """
 
-    if address:
-        if redis_address:
-            raise ValueError(
-                "You should specify address instead of redis_address.")
-        if address == "auto":
-            address = services.find_redis_address_or_die()
-        redis_address = address
+    if redis_address is not None or address is not None:
+        redis_address, _, _ = services.validate_redis_address(
+            address, redis_address)
 
     if configure_logging:
         setup_logger(logging_level, logging_format)
@@ -1441,8 +1283,6 @@ def init(address=None,
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
-    if redis_address is not None:
-        redis_address = services.address_to_ip(redis_address)
 
     global _global_node
     if driver_mode == LOCAL_MODE:
@@ -1821,8 +1661,6 @@ def connect(node,
     if not faulthandler.is_enabled():
         faulthandler.enable(all_threads=False)
 
-    worker.profiler = profiling.Profiler(worker, worker.threads_stopped)
-
     if mode is not LOCAL_MODE:
         # Create a Redis client to primary.
         # The Redis client can safely be shared between threads. However,
@@ -1947,68 +1785,7 @@ def connect(node,
             worker_dict["stderr_file"] = os.path.abspath(log_stderr_file.name)
         worker.redis_client.hmset(b"Workers:" + worker.worker_id, worker_dict)
     else:
-        raise Exception("This code should be unreachable.")
-
-    # If this is a driver, set the current task ID, the task driver ID, and set
-    # the task index to 0.
-    if mode == SCRIPT_MODE:
-        # If the user provided an object_id_seed, then set the current task ID
-        # deterministically based on that seed (without altering the state of
-        # the user's random number generator). Otherwise, set the current task
-        # ID randomly to avoid object ID collisions.
-        numpy_state = np.random.get_state()
-        if node.object_id_seed is not None:
-            np.random.seed(node.object_id_seed)
-        else:
-            # Try to use true randomness.
-            np.random.seed(None)
-        # Reset the state of the numpy random number generator.
-        np.random.set_state(numpy_state)
-
-        # Create an entry for the driver task in the task table. This task is
-        # added immediately with status RUNNING. This allows us to push errors
-        # related to this driver task back to the driver.  For example, if the
-        # driver creates an object that is later evicted, we should notify the
-        # user that we're unable to reconstruct the object, since we cannot
-        # rerun the driver.
-        nil_actor_counter = 0
-
-        function_descriptor = FunctionDescriptor.for_driver_task()
-        driver_task_spec = ray._raylet.TaskSpec(
-            TaskID.for_driver_task(worker.current_job_id),
-            worker.current_job_id,
-            function_descriptor.get_function_descriptor_list(),
-            [],  # arguments.
-            0,  # num_returns.
-            TaskID(worker.worker_id[:TaskID.size()]),  # parent_task_id.
-            0,  # parent_counter.
-            ActorID.nil(),  # actor_creation_id.
-            ObjectID.nil(),  # actor_creation_dummy_object_id.
-            ObjectID.nil(),  # previous_actor_task_dummy_object_id.
-            0,  # max_actor_reconstructions.
-            ActorID.nil(),  # actor_id.
-            ActorHandleID.nil(),  # actor_handle_id.
-            nil_actor_counter,  # actor_counter.
-            [],  # new_actor_handles.
-            {},  # resource_map.
-            {},  # placement_resource_map.
-        )
-        task_table_data = ray._raylet.generate_gcs_task_table_data(
-            driver_task_spec)
-
-        # Add the driver task to the task table.
-        ray.state.state._execute_command(
-            driver_task_spec.task_id(),
-            "RAY.TABLE_ADD",
-            ray.gcs_utils.TablePrefix.Value("RAYLET_TASK"),
-            ray.gcs_utils.TablePubsub.Value("RAYLET_TASK_PUBSUB"),
-            driver_task_spec.task_id().binary(),
-            task_table_data,
-        )
-
-        # Set the driver's current task ID to the task ID assigned to the
-        # driver task.
-        worker.task_context.current_task_id = driver_task_spec.task_id()
+        raise ValueError("Invalid worker mode. Expected DRIVER or WORKER.")
 
     redis_address, redis_port = node.redis_address.split(":")
     gcs_options = ray._raylet.GcsClientOptions(
@@ -2023,9 +1800,10 @@ def connect(node,
         worker.current_job_id,
         gcs_options,
         node.get_logs_dir_path(),
+        node.node_ip_address,
     )
-    worker.core_worker.set_current_job_id(worker.current_job_id)
-    worker.core_worker.set_current_task_id(worker.current_task_id)
+    worker.task_context.current_task_id = (
+        worker.core_worker.get_current_task_id())
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
@@ -2072,11 +1850,6 @@ def connect(node,
             worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
-    # If we are using the raylet code path and we are not in local mode, start
-    # a background thread to periodically flush profiling data to the GCS.
-    if mode != LOCAL_MODE:
-        worker.profiler.start_flush_thread()
-
     if mode == SCRIPT_MODE:
         # Add the directory containing the script that is running to the Python
         # paths of the workers. Also add the current directory. Note that this
@@ -2119,8 +1892,6 @@ def disconnect():
         worker.threads_stopped.set()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
-        if hasattr(worker, "profiler") and hasattr(worker.profiler, "t"):
-            worker.profiler.join_flush_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "printer_thread"):
@@ -2346,7 +2117,10 @@ def get(object_ids):
                 last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.UnreconstructableError):
                     worker.dump_object_store_memory_usage()
-                raise value
+                if isinstance(value, RayTaskError):
+                    raise value.as_instanceof_cause()
+                else:
+                    raise value
 
         # Run post processors.
         for post_processor in worker._post_get_hooks:

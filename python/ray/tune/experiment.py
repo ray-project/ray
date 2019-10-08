@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import inspect
 import logging
 import os
 import six
@@ -11,6 +12,7 @@ import types
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.tune.sample import sample_from
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +89,23 @@ class Experiment(object):
             _raise_deprecation_note(
                 "sync_function", "sync_to_driver", soft=False)
 
+        stop = stop or {}
+        if not isinstance(stop, dict) and not callable(stop):
+            raise ValueError("Invalid stop criteria: {}. Must be a callable "
+                             "or dict".format(stop))
+        if callable(stop):
+            nargs = len(inspect.getargspec(stop).args)
+            is_method = isinstance(stop, types.MethodType)
+            if (is_method and nargs != 3) or (not is_method and nargs != 2):
+                raise ValueError(
+                    "Invalid stop criteria: {}. Callable "
+                    "criteria must take exactly 2 parameters.".format(stop))
+
         config = config or {}
         run_identifier = Experiment._register_if_needed(run)
         spec = {
             "run": run_identifier,
-            "stop": stop or {},
+            "stop": stop,
             "config": config,
             "resources_per_trial": resources_per_trial,
             "num_samples": num_samples,
@@ -145,8 +159,7 @@ class Experiment(object):
     def _register_if_needed(cls, run_object):
         """Registers Trainable or Function at runtime.
 
-        Assumes already registered if run_object is a string. Does not
-        register lambdas because they could be part of variant generation.
+        Assumes already registered if run_object is a string.
         Also, does not inspect interface of given run_object.
 
         Arguments:
@@ -160,17 +173,16 @@ class Experiment(object):
 
         if isinstance(run_object, six.string_types):
             return run_object
-        elif isinstance(run_object, types.FunctionType):
-            if run_object.__name__ == "<lambda>":
-                logger.warning(
-                    "Not auto-registering lambdas - resolving as variant.")
-                return run_object
-            else:
+        elif isinstance(run_object, sample_from):
+            logger.warning("Not registering trainable. Resolving as variant.")
+            return run_object
+        elif isinstance(run_object, type) or callable(run_object):
+            name = "DEFAULT"
+            if hasattr(run_object, "__name__"):
                 name = run_object.__name__
-                register_trainable(name, run_object)
-                return name
-        elif isinstance(run_object, type):
-            name = run_object.__name__
+            else:
+                logger.warning(
+                    "No name detected on trainable. Using {}.".format(name))
             register_trainable(name, run_object)
             return name
         else:

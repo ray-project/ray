@@ -7,7 +7,7 @@ import copy
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
-from ray.tune.util import merge_dicts
+from ray.tune.util import merge_dicts, flatten_dict
 from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
@@ -90,7 +90,8 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 else:
                     break
             spec = copy.deepcopy(experiment_spec)
-            spec["config"] = merge_dicts(spec["config"], suggested_config)
+            spec["config"] = merge_dicts(spec["config"],
+                                         copy.deepcopy(suggested_config))
             flattened_config = resolve_nested_dict(spec["config"])
             self._counter += 1
             tag = "{0}_{1}".format(
@@ -99,7 +100,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
                 spec,
                 output_path,
                 self._parser,
-                evaluated_params=list(suggested_config),
+                evaluated_params=flatten_dict(suggested_config),
                 experiment_tag=tag,
                 trial_id=trial_id)
 
@@ -127,6 +128,12 @@ class SuggestionAlgorithm(SearchAlgorithm):
             >>> parameters_2 = suggester._suggest()
             >>> parameters_2 is not None
         """
+        raise NotImplementedError
+
+    def save(self, checkpoint_dir):
+        raise NotImplementedError
+
+    def restore(self, checkpoint_dir):
         raise NotImplementedError
 
 

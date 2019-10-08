@@ -365,7 +365,7 @@ class Trainer(Trainable):
                     os.makedirs(DEFAULT_RESULTS_DIR)
                 logdir = tempfile.mkdtemp(
                     prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, None)
+                return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
