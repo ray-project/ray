@@ -12,3 +12,4 @@
 
 - [ ] I've run `scripts/format.sh` to lint the changes in this PR.
 - [ ] I've included any doc changes needed for https://ray.readthedocs.io/en/latest/.
+- [ ] I've made sure the tests are passing. Note that there might be a few flaky tests, see the recent failure rates at https://ray-travis-tracker.herokuapp.com/.

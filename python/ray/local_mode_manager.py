@@ -58,10 +58,10 @@ class LocalModeManager(object):
             else:
                 for object_id, result in zip(object_ids, results):
                     object_id.value = result
-        except Exception:
+        except Exception as e:
             function_name = function_descriptor.function_name
             backtrace = format_error_message(traceback.format_exc())
-            task_error = RayTaskError(function_name, backtrace)
+            task_error = RayTaskError(function_name, backtrace, e.__class__)
             for object_id in object_ids:
                 object_id.value = task_error
 
@@ -83,7 +83,7 @@ class LocalModeManager(object):
         object_id.value = value
         return object_id
 
-    def get_object(self, object_ids):
+    def get_objects(self, object_ids):
         """Fetch objects from the emulated object store.
 
         Accepts only LocalModeObjectIDs and reads values directly from them.

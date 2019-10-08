@@ -366,16 +366,25 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 #undef DEFINE_UNIQUE_ID
 
-// Restore the compiler alignment to defult (8 bytes).
+// Restore the compiler alignment to default (8 bytes).
 #pragma pack(pop)
 
-/// Compute the next actor handle ID of a new actor handle during a fork operation.
+/// Compute an actor handle ID for a newly forked actor handle.
 ///
-/// \param actor_handle_id The actor handle ID of original actor.
-/// \param num_forks The count of forks of original actor.
-/// \return The next actor handle ID generated from the given info.
-const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
-                                             int64_t num_forks);
+/// \param actor_handle_id The actor handle ID of the existing actor handle.
+/// \param num_forks The number of forks of the existing actor handle.
+/// \return Generated actor handle ID.
+const ActorHandleID ComputeForkedActorHandleId(const ActorHandleID &actor_handle_id,
+                                               int64_t num_forks);
+
+/// Compute an actor handle ID for a new actor handle created by an
+/// out-of-band serialization mechanism.
+///
+/// \param actor_handle_id The actor handle ID of the existing actor handle.
+/// \param current_task_id The current task ID.
+/// \return Generated actor handle ID.
+const ActorHandleID ComputeSerializedActorHandleId(const ActorHandleID &actor_handle_id,
+                                                   const TaskID &current_task_id);
 
 template <typename T>
 BaseID<T>::BaseID() {

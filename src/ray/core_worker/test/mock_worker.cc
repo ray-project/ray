@@ -23,7 +23,8 @@ class MockWorker {
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
              const gcs::GcsClientOptions &gcs_options)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1), gcs_options,
+                JobID::FromInt(1), gcs_options, /*log_dir=*/"",
+                /*node_id_address=*/"127.0.0.1",
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4)) {}
 
   void Run() {
@@ -44,6 +45,16 @@ class MockWorker {
       auto &data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
+    if (buffer.size() >= 8) {
+      auto int_arr = reinterpret_cast<int64_t *>(buffer.data());
+      if (int_arr[0] == SHOULD_CHECK_MESSAGE_ORDER) {
+        auto seq_no = int_arr[1];
+        if (seq_no > 0) {
+          RAY_CHECK(seq_no == prev_seq_no_ + 1) << seq_no << " vs " << prev_seq_no_;
+        }
+        prev_seq_no_ = seq_no;
+      }
+    }
     auto memory_buffer =
         std::make_shared<LocalMemoryBuffer>(buffer.data(), buffer.size(), true);
 
@@ -56,6 +67,7 @@ class MockWorker {
   }
 
   CoreWorker worker_;
+  int64_t prev_seq_no_ = 0;
 };
 
 }  // namespace ray

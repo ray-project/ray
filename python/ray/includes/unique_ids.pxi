@@ -211,30 +211,35 @@ cdef class TaskID(BaseID):
 
     @classmethod
     def for_driver_task(cls, job_id):
-        return cls(CTaskID.ForDriverTask(CJobID.FromBinary(job_id.binary())).Binary())
+        return cls(CTaskID.ForDriverTask(
+            CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def for_actor_creation_task(cls, actor_id):
         assert isinstance(actor_id, ActorID)
-        return cls(CTaskID.ForActorCreationTask(CActorID.FromBinary(actor_id.binary())).Binary())
+        return cls(CTaskID.ForActorCreationTask(
+            CActorID.FromBinary(actor_id.binary())).Binary())
 
     @classmethod
-    def for_actor_task(cls, job_id, parent_task_id, parent_task_counter, actor_id):
+    def for_actor_task(cls, job_id, parent_task_id,
+                       parent_task_counter, actor_id):
         assert isinstance(job_id, JobID)
         assert isinstance(parent_task_id, TaskID)
         assert isinstance(actor_id, ActorID)
-        return cls(CTaskID.ForActorTask(CJobID.FromBinary(job_id.binary()),
-                                        CTaskID.FromBinary(parent_task_id.binary()),
-                                        parent_task_counter,
-                                        CActorID.FromBinary(actor_id.binary())).Binary())
+        return cls(CTaskID.ForActorTask(
+            CJobID.FromBinary(job_id.binary()),
+            CTaskID.FromBinary(parent_task_id.binary()),
+            parent_task_counter,
+            CActorID.FromBinary(actor_id.binary())).Binary())
 
     @classmethod
     def for_normal_task(cls, job_id, parent_task_id, parent_task_counter):
         assert isinstance(job_id, JobID)
         assert isinstance(parent_task_id, TaskID)
-        return cls(CTaskID.ForNormalTask(CJobID.FromBinary(job_id.binary()),
-                                         CTaskID.FromBinary(parent_task_id.binary()),
-                                         parent_task_counter).Binary())
+        return cls(CTaskID.ForNormalTask(
+            CJobID.FromBinary(job_id.binary()),
+            CTaskID.FromBinary(parent_task_id.binary()),
+            parent_task_counter).Binary())
 
 cdef class ClientID(UniqueID):
 
@@ -313,6 +318,10 @@ cdef class ActorID(BaseID):
     @classmethod
     def nil(cls):
         return cls(CActorID.Nil().Binary())
+
+    @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CActorID.Size()))
 
     @classmethod
     def size(cls):

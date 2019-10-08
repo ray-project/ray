@@ -15,7 +15,6 @@ except ImportError:
 import signal
 import sys
 import time
-from pyarrow import plasma
 
 import ray
 import ray.ray_constants as ray_constants
@@ -26,6 +25,7 @@ from ray.tests.utils import (
     relevant_errors,
     wait_for_condition,
     wait_for_errors,
+    wait_for_pid_to_exit,
 )
 
 
@@ -41,8 +41,8 @@ def ray_checkpointable_actor_cls(request):
             self.resumed_from_checkpoint = False
             self.checkpoint_dir = checkpoint_dir
 
-        def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+        def node_id(self):
+            return ray.worker.global_worker.node.unique_id
 
         def increase(self):
             self.value += 1
@@ -75,16 +75,19 @@ def ray_checkpointable_actor_cls(request):
             if not os.path.isfile(filename):
                 return None
 
+            available_checkpoint_ids = [
+                c.checkpoint_id for c in available_checkpoints
+            ]
             with open(filename, "r") as f:
-                lines = f.readlines()
-                checkpoint_id, value = lines[-1].split(" ")
-                self.value = int(value)
-                self.resumed_from_checkpoint = True
-                checkpoint_id = ray.ActorCheckpointID(
-                    ray.utils.hex_to_binary(checkpoint_id))
-                assert any(checkpoint_id == checkpoint.checkpoint_id
-                           for checkpoint in available_checkpoints)
-                return checkpoint_id
+                for line in f:
+                    checkpoint_id, value = line.strip().split(" ")
+                    checkpoint_id = ray.ActorCheckpointID(
+                        ray.utils.hex_to_binary(checkpoint_id))
+                    if checkpoint_id in available_checkpoint_ids:
+                        self.value = int(value)
+                        self.resumed_from_checkpoint = True
+                        return checkpoint_id
+                return None
 
         def checkpoint_expired(self, actor_id, checkpoint_id):
             pass
@@ -261,6 +264,41 @@ def test_custom_classes(ray_start_regular):
     assert results2[2].x == 3
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_actor_class_attributes(ray_start_regular):
+    class Grandparent(object):
+        GRANDPARENT = 2
+
+    class Parent1(Grandparent):
+        PARENT1 = 6
+
+    class Parent2(object):
+        PARENT2 = 7
+
+    @ray.remote
+    class TestActor(Parent1, Parent2):
+        X = 3
+
+        @classmethod
+        def f(cls):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.X == 3
+            return 4
+
+        def g(self):
+            assert TestActor.GRANDPARENT == 2
+            assert TestActor.PARENT1 == 6
+            assert TestActor.PARENT2 == 7
+            assert TestActor.f() == 4
+            return TestActor.X
+
+    t = TestActor.remote()
+    assert ray.get(t.g.remote()) == 3
+
+
 def test_caching_actors(shutdown_only):
     # Test defining actors before ray.init() has been called.
 
@@ -343,7 +381,7 @@ def test_random_id_generation(ray_start_regular):
     random.seed(1234)
     f2 = Foo.remote()
 
-    assert f1._ray_actor_id != f2._ray_actor_id
+    assert f1._actor_id != f2._actor_id
 
 
 def test_actor_class_name(ray_start_regular):
@@ -904,7 +942,7 @@ def test_actor_load_balancing(ray_start_cluster):
             pass
 
         def get_location(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     # Create a bunch of actors.
     num_actors = 30
@@ -972,7 +1010,7 @@ def test_actor_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return (ray.worker.global_worker.plasma_client.store_socket_name,
+            return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
     # Create one actor per GPU.
@@ -1011,7 +1049,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return (ray.worker.global_worker.plasma_client.store_socket_name,
+            return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
     # Create some actors.
@@ -1042,7 +1080,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
             self.gpu_ids = ray.get_gpu_ids()
 
         def get_location_and_ids(self):
-            return (ray.worker.global_worker.plasma_client.store_socket_name,
+            return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
     # Create some actors.
@@ -1080,7 +1118,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
             self.gpu_ids = ray.get_gpu_ids()
 
         def get_location_and_ids(self):
-            return (ray.worker.global_worker.plasma_client.store_socket_name,
+            return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
     # Create some actors.
@@ -1126,8 +1164,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
                 self.gpu_ids = ray.get_gpu_ids()
 
             def get_location_and_ids(self):
-                return ((
-                    ray.worker.global_worker.plasma_client.store_socket_name),
+                return ((ray.worker.global_worker.node.unique_id),
                         tuple(self.gpu_ids))
 
             def sleep(self):
@@ -1173,7 +1210,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
             self.gpu_ids = ray.get_gpu_ids()
 
         def get_location_and_ids(self):
-            return (ray.worker.global_worker.plasma_client.store_socket_name,
+            return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
     # All the GPUs should be used up now.
@@ -1187,7 +1224,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 def test_actors_and_tasks_with_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
-    num_gpus_per_raylet = 6
+    num_gpus_per_raylet = 2
     for i in range(num_nodes):
         cluster.add_node(
             num_cpus=num_gpus_per_raylet, num_gpus=num_gpus_per_raylet)
@@ -1212,25 +1249,25 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     @ray.remote(num_gpus=1)
     def f1():
         t1 = time.monotonic()
-        time.sleep(0.4)
+        time.sleep(0.1)
         t2 = time.monotonic()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
         assert gpu_ids[0] in range(num_gpus_per_raylet)
-        return (ray.worker.global_worker.plasma_client.store_socket_name,
-                tuple(gpu_ids), [t1, t2])
+        return (ray.worker.global_worker.node.unique_id, tuple(gpu_ids),
+                [t1, t2])
 
     @ray.remote(num_gpus=2)
     def f2():
         t1 = time.monotonic()
-        time.sleep(0.4)
+        time.sleep(0.1)
         t2 = time.monotonic()
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 2
         assert gpu_ids[0] in range(num_gpus_per_raylet)
         assert gpu_ids[1] in range(num_gpus_per_raylet)
-        return (ray.worker.global_worker.plasma_client.store_socket_name,
-                tuple(gpu_ids), [t1, t2])
+        return (ray.worker.global_worker.node.unique_id, tuple(gpu_ids),
+                [t1, t2])
 
     @ray.remote(num_gpus=1)
     class Actor1(object):
@@ -1241,7 +1278,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
         def get_location_and_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return (ray.worker.global_worker.plasma_client.store_socket_name,
+            return (ray.worker.global_worker.node.unique_id,
                     tuple(self.gpu_ids))
 
     def locations_to_intervals_for_many_tasks():
@@ -1259,8 +1296,6 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     # Run a bunch of GPU tasks.
     locations_to_intervals = locations_to_intervals_for_many_tasks()
-    # Make sure that all GPUs were used.
-    assert (len(locations_to_intervals) == num_nodes * num_gpus_per_raylet)
     # For each GPU, verify that the set of tasks that used this specific
     # GPU did not overlap in time.
     for locations in locations_to_intervals:
@@ -1276,8 +1311,6 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 
     # Run a bunch of GPU tasks.
     locations_to_intervals = locations_to_intervals_for_many_tasks()
-    # Make sure that all but one of the GPUs were used.
-    assert (len(locations_to_intervals) == num_nodes * num_gpus_per_raylet - 1)
     # For each GPU, verify that the set of tasks that used this specific
     # GPU did not overlap in time.
     for locations in locations_to_intervals:
@@ -1285,28 +1318,9 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     # Make sure that the actor's GPU was not used.
     assert actor_location not in locations_to_intervals
 
-    # Create several more actors that use GPUs.
-    actors = [Actor1.remote() for _ in range(3)]
-    actor_locations = ray.get(
-        [actor.get_location_and_ids.remote() for actor in actors])
-
-    # Run a bunch of GPU tasks.
-    locations_to_intervals = locations_to_intervals_for_many_tasks()
-    # Make sure that all but 11 of the GPUs were used.
-    assert (
-        len(locations_to_intervals) == num_nodes * num_gpus_per_raylet - 1 - 3)
-    # For each GPU, verify that the set of tasks that used this specific
-    # GPU did not overlap in time.
-    for locations in locations_to_intervals:
-        check_intervals_non_overlapping(locations_to_intervals[locations])
-    # Make sure that the GPUs were not used.
-    assert actor_location not in locations_to_intervals
-    for location in actor_locations:
-        assert location not in locations_to_intervals
-
     # Create more actors to fill up all the GPUs.
     more_actors = [
-        Actor1.remote() for _ in range(num_nodes * num_gpus_per_raylet - 1 - 3)
+        Actor1.remote() for _ in range(num_nodes * num_gpus_per_raylet - 1)
     ]
     # Wait for the actors to finish being created.
     ray.get([actor.get_location_and_ids.remote() for actor in more_actors])
@@ -1320,38 +1334,71 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
+    num_gpus = 4
+
     ray.init(
-        num_cpus=10, num_gpus=10, object_store_memory=int(150 * 1024 * 1024))
+        num_cpus=(num_gpus + 1),
+        num_gpus=num_gpus,
+        object_store_memory=int(150 * 1024 * 1024))
+
+    # The point of this actor is to record which GPU IDs have been seen. We
+    # can't just return them from the tasks, because the tasks don't return
+    # for a long time in order to make sure the GPU is not released
+    # prematurely.
+    @ray.remote
+    class RecordGPUs(object):
+        def __init__(self):
+            self.gpu_ids_seen = []
+            self.num_calls = 0
+
+        def add_ids(self, gpu_ids):
+            self.gpu_ids_seen += gpu_ids
+            self.num_calls += 1
+
+        def get_gpu_ids_and_calls(self):
+            return self.gpu_ids_seen, self.num_calls
 
     @ray.remote(num_gpus=1)
-    def f():
-        time.sleep(5)
+    def f(record_gpu_actor):
         gpu_ids = ray.get_gpu_ids()
         assert len(gpu_ids) == 1
-        return gpu_ids[0]
+        record_gpu_actor.add_ids.remote(gpu_ids)
+        # Sleep for a long time so that the GPU never gets released. This task
+        # will be killed by ray.shutdown() before it actually finishes.
+        time.sleep(1000)
 
     @ray.remote(num_gpus=1)
     class Actor(object):
-        def __init__(self):
+        def __init__(self, record_gpu_actor):
             self.gpu_ids = ray.get_gpu_ids()
             assert len(self.gpu_ids) == 1
+            record_gpu_actor.add_ids.remote(self.gpu_ids)
 
-        def get_gpu_id(self):
+        def check_gpu_ids(self):
             assert ray.get_gpu_ids() == self.gpu_ids
-            return self.gpu_ids[0]
 
-    results = []
+    record_gpu_actor = RecordGPUs.remote()
+
     actors = []
-    for _ in range(5):
-        results.append(f.remote())
-        a = Actor.remote()
-        results.append(a.get_gpu_id.remote())
+    actor_results = []
+    for _ in range(num_gpus // 2):
+        f.remote(record_gpu_actor)
+        a = Actor.remote(record_gpu_actor)
+        actor_results.append(a.check_gpu_ids.remote())
         # Prevent the actor handle from going out of scope so that its GPU
         # resources don't get released.
         actors.append(a)
 
-    gpu_ids = ray.get(results)
-    assert set(gpu_ids) == set(range(10))
+    # Make sure that the actor method calls succeeded.
+    ray.get(actor_results)
+
+    start_time = time.time()
+    while time.time() - start_time < 30:
+        seen_gpu_ids, num_calls = ray.get(
+            record_gpu_actor.get_gpu_ids_and_calls.remote())
+        if num_calls == num_gpus:
+            break
+    assert set(seen_gpu_ids) == set(range(num_gpus))
 
 
 def test_blocking_actor_task(shutdown_only):
@@ -1416,8 +1463,8 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
         def __init__(self):
             self.x = 0
 
-        def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+        def node_id(self):
+            return ray.worker.global_worker.node.unique_id
 
         def inc(self):
             self.x += 1
@@ -1425,8 +1472,7 @@ def test_exception_raised_when_actor_node_dies(ray_start_cluster_head):
 
     # Create an actor that is not on the raylet.
     actor = Counter.remote()
-    while (ray.get(actor.local_plasma.remote()) !=
-           remote_node.plasma_store_socket_name):
+    while (ray.get(actor.node_id.remote()) != remote_node.unique_id):
         actor = Counter.remote()
 
     # Kill the second node.
@@ -1526,8 +1572,8 @@ def setup_counter_actor(test_checkpoint=False,
             self.save_exception = save_exception
             self.restored = False
 
-        def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+        def node_id(self):
+            return ray.worker.global_worker.node.unique_id
 
         def inc(self, *xs):
             self.x += 1
@@ -1554,11 +1600,11 @@ def setup_counter_actor(test_checkpoint=False,
             self.num_inc_calls = 0
             self.restored = True
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     # Create an actor that is not on the raylet.
     actor = Counter.remote(save_exception)
-    while ray.get(actor.local_plasma.remote()) == local_plasma:
+    while ray.get(actor.node_id.remote()) == node_id:
         actor = Counter.remote(save_exception)
 
     args = [ray.put(0) for _ in range(100)]
@@ -1689,8 +1735,8 @@ def _test_nondeterministic_reconstruction(
         def __init__(self):
             self.queue = []
 
-        def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+        def node_id(self):
+            return ray.worker.global_worker.node.unique_id
 
         def push(self, item):
             self.queue.append(item)
@@ -1699,9 +1745,9 @@ def _test_nondeterministic_reconstruction(
             return self.queue
 
     # Schedule the shared queue onto the remote raylet.
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
     actor = Queue.remote()
-    while ray.get(actor.local_plasma.remote()) == local_plasma:
+    while ray.get(actor.node_id.remote()) == node_id:
         actor = Queue.remote()
 
     # A task that takes in the shared queue and a list of items to enqueue,
@@ -1779,7 +1825,11 @@ def setup_queue_actor():
         def read(self):
             return self.queue
 
-    yield Queue.remote()
+    queue = Queue.remote()
+    # Make sure queue actor is initialized.
+    ray.get(queue.read.remote())
+
+    yield queue
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
@@ -1787,8 +1837,6 @@ def setup_queue_actor():
 
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
-    # Make sure queue actor is initialized.
-    ray.get(queue.read.remote())
 
     @ray.remote
     def fork(queue, key, item):
@@ -2066,14 +2114,14 @@ def test_custom_label_placement(ray_start_cluster):
     @ray.remote(resources={"CustomResource1": 1})
     class ResourceActor1(object):
         def get_location(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
     class ResourceActor2(object):
         def get_location(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     # Create some actors.
     actors1 = [ResourceActor1.remote() for _ in range(2)]
@@ -2081,9 +2129,9 @@ def test_custom_label_placement(ray_start_cluster):
     locations1 = ray.get([a.get_location.remote() for a in actors1])
     locations2 = ray.get([a.get_location.remote() for a in actors2])
     for location in locations1:
-        assert location == local_plasma
+        assert location == node_id
     for location in locations2:
-        assert location != local_plasma
+        assert location != node_id
 
 
 def test_creating_more_actors_than_resources(shutdown_only):
@@ -2225,21 +2273,15 @@ def test_actor_reconstruction(ray_start_regular):
 def test_actor_reconstruction_without_task(ray_start_regular):
     """Test a dead actor can be reconstructed without sending task to it."""
 
-    def object_exists(obj_id):
-        """Check wether an object exists in plasma store."""
-        plasma_client = ray.worker.global_worker.plasma_client
-        plasma_id = plasma.ObjectID(obj_id.binary())
-        return plasma_client.get(
-            plasma_id, timeout_ms=0) != plasma.ObjectNotAvailable
-
     @ray.remote(max_reconstructions=1)
     class ReconstructableActor(object):
         def __init__(self, obj_ids):
             for obj_id in obj_ids:
                 # Every time the actor gets constructed,
                 # put a new object in plasma store.
-                if not object_exists(obj_id):
-                    ray.worker.global_worker.put_object(obj_id, 1)
+                global_worker = ray.worker.global_worker
+                if not global_worker.core_worker.object_exists(obj_id):
+                    global_worker.put_object(obj_id, 1)
                     break
 
         def get_pid(self):
@@ -2252,7 +2294,8 @@ def test_actor_reconstruction_without_task(ray_start_regular):
     os.kill(pid, signal.SIGKILL)
     # Wait until the actor is reconstructed.
     assert wait_for_condition(
-        lambda: object_exists(obj_ids[1]), timeout_ms=5000)
+        lambda: ray.worker.global_worker.core_worker.object_exists(obj_ids[1]),
+        timeout_ms=5000)
 
 
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
@@ -2271,10 +2314,10 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
             }),
         )
 
-    def kill_node(object_store_socket):
+    def kill_node(node_id):
         node_to_remove = None
         for node in cluster.worker_nodes:
-            if object_store_socket == node.plasma_store_socket_name:
+            if node_id == node.unique_id:
                 node_to_remove = node
         cluster.remove_node(node_to_remove)
 
@@ -2288,7 +2331,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
             return self.value
 
         def get_object_store_socket(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     actor = MyActor.remote()
     # Call increase 3 times.
@@ -2393,14 +2436,14 @@ def kill_actor(actor):
     """A helper function that kills an actor process."""
     pid = ray.get(actor.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
-    time.sleep(1)
+    wait_for_pid_to_exit(pid)
 
 
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
     actor = ray.remote(
         max_reconstructions=2)(ray_checkpointable_actor_cls).remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
@@ -2481,8 +2524,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     remote_node = [node for node in cluster.worker_nodes]
     actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
-    while (ray.get(actor.local_plasma.remote()) !=
-           remote_node[0].plasma_store_socket_name):
+    while (ray.get(actor.node_id.remote()) != remote_node[0].unique_id):
         actor = actor_cls.remote()
 
     # Call increase several times.
@@ -2507,10 +2549,10 @@ def test_checkpointing_save_exception(ray_start_regular,
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def save_checkpoint(self, actor_id, checkpoint_context):
-            raise Exception("Error during save")
+            raise Exception("Intentional error saving checkpoint.")
 
     actor = RemoteCheckpointableActor.remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint that will fail.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
@@ -2535,13 +2577,8 @@ def test_checkpointing_save_exception(ray_start_regular,
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
-    # Check that checkpointing errors were pushed to the driver.
-    errors = ray.errors()
-    assert len(errors) > 0
-    for error in errors:
-        # An error for the actor process dying may also get pushed.
-        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
+    # Check that the checkpoint error was pushed to the driver.
+    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
 def test_checkpointing_load_exception(ray_start_regular,
@@ -2551,15 +2588,16 @@ def test_checkpointing_load_exception(ray_start_regular,
     @ray.remote(max_reconstructions=2)
     class RemoteCheckpointableActor(ray_checkpointable_actor_cls):
         def load_checkpoint(self, actor_id, checkpoints):
-            raise Exception("Error during load")
+            raise Exception("Intentional error loading checkpoint.")
 
     actor = RemoteCheckpointableActor.remote()
-    # Call increase 3 times.
+    # Call increase 3 times, triggering a checkpoint that will succeed.
     expected = 0
     for _ in range(3):
         ray.get(actor.increase.remote())
         expected += 1
-    # Assert that the actor wasn't resumed from a checkpoint.
+    # Assert that the actor wasn't resumed from a checkpoint because loading
+    # it failed.
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
     # Kill actor process.
     kill_actor(actor)
@@ -2579,13 +2617,8 @@ def test_checkpointing_load_exception(ray_start_regular,
     assert ray.get(actor.get.remote()) == expected
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is False
 
-    # Check that checkpointing errors were pushed to the driver.
-    errors = ray.errors()
-    assert len(errors) > 0
-    for error in errors:
-        # An error for the actor process dying may also get pushed.
-        assert (error["type"] == ray_constants.CHECKPOINT_PUSH_ERROR
-                or error["type"] == ray_constants.WORKER_DIED_PUSH_ERROR)
+    # Check that the checkpoint error was pushed to the driver.
+    wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
 @pytest.mark.parametrize(
@@ -2662,14 +2695,14 @@ def test_init_exception_in_checkpointable_actor(ray_start_regular,
     a = CheckpointableFailedActor.remote()
 
     # Make sure that we get errors from a failed constructor.
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 1)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
     assert error_message1 in errors[0]["message"]
 
     # Make sure that we get errors from a failed method.
     a.fail_method.remote()
-    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2, timeout=2)
+    wait_for_errors(ray_constants.TASK_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 2
     assert error_message1 in errors[1]["message"]
@@ -2725,8 +2758,8 @@ def test_ray_wait_dead_actor(ray_start_cluster):
         def __init__(self):
             pass
 
-        def local_plasma(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+        def node_id(self):
+            return ray.worker.global_worker.node.unique_id
 
         def ping(self):
             time.sleep(1)
@@ -2743,8 +2776,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     remote_node = cluster.list_all_nodes()[-1]
     remote_ping_id = None
     for i, actor in enumerate(actors):
-        if ray.get(actor.local_plasma.remote()
-                   ) == remote_node.plasma_store_socket_name:
+        if ray.get(actor.node_id.remote()) == remote_node.unique_id:
             remote_ping_id = ping_ids[i]
     ray.internal.free([remote_ping_id], local_only=True)
     cluster.remove_node(remote_node)

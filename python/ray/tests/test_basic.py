@@ -6,6 +6,7 @@ from __future__ import print_function
 import collections
 from concurrent.futures import ThreadPoolExecutor
 import glob
+import io
 import json
 import logging
 from multiprocessing import Process
@@ -31,6 +32,8 @@ import ray
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
+
+from ray.tests.utils import RayTestTimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -304,6 +307,13 @@ def test_complex_serialization(ray_start_regular):
         assert_equal(obj, ray.get(f.remote(obj)))
         assert_equal(obj, ray.get(ray.put(obj)))
 
+    # Test StringIO serialization
+    s = io.StringIO(u"Hello, world!\n")
+    s.seek(0)
+    line = s.readline()
+    s.seek(0)
+    assert ray.get(ray.put(s)).readline() == line
+
 
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
@@ -375,11 +385,16 @@ def test_ray_recursive_objects(ray_start_regular):
     # Create a list of recursive objects.
     recursive_objects = [lst, a1, a2, a3, d1]
 
-    # Check that exceptions are thrown when we serialize the recursive
-    # objects.
-    for obj in recursive_objects:
-        with pytest.raises(Exception):
+    if ray.worker.USE_NEW_SERIALIZER:
+        # Serialize the recursive objects.
+        for obj in recursive_objects:
             ray.put(obj)
+    else:
+        # Check that exceptions are thrown when we serialize the recursive
+        # objects.
+        for obj in recursive_objects:
+            with pytest.raises(Exception):
+                ray.put(obj)
 
 
 def test_passing_arguments_by_value_out_of_the_box(ray_start_regular):
@@ -1190,10 +1205,8 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile(
-                "custom_event",
-                extra_data={"name": "custom name"}) as ray_prof:
-            ray_prof.set_attribute("key", "value")
+        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+            pass
 
     ray.put(1)
     object_id = f.remote()
@@ -1205,9 +1218,6 @@ def test_profiling_api(ray_start_2_cpus):
     timeout_seconds = 20
     start_time = time.time()
     while True:
-        if time.time() - start_time > timeout_seconds:
-            raise Exception("Timed out while waiting for information in "
-                            "profile table.")
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
@@ -1229,6 +1239,15 @@ def test_profiling_api(ray_start_2_cpus):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
+
+        if time.time() - start_time > timeout_seconds:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for information in "
+                "profile table. Missing events: {}.".format(
+                    set(expected_types) - set(event_types)))
+
+        # The profiling information only flushes once every second.
+        time.sleep(1.1)
 
 
 def test_wait_cluster(ray_start_cluster):
@@ -1538,7 +1557,7 @@ def test_free_objects_multi_node(ray_start_cluster):
 
     class RawActor(object):
         def get(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     ActorOnNode0 = ray.remote(resources={"Custom0": 1})(RawActor)
     ActorOnNode1 = ray.remote(resources={"Custom1": 1})(RawActor)
@@ -1585,7 +1604,7 @@ def test_free_objects_multi_node(ray_start_cluster):
     assert len(l1) == 2
     assert len(l2) == 1
     # The deleted object will have the same store with the driver.
-    local_return = ray.worker.global_worker.plasma_client.store_socket_name
+    local_return = ray.worker.global_worker.node.unique_id
     for object_id in l1:
         assert ray.get(object_id) != local_return
 
@@ -1746,6 +1765,28 @@ def test_local_mode(shutdown_only):
         ray.get(obj1)
     with pytest.raises(Exception, match=exception_str):
         ray.get(obj2)
+
+    # Check that Actors are not overwritten by remote calls from different
+    # classes.
+    @ray.remote
+    class RemoteActor1(object):
+        def __init__(self):
+            pass
+
+        def function1(self):
+            return 0
+
+    @ray.remote
+    class RemoteActor2(object):
+        def __init__(self):
+            pass
+
+        def function2(self):
+            return 1
+
+    actor1 = RemoteActor1.remote()
+    _ = RemoteActor2.remote()
+    assert ray.get(actor1.function1.remote()) == 0
 
 
 def test_resource_constraints(shutdown_only):
@@ -1908,8 +1949,9 @@ def test_gpu_ids(shutdown_only):
         if len(set(ray.get([f.remote() for _ in range(10)]))) == 10:
             break
         if time.time() > start_time + 10:
-            raise Exception("Timed out while waiting for workers to start "
-                            "up.")
+            raise RayTestTimeoutException(
+                "Timed out while waiting for workers to start "
+                "up.")
 
     list_of_ids = ray.get([f0.remote() for _ in range(10)])
     assert list_of_ids == 10 * [[]]
@@ -1998,16 +2040,16 @@ def test_zero_cpus_actor(ray_start_cluster):
     cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     @ray.remote
     class Foo(object):
         def method(self):
-            return ray.worker.global_worker.plasma_client.store_socket_name
+            return ray.worker.global_worker.node.unique_id
 
     # Make sure tasks and actors run on the remote raylet.
     a = Foo.remote()
-    assert ray.get(a.method.remote()) != local_plasma
+    assert ray.get(a.method.remote()) != node_id
 
 
 def test_fractional_resources(shutdown_only):
@@ -2080,32 +2122,32 @@ def test_multiple_raylets(ray_start_cluster):
     # This must be run on the zeroth raylet.
     @ray.remote(num_cpus=11)
     def run_on_0():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first raylet.
     @ray.remote(num_gpus=2)
     def run_on_1():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the second raylet.
     @ray.remote(num_cpus=6, num_gpus=1)
     def run_on_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This can be run anywhere.
     @ray.remote(num_cpus=0, num_gpus=0)
     def run_on_0_1_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the first or second raylet.
     @ray.remote(num_gpus=1)
     def run_on_1_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     # This must be run on the zeroth or second raylet.
     @ray.remote(num_cpus=8)
     def run_on_0_2():
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.plasma_store_socket_name
 
     def run_lots_of_tasks():
         names = []
@@ -2196,27 +2238,27 @@ def test_custom_resources(ray_start_cluster):
     @ray.remote
     def f():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def g():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource": 1})
     def h():
         ray.get([f.remote() for _ in range(5)])
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     # The f tasks should be scheduled on both raylets.
     assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     # The g tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([g.remote() for _ in range(50)]))
     assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] != local_plasma
+    assert list(raylet_ids)[0] != node_id
 
     # Make sure that resource bookkeeping works when a task that uses a
     # custom resources gets blocked.
@@ -2240,38 +2282,38 @@ def test_two_custom_resources(ray_start_cluster):
     @ray.remote(resources={"CustomResource1": 1})
     def f():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource2": 1})
     def g():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource1": 1, "CustomResource2": 3})
     def h():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource1": 4})
     def j():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     @ray.remote(resources={"CustomResource3": 1})
     def k():
         time.sleep(0.001)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     # The f and g tasks should be scheduled on both raylets.
     assert len(set(ray.get([f.remote() for _ in range(50)]))) == 2
     assert len(set(ray.get([g.remote() for _ in range(50)]))) == 2
 
-    local_plasma = ray.worker.global_worker.plasma_client.store_socket_name
+    node_id = ray.worker.global_worker.node.unique_id
 
     # The h tasks should be scheduled only on the second raylet.
     raylet_ids = set(ray.get([h.remote() for _ in range(50)]))
     assert len(raylet_ids) == 1
-    assert list(raylet_ids)[0] != local_plasma
+    assert list(raylet_ids)[0] != node_id
 
     # Make sure that tasks with unsatisfied custom resource requirements do
     # not get scheduled.
@@ -2473,7 +2515,7 @@ def test_load_balancing(ray_start_cluster):
     @ray.remote
     def f():
         time.sleep(0.01)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
@@ -2491,7 +2533,7 @@ def test_load_balancing_with_dependencies(ray_start_cluster):
     @ray.remote
     def f(x):
         time.sleep(0.010)
-        return ray.worker.global_worker.plasma_client.store_socket_name
+        return ray.worker.global_worker.node.unique_id
 
     # This object will be local to one of the raylets. Make sure
     # this doesn't prevent tasks from being scheduled on other raylets.
@@ -2506,7 +2548,7 @@ def wait_for_num_tasks(num_tasks, timeout=10):
         if len(ray.tasks()) >= num_tasks:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 def wait_for_num_objects(num_objects, timeout=10):
@@ -2515,7 +2557,7 @@ def wait_for_num_objects(num_objects, timeout=10):
         if len(ray.objects()) >= num_objects:
             return
         time.sleep(0.1)
-    raise Exception("Timed out while waiting for global state.")
+    raise RayTestTimeoutException("Timed out while waiting for global state.")
 
 
 @pytest.mark.skipif(
@@ -2608,8 +2650,9 @@ def test_global_state_api(shutdown_only):
             if tables_ready:
                 return
             time.sleep(0.1)
-        raise Exception("Timed out while waiting for object table to "
-                        "update.")
+        raise RayTestTimeoutException(
+            "Timed out while waiting for object table to "
+            "update.")
 
     object_table = ray.objects()
     assert len(object_table) == 2
@@ -2820,8 +2863,7 @@ def test_wait_reconstruction(shutdown_only):
     x_id = f.remote()
     ray.wait([x_id])
     ray.wait([f.remote()])
-    assert not ray.worker.global_worker.plasma_client.contains(
-        ray.pyarrow.plasma.ObjectID(x_id.binary()))
+    assert not ray.worker.global_worker.core_worker.object_exists(x_id)
     ready_ids, _ = ray.wait([x_id])
     assert len(ready_ids) == 1
 

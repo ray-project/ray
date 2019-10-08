@@ -156,7 +156,7 @@ class ResourceSpec(
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (object_store_memory >
                     ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES):
-                logger.warning(
+                logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
                         ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES //
                         1e9) +
@@ -197,7 +197,7 @@ class ResourceSpec(
         logger.info(
             "Starting Ray with {} GiB memory available for workers and up to "
             "{} GiB for objects. You can adjust these settings "
-            "with ray.remote(memory=<bytes>, "
+            "with ray.init(memory=<bytes>, "
             "object_store_memory=<bytes>).".format(
                 round(
                     ray_constants.round_to_memory_units(

@@ -70,8 +70,12 @@ COMMON_CONFIG = {
     "ignore_worker_failures": False,
     # Log system resource metrics to results.
     "log_sys_usage": True,
-    # Enable TF eager execution (TF policies only)
+    # Enable TF eager execution (TF policies only).
     "eager": False,
+    # Enable tracing in eager mode. This greatly improves performance, but
+    # makes it slightly harder to debug since Python code won't be evaluated
+    # after the initial eager pass.
+    "eager_tracing": False,
     # Disable eager execution on workers (but allow it on the driver). This
     # only has an effect is eager is enabled.
     "no_eager_on_workers": False,
@@ -313,8 +317,9 @@ class Trainer(Trainable):
 
     _allow_unknown_configs = False
     _allow_unknown_subkeys = [
-        "tf_session_args", "env_config", "model", "optimizer", "multiagent",
-        "custom_resources_per_worker", "evaluation_config"
+        "tf_session_args", "local_tf_session_args", "env_config", "model",
+        "optimizer", "multiagent", "custom_resources_per_worker",
+        "evaluation_config"
     ]
 
     @PublicAPI
@@ -333,7 +338,8 @@ class Trainer(Trainable):
 
         if tf and config.get("eager"):
             tf.enable_eager_execution()
-            logger.info("Executing eagerly")
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                "True" if config.get("eager_tracing") else "False"))
 
         if tf and not tf.executing_eagerly():
             logger.info("Tip: set 'eager': true or the --eager flag to enable "
@@ -359,7 +365,7 @@ class Trainer(Trainable):
                     os.makedirs(DEFAULT_RESULTS_DIR)
                 logdir = tempfile.mkdtemp(
                     prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
-                return UnifiedLogger(config, logdir, None)
+                return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 

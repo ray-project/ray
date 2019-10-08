@@ -98,6 +98,16 @@ cc_proto_library(
     deps = ["direct_actor_proto"],
 )
 
+proto_library(
+    name = "serialization_proto",
+    srcs = ["src/ray/protobuf/serialization.proto"],
+)
+
+cc_proto_library(
+    name = "serialization_cc_proto",
+    deps = ["serialization_proto"],
+)
+
 # === End of protobuf definitions ===
 
 # === Begin of rpc definitions ===
@@ -221,6 +231,7 @@ cc_library(
     copts = COPTS,
     deps = [
         ":common_cc_proto",
+        ":gcs_cc_proto",
         ":node_manager_fbs",
         ":ray_util",
         "@boost//:asio",
@@ -412,6 +423,16 @@ cc_binary(
     copts = COPTS,
     deps = [
         ":core_worker_test_lib",
+    ],
+)
+
+cc_test(
+    name = "scheduling_queue_test",
+    srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -721,7 +742,11 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    deps = ["//:raylet_lib"],
+    deps = [
+        "//:core_worker_lib",
+        "//:raylet_lib",
+        "//:serialization_cc_proto",
+    ],
 )
 
 cc_binary(
@@ -782,13 +807,13 @@ filegroup(
         "python/ray/core/generated/ray/__init__.py",
         "python/ray/core/generated/ray/protocol/__init__.py",
         "python/ray/dashboard/dashboard.py",
-        "python/ray/dashboard/index.html",
-        "python/ray/dashboard/res/main.css",
-        "python/ray/dashboard/res/main.js",
         "python/ray/experimental/*.py",
         "python/ray/internal/*.py",
         "python/ray/projects/*.py",
         "python/ray/projects/schema.json",
+        "python/ray/projects/templates/cluster_template.yaml",
+        "python/ray/projects/templates/project_template.yaml",
+        "python/ray/projects/templates/requirements.txt",
         "python/ray/workers/default_worker.py",
     ]),
 )

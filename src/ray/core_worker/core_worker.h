@@ -5,6 +5,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
+#include "ray/core_worker/profiling.h"
 #include "ray/core_worker/task_execution.h"
 #include "ray/core_worker/task_interface.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -20,15 +21,32 @@ class CoreWorker {
   /// Construct a CoreWorker instance.
   ///
   /// \param[in] worker_type Type of this worker.
-  /// \param[in] langauge Language of this worker.
+  /// \param[in] language Language of this worker.
+  /// \param[in] store_socket Object store socket to connect to.
+  /// \param[in] raylet_socket Raylet socket to connect to.
+  /// \param[in] job_id Job ID of this worker.
+  /// \param[in] gcs_options Options for the GCS client.
+  /// \param[in] log_dir Directory to write logs to. If this is empty, logs
+  ///            won't be written to a file.
+  /// \param[in] node_ip_address IP address of the node.
+  /// \param[in] execution_callback Language worker callback to execute tasks.
+  /// \param[in] use_memory_store Whether or not to use the in-memory object store
+  ///            in addition to the plasma store.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
+  /// NOTE(edoakes): the use_memory_store flag is a stop-gap solution to the issue
+  ///                that randomly generated ObjectIDs may use the memory store
+  ///                instead of the plasma store.
   CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback);
+             const std::string &log_dir, const std::string &node_ip_address,
+             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+             bool use_memory_store = true);
 
   ~CoreWorker();
+
+  void Disconnect();
 
   /// Type of this worker.
   WorkerType GetWorkerType() const { return worker_type_; }
@@ -48,6 +66,9 @@ class CoreWorker {
   /// store.
   CoreWorkerObjectInterface &Objects() { return *object_interface_; }
 
+  /// Create a profile event with a reference to the core worker's profiler.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
+
   /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
   /// task execution.
   CoreWorkerTaskExecutionInterface &Execution() {
@@ -55,44 +76,38 @@ class CoreWorker {
     return *task_execution_interface_;
   }
 
+  const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentTaskId(const TaskID &task_id) {
+    worker_context_.SetCurrentTaskId(task_id);
+  }
+
  private:
   void StartIOService();
 
-  /// Type of this worker.
   const WorkerType worker_type_;
-
-  /// Language of this worker.
   const Language language_;
-
-  /// raylet socket name.
   const std::string raylet_socket_;
-
-  /// Worker context.
+  const std::string log_dir_;
   WorkerContext worker_context_;
 
-  /// event loop where the IO events are handled. e.g. async GCS operations.
+  /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
-
-  /// keeps io_service_ alive.
+  /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
 
-  /// The thread to handle IO events.
   std::thread io_thread_;
-
-  /// Raylet client.
+  std::shared_ptr<worker::Profiler> profiler_;
   std::unique_ptr<RayletClient> raylet_client_;
-
-  /// GCS client.
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
-
-  /// The `CoreWorkerTaskInterface` instance.
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
-
-  /// The `CoreWorkerObjectInterface` instance.
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
-  /// The `CoreWorkerTaskExecutionInterface` instance.
-  /// This is only available if it's not a driver.
+  /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
 };
 

@@ -12,7 +12,7 @@ import sys
 
 from contextlib import contextmanager
 
-from ray.projects.scripts import start
+from ray.projects.scripts import session_start, session_execute
 import ray
 
 if sys.version_info >= (3, 3):
@@ -101,7 +101,7 @@ def run_test_project(project_dir, command, args):
 
 def test_session_start_default_project():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/project-pass", start, [])
+        "session-tests/project-pass", session_start, ["default"])
 
     loaded_project = ray.projects.ProjectDefinition(test_dir)
     assert result.exit_code == 0
@@ -143,9 +143,36 @@ def test_session_start_default_project():
     assert expected_commands == commands_executed
 
 
+def test_session_execute_default_project():
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/project-pass", session_execute, ["default"])
+
+    loaded_project = ray.projects.ProjectDefinition(test_dir)
+    assert result.exit_code == 0
+
+    assert mock_calls["rsync"].call_count == 0
+    assert mock_calls["create_or_update_cluster"].call_count == 0
+
+    exec_cluster_call = mock_calls["exec_cluster"]
+    commands_executed = []
+    for _, kwargs in exec_cluster_call.call_args_list:
+        commands_executed.append(kwargs["cmd"].replace(
+            "cd {}; ".format(loaded_project.working_directory()), ""))
+
+    expected_commands = [
+        command["command"] for command in loaded_project.config["commands"]
+    ]
+
+    assert expected_commands == commands_executed
+
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/project-pass", session_execute, ["--shell", "uptime"])
+    assert result.exit_code == 0
+
+
 def test_session_start_docker_fail():
-    result, _, _ = run_test_project("session-tests/with-docker-fail", start,
-                                    [])
+    result, _, _ = run_test_project("session-tests/with-docker-fail",
+                                    session_start, [])
 
     assert result.exit_code == 1
     assert ("Docker support in session is currently "
@@ -153,8 +180,8 @@ def test_session_start_docker_fail():
 
 
 def test_session_invalid_config_errored():
-    result, _, _ = run_test_project("session-tests/invalid-config-fail", start,
-                                    [])
+    result, _, _ = run_test_project("session-tests/invalid-config-fail",
+                                    session_start, [])
 
     assert result.exit_code == 1
     assert "validation failed" in result.output
@@ -164,7 +191,7 @@ def test_session_invalid_config_errored():
 
 def test_session_create_command():
     result, mock_calls, test_dir = run_test_project(
-        "session-tests/commands-test", start,
+        "session-tests/commands-test", session_start,
         ["first", "--a", "1", "--b", "2"])
 
     # Verify the project can be loaded.
@@ -177,3 +204,36 @@ def test_session_create_command():
         if "Starting ray job with 1 and 2" in kwargs["cmd"]:
             found_command = True
     assert found_command
+
+
+def test_session_create_multiple():
+    for args in [{"a": "*", "b": "2"}, {"a": "1", "b": "*"}]:
+        result, mock_calls, test_dir = run_test_project(
+            "session-tests/commands-test", session_start,
+            ["first", "--a", args["a"], "--b", args["b"]])
+
+        loaded_project = ray.projects.ProjectDefinition(test_dir)
+        assert result.exit_code == 0
+
+        exec_cluster_call = mock_calls["exec_cluster"]
+        commands_executed = []
+        for _, kwargs in exec_cluster_call.call_args_list:
+            commands_executed.append(kwargs["cmd"].replace(
+                "cd {}; ".format(loaded_project.working_directory()), ""))
+        assert commands_executed.count("echo \"Setting up\"") == 2
+        if args["a"] == "*":
+            assert commands_executed.count(
+                "echo \"Starting ray job with 1 and 2\"") == 1
+            assert commands_executed.count(
+                "echo \"Starting ray job with 2 and 2\"") == 1
+        if args["b"] == "*":
+            assert commands_executed.count(
+                "echo \"Starting ray job with 1 and 1\"") == 1
+            assert commands_executed.count(
+                "echo \"Starting ray job with 1 and 2\"") == 1
+
+    # Using multiple wildcards shouldn't work
+    result, mock_calls, test_dir = run_test_project(
+        "session-tests/commands-test", session_start,
+        ["first", "--a", "*", "--b", "*"])
+    assert result.exit_code == 1
