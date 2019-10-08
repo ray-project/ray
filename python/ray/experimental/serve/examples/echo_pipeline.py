@@ -5,7 +5,7 @@ from werkzeug import urls
 
 from ray.experimental import serve
 from ray.experimental.serve.utils import pformat_color_json
-
+import json
 
 def echo1(context):
 	# query_string_dict = urls.url_decode(context["query_string"])
@@ -17,7 +17,10 @@ def echo1(context):
 	# context["query_string"] += 'FROM MODEL1 -> '
 	# return context
 def echo2(context):
-	return context
+	result = json.loads(context)
+	result = result['result']
+	result += 'FROM MODEL2 -> '
+	return result
 
 serve.init(blocking=True)
 

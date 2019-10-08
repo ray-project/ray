@@ -92,4 +92,5 @@ class GlobalState:
                 raise Exception(
                     "HTTP server not ready after {} retries.".format(
                         num_retries))
-        print("BOTH VALUES kv:{} kv_pipeline: {}".format(routing_table_request_count,routing_pipeline_request_count))
+
+        logger.info("BOTH VALUES kv:{} kv_pipeline: {}".format(routing_table_request_count,routing_pipeline_request_count))
