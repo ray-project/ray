@@ -172,7 +172,6 @@ def test(model):
         if category_i == guess_i:
             num_correct += 1
         total += 1
-    print(num_correct, total)
     return num_correct/total
 
 criterion = nn.NLLLoss()
@@ -273,5 +272,5 @@ df = all_dataframes[analysis.get_best_logdir(metric="mean_accuracy")]
 # analysis.trial_dataframes[trial.logdir].mean_accuracy.plot()
 
 #df.mean_accuracy.plot()
-# df["loss"].plot()
+#df["loss"].plot()
 
