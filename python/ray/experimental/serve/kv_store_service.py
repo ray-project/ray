@@ -145,7 +145,7 @@ class KVPipelineProxy:
             l.add(service_no_http)
             self.pipeline_storage.put(pipeline,list(l))
         else:
-            self.pipeline_storage.put(pipeline,[l])
+            self.pipeline_storage.put(pipeline,[service_no_http])
 
     def list_pipeline_service(self):
         self.request_count += 1
