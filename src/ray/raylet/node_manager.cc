@@ -793,7 +793,8 @@ void NodeManager::DispatchTasks(
   }
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
-    const auto &task_resources = TaskSpecification::GetSchedulingClassDescriptor(it->first).first;
+    const auto &task_resources =
+        TaskSpecification::GetSchedulingClassDescriptor(it->first).first;
     // FIFO order within each class.
     for (const auto &task_id : it->second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);

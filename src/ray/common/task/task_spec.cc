@@ -5,11 +5,14 @@
 
 namespace ray {
 
-std::unordered_map<SchedulingClassDescriptor, SchedulingClass> TaskSpecification::sched_cls_to_id_;
-std::unordered_map<SchedulingClass, SchedulingClassDescriptor> TaskSpecification::sched_id_to_cls_;
+std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
+    TaskSpecification::sched_cls_to_id_;
+std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
+    TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
-SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(SchedulingClass id) {
+SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
+    SchedulingClass id) {
   auto it = sched_id_to_cls_.find(id);
   RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
   return it->second;
