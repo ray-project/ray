@@ -1246,7 +1246,7 @@ class VariantGeneratorTest(unittest.TestCase):
         }, "tune-pong")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
-        self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
+        self.assertTrue("PPO_Pong-v0" in str(trials[0]))
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
