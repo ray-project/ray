@@ -69,23 +69,21 @@ if __name__ == "__main__":
     analysis = tune.run(
         TrainMNIST,
         scheduler=sched,
-        **{
-            "stop": {
-                "mean_accuracy": 0.95,
-                "training_iteration": 3 if args.smoke_test else 20,
-            },
-            "resources_per_trial": {
-                "cpu": 3,
-                "gpu": int(args.use_gpu)
-            },
-            "num_samples": 1 if args.smoke_test else 20,
-            "checkpoint_at_end": True,
-            "checkpoint_freq": 3,
-            "config": {
-                "args": args,
-                "lr": tune.uniform(0.001, 0.1),
-                "momentum": tune.uniform(0.1, 0.9),
-            }
+        stop={
+            "mean_accuracy": 0.95,
+            "training_iteration": 3 if args.smoke_test else 20,
+        },
+        resources_per_trial={
+            "cpu": 3,
+            "gpu": int(args.use_gpu)
+        },
+        num_samples=1 if args.smoke_test else 20,
+        checkpoint_at_end=True,
+        checkpoint_freq=3,
+        config={
+            "args": args,
+            "lr": tune.uniform(0.001, 0.1),
+            "momentum": tune.uniform(0.1, 0.9),
         })
 
     print("Best config is:", analysis.get_best_config(metric="mean_accuracy"))
