@@ -43,7 +43,6 @@ TensorFlow Examples
 -------------------
 
 - `tune_mnist_ray <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray.py>`__: A basic example of tuning a TensorFlow model on MNIST using the Trainable class.
-- `tune_mnist_ray_hyperband <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__: A basic example of tuning a TensorFlow model on MNIST using the Trainable class and the HyperBand scheduler.
 - `tune_mnist_async_hyperband <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_async_hyperband.py>`__: Example of tuning a TensorFlow model on MNIST using AsyncHyperBand.
 
 
