@@ -188,7 +188,7 @@ def train(model, category_tensor, line_tensor, optimizer, counter):
 
     optimizer.step()
     if counter % print_every == 0:
-        print('%d %d%% (%s)' % (counter, counter / n_iters * 100, loss.item()))
+        print('%s' % (loss.item()))
     return output, loss.item()
 
 
