@@ -391,13 +391,12 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
 
-ray::Status RayletClient::ActiveObjectIDsHeartbeat(
+ray::Status RayletClient::ReportActiveObjectIDs(
     const std::unordered_set<ObjectID> &object_ids) {
-  std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
   flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateActiveObjectIDsHeartbeat(
-      fbb, to_flatbuf(fbb, object_id_vector));
+  auto message =
+      ray::protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
   fbb.Finish(message);
 
-  return conn_->WriteMessage(MessageType::ActiveObjectIDsHeartbeat, &fbb);
+  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
 }

@@ -97,7 +97,7 @@ class CoreWorker {
  private:
   void StartIOService() { io_service_.run(); }
 
-  void SendActiveObjectIDsHeartbeat();
+  void ReportActiveObjectIDs();
 
   const WorkerType worker_type_;
   const Language language_;

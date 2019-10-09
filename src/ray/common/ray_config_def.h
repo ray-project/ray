@@ -20,7 +20,7 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
-/// The duration between heartbeats send from the raylets.
+/// The duration between heartbeats sent by the raylets.
 RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
@@ -84,7 +84,7 @@ RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000)
 RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000)
 
 /// The maximum number of active object IDs to report in a heartbeat.
-RAY_CONFIG(int64_t, raylet_active_object_ids_size, 1000)
+RAY_CONFIG(size_t, raylet_max_active_object_ids, 1000)
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.

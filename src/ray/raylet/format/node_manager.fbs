@@ -76,8 +76,8 @@ enum MessageType:int {
   ConnectClient,
   // Set dynamic custom resource.
   SetResourceRequest,
-  // Periodically update the active set of object IDs in use on this worker.
-  ActiveObjectIDsHeartbeat,
+  // Update the active set of object IDs in use on this worker.
+  ReportActiveObjectIDs,
 }
 
 table TaskExecutionSpecification {
@@ -249,7 +249,7 @@ table SetResourceRequest {
   client_id: string;
 }
 
-table ActiveObjectIDsHeartbeat {
+table ReportActiveObjectIDs {
   // Object IDs that are active in the worker.
   object_ids: [string];
 }

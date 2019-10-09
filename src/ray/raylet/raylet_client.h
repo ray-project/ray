@@ -179,7 +179,7 @@ class RayletClient {
   /// Notifies the raylet of the object IDs currently in use on this worker.
   /// \param object_ids The set of object IDs currently in use.
   /// \return ray::Status
-  ray::Status ActiveObjectIDsHeartbeat(const std::unordered_set<ObjectID> &object_ids);
+  ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
   Language GetLanguage() const { return language_; }
 

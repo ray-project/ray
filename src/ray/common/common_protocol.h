@@ -76,6 +76,15 @@ template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids);
 
+/// Convert an unordered_set of unique IDs to a flatbuffer vector of strings.
+///
+/// @param fbb Reference to the flatbuffer builder.
+/// @param ids Unordered set of IDs.
+/// @return Flatbuffer vector of strings.
+template <typename ID>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &ids);
+
 /// Convert a flatbuffer string to a std::string.
 ///
 /// @param fbb Reference to the flatbuffer builder.
@@ -112,7 +121,7 @@ const std::vector<ID> from_flatbuf(
 }
 
 template <typename ID>
-const std::vector<ID> unordered_set_from_flatbuf(
+const std::unordered_set<ID> unordered_set_from_flatbuf(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> &vector) {
   std::unordered_set<ID> ids;
   for (int64_t i = 0; i < vector.Length(); i++) {
@@ -162,6 +171,16 @@ to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, ID ids[], int64_t num_ids) {
 template <typename ID>
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
 to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::vector<ID> &ids) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> results;
+  for (auto id : ids) {
+    results.push_back(to_flatbuf(fbb, id));
+  }
+  return fbb.CreateVector(results);
+}
+
+template <typename ID>
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>>
+to_flatbuf(flatbuffers::FlatBufferBuilder &fbb, const std::unordered_set<ID> &ids) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> results;
   for (auto id : ids) {
     results.push_back(to_flatbuf(fbb, id));

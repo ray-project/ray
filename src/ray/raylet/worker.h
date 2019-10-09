@@ -58,7 +58,7 @@ class Worker {
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
   const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
-  void SetActiveObjectIds(std::unordered_set<ObjectID> &object_ids);
+  void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
 
   bool UsePush() const;
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,

@@ -81,8 +81,7 @@ CoreWorker::CoreWorker(
   if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
     heartbeat_timer_.expires_from_now(boost::asio::chrono::milliseconds(
         RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
-    heartbeat_timer_.async_wait(
-        boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+    heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   }
 
   io_thread_ = std::thread(&CoreWorker::StartIOService, this);
@@ -127,19 +126,18 @@ void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
   });
 }
 
-void CoreWorker::SendActiveObjectIDsHeartbeat() {
+void CoreWorker::ReportActiveObjectIDs() {
   // Only send a heartbeat when the set of active object IDs has changed because the
   // raylet only modifies the set of IDs when it receives a heartbeat.
   if (active_object_ids_updated_) {
-    std::cout << "Sending " << active_object_ids_.size() << " object IDs to raylet."
-              << std::endl;
+    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
     if (active_object_ids_.size() >
-        static_cast<size_t>(RayConfig::instance().raylet_active_object_ids_size())) {
+        RayConfig::instance().raylet_max_active_object_ids()) {
       RAY_LOG(WARNING) << active_object_ids_.size()
                        << "object IDs are currently in scope. "
                        << "This may lead to required objects being garbage collected.";
     }
-    RAY_CHECK_OK(raylet_client_->ActiveObjectIDsHeartbeat(active_object_ids_));
+    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(active_object_ids_));
   }
 
   // Reset the timer from the previous expiration time to avoid drift.
@@ -147,8 +145,7 @@ void CoreWorker::SendActiveObjectIDsHeartbeat() {
       heartbeat_timer_.expiry() +
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
-  heartbeat_timer_.async_wait(
-      boost::bind(&CoreWorker::SendActiveObjectIDsHeartbeat, this));
+  heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   active_object_ids_updated_ = false;
 }
 

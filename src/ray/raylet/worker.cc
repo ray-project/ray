@@ -117,7 +117,7 @@ const std::unordered_set<ObjectID> &Worker::GetActiveObjectIds() const {
   return active_object_ids_;
 }
 
-void Worker::SetActiveObjectIds(std::unordered_set<ObjectID> &object_ids) {
+void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids) {
   active_object_ids_ = object_ids;
 }
 
