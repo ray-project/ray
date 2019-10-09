@@ -114,7 +114,7 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     --smoke-test
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/memnn_example.py \
+    python /ray/python/ray/tune/examples/pbt_memnn_example.py \
     --smoke-test
 
 # uncomment once statsmodels is updated.
