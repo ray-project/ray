@@ -72,8 +72,10 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   std::mutex mutex_;
   /// List of tasks to execute next.
   std::list<TaskSpecification> assigned_tasks_;
-  /// Number of tasks assigned in total.
+  /// Number of tasks assigned in total in the last assign call.
   int num_assigned_;
+  /// Number of tasks stolen of those assigned.
+  int num_stolen_;
   /// RPC request being worked on.
   rpc::AssignTaskRequest assigned_req_;
 };
