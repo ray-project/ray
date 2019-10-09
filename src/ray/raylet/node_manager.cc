@@ -1,5 +1,6 @@
 #include "ray/raylet/node_manager.h"
 
+#include <cctype>
 #include <fstream>
 
 #include "ray/common/status.h"
@@ -78,6 +79,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
+      fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       initial_config_(config),
@@ -755,24 +757,46 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-// A helper function to create a mapping from resource shapes to
-// tasks with that resource shape from a given list of tasks.
-std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(
+// A helper function to create a mapping from task scheduling class to
+// tasks with that class from a given list of tasks.
+std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
     const std::vector<Task> &tasks) {
-  std::unordered_map<ResourceSet, ordered_set<TaskID>> result;
+  std::unordered_map<SchedulingClass, ordered_set<TaskID>> result;
   for (const auto &task : tasks) {
     auto spec = task.GetTaskSpecification();
-    result[spec.GetRequiredResources()].push_back(spec.TaskId());
+    result[spec.GetSchedulingClass()].push_back(spec.TaskId());
   }
   return result;
 }
 
 void NodeManager::DispatchTasks(
-    const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources) {
+    const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class) {
   std::unordered_set<TaskID> removed_task_ids;
-  for (const auto &it : tasks_with_resources) {
-    const auto &task_resources = it.first;
-    for (const auto &task_id : it.second) {
+
+  // Dispatch tasks in priority order by class. This avoids starvation problems where
+  // one class of tasks become stuck behind others in the queue, causing Ray to start
+  // many workers. See #3644 for a more detailed description of this issue.
+  std::vector<const std::pair<const SchedulingClass, ordered_set<TaskID>> *> fair_order;
+  for (auto &it : tasks_by_class) {
+    fair_order.emplace_back(&it);
+  }
+  // Prioritize classes that have fewer currently running tasks. Note that we only
+  // sort once per round of task dispatch, which is less fair then it could be, but
+  // is simpler and faster.
+  if (fair_queueing_enabled_) {
+    std::sort(
+        std::begin(fair_order), std::end(fair_order),
+        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
+               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
+          return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
+        });
+  }
+  // Approximate fair round robin between classes.
+  for (const auto &it : fair_order) {
+    const auto &task_resources =
+        TaskSpecification::GetSchedulingClassDescriptor(it->first).first;
+    // FIFO order within each class.
+    for (const auto &task_id : it->second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
       if (!local_available_resources_.Contains(task_resources)) {
         // All the tasks in it.second have the same resource shape, so
@@ -985,7 +1009,7 @@ void NodeManager::HandleWorkerAvailable(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasksWithResources());
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1090,7 +1114,7 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "job_id: " << worker->GetAssignedJobId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks(local_queues_.GetReadyTasksWithResources());
+    DispatchTasks(local_queues_.GetReadyTasksByClass());
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
@@ -1684,7 +1708,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
-      DispatchTasks(local_queues_.GetReadyTasksWithResources());
+      DispatchTasks(local_queues_.GetReadyTasksByClass());
     }
   } else {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -1782,7 +1806,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueTasks({task}, TaskState::READY);
-    DispatchTasks(MakeTasksWithResources({task}));
+    DispatchTasks(MakeTasksByClass({task}));
   } else {
     local_queues_.QueueTasks({task}, TaskState::WAITING);
   }
@@ -1881,8 +1905,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
 
-  if (task.GetTaskSpecification().IsActorCreationTask() ||
-      task.GetTaskSpecification().IsActorTask()) {
+  const auto &spec = task.GetTaskSpecification();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);
@@ -1898,8 +1922,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::Nil());
   // Unset the worker's assigned job Id if this is not an actor.
-  if (!task.GetTaskSpecification().IsActorCreationTask() &&
-      !task.GetTaskSpecification().IsActorTask()) {
+  if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
     worker.AssignJobId(JobID::Nil());
   }
 }
@@ -2227,7 +2250,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueTasks(ready_tasks, TaskState::READY);
-    DispatchTasks(MakeTasksWithResources(ready_tasks));
+    DispatchTasks(MakeTasksByClass(ready_tasks));
   }
 }
 
@@ -2464,7 +2487,7 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     // assigned to a worker once one becomes available.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::READY);
-    DispatchTasks(MakeTasksWithResources({assigned_task}));
+    DispatchTasks(MakeTasksByClass({assigned_task}));
   }
 }
 
