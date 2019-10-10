@@ -162,7 +162,13 @@ class Trial(object):
         self.metric_analysis = {}
 
         self.keep_checkpoints_num = keep_checkpoints_num
-        self.checkpoint_score_attr = checkpoint_score_attr
+        self.checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
+        if self.checkpoint_score_desc:
+            self.checkpoint_score_attr = checkpoint_score_attr[4:]
+            self.best_checkpoint_score = float("inf")
+        else:
+            self.checkpoint_score_attr = checkpoint_score_attr
+            self.best_checkpoint_score = float("-inf")
         self.checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
 
@@ -298,6 +304,21 @@ class Trial(object):
 
     def has_checkpoint(self):
         return self.checkpoint.value is not None
+
+    def update_checkpoint(self, checkpoint_path):
+        """Update checkpoint if it is at least as good as the current best.
+
+        Args:
+            checkpoint_path (str): Path to checkpoint.
+        """
+        if not self.checkpoint_score_attr:
+            self.checkpoint.value = checkpoint_path
+            return
+        last_score = self.last_result[self.checkpoint_score_attr]
+        best = min if self.checkpoint_score_desc else max
+        if last_score == best(last_score, self.best_checkpoint_score):
+            self.best_checkpoint_score = last_score
+            self.checkpoint.value = checkpoint_path
 
     def clear_checkpoint(self):
         self.checkpoint.value = None

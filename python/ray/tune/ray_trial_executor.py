@@ -149,6 +149,7 @@ class RayTrialExecutor(TrialExecutor):
         tune_config = {
             "keep_checkpoints_num": trial.keep_checkpoints_num,
             "checkpoint_score_attr": trial.checkpoint_score_attr,
+            "checkpoint_score_desc": trial.checkpoint_score_desc,
         }
         remote_runner._tune_setup.remote(tune_config)
         return remote_runner
@@ -566,7 +567,10 @@ class RayTrialExecutor(TrialExecutor):
         self._update_avail_resources()
 
     def save(self, trial, storage=Checkpoint.DISK):
-        """Saves the trial's state to a checkpoint."""
+        """Saves the trial's state to a checkpoint.
+
+        Returns the current best checkpoint path.
+        """
         trial.checkpoint.storage = storage
         trial.checkpoint.last_result = trial.last_result
         if storage == Checkpoint.MEMORY:
@@ -575,7 +579,7 @@ class RayTrialExecutor(TrialExecutor):
             with warn_if_slow("save_to_disk"):
                 checkpoint_path = ray.get(trial.runner.save.remote())
                 if checkpoint_path:
-                    trial.checkpoint.value = checkpoint_path
+                    trial.update_checkpoint(checkpoint_path)
         return trial.checkpoint.value
 
     def restore(self, trial, checkpoint=None):

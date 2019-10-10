@@ -114,21 +114,19 @@ class Trainable(object):
         Should be called immediately after ``__init__``. This is separated from
         ``__init__`` to support backwards-compatibility for the constructor.
 
-        Subclasses should NOT override this. Override _setup instad.
+        Subclasses should NOT override this. Override _setup instead.
 
         Args:
             tune_config (Dict[str, Any]): Configuration data.
         """
         self._checkpoint_attr = tune_config["checkpoint_score_attr"]
-        decreasing = self._checkpoint_attr.startswith("min-")
-        self._checkpoint_attr = self._checkpoint_attr[4:] \
-            if decreasing else self._checkpoint_attr
-
-        keep_checkpoints_num = tune_config["keep_checkpoint_num"]
+        order_by_desc = tune_config["checkpoint_score_desc"]
+        keep_checkpoints_num = tune_config["keep_checkpoints_num"]
         if keep_checkpoints_num:
             self._best_checkpoint_dirs = PriorityQueue(
-                keep_checkpoints_num, is_min_pq=not decreasing)
+                keep_checkpoints_num, is_min_pq=not order_by_desc)
         else:
+            # If we keep all checkpoints we don't need to track the best ones.
             self._best_checkpoint_dirs = None
 
     @classmethod
