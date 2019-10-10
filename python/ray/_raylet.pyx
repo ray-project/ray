@@ -391,22 +391,29 @@ cdef class RayletClient:
 
 cdef list deserialize_args(const c_vector[CTaskArg] &args):
     with profiling.profile("task:deserialize_arguments"):
-        result = []
+        results = []
+        ids_to_get = []
+        ids_to_get_indices = []
         for i in range(args.size()):
             if args[i].IsPassedByReference():
-                result.append(
-                    ray.get(ObjectID(args[i].GetReference().Binary())))
+                ids_to_get.append(
+                    ObjectID(args[i].GetReference().Binary()))
+                ids_to_get_indices.append(i)
+                results.append(None)
             else:
                 data = Buffer.make(args[i].GetValue().GetData())
                 if (args[i].GetValue().HasMetadata()
                     and Buffer.make(
                         args[i].GetValue().GetMetadata()).to_pybytes()
                         == RAW_BUFFER_METADATA):
-                    result.append(data)
+                    results.append(data)
                 else:
-                    result.append(pickle.loads(data))
+                    results.append(pickle.loads(data))
 
-    return result
+        for i, result in enumerate(ray.get(ids_to_get)):
+            results[ids_to_get_indices[i]] = result
+
+    return results
 
 cdef CRayStatus execute_normal_task(
         const CRayFunction &ray_function,

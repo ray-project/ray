@@ -854,7 +854,8 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         JobID::FromInt(1), gcs_options_, "", "127.0.0.1", nullptr, nullptr);
+                         JobID::FromInt(1), gcs_options_, "", "127.0.0.1", nullptr,
+                         nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
