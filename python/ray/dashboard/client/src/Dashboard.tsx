@@ -12,10 +12,7 @@ import AddIcon from "@material-ui/icons/Add";
 import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
-import { Route } from "react-router";
 import { Link as RouterLink } from "react-router-dom";
-import Errors from "./Errors";
-import Logs from "./Logs";
 import UsageBar from "./UsageBar";
 
 const formatByteAmount = (amount: number, unit: "mebibyte" | "gibibyte") =>
@@ -122,17 +119,15 @@ interface NodeInfo {
       memory_full_info: null;
     }>;
   }>;
-  logs: {
+  log_counts: {
     [ip: string]: {
-      [pid: string]: string[];
+      [pid: string]: number;
     };
   };
-  errors: {
-    [jobId: string]: Array<{
-      message: string;
-      timestamp: number;
-      type: string;
-    }>;
+  error_counts: {
+    [ip: string]: {
+      [pid: string]: number;
+    };
   };
 }
 
@@ -143,7 +138,7 @@ interface State {
   } | null;
   error: string | null;
   expanded: {
-    [hostname: string]: boolean;
+    [ip: string]: boolean;
   };
 }
 
@@ -160,7 +155,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
         "/api/node_info",
         process.env.NODE_ENV === "development"
           ? "http://localhost:8080"
-          : window.location.href
+          : window.location.origin
       );
       const response = await fetch(url.toString());
       const json = await response.json();
@@ -172,11 +167,11 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
     }
   };
 
-  toggleExpand = (hostname: string) => () => {
+  toggleExpand = (ip: string) => () => {
     this.setState(state => ({
       expanded: {
         ...state.expanded,
-        [hostname]: !state.expanded[hostname]
+        [ip]: !state.expanded[ip]
       }
     }));
   };
@@ -208,7 +203,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
     const { result, timestamp } = response;
 
     const logCounts: {
-      [hostname: string]: {
+      [ip: string]: {
         perWorker: {
           [pid: string]: number;
         };
@@ -217,7 +212,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
     } = {};
 
     const errorCounts: {
-      [hostname: string]: {
+      [ip: string]: {
         perWorker: {
           [pid: string]: number;
         };
@@ -226,52 +221,30 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
     } = {};
 
     for (const client of result.clients) {
-      logCounts[client.hostname] = { perWorker: {}, total: 0 };
-      errorCounts[client.hostname] = { perWorker: {}, total: 0 };
+      logCounts[client.ip] = { perWorker: {}, total: 0 };
+      errorCounts[client.ip] = { perWorker: {}, total: 0 };
       for (const worker of client.workers) {
-        logCounts[client.hostname].perWorker[worker.pid] = 0;
-        errorCounts[client.hostname].perWorker[worker.pid] = 0;
+        logCounts[client.ip].perWorker[worker.pid] = 0;
+        errorCounts[client.ip].perWorker[worker.pid] = 0;
       }
     }
 
-    for (const ip of Object.keys(result.logs)) {
-      let hostname: string | null = null;
-      for (const client of result.clients) {
-        if (ip === client.ip) {
-          hostname = client.hostname;
-          break;
-        }
-      }
-      if (hostname !== null) {
-        for (const pid of Object.keys(result.logs[ip])) {
-          const logCount = result.logs[ip][pid].length;
-          if (pid in logCounts[hostname].perWorker) {
-            logCounts[hostname].perWorker[pid] = logCount;
-          }
-          logCounts[hostname].total += logCount;
+    for (const ip of Object.keys(result.log_counts)) {
+      if (ip in logCounts) {
+        for (const [pid, count] of Object.entries(result.log_counts[ip])) {
+          logCounts[ip].perWorker[pid] = count;
+          logCounts[ip].total += count;
         }
       }
     }
 
-    for (const jobErrors of Object.values(result.errors)) {
-      for (const error of jobErrors) {
-        const match = error.message.match(/\(pid=(\d+), host=(.*?)\)/);
-        if (match !== null) {
-          const pid = match[1];
-          const hostname = match[2];
-          if (hostname in errorCounts) {
-            if (pid in errorCounts[hostname].perWorker) {
-              errorCounts[hostname].perWorker[pid]++;
-            }
-            errorCounts[hostname].total++;
-          }
+    for (const ip of Object.keys(result.error_counts)) {
+      if (ip in errorCounts) {
+        for (const [pid, count] of Object.entries(result.error_counts[ip])) {
+          errorCounts[ip].perWorker[pid] = count;
+          errorCounts[ip].total += count;
         }
       }
-    }
-
-    const ipToHostname: { [ip: string]: string } = {};
-    for (const client of result.clients) {
-      ipToHostname[client.ip] = client.hostname;
     }
 
     return (
@@ -281,7 +254,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
           <TableHead>
             <TableRow>
               <TableCell className={classes.cell} />
-              <TableCell className={classes.cell}>Hostname</TableCell>
+              <TableCell className={classes.cell}>Host</TableCell>
               <TableCell className={classes.cell}>Workers</TableCell>
               <TableCell className={classes.cell}>Uptime</TableCell>
               <TableCell className={classes.cell}>CPU</TableCell>
@@ -296,23 +269,23 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
           <TableBody>
             {result.clients.map(client => {
               return (
-                <React.Fragment key={client.hostname}>
+                <React.Fragment key={client.ip}>
                   <TableRow hover>
                     <TableCell
                       className={classNames(
                         classes.cell,
                         classes.expandCollapseCell
                       )}
-                      onClick={this.toggleExpand(client.hostname)}
+                      onClick={this.toggleExpand(client.ip)}
                     >
-                      {!expanded[client.hostname] ? (
+                      {!expanded[client.ip] ? (
                         <AddIcon className={classes.expandCollapseIcon} />
                       ) : (
                         <RemoveIcon className={classes.expandCollapseIcon} />
                       )}
                     </TableCell>
                     <TableCell className={classes.cell}>
-                      {client.hostname}
+                      {client.hostname} ({client.ip})
                     </TableCell>
                     <TableCell className={classes.cell}>
                       {client.workers.length}
@@ -356,7 +329,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                     {/*<TableCell className={classes.cell}>{(client.net[0] / Math.pow(1024, 2)).toFixed(3)} MiB/s</TableCell>*/}
                     {/*<TableCell className={classes.cell}>{(client.net[1] / Math.pow(1024, 2)).toFixed(3)} MiB/s</TableCell>*/}
                     <TableCell className={classes.cell}>
-                      {logCounts[client.hostname].total === 0 ? (
+                      {logCounts[client.ip].total === 0 ? (
                         <span className={classes.secondary}>No logs</span>
                       ) : (
                         <Link
@@ -364,16 +337,13 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                           to={`/logs/${client.hostname}`}
                         >
                           View all logs (
-                          {logCounts[client.hostname].total.toLocaleString()}{" "}
-                          {logCounts[client.hostname].total === 1
-                            ? "line"
-                            : "lines"}
-                          )
+                          {logCounts[client.ip].total.toLocaleString()}{" "}
+                          {logCounts[client.ip].total === 1 ? "line" : "lines"})
                         </Link>
                       )}
                     </TableCell>
                     <TableCell className={classes.cell}>
-                      {errorCounts[client.hostname].total === 0 ? (
+                      {errorCounts[client.ip].total === 0 ? (
                         <span className={classes.secondary}>No errors</span>
                       ) : (
                         <Link
@@ -381,12 +351,12 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                           to={`/errors/${client.hostname}`}
                         >
                           View all errors (
-                          {errorCounts[client.hostname].total.toLocaleString()})
+                          {errorCounts[client.ip].total.toLocaleString()})
                         </Link>
                       )}
                     </TableCell>
                   </TableRow>
-                  {expanded[client.hostname] &&
+                  {expanded[client.ip] &&
                     client.workers.map((worker, index: number) => (
                       <TableRow hover key={index}>
                         <TableCell className={classes.cell} />
@@ -425,8 +395,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                           </span>
                         </TableCell>
                         <TableCell className={classes.cell}>
-                          {logCounts[client.hostname].perWorker[worker.pid] ===
-                          0 ? (
+                          {logCounts[client.ip].perWorker[worker.pid] === 0 ? (
                             <span className={classes.secondary}>No logs</span>
                           ) : (
                             <Link
@@ -434,12 +403,10 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                               to={`/logs/${client.hostname}/${worker.pid}`}
                             >
                               View log (
-                              {logCounts[client.hostname].perWorker[
+                              {logCounts[client.ip].perWorker[
                                 worker.pid
                               ].toLocaleString()}{" "}
-                              {logCounts[client.hostname].perWorker[
-                                worker.pid
-                              ] === 1
+                              {logCounts[client.ip].perWorker[worker.pid] === 1
                                 ? "line"
                                 : "lines"}
                               )
@@ -447,9 +414,8 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                           )}
                         </TableCell>
                         <TableCell className={classes.cell}>
-                          {errorCounts[client.hostname].perWorker[
-                            worker.pid
-                          ] === 0 ? (
+                          {errorCounts[client.ip].perWorker[worker.pid] ===
+                          0 ? (
                             <span className={classes.secondary}>No errors</span>
                           ) : (
                             <Link
@@ -457,7 +423,7 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
                               to={`/errors/${client.hostname}/${worker.pid}`}
                             >
                               View errors (
-                              {errorCounts[client.hostname].perWorker[
+                              {errorCounts[client.ip].perWorker[
                                 worker.pid
                               ].toLocaleString()}
                               )
@@ -474,16 +440,6 @@ class Component extends React.Component<WithStyles<typeof styles>, State> {
         <Typography align="center">
           Last updated: {new Date(timestamp * 1000).toLocaleString()}
         </Typography>
-        <Route
-          path="/logs/:hostname/:pid?"
-          render={props => (
-            <Logs {...props} ipToHostname={ipToHostname} logs={result.logs} />
-          )}
-        />
-        <Route
-          path="/errors/:hostname/:pid?"
-          render={props => <Errors {...props} errors={result.errors} />}
-        />
       </div>
     );
   }
