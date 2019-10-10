@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import heapq
 import logging
 import threading
 import time
@@ -95,6 +96,43 @@ class UtilMonitor(Thread):
 
     def stop(self):
         self.stopped = True
+
+
+class PriorityQueue(object):
+    def __init__(self, max_size, is_min_pq=True):
+        """
+        Initializes a non-thread safe priority queue.
+
+        Args:
+            max_size (int): Maximum size of priority queue. Default (None) is
+                unbounded.
+            minimize (bool): True if min-PQ, False if max-PQ.
+        """
+        self._heap = []
+        self._max_size = max_size if max_size else float("inf")
+        self._is_min_pq = is_min_pq
+
+    def peek(self):
+        return self._heap[0][1]
+
+    def update(self, priority, value):
+        """Pushes values until max_size, then push-pops.
+
+        Args:
+            priority (Number): Priority of value.
+            value (Any): Value to store.
+
+        Returns:
+            Popped value if any, None otherwise.
+        """
+        priority = priority if self._is_min_pq else -priority
+        heap_item = (priority, value)
+        if len(self._heap) < self._max_size:
+            heapq.heappush(self._heap, heap_item)
+            return None
+        else:
+            _, worst = heapq.heappushpop(self._heap, heap_item)
+            return worst
 
 
 def pin_in_object_store(obj):

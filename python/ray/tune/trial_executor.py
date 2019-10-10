@@ -48,7 +48,7 @@ class TrialExecutor(object):
         Args:
             trial (Trial): Trial to checkpoint.
         """
-        if trial._checkpoint.storage == Checkpoint.MEMORY:
+        if trial.checkpoint.storage == Checkpoint.MEMORY:
             logger.debug("Not saving data for trial w/ memory checkpoint.")
             return
         try:
@@ -188,7 +188,7 @@ class TrialExecutor(object):
     def restore(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.
 
-        If checkpoint is None, try to restore from trial._checkpoint.
+        If checkpoint is None, try to restore from trial.checkpoint.
         If restoring fails, the trial status will be set to ERROR.
 
         Args:

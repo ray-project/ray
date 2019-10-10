@@ -22,7 +22,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
 
-from ray.tune.util import UtilMonitor
+from ray.tune.util import PriorityQueue, UtilMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,6 @@ class Trainable(object):
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
-        log_sys_usage = self.config.get("log_sys_usage", False)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -92,6 +91,11 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+
+        self._keep_checkpoints_num = None
+        self._last_checkpoint_attr_val = None
+        self._checkpoint_attr = None
+
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
@@ -101,7 +105,29 @@ class Trainable(object):
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
         self._local_ip = ray.services.get_node_ip_address()
+        log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
+
+    def _tune_setup(self, tune_config):
+        """Setup-function to avoid changing __init__ signature.
+
+        Subclasses should NOT override this. Override _setup instad.
+
+        Args:
+            tune_config (Dict[str, Any]): Configuration dictionary containing
+                the following parameters:
+                {keep_checkpoints_num, checkpoint_score_attr}
+        """
+        self._keep_checkpoints_num = tune_config["keep_checkpoint_num"]
+        self._checkpoint_attr = tune_config["checkpoint_score_attr"]
+        decreasing = self._checkpoint_attr.startswith("min-")
+        self._checkpoint_attr = self._checkpoint_attr[4:] \
+            if decreasing else self._checkpoint_attr
+        if self._keep_checkpoints_num:
+            self._best_checkpoint_dirs = PriorityQueue(
+                self._keep_checkpoints_num, is_min_pq=not decreasing)
+        else:
+            self._best_checkpoint_dirs = None
 
     @classmethod
     def default_resource_request(cls, config):
@@ -112,11 +138,11 @@ class Trainable(object):
 
         Example:
             >>> def default_resource_request(cls, config):
-                    return Resources(
-                        cpu=0,
-                        gpu=0,
-                        extra_cpu=config["workers"],
-                        extra_gpu=int(config["use_gpu"]) * config["workers"])
+            >>>     return Resources(
+            >>>         cpu=0,
+            >>>         gpu=0,
+            >>>         extra_cpu=config["workers"],
+            >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
         """
 
         return None
@@ -192,6 +218,13 @@ class Trainable(object):
         self._time_total += time_this_iter
         self._time_since_restore += time_this_iter
 
+        try:
+            if self._checkpoint_attr:
+                self._last_checkpoint_attr_val = result[self._checkpoint_attr]
+        except KeyError:
+            logger.warning("Result dict has no key: {}. keep_checkpoints_num "
+                           "flag will not work.".format(self._checkpoint_attr))
+
         result.setdefault(DONE, False)
 
         # self._timesteps_total should only be tracked if increments provided
@@ -239,7 +272,8 @@ class Trainable(object):
 
         return result
 
-    def delete_checkpoint(self, checkpoint_dir):
+    @classmethod
+    def delete_checkpoint(cls, checkpoint_dir):
         """Removes subdirectory within checkpoint_folder
 
         Args:
@@ -253,6 +287,8 @@ class Trainable(object):
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
+        Deletes the worst checkpoint if necessary.
+
         Subclasses should override ``_save()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
@@ -261,24 +297,34 @@ class Trainable(object):
 
         Returns:
             Checkpoint path or prefix that may be passed to restore().
+            None if state is not saved.
         """
+        checkpoint_dir = checkpoint_dir or self.logdir
+        cur_checkpoint_dir = os.path.join(
+            checkpoint_dir, "checkpoint_{}".format(self._iteration))
 
-        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
-                                      "checkpoint_{}".format(self._iteration))
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
-        checkpoint = self._save(checkpoint_dir)
+        if self._best_checkpoint_dirs and self._last_checkpoint_attr_val:
+            key, value = self._last_checkpoint_attr_val, cur_checkpoint_dir
+            popped = self._best_checkpoint_dirs.update(key, value)
+            if popped == cur_checkpoint_dir:
+                return None
+            elif popped:
+                self.delete_checkpoint(cur_checkpoint_dir)
+
+        if not os.path.exists(cur_checkpoint_dir):
+            os.makedirs(cur_checkpoint_dir)
+        checkpoint = self._save(cur_checkpoint_dir)
         saved_as_dict = False
         if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(checkpoint_dir):
+            if not checkpoint.startswith(cur_checkpoint_dir):
                 raise ValueError(
                     "The returned checkpoint path must be within the "
                     "given checkpoint dir {}: {}".format(
-                        checkpoint_dir, checkpoint))
+                        cur_checkpoint_dir, checkpoint))
             checkpoint_path = checkpoint
         elif isinstance(checkpoint, dict):
             saved_as_dict = True
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+            checkpoint_path = os.path.join(cur_checkpoint_dir, "checkpoint")
             with open(checkpoint_path, "wb") as f:
                 pickle.dump(checkpoint, f)
         else:
@@ -293,8 +339,13 @@ class Trainable(object):
                 "time_total": self._time_total,
                 "episodes_total": self._episodes_total,
                 "saved_as_dict": saved_as_dict,
-                "ray_version": ray.__version__
+                "ray_version": ray.__version__,
+                "keep_checkpoints_num": self._keep_checkpoints_num,
+                "last_checkpoint_attr_val": self._last_checkpoint_attr_val,
+                "checkpoint_attr": self._checkpoint_attr,
+                "best_checkpoint_dirs": self._best_checkpoint_dirs,
             }, f)
+
         return checkpoint_path
 
     def save_to_object(self):
@@ -308,7 +359,6 @@ class Trainable(object):
 
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-
         # Save all files in subtree.
         data = {}
         for basedir, _, file_names in os.walk(tmpdir):
@@ -344,6 +394,12 @@ class Trainable(object):
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
         self._episodes_total = metadata["episodes_total"]
+
+        self._keep_checkpoints_num = metadata["keep_checkpoints_num"],
+        self._last_checkpoint_attr_val = metadata["last_checkpoint_attr_val"]
+        self._checkpoint_attr = metadata["checkpoint_attr"]
+        self._best_checkpoint_dirs = metadata["best_checkpoint_dirs"]
+
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
             with open(checkpoint_path, "rb") as loaded_state:
