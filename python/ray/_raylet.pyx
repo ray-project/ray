@@ -112,6 +112,25 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     else:
         raise RayletError(message)
 
+cdef RayObjectsToDataMetadataPairs(
+        const c_vector[shared_ptr[CRayObject]] objects):
+    data_metadata_pairs = []
+    for i in range(objects.size()):
+        # core_worker will return a nullptr for objects that couldn't be
+        # retrieved from the store or if an object was an exception.
+        if not objects[i].get():
+            data_metadata_pairs.append((None, None))
+        else:
+            data = None
+            metadata = None
+            if objects[i].get().HasData():
+                data = Buffer.make(objects[i].get().GetData())
+            if objects[i].get().HasMetadata():
+                metadata = Buffer.make(
+                    objects[i].get().GetMetadata()).to_pybytes()
+            data_metadata_pairs.append((data, metadata))
+    return data_metadata_pairs
+
 
 cdef VectorToObjectIDs(const c_vector[CObjectID] &object_ids):
     result = []
@@ -389,36 +408,49 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
-cdef list deserialize_args(const c_vector[CTaskArg] &args):
+cdef list deserialize_args(
+        const c_vector[shared_ptr[CRayObject]] &args,
+        const c_vector[CObjectID] &arg_reference_ids):
+    cdef:
+        c_vector[shared_ptr[CRayObject]] by_reference_objects
+
     with profiling.profile("task:deserialize_arguments"):
         results = []
-        ids_to_get = []
-        ids_to_get_indices = []
+        by_reference_ids = []
+        by_reference_indices = []
         for i in range(args.size()):
-            if args[i].IsPassedByReference():
-                ids_to_get.append(
-                    ObjectID(args[i].GetReference().Binary()))
-                ids_to_get_indices.append(i)
-                results.append(None)
-            else:
-                data = Buffer.make(args[i].GetValue().GetData())
-                if (args[i].GetValue().HasMetadata()
+            # Passed by value.
+            if arg_reference_ids[i].IsNil():
+                data = Buffer.make(args[i].get().GetData())
+                if (args[i].get().HasMetadata()
                     and Buffer.make(
-                        args[i].GetValue().GetMetadata()).to_pybytes()
+                        args[i].get().GetMetadata()).to_pybytes()
                         == RAW_BUFFER_METADATA):
                     results.append(data)
                 else:
                     results.append(pickle.loads(data))
+            # Passed by reference.
+            else:
+                by_reference_ids.append(
+                    ObjectID(arg_reference_ids[i].Binary()))
+                by_reference_indices.append(i)
+                by_reference_objects.push_back(args[i])
+                results.append(None)
 
-        for i, result in enumerate(ray.get(ids_to_get)):
-            results[ids_to_get_indices[i]] = result
+        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+            by_reference_objects)
+        for i, result in enumerate(
+            ray.worker.global_worker.deserialize_objects(
+                data_metadata_pairs, by_reference_ids)):
+            results[by_reference_indices[i]] = result
 
     return results
 
 cdef CRayStatus execute_normal_task(
         const CRayFunction &ray_function,
         const CJobID &c_job_id, const CTaskID &c_task_id,
-        const c_vector[CTaskArg] &args,
+        const c_vector[shared_ptr[CRayObject]] &args,
+        const c_vector[CObjectID] &arg_reference_ids,
         const c_vector[CObjectID] &return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
@@ -450,7 +482,7 @@ cdef CRayStatus execute_normal_task(
             ray_function.GetFunctionDescriptor(),
             job_id,
             task_id,
-            deserialize_args(args),
+            deserialize_args(args, arg_reference_ids),
             VectorToObjectIDs(return_ids),
         )
 
@@ -475,7 +507,8 @@ cdef CRayStatus execute_actor_task(
         const CJobID &c_job_id, const CTaskID &c_task_id,
         const CActorID &c_actor_id, c_bool create_actor,
         const unordered_map[c_string, double] &resources,
-        const c_vector[CTaskArg] &args,
+        const c_vector[shared_ptr[CRayObject]] &args,
+        const c_vector[CObjectID] &arg_reference_ids,
         const c_vector[CObjectID] &return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
@@ -516,7 +549,7 @@ cdef CRayStatus execute_actor_task(
             task_id,
             ActorID(c_actor_id.Binary()),
             resource_map_to_dict(resources),
-            deserialize_args(args),
+            deserialize_args(args, arg_reference_ids),
             VectorToObjectIDs(return_ids),
             create_actor,
         )
@@ -581,23 +614,7 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Get(
                 c_object_ids, -1, &results))
 
-        data_metadata_pairs = []
-        for result in results:
-            # core_worker will return a nullptr for objects that couldn't be
-            # retrieved from the store or if an object was an exception.
-            if not result.get():
-                data_metadata_pairs.append((None, None))
-            else:
-                data = None
-                metadata = None
-                if result.get().HasData():
-                    data = Buffer.make(result.get().GetData())
-                if result.get().HasMetadata():
-                    metadata = Buffer.make(
-                        result.get().GetMetadata()).to_pybytes()
-                data_metadata_pairs.append((data, metadata))
-
-        return data_metadata_pairs
+        return RayObjectsToDataMetadataPairs(results)
 
     def object_exists(self, ObjectID object_id):
         cdef:

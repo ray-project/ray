@@ -466,9 +466,10 @@ class Worker(object):
             logger.warning(warning_message)
             self.store_and_register(object_id, value)
 
-    def retrieve_and_deserialize(self, object_ids, error_timeout=10):
-        data_metadata_pairs = self.core_worker.get_objects(
-            object_ids, self.current_task_id)
+    def deserialize_objects(self,
+                            data_metadata_pairs,
+                            object_ids,
+                            error_timeout=10):
         assert len(data_metadata_pairs) == len(object_ids)
 
         start_time = time.time()
@@ -562,9 +563,9 @@ class Worker(object):
         if self.mode == LOCAL_MODE:
             return self.local_mode_manager.get_objects(object_ids)
 
-        results = self.retrieve_and_deserialize(object_ids)
-        assert len(results) == len(object_ids)
-        return results
+        data_metadata_pairs = self.core_worker.get_objects(
+            object_ids, self.current_task_id)
+        return self.deserialize_objects(data_metadata_pairs, object_ids)
 
     def run_function_on_all_workers(self, function,
                                     run_on_other_drivers=False):

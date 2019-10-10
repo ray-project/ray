@@ -24,18 +24,24 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  // TODO
+  // Callback that must be implemented and provided by the language-specific worker
+  // frontend to execute normal tasks.
   using NormalTaskCallback = std::function<Status(
       const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
-      const std::vector<TaskArg> &args, const std::vector<ObjectID> &return_ids,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  // TODO
+  // Callback that must be implemented and provided by the language-specific worker
+  // frontend to execute actor creations and tasks.
   using ActorTaskCallback = std::function<Status(
       const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
       const ActorID &actor_id, bool create_actor,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<TaskArg> &args, const std::vector<ObjectID> &return_ids,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
@@ -60,9 +66,18 @@ class CoreWorkerTaskExecutionInterface {
   /// TODO
   ///
   /// \param spec[in] Task specification.
+  /// \param args[out] Argument data as RayObjects.
+  /// \param args[out] ObjectIDs corresponding to each by reference argument. The length
+  ///                  of this vector will be the same as args, and by value arguments
+  ///                  will have ObjectID::Nil().
+  ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
+  ///                  we have separate serialization paths for by-value and by-reference
+  ///                  arguments in Python. This should ideally be handled better there.
   /// \return The arguments for passing to task executor.
-  ///
   std::vector<TaskArg> BuildArgsForExecutor(const TaskSpecification &spec);
+  Status BuildArgsForExecutor(const TaskSpecification &task,
+                              std::vector<std::shared_ptr<RayObject>> *args,
+                              std::vector<ObjectID> *arg_reference_ids);
 
   /// Execute a task.
   ///

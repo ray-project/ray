@@ -25,9 +25,9 @@ class MockWorker {
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
                 JobID::FromInt(1), gcs_options, /*log_dir=*/"",
                 /*node_id_address=*/"127.0.0.1",
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6),
+                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7),
                 std::bind(&MockWorker::ExecuteActorTask, this, _1, _2, _3, _4, _5, _6, _7,
-                          _8, _9)) {}
+                          _8, _9, _10)) {}
 
   void Run() {
     // Start executing tasks.
@@ -39,12 +39,17 @@ class MockWorker {
       const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
       const ActorID &actor_id, bool create_actor,
       const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<TaskArg> &args, const std::vector<ObjectID> &return_ids,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results) {
-    return ExecuteTask(ray_function, job_id, task_id, args, return_ids, results);
+    return ExecuteTask(ray_function, job_id, task_id, args, arg_reference_ids, return_ids,
+                       results);
   }
   Status ExecuteTask(const RayFunction &ray_function, const JobID &job_id,
-                     const TaskID &task_id, const std::vector<TaskArg> &args,
+                     const TaskID &task_id,
+                     const std::vector<std::shared_ptr<RayObject>> &args,
+                     const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
@@ -53,8 +58,7 @@ class MockWorker {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
     for (const auto &arg : args) {
-      RAY_CHECK(!arg.IsPassedByReference());
-      auto &data = arg.GetValue().GetData();
+      auto &data = arg->GetData();
       buffer.insert(buffer.end(), data->Data(), data->Data() + data->Size());
     }
     if (buffer.size() >= 8) {
