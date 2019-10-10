@@ -97,13 +97,7 @@ if __name__ == "__main__":
             "type": "range",
             "bounds": [0.0, 1.0],
         },
-        {run(easy_objective,
-
-+        name="ax",
-
-+        search_alg=algo,
-
-+        scheduler=sche
+        {
             "name": "x6",
             "type": "range",
             "bounds": [0.0, 1.0],
