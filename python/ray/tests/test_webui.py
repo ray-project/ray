@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import sys
 import time
 
@@ -18,13 +19,12 @@ def test_get_webui(shutdown_only):
     webui_url = addresses["webui_url"]
     assert ray.get_webui_url() == webui_url
 
-    base, token = webui_url.split("?")
-    assert token.startswith("token=")
+    assert re.match(r"^http://\d+\.\d+\.\d+\.\d+:8080$", webui_url)
 
     start_time = time.time()
     while True:
         try:
-            node_info = requests.get(base + "api/node_info?" + token).json()
+            node_info = requests.get(webui_url + "/api/node_info").json()
             break
         except requests.exceptions.ConnectionError:
             if time.time() > start_time + 30:

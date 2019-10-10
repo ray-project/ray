@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import collections
 import json
 import logging
@@ -545,7 +544,7 @@ def check_version_info(redis_client):
     true_version_info = tuple(json.loads(ray.utils.decode(redis_reply)))
     version_info = _compute_version_info()
     if version_info != true_version_info:
-        node_ip_address = ray.services.get_node_ip_address()
+        node_ip_address = get_node_ip_address()
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
                          "    Python: " + true_version_info[1] + "\n"
@@ -1002,8 +1001,6 @@ def start_dashboard(redis_address,
         except socket.error:
             port += 1
 
-    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
-
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
@@ -1012,7 +1009,6 @@ def start_dashboard(redis_address,
         dashboard_filepath,
         "--redis-address={}".format(redis_address),
         "--http-port={}".format(port),
-        "--token={}".format(token),
         "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
@@ -1034,8 +1030,7 @@ def start_dashboard(redis_address,
         ray_constants.PROCESS_TYPE_DASHBOARD,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}/?token={}".format(
-        ray.services.get_node_ip_address(), port, token)
+    dashboard_url = "http://{}:{}".format(get_node_ip_address(), port)
     print("\n" + "=" * 70)
     print("View the dashboard at {}".format(dashboard_url))
     print("=" * 70 + "\n")
