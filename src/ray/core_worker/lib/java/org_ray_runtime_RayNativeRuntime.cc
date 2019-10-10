@@ -37,10 +37,12 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
   auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
   auto gcs_client_options = ToGcsClientOptions(env, gcsClientOptions);
 
-  auto executor_func = [](const ray::RayFunction &ray_function,
-                          const std::vector<std::shared_ptr<ray::RayObject>> &args,
-                          int num_returns, const ray::TaskSpecification &task_spec,
-                          std::vector<std::shared_ptr<ray::RayObject>> *results) {
+  auto normal_task_callback = [](const ray::RayFunction &ray_function,
+                                 const JobID &job_id, const TaskID &task_id,
+                                 const std::vector<std::shared_ptr<ray::RayObject>> &args,
+                                 const std::vector<ObjectID> &arg_reference_ids,
+                                 const std::vector<ObjectID> &return_ids,
+                                 std::vector<std::shared_ptr<ray::RayObject>> *results) {
     JNIEnv *env = local_env;
     RAY_CHECK(env);
     RAY_CHECK(local_java_task_executor);
@@ -67,12 +69,23 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
     }
     return ray::Status::OK();
   };
+  auto actor_task_callback =
+      [=](const ray::RayFunction &ray_function, const ray::JobID &job_id,
+          const ray::TaskID &task_id, const ray::ActorID &actor_id, bool create_actor,
+          const std::unordered_map<std::string, double> &required_resources,
+          const std::vector<std::shared_ptr<ray::RayObject>> &args,
+          const std::vector<ObjectID> &arg_reference_ids,
+          const std::vector<ObjectID> &return_ids,
+          std::vector<std::shared_ptr<ray::RayObject>> *results) {
+        return normal_task_callback(ray_function, job_id, task_id, args,
+                                    arg_reference_ids, return_ids, results);
+      };
 
   try {
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
         native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"",
-        /*node_ip_address=*/"", executor_func);
+        /*node_ip_address=*/"", normal_task_callback, actor_task_callback);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;
