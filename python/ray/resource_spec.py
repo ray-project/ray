@@ -131,6 +131,8 @@ class ResourceSpec(
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
 
+        # Automatically create a node id resource on each node. This is
+        # queryable with ray.get_node_ids() and ray.get_current_node_id().
         resources[NODE_ID_PREFIX + ray.services.get_node_ip_address()] = 1.0
 
         num_cpus = self.num_cpus
