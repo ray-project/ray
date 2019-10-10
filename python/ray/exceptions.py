@@ -63,9 +63,9 @@ class RayTaskError(RayError):
 
         class cls(RayTaskError, self.cause_cls):
             def __init__(self, function_name, traceback_str, cause_cls,
-                         proctitle, pid, host):
+                         proctitle, pid, ip):
                 RayTaskError.__init__(self, function_name, traceback_str,
-                                      cause_cls, proctitle, pid, host)
+                                      cause_cls, proctitle, pid, ip)
 
         name = "RayTaskError({})".format(self.cause_cls.__name__)
         cls.__name__ = name
