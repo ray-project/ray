@@ -272,6 +272,24 @@ class NodeStats(threading.Thread):
              for y in (v["workers"] for v in self._node_stats.values())
              for x in y))
 
+    def calculate_log_counts(self):
+        return {
+            ip: {
+                pid: len(logs_for_pid)
+                for pid, logs_for_pid in logs_for_ip.items()
+            }
+            for ip, logs_for_ip in self._logs.items()
+        }
+
+    def calculate_error_counts(self):
+        return {
+            ip: {
+                pid: len(errors_for_pid)
+                for pid, errors_for_pid in errors_for_ip.items()
+            }
+            for ip, errors_for_ip in self._errors.items()
+        }
+
     def purge_outdated_stats(self):
         def current(then, now):
             if (now - then) > 5:
@@ -283,20 +301,6 @@ class NodeStats(threading.Thread):
         self._node_stats = {
             k: v
             for k, v in self._node_stats.items() if current(v["now"], now)
-        }
-
-    def calculate_log_counts(self):
-        return {
-            ip: {pid: len(logs[pid])
-                 for pid in logs}
-            for ip, logs in self._logs.items()
-        }
-
-    def calculate_error_counts(self):
-        return {
-            ip: {pid: len(errors[pid])
-                 for pid in errors}
-            for ip, errors in self._errors.items()
         }
 
     def get_node_stats(self) -> Dict:
