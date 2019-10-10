@@ -52,6 +52,8 @@ struct NodeManagerConfig {
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
+  /// Whether to enable fair queueing between task classes in raylet.
+  bool fair_queueing_enabled;
   /// the maximum lineage size.
   uint64_t max_lineage_size;
   /// The store socket name.
@@ -304,7 +306,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param tasks_with_resources Mapping from resource shapes to tasks with
   /// that resource shape.
   void DispatchTasks(
-      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources);
+      const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class);
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -512,6 +514,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::chrono::milliseconds heartbeat_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
+  /// Whether to enable fair queueing between task classes in raylet.
+  bool fair_queueing_enabled_;
   /// Whether we have printed out a resource deadlock warning.
   bool resource_deadlock_warned_ = false;
   /// The path to the ray temp dir.
