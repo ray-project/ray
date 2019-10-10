@@ -109,14 +109,15 @@ class Trainable(object):
         self._monitor = UtilMonitor(start=log_sys_usage)
 
     def _tune_setup(self, tune_config):
-        """Setup-function to avoid changing __init__ signature.
+        """Setup-function that initializes state.
+
+        Should be called immediately after ``__init__``. This is separated from
+        ``__init__`` to support backwards-compatibility for the constructor.
 
         Subclasses should NOT override this. Override _setup instad.
 
         Args:
-            tune_config (Dict[str, Any]): Configuration dictionary containing
-                the following parameters:
-                {keep_checkpoints_num, checkpoint_score_attr}
+            tune_config (Dict[str, Any]): Configuration data.
         """
         self._checkpoint_attr = tune_config["checkpoint_score_attr"]
         decreasing = self._checkpoint_attr.startswith("min-")

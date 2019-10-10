@@ -572,7 +572,6 @@ class RayTrialExecutor(TrialExecutor):
         if storage == Checkpoint.MEMORY:
             trial.checkpoint.value = trial.runner.save_to_object.remote()
         else:
-            # Keeps only highest performing checkpoints if enabled
             with warn_if_slow("save_to_disk"):
                 checkpoint_path = ray.get(trial.runner.save.remote())
                 if checkpoint_path:
