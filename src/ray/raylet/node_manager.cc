@@ -786,8 +786,8 @@ void NodeManager::DispatchTasks(
   if (fair_queueing_enabled_) {
     std::sort(
         std::begin(fair_order), std::end(fair_order),
-        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
-               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
+        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *a,
+               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *b) {
           return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
