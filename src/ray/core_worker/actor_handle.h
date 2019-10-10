@@ -14,6 +14,7 @@ namespace ray {
 class ActorHandle {
  public:
   ActorHandle(ray::rpc::ActorHandle inner) : inner_(inner) {}
+  ActorHandle(const ActorHandle &other) : inner_(other.inner_) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,
@@ -22,23 +23,9 @@ class ActorHandle {
               const std::vector<std::string> &actor_creation_task_function_descriptor);
 
   /// Constructs an ActorHandle from a serialized string.
-  ActorHandle(const std::string &serialized, const TaskID &current_task_id);
-
-  /// Forks a child ActorHandle. This will modify the handle to account for the newly
-  /// forked child handle. This should only be used for forks that are part of a Ray
-  /// API call (e.g., passing an actor handle into a remote function).
-  std::unique_ptr<ActorHandle> Fork();
-
-  /// Forks a child ActorHandle. This will *not* modify the handle to account for the
-  /// newly forked child handle. This should be used by application-level code for
-  /// serialization in order to pass an actor handle for uses not covered by the Ray API.
-  std::unique_ptr<ActorHandle> ForkForSerialization();
+  ActorHandle(const std::string &serialized);
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
-
-  ActorHandleID GetActorHandleID() const {
-    return ActorHandleID::FromBinary(inner_.actor_handle_id());
-  };
 
   /// ID of the job that created the actor (it is possible that the handle
   /// exists on a job with a different job ID).
@@ -73,6 +60,7 @@ class ActorHandle {
   /// since the last task on this handle was submitted. This is
   /// used to garbage-collect dummy objects that are no longer
   /// necessary in the backend.
+  /// TODO: Remove.
   std::vector<ray::ActorHandleID> new_actor_handles_;
 
   std::mutex mutex_;

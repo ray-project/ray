@@ -21,63 +21,8 @@ ActorHandle::ActorHandle(
   task_counter_++;
 }
 
-std::unique_ptr<ActorHandle> ActorHandle::Fork() {
-  std::unique_lock<std::mutex> guard(mutex_);
-  std::unique_ptr<ActorHandle> child =
-      std::unique_ptr<ActorHandle>(new ActorHandle(inner_));
-  child->inner_ = inner_;
-  const class ActorHandleID new_actor_handle_id =
-      ComputeForkedActorHandleId(GetActorHandleID(), num_forks_++);
-  // Notify the backend to expect this new actor handle. The backend will
-  // not release the cursor for any new handles until the first task for
-  // each of the new handles is submitted.
-  // NOTE(swang): There is currently no garbage collection for actor
-  // handles until the actor itself is removed.
-  new_actor_handles_.push_back(new_actor_handle_id);
-  guard.unlock();
-
-  child->inner_.set_actor_handle_id(new_actor_handle_id.Data(),
-                                    new_actor_handle_id.Size());
-  return child;
-}
-
-std::unique_ptr<ActorHandle> ActorHandle::ForkForSerialization() {
-  std::unique_lock<std::mutex> guard(mutex_);
-  std::unique_ptr<ActorHandle> child =
-      std::unique_ptr<ActorHandle>(new ActorHandle(inner_));
-  child->inner_ = inner_;
-  // The execution dependency for a serialized actor handle is never safe
-  // to release, since it could be deserialized and submit another
-  // dependent task at any time. Therefore, we notify the backend of a
-  // random handle ID that will never actually be used.
-  new_actor_handles_.push_back(ActorHandleID::FromRandom());
-  guard.unlock();
-
-  // We set the actor handle ID to nil to signal that this actor handle was
-  // created by an out-of-band fork. A new actor handle ID will be computed
-  // when the handle is deserialized.
-  const class ActorHandleID new_actor_handle_id = ActorHandleID::Nil();
-  child->inner_.set_actor_handle_id(new_actor_handle_id.Data(),
-                                    new_actor_handle_id.Size());
-  return child;
-}
-
-ActorHandle::ActorHandle(const std::string &serialized, const TaskID &current_task_id) {
+ActorHandle::ActorHandle(const std::string &serialized) {
   inner_.ParseFromString(serialized);
-  // If the actor handle ID is nil, this serialized handle was created by an out-of-band
-  // mechanism (see fork constructor above), so we compute a new actor handle ID.
-  // TODO(pcm): This still leads to a lot of actor handles being
-  // created, there should be a better way to handle serialized
-  // actor handles.
-  // TODO(swang): Deserializing the same actor handle twice in the same
-  // task will break the application, and deserializing it twice in the
-  // same actor is likely a performance bug. We should consider
-  // logging a warning in these cases.
-  if (ActorHandleID::FromBinary(inner_.actor_handle_id()).IsNil()) {
-    const class ActorHandleID new_actor_handle_id = ComputeSerializedActorHandleId(
-        ActorHandleID::FromBinary(inner_.actor_handle_id()), current_task_id);
-    inner_.set_actor_handle_id(new_actor_handle_id.Data(), new_actor_handle_id.Size());
-  }
 }
 
 void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,

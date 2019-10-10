@@ -45,17 +45,14 @@ cdef class ActorHandle:
     def fork(self, c_bool ray_forking):
         cdef:
             ActorHandle other = ActorHandle.__new__(ActorHandle)
-        if ray_forking:
-            other.inner = self.inner.get().Fork()
-        else:
-            other.inner = self.inner.get().ForkForSerialization()
+        other.inner.reset(new CActorHandle(dereference(self.inner.get())))
         return other
 
     @staticmethod
     def from_bytes(c_string bytes, TaskID current_task_id):
         cdef:
             ActorHandle self = ActorHandle.__new__(ActorHandle)
-        self.inner.reset(new CActorHandle(bytes, current_task_id.native()))
+        self.inner.reset(new CActorHandle(bytes))
         return self
 
     def to_bytes(self):
@@ -67,6 +64,3 @@ cdef class ActorHandle:
 
     def actor_id(self):
         return ActorID(self.inner.get().GetActorID().Binary())
-
-    def actor_handle_id(self):
-        return ActorHandleID(self.inner.get().GetActorHandleID().Binary())

@@ -563,10 +563,6 @@ class ActorHandle(object):
     def _actor_id(self):
         return self._ray_core_handle.actor_id()
 
-    @property
-    def _actor_handle_id(self):
-        return self._ray_core_handle.actor_handle_id()
-
     def _serialization_helper(self, ray_forking):
         """This is defined in order to make pickling work.
 
