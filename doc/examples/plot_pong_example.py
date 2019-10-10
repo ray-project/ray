@@ -156,7 +156,7 @@ def rollout(model, env):
 # given an input, which in our case is an observation.
 
 
-class Model():
+class Model(object):
     """This class holds the neural network weights."""
 
     def __init__(self):

@@ -354,7 +354,7 @@ class NodeLauncher(threading.Thread):
         logger.info(prefix + " {}".format(statement))
 
 
-class ConcurrentCounter():
+class ConcurrentCounter(object):
     def __init__(self):
         self._value = 0
         self._lock = threading.Lock()
