@@ -69,6 +69,24 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
   return store_providers_[StoreProviderType::PLASMA]->Put(object, object_id);
 }
 
+Status CoreWorkerObjectInterface::PutAsync(const RayObject &object,
+                                           const ObjectID &object_id) {
+  RAY_CHECK(object_id.GetTransportType() ==
+            static_cast<uint8_t>(TaskTransportType::RAYLET))
+      << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
+  std::lock_guard<std::mutex> lock(mu_);
+  pending_async_puts_.push_back(std::make_pair(object, object_id));
+  return Status::OK();
+}
+
+Status CoreWorkerObjectInterface::FlushAsyncPuts() {
+  Status status;
+  std::lock_guard<std::mutex> lock(mu_);
+  status = store_providers_[StoreProviderType::PLASMA]->PutBatch(pending_async_puts_);
+  pending_async_puts_.clear();
+  return status;
+}
+
 Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,
                                          const size_t data_size,
                                          const ObjectID &object_id,

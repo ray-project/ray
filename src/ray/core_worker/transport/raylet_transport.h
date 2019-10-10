@@ -4,6 +4,7 @@
 #include <list>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/transport/transport.h"
@@ -68,16 +69,17 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   TaskHandler task_handler_;
   /// Event loop to run tasks on.
   boost::asio::io_service &task_main_io_service_;
+
   /// Mutex to protect the assigned task queues below.
-  std::mutex mutex_;
+  std::mutex mu_;
   /// List of tasks to execute next.
-  std::list<TaskSpecification> assigned_tasks_;
+  std::list<TaskSpecification> assigned_tasks_ GUARDED_BY(mu_);
   /// Number of tasks assigned in total in the last assign call.
-  int num_assigned_;
+  int num_assigned_ GUARDED_BY(mu_);
   /// Number of tasks stolen of those assigned.
-  int num_stolen_;
+  int num_stolen_ GUARDED_BY(mu_);
   /// RPC request being worked on.
-  rpc::AssignTaskRequest assigned_req_;
+  rpc::AssignTaskRequest assigned_req_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray

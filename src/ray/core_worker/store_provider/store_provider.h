@@ -32,6 +32,22 @@ class CoreWorkerStoreProvider {
   /// \return Status.
   virtual Status Put(const RayObject &object, const ObjectID &object_id) = 0;
 
+  /// Put a batch of objects into the object store.
+  ///
+  /// \param[in] objects List of objects to put.
+  /// \return Status.
+  virtual Status PutBatch(
+      const std::vector<std::pair<const RayObject, const ObjectID>> &objects) {
+    Status status;
+    for (const auto &pair : objects) {
+      status = Put(pair.first, pair.second);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+    return status;
+  };
+
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
   /// the object. The `Create()` and `Seal()` combination is an alternative interface

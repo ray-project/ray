@@ -74,6 +74,8 @@ cdef extern from "ray/core_worker/object_interface.h" nogil:
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus PutAsync(
+            const CRayObject &object, const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size, const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
