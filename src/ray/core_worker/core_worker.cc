@@ -90,7 +90,7 @@ CoreWorker::CoreWorker(
     builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
                               worker_context_.GetCurrentJobID(),
                               TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
-                              0, 0, empty_resources, empty_resources);
+                              0, GetCallerId(), 0, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -125,6 +125,15 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
   return std::unique_ptr<worker::ProfileEvent>(
       new worker::ProfileEvent(profiler_, event_type));
+}
+
+TaskID CoreWorker::GetCallerId() const {
+  TaskID caller_id = GetCurrentTaskId();
+  ActorID actor_id = GetActorId();
+  if (!actor_id.IsNil()) {
+    caller_id = TaskID::ForActorCreationTask(actor_id);
+  }
+  return caller_id;
 }
 
 }  // namespace ray

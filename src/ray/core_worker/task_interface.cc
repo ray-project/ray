@@ -24,7 +24,7 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const int task_index, const RayFunction &function, const std::vector<TaskArg> &args,
+    const int task_index, const TaskID &caller_id, const RayFunction &function, const std::vector<TaskArg> &args,
     uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
@@ -32,7 +32,9 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id,
-                            worker_context_.GetCurrentTaskID(), task_index, num_returns,
+                            worker_context_.GetCurrentTaskID(), task_index,
+                            caller_id,
+                            num_returns,
                             required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -52,7 +54,8 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
   }
 }
 
-Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
+Status CoreWorkerTaskInterface::SubmitTask(const TaskID &caller_id,
+    const RayFunction &function,
                                            const std::vector<TaskArg> &args,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
@@ -62,12 +65,13 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      next_task_index, function, args, task_options.num_returns,
+                      next_task_index, caller_id, function, args, task_options.num_returns,
                       task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
+    const TaskID &caller_id,
     const RayFunction &function, const std::vector<TaskArg> &args,
     const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
@@ -79,7 +83,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, next_task_index, function,
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, next_task_index, caller_id, function,
                       args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
                       TaskTransportType::RAYLET, &return_ids);
@@ -95,7 +99,7 @@ Status CoreWorkerTaskInterface::CreateActor(
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
-Status CoreWorkerTaskInterface::SubmitActorTask(const TaskID &actor_caller_id,
+Status CoreWorkerTaskInterface::SubmitActorTask(const TaskID &caller_id,
                                                 ActorHandle &actor_handle,
                                                 const RayFunction &function,
                                                 const std::vector<TaskArg> &args,
@@ -115,11 +119,11 @@ Status CoreWorkerTaskInterface::SubmitActorTask(const TaskID &actor_caller_id,
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle.GetActorID());
   BuildCommonTaskSpec(builder, actor_handle.CreationJobID(), actor_task_id,
-                      next_task_index, function, args, num_returns,
+                      next_task_index, caller_id, function, args, num_returns,
                       task_options.resources, {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
-  actor_handle.SetActorTaskSpec(builder, actor_caller_id, transport_type, new_cursor);
+  actor_handle.SetActorTaskSpec(builder, transport_type, new_cursor);
 
   // Submit task.
   auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());

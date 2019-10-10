@@ -95,6 +95,8 @@ class CoreWorker {
     return actor_id_;
   }
 
+  TaskID GetCallerId() const;
+
  private:
   void StartIOService();
 

@@ -116,6 +116,7 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
       send_queue_;
 
   /// The next sequence number to assign to a task for this server.
+  // TODO: Use the task counter in the ActorHandle.
   int64_t next_seq_no_ = 0;
 
   /// The number of bytes currently in flight.

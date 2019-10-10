@@ -230,7 +230,7 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   TaskHandler task_handler_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<ActorHandleID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
+  std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
 };
 
 }  // namespace ray

@@ -574,6 +574,7 @@ class ActorHandle(object):
             A dictionary of the information needed to reconstruct the object.
         """
         state = {
+            # TODO: Simplify this. Do we need to fork it?
             "core_handle": self._ray_core_handle.fork(ray_forking).to_bytes(),
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,

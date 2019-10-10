@@ -252,10 +252,10 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
-  auto it = scheduling_queue_.find(task_spec.ActorHandleId());
+  auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.ActorHandleId(),
+        task_spec.CallerId(),
         std::unique_ptr<SchedulingQueue>(new SchedulingQueue(io_service_)));
     it = result.first;
   }

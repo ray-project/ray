@@ -247,7 +247,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param actor_id The relevant actor ID.
   /// \param actor_handle_id The relevant actor handle ID.
   void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
-                           const ActorHandleID &actor_handle_id);
+                           const TaskID &caller_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///

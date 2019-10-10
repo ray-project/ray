@@ -42,7 +42,7 @@ class ActorHandle {
 
   bool IsDirectCallActor() const { return inner_.is_direct_call(); }
 
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskID &actor_caller_id,
+  void SetActorTaskSpec(TaskSpecBuilder &builder,
                         const TaskTransportType transport_type, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
@@ -54,6 +54,7 @@ class ActorHandle {
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter
   /// only.
+  // TODO: Save this state in the core worker.
   ObjectID actor_cursor_;
   // Number of tasks that have been submitted on this handle.
   uint64_t task_counter_ = 0;
