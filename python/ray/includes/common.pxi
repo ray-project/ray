@@ -31,7 +31,7 @@ cdef class ActorHandle:
     cdef:
         unique_ptr[CActorHandle] inner
 
-    def __init__(self, ActorID actor_id, ActorHandleID actor_handle_id,
+    def __init__(self, ActorID actor_id,
                  JobID job_id, list creation_function_descriptor):
         cdef:
             c_vector[c_string] c_descriptor
@@ -39,7 +39,7 @@ cdef class ActorHandle:
 
         c_descriptor = string_vector_from_list(creation_function_descriptor)
         self.inner.reset(new CActorHandle(
-            actor_id.native(), actor_handle_id.native(), job_id.native(),
+            actor_id.native(), job_id.native(),
             cursor.native(), LANGUAGE_PYTHON, False, c_descriptor))
 
     def fork(self, c_bool ray_forking):

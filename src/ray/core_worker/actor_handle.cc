@@ -5,12 +5,11 @@
 namespace ray {
 
 ActorHandle::ActorHandle(
-    const class ActorID &actor_id, const class ActorHandleID &actor_handle_id,
+    const class ActorID &actor_id,
     const class JobID &job_id, const ObjectID &initial_cursor,
     const Language actor_language, bool is_direct_call,
     const std::vector<std::string> &actor_creation_task_function_descriptor) {
   inner_.set_actor_id(actor_id.Data(), actor_id.Size());
-  inner_.set_actor_handle_id(actor_handle_id.Data(), actor_handle_id.Size());
   inner_.set_creation_job_id(job_id.Data(), job_id.Size());
   inner_.set_actor_language(actor_language);
   *inner_.mutable_actor_creation_task_function_descriptor() = {

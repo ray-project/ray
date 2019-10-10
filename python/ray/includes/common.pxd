@@ -200,7 +200,7 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
 
     cdef cppclass CActorHandle "ray::ActorHandle":
         CActorHandle(
-            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
+            const CActorID &actor_id,
             const CJobID &job_id, const CObjectID &initial_cursor,
             const CLanguage actor_language, c_bool is_direct_call,
             const c_vector[c_string] &actor_creation_task_function_descriptor)

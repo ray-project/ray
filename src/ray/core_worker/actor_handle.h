@@ -16,7 +16,7 @@ class ActorHandle {
   ActorHandle(ray::rpc::ActorHandle inner) : inner_(inner) {}
 
   // Constructs a new ActorHandle as part of the actor creation process.
-  ActorHandle(const ActorID &actor_id, const ActorHandleID &actor_handle_id,
+  ActorHandle(const ActorID &actor_id,
               const JobID &job_id, const ObjectID &initial_cursor,
               const Language actor_language, bool is_direct_call,
               const std::vector<std::string> &actor_creation_task_function_descriptor);
