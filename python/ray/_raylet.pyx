@@ -432,6 +432,13 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentTaskId(c_task_id)
 
+    def set_actor_id(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            self.core_worker.get().SetActorId(c_actor_id)
+
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
 
@@ -680,6 +687,7 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
+            CTaskID actor_caller_id
 
         with profiling.profile("submit_task"):
             prepare_resources(resources, &c_resources)
@@ -688,8 +696,17 @@ cdef class CoreWorker:
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
 
+            # For non-actors, the caller ID is the ID of the currently running
+            # task. For actors, the caller ID is the actor ID, embedded in the
+            # actor creation task ID so that all caller IDs have type TaskID.
+            actor_caller_id = self.core_worker.get().GetCurrentTaskId();
+            actor_id = self.core_worker.get().GetActorId()
+            if not actor_id.IsNil():
+                actor_caller_id = CTaskID.ForActorCreationTask(actor_id)
+
             with nogil:
                 check_status(self.core_worker.get().Tasks().SubmitActorTask(
+                      actor_caller_id,
                       handle.inner.get()[0], ray_function,
                       args_vector, task_options, &return_ids))
 

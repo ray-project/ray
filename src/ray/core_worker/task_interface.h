@@ -91,13 +91,16 @@ class CoreWorkerTaskInterface {
 
   /// Submit an actor task.
   ///
+  /// \param[in] actor_caller_id ID of the task submitter.
   /// \param[in] actor_handle Handle to the actor.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
+  Status SubmitActorTask(const TaskID &actor_caller_id,
+                         ActorHandle &actor_handle,
+                         const RayFunction &function,
                          const std::vector<TaskArg> &args,
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);

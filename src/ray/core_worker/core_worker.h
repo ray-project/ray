@@ -86,6 +86,15 @@ class CoreWorker {
     worker_context_.SetCurrentTaskId(task_id);
   }
 
+  void SetActorId(const ActorID &actor_id) {
+    RAY_CHECK(actor_id_.IsNil());
+    actor_id_ = actor_id;
+  }
+
+  const ActorID &GetActorId() const {
+    return actor_id_;
+  }
+
  private:
   void StartIOService();
 
@@ -94,6 +103,7 @@ class CoreWorker {
   const std::string raylet_socket_;
   const std::string log_dir_;
   WorkerContext worker_context_;
+  ActorID actor_id_;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;

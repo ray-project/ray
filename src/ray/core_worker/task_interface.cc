@@ -88,14 +88,15 @@ Status CoreWorkerTaskInterface::CreateActor(
                                    actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-      actor_id, ActorHandleID::Nil(), job_id, /*actor_cursor=*/return_ids[0],
+      actor_id, job_id, /*actor_cursor=*/return_ids[0],
       function.GetLanguage(), actor_creation_options.is_direct_call,
       function.GetFunctionDescriptor()));
 
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
-Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
+Status CoreWorkerTaskInterface::SubmitActorTask(const TaskID &actor_caller_id,
+                                                ActorHandle &actor_handle,
                                                 const RayFunction &function,
                                                 const std::vector<TaskArg> &args,
                                                 const TaskOptions &task_options,
@@ -118,7 +119,7 @@ Status CoreWorkerTaskInterface::SubmitActorTask(ActorHandle &actor_handle,
                       task_options.resources, {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
-  actor_handle.SetActorTaskSpec(builder, transport_type, new_cursor);
+  actor_handle.SetActorTaskSpec(builder, actor_caller_id, transport_type, new_cursor);
 
   // Submit task.
   auto status = task_submitters_[transport_type]->SubmitTask(builder.Build());

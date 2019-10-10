@@ -54,8 +54,8 @@ class ActorHandle {
 
   bool IsDirectCallActor() const { return inner_.is_direct_call(); }
 
-  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
-                        const ObjectID new_cursor);
+  void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskID &actor_caller_id,
+                        const TaskTransportType transport_type, const ObjectID new_cursor);
 
   void Serialize(std::string *output);
 
