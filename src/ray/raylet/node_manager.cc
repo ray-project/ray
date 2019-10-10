@@ -342,8 +342,9 @@ void NodeManager::Heartbeat() {
     // heartbeat, sample from them randomly.
     // TODO(edoakes): we might want to improve the sampling technique here, for example
     // preferring object IDs with the earliest last-refreshed timestamp.
-    std::vector<ObjectID> downsampled =
-        random_sample(active_object_ids.begin(), active_object_ids.end(), max_size);
+    std::vector<ObjectID> downsampled;
+    random_sample(active_object_ids.begin(), active_object_ids.end(), max_size,
+                  &downsampled);
     for (const auto &object_id : downsampled) {
       std::string object_id_bytes = object_id.Binary();
       heartbeat_data->add_active_object_id(object_id_bytes.data(),

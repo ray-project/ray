@@ -7,26 +7,27 @@
 // Randomly samples num_elements from the elements between first and last using reservoir
 // sampling.
 template <class Iterator, class T = typename std::iterator_traits<Iterator>::value_type>
-std::vector<T> random_sample(Iterator begin, Iterator end, size_t num_elements) {
+void random_sample(Iterator begin, Iterator end, size_t num_elements,
+                   std::vector<T> *out) {
+  out->resize(0);
   absl::BitGen gen;
-  std::vector<T> result;
   if (num_elements == 0) {
-    return result;
+    return;
   }
 
   size_t current_index = 0;
   for (auto it = begin; it != end; it++) {
     if (current_index < num_elements) {
-      result.push_back(*it);
+      out->push_back(*it);
     } else {
       size_t random_index = absl::uniform_int_distribution<size_t>(0, current_index)(gen);
       if (random_index < num_elements) {
-        result.at(random_index) = *it;
+        out->at(random_index) = *it;
       }
     }
     current_index++;
   }
-  return result;
+  return;
 }
 
 #endif  // RAY_UTIL_SAMPLE_H
