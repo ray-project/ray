@@ -13,13 +13,11 @@ cdef class TaskSpec:
     """Cython wrapper class of C++ `ray::TaskSpecification`."""
     cdef:
         const CTaskSpec *task_spec
-        c_bool is_owner
 
     @staticmethod
     cdef make(const CTaskSpec& task_spec):
         cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
         self.task_spec = &task_spec
-        self.is_owner = False
         return self
 
     @staticmethod
