@@ -70,7 +70,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
     return ray::Status::OK();
   };
   auto actor_task_callback =
-      [=](const ray::RayFunction &ray_function, const ray::JobID &job_id,
+      [&](const ray::RayFunction &ray_function, const ray::JobID &job_id,
           const ray::TaskID &task_id, const ray::ActorID &actor_id, bool create_actor,
           const std::unordered_map<std::string, double> &required_resources,
           const std::vector<std::shared_ptr<ray::RayObject>> &args,
