@@ -7,6 +7,8 @@ try:
 except ImportError:
     setproctitle = None
 
+import ray
+
 
 class RayError(Exception):
     """Super class of all ray exception types."""
@@ -34,7 +36,7 @@ class RayTaskError(RayError):
                  cause_cls,
                  proctitle=None,
                  pid=None,
-                 host=None):
+                 ip=None):
         """Initialize a RayTaskError."""
         if proctitle:
             self.proctitle = proctitle
@@ -43,7 +45,7 @@ class RayTaskError(RayError):
         else:
             self.proctitle = "ray_worker"
         self.pid = pid or os.getpid()
-        self.host = host or os.uname()[1]
+        self.ip = ip or ray.services.get_node_ip_address()
         self.function_name = function_name
         self.traceback_str = traceback_str
         self.cause_cls = cause_cls
@@ -70,7 +72,7 @@ class RayTaskError(RayError):
         cls.__qualname__ = name
 
         return cls(self.function_name, self.traceback_str, self.cause_cls,
-                   self.proctitle, self.pid, self.host)
+                   self.proctitle, self.pid, self.ip)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -79,9 +81,9 @@ class RayTaskError(RayError):
         in_worker = False
         for line in lines:
             if line.startswith("Traceback "):
-                out.append("{}{}{} (pid={}, host={})".format(
+                out.append("{}{}{} (pid={}, ip={})".format(
                     colorama.Fore.CYAN, self.proctitle, colorama.Fore.RESET,
-                    self.pid, self.host))
+                    self.pid, self.ip))
             elif in_worker:
                 in_worker = False
             elif "ray/worker.py" in line or "ray/function_manager.py" in line:
