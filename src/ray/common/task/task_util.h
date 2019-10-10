@@ -110,8 +110,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetActorTaskSpec(
       const ActorID &actor_id, const TaskID &actor_caller_id,
       const ObjectID &actor_creation_dummy_object_id,
-      const ObjectID &previous_actor_task_dummy_object_id, uint64_t actor_counter,
-      const std::vector<ActorHandleID> &new_handle_ids = {}) {
+      const ObjectID &previous_actor_task_dummy_object_id, uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
@@ -122,9 +121,6 @@ class TaskSpecBuilder {
     actor_spec->set_previous_actor_task_dummy_object_id(
         previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
-    for (const auto &id : new_handle_ids) {
-      actor_spec->add_new_actor_handles(id.Binary());
-    }
     return *this;
   }
 
