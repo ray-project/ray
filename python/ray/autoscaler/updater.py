@@ -287,7 +287,7 @@ class SSHCommandRunner(object):
             stdout=redirect,
             stderr=redirect)
 
-    def rsync_down(self, source, target, redirect=None):
+    def run_rsync_down(self, source, target, redirect=None):
         self.set_ssh_ip_if_required()
         self.process_runner.check_call(
             [
