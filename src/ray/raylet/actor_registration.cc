@@ -9,7 +9,11 @@ namespace ray {
 namespace raylet {
 
 ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data)
-    : actor_table_data_(actor_table_data) {}
+    : actor_table_data_(actor_table_data) {
+  // The first task submitted on each new actor handle will depend on the actor
+  // creation object, so we always pin it.
+  dummy_objects_[GetActorCreationDependency()]++;
+}
 
 ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
                                      const ActorCheckpointData &checkpoint_data)

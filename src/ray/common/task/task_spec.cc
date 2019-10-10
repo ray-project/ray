@@ -114,16 +114,15 @@ std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
       message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
+TaskID TaskSpecification::CallerId() const {
+  return TaskID::FromBinary(message_->caller_id());
+}
+
 // === Below are getter methods specific to actor tasks.
 
 ActorID TaskSpecification::ActorId() const {
   RAY_CHECK(IsActorTask());
   return ActorID::FromBinary(message_->actor_task_spec().actor_id());
-}
-
-TaskID TaskSpecification::CallerId() const {
-  RAY_CHECK(IsActorTask());
-  return TaskID::FromBinary(message_->caller_id());
 }
 
 uint64_t TaskSpecification::ActorCounter() const {
