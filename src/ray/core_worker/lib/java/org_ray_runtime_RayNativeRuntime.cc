@@ -70,15 +70,38 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
     return ray::Status::OK();
   };
   auto actor_task_callback =
-      [&](const ray::RayFunction &ray_function, const ray::JobID &job_id,
-          const ray::TaskID &task_id, const ray::ActorID &actor_id, bool create_actor,
-          const std::unordered_map<std::string, double> &required_resources,
-          const std::vector<std::shared_ptr<ray::RayObject>> &args,
-          const std::vector<ObjectID> &arg_reference_ids,
-          const std::vector<ObjectID> &return_ids,
-          std::vector<std::shared_ptr<ray::RayObject>> *results) {
-        return normal_task_callback(ray_function, job_id, task_id, args,
-                                    arg_reference_ids, return_ids, results);
+      [](const ray::RayFunction &ray_function, const ray::JobID &job_id,
+         const ray::TaskID &task_id, const ray::ActorID &actor_id, bool create_actor,
+         const std::unordered_map<std::string, double> &required_resources,
+         const std::vector<std::shared_ptr<ray::RayObject>> &args,
+         const std::vector<ObjectID> &arg_reference_ids,
+         const std::vector<ObjectID> &return_ids,
+         std::vector<std::shared_ptr<ray::RayObject>> *results) {
+        JNIEnv *env = local_env;
+        RAY_CHECK(env);
+        RAY_CHECK(local_java_task_executor);
+        // convert RayFunction
+        jobject ray_function_array_list =
+            NativeStringVectorToJavaStringList(env, ray_function.GetFunctionDescriptor());
+        // convert args
+        // TODO (kfstorm): Avoid copying binary data from Java to C++
+        jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
+            env, args, NativeRayObjectToJavaNativeRayObject);
+
+        // invoke Java method
+        jobject java_return_objects =
+            env->CallObjectMethod(local_java_task_executor, java_task_executor_execute,
+                                  ray_function_array_list, args_array_list);
+        std::vector<std::shared_ptr<ray::RayObject>> return_objects;
+        JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
+            env, java_return_objects, &return_objects,
+            [](JNIEnv *env, jobject java_native_ray_object) {
+              return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
+            });
+        for (auto &obj : return_objects) {
+          results->push_back(obj);
+        }
+        return ray::Status::OK();
       };
 
   try {
