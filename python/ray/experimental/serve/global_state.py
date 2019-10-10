@@ -98,6 +98,8 @@ class GlobalState:
             logger.debug((LOG_PREFIX + "Checking if HTTP server is ready."
                           "{} retries left.").format(retries))
             time.sleep(backoff_time_s)
+            # Exponential backoff
+            backoff_time_s *= 2
             retries -= 1
             if retries == 0:
                 raise Exception(
