@@ -16,65 +16,70 @@ const styles = (theme: Theme) =>
     },
     closeButton: {
       position: "absolute",
-      right: theme.spacing(1),
-      top: theme.spacing(1),
+      right: theme.spacing(1.5),
+      top: theme.spacing(1.5),
       zIndex: 1
     },
     title: {
       borderBottomColor: theme.palette.divider,
       borderBottomStyle: "solid",
       borderBottomWidth: 1,
+      fontSize: "1.5rem",
       lineHeight: 1,
       marginBottom: theme.spacing(3),
-      paddingBottom: theme.spacing(3),
-      position: "relative",
-      "&:not(:first-of-type)": {
-        marginTop: theme.spacing(3)
-      }
+      paddingBottom: theme.spacing(3)
+    },
+    header: {
+      lineHeight: 1,
+      marginBottom: theme.spacing(3),
+      marginTop: theme.spacing(3)
     }
   });
 
-interface Props {
-  ipToHostname: {
-    [ip: string]: string;
-  };
-  logs: {
-    [ip: string]: {
-      [pid: string]: string[];
-    };
-  };
+interface State {
+  result: { [pid: string]: string[] } | null;
+  error: string | null;
 }
 
 class Component extends React.Component<
-  Props &
-    WithStyles<typeof styles> &
-    RouteComponentProps<{ hostname: string; pid: string | undefined }>
+  WithStyles<typeof styles> &
+    RouteComponentProps<{ hostname: string; pid: string | undefined }>,
+  State
 > {
+  state: State = {
+    result: null,
+    error: null
+  };
+
   handleClose = () => {
     this.props.history.push("/");
   };
 
-  render() {
-    const { classes, ipToHostname, logs, match } = this.props;
-    const { hostname, pid } = match.params;
-
-    let logsForHost: {
-      [pid: string]: string[];
-    } = {};
-
-    for (const ip of Object.keys(ipToHostname)) {
-      if (ipToHostname[ip] === hostname) {
-        if (ip in logs) {
-          logsForHost = logs[ip];
-        }
-        break;
-      }
+  async componentDidMount() {
+    try {
+      const { match } = this.props;
+      const { hostname, pid } = match.params;
+      const url = new URL(
+        "/api/logs",
+        process.env.NODE_ENV === "development"
+          ? "http://localhost:8080"
+          : window.location.origin
+      );
+      url.searchParams.set("hostname", hostname);
+      url.searchParams.set("pid", pid || "");
+      const response = await fetch(url.toString());
+      const json = await response.json();
+      this.setState({ result: json.result, error: null });
+    } catch (error) {
+      this.setState({ result: null, error: error.toString() });
     }
+  }
 
-    const logsToDisplay =
-      pid === undefined
-        ? logsForHost
-        : { [pid]: pid in logsForHost ? logsForHost[pid] : [] };
+  render() {
+    const { classes, match } = this.props;
+    const { result, error } = this.state;
+
+    const { hostname } = match.params;
 
     return (
       <Dialog
@@ -88,18 +93,25 @@ class Component extends React.Component<
         <IconButton className={classes.closeButton} onClick={this.handleClose}>
           <CloseIcon />
         </IconButton>
-        {Object.entries(logsToDisplay).map(([pid, lines]) => (
-          <React.Fragment key={pid}>
-            <Typography className={classes.title}>
-              {hostname} (PID: {pid})
-            </Typography>
-            {lines.length > 0 ? (
-              <NumberedLines lines={lines} />
-            ) : (
-              <Typography color="textSecondary">No logs found.</Typography>
-            )}
-          </React.Fragment>
-        ))}
+        <Typography className={classes.title}>Logs</Typography>
+        {error !== null ? (
+          <Typography color="error">{error}</Typography>
+        ) : result === null ? (
+          <Typography color="textSecondary">Loading...</Typography>
+        ) : (
+          Object.entries(result).map(([pid, lines]) => (
+            <React.Fragment key={pid}>
+              <Typography className={classes.header}>
+                {hostname} (PID: {pid})
+              </Typography>
+              {lines.length > 0 ? (
+                <NumberedLines lines={lines} />
+              ) : (
+                <Typography color="textSecondary">No logs found.</Typography>
+              )}
+            </React.Fragment>
+          ))
+        )}
       </Dialog>
     );
   }

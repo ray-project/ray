@@ -660,7 +660,7 @@ class FunctionActorManager(object):
             module = importlib.import_module(module_name)
             actor_class = getattr(module, class_name)
             if isinstance(actor_class, ray.actor.ActorClass):
-                return actor_class._modified_class
+                return actor_class.__ray_metadata__.modified_class
             else:
                 return actor_class
         except Exception:
