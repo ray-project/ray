@@ -12,18 +12,23 @@ ReconstructionPolicy::ReconstructionPolicy(
     int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
     gcs::PubsubInterface<TaskID> &task_lease_pubsub,
     std::shared_ptr<ObjectDirectoryInterface> object_directory,
-    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log)
+    gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
+    bool single_node)
     : io_service_(io_service),
       reconstruction_handler_(reconstruction_handler),
       initial_reconstruction_timeout_ms_(initial_reconstruction_timeout_ms),
       client_id_(client_id),
       task_lease_pubsub_(task_lease_pubsub),
       object_directory_(std::move(object_directory)),
-      task_reconstruction_log_(task_reconstruction_log) {}
+      task_reconstruction_log_(task_reconstruction_log),
+      single_node_(single_node) {}
 
 void ReconstructionPolicy::SetTaskTimeout(
     std::unordered_map<TaskID, ReconstructionTask>::iterator task_it,
     int64_t timeout_ms) {
+  if (single_node_) {
+    return;
+  }
   task_it->second.expires_at = current_time_ms() + timeout_ms;
   auto timeout = boost::posix_time::milliseconds(timeout_ms);
   task_it->second.reconstruction_timer->expires_from_now(timeout);
@@ -172,6 +177,9 @@ void ReconstructionPolicy::HandleTaskLeaseNotification(const TaskID &task_id,
 }
 
 void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) {
+  if (single_node_) {
+    return;
+  }
   RAY_LOG(DEBUG) << "Listening and maybe reconstructing object " << object_id;
   TaskID task_id = object_id.TaskId();
   auto it = listening_tasks_.find(task_id);

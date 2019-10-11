@@ -96,7 +96,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client_->task_lease_table(),
-          object_directory_, gcs_client_->task_reconstruction_log()),
+          object_directory_, gcs_client_->task_reconstruction_log(), config.single_node),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service,
           gcs_client_->client_table().GetLocalClientId(),

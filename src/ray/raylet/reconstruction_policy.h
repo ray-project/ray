@@ -46,7 +46,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
       int64_t initial_reconstruction_timeout_ms, const ClientID &client_id,
       gcs::PubsubInterface<TaskID> &task_lease_pubsub,
       std::shared_ptr<ObjectDirectoryInterface> object_directory,
-      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log);
+      gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log,
+      bool single_node);
 
   /// Listen for task lease notifications about an object that may require
   /// reconstruction. If no notifications are received within the initial
@@ -146,6 +147,8 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   gcs::LogInterface<TaskID, TaskReconstructionData> &task_reconstruction_log_;
   /// The tasks that we are currently subscribed to in the GCS.
   std::unordered_map<TaskID, ReconstructionTask> listening_tasks_;
+  /// Whether we are running in single node mode.
+  const bool single_node_;
 };
 
 }  // namespace raylet

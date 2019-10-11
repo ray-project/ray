@@ -3,8 +3,9 @@
 namespace ray {
 
 ObjectDirectory::ObjectDirectory(boost::asio::io_service &io_service,
-                                 std::shared_ptr<gcs::RedisGcsClient> &gcs_client)
-    : io_service_(io_service), gcs_client_(gcs_client) {}
+                                 std::shared_ptr<gcs::RedisGcsClient> &gcs_client,
+                                 bool single_node)
+    : io_service_(io_service), gcs_client_(gcs_client), single_node_(single_node) {}
 
 namespace {
 
@@ -81,6 +82,9 @@ void ObjectDirectory::RegisterBackend() {
 ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
+  if (single_node_) {
+    return ray::Status::OK();
+  }
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
   // Append the addition entry to the object table.
   auto data = std::make_shared<ObjectTableData>();
@@ -94,6 +98,9 @@ ray::Status ObjectDirectory::ReportObjectAdded(
 ray::Status ObjectDirectory::ReportObjectRemoved(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
+  if (single_node_) {
+    return ray::Status::OK();
+  }
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
   // Append the eviction entry to the object table.
   auto data = std::make_shared<ObjectTableData>();
@@ -154,6 +161,9 @@ void ObjectDirectory::HandleClientRemoved(const ClientID &client_id) {
 ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_id,
                                                       const ObjectID &object_id,
                                                       const OnLocationsFound &callback) {
+  if (single_node_) {
+    return ray::Status::OK();
+  }
   ray::Status status = ray::Status::OK();
   auto it = listeners_.find(object_id);
   if (it == listeners_.end()) {
@@ -180,6 +190,9 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
 
 ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback_id,
                                                         const ObjectID &object_id) {
+  if (single_node_) {
+    return ray::Status::OK();
+  }
   ray::Status status = ray::Status::OK();
   auto entry = listeners_.find(object_id);
   if (entry == listeners_.end()) {
@@ -197,6 +210,9 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
 
 ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
                                              const OnLocationsFound &callback) {
+  if (single_node_) {
+    return ray::Status::OK();
+  }
   ray::Status status;
   auto it = listeners_.find(object_id);
   if (it != listeners_.end() && it->second.subscribed) {
