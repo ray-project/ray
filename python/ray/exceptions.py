@@ -61,6 +61,9 @@ class RayTaskError(RayError):
         if issubclass(RayTaskError, self.cause_cls):
             return self  # already satisfied
 
+        if issubclass(self.cause_cls, RayError):
+            return self  # don't try to wrap ray internal errors
+
         class cls(RayTaskError, self.cause_cls):
             def __init__(self, function_name, traceback_str, cause_cls,
                          proctitle, pid, ip):
