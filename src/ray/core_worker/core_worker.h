@@ -95,9 +95,7 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  const ActorID &GetActorId() const {
-    return actor_id_;
-  }
+  const ActorID &GetActorId() const { return actor_id_; }
 
   TaskID GetCallerId() const;
 

@@ -180,8 +180,8 @@ std::string TaskSpecification::DebugString() const {
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
-           << ", actor_caller_id=" << CallerId()
-           << ", actor_counter=" << ActorCounter() << "}";
+           << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
+           << "}";
   }
 
   return stream.str();

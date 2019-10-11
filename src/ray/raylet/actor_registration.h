@@ -112,8 +112,7 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   /// \return The dummy object that can be released as a result of the executed
   /// task. If no dummy object can be released, then this is nil.
-  ObjectID ExtendFrontier(const TaskID &caller_id,
-                          const ObjectID &execution_dependency);
+  ObjectID ExtendFrontier(const TaskID &caller_id, const ObjectID &execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///

@@ -75,10 +75,9 @@ class CoreWorkerTaskInterface {
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status SubmitTask(
-    const TaskID &caller_id,
-      const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+  Status SubmitTask(const TaskID &caller_id, const RayFunction &function,
+                    const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                    std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
   ///
@@ -87,9 +86,8 @@ class CoreWorkerTaskInterface {
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[out] actor_handle Handle to the actor.
   /// \return Status.
-  Status CreateActor(
-    const TaskID &caller_id,
-      const RayFunction &function, const std::vector<TaskArg> &args,
+  Status CreateActor(const TaskID &caller_id, const RayFunction &function,
+                     const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
                      std::unique_ptr<ActorHandle> *actor_handle);
 
@@ -102,10 +100,8 @@ class CoreWorkerTaskInterface {
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status SubmitActorTask(const TaskID &caller_id,
-                         ActorHandle &actor_handle,
-                         const RayFunction &function,
-                         const std::vector<TaskArg> &args,
+  Status SubmitActorTask(const TaskID &caller_id, ActorHandle &actor_handle,
+                         const RayFunction &function, const std::vector<TaskArg> &args,
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
@@ -127,8 +123,8 @@ class CoreWorkerTaskInterface {
   /// \return Void.
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-      const int task_index, const TaskID &caller_id, const RayFunction &function, const std::vector<TaskArg> &args,
-      uint64_t num_returns,
+      const int task_index, const TaskID &caller_id, const RayFunction &function,
+      const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       TaskTransportType transport_type, std::vector<ObjectID> *return_ids);

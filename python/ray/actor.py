@@ -340,7 +340,7 @@ class ActorClass(object):
                                   worker.task_context.task_index + 1)
             worker.actors[actor_id] = self._modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
-            core_handle = ray._raylet.ActorHandle(
+            ray._raylet.ActorHandle(
                 actor_id, ActorHandleID.nil(), worker.current_job_id,
                 function_descriptor.get_function_descriptor_list())
         else:
@@ -551,8 +551,8 @@ class ActorHandle(object):
             # and we don't need to send `__ray_terminate__` again.
             logger.warning(
                 "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.",
-                self._ray_actor_id, self._ray_class_name)
+                " Actor id = %s, class name = %s.", self._ray_actor_id,
+                self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
@@ -576,7 +576,8 @@ class ActorHandle(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         state = {
-            "core_handle": worker.core_worker.serialize_actor_handle(self._ray_actor_id),
+            "core_handle": worker.core_worker.serialize_actor_handle(
+                self._ray_actor_id),
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
             "actor_method_names": self._ray_actor_method_names,

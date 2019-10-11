@@ -679,7 +679,8 @@ cdef class CoreWorker:
                     &actor_handle))
 
             actor_id = ActorID(actor_handle.get().GetActorID().Binary())
-            inserted = self.core_worker.get().AddActorHandle(move(actor_handle))
+            inserted = self.core_worker.get().AddActorHandle(
+                    move(actor_handle))
             assert inserted, "Actor {} already exists".format(actor_id)
             return actor_id
 

@@ -1580,8 +1580,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
         if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
           // The actor is local.
-          int64_t expected_task_counter = GetExpectedTaskCounter(
-              actor_registry_, spec.ActorId(), spec.CallerId());
+          int64_t expected_task_counter =
+              GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
           if (static_cast<int64_t>(spec.ActorCounter()) < expected_task_counter) {
             // A task that has already been executed before has been found. The
             // task will be treated as failed if at least one of the task's

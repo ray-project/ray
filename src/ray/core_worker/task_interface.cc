@@ -24,18 +24,16 @@ CoreWorkerTaskInterface::CoreWorkerTaskInterface(
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const int task_index, const TaskID &caller_id, const RayFunction &function, const std::vector<TaskArg> &args,
-    uint64_t num_returns,
+    const int task_index, const TaskID &caller_id, const RayFunction &function,
+    const std::vector<TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
-                            function.GetFunctionDescriptor(), job_id,
-                            worker_context_.GetCurrentTaskID(), task_index,
-                            caller_id,
-                            num_returns,
-                            required_resources, required_placement_resources);
+  builder.SetCommonTaskSpec(
+      task_id, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
+      worker_context_.GetCurrentTaskID(), task_index, caller_id, num_returns,
+      required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -55,7 +53,7 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
 }
 
 Status CoreWorkerTaskInterface::SubmitTask(const TaskID &caller_id,
-    const RayFunction &function,
+                                           const RayFunction &function,
                                            const std::vector<TaskArg> &args,
                                            const TaskOptions &task_options,
                                            std::vector<ObjectID> *return_ids) {
@@ -65,15 +63,15 @@ Status CoreWorkerTaskInterface::SubmitTask(const TaskID &caller_id,
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      next_task_index, caller_id, function, args, task_options.num_returns,
-                      task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
+                      next_task_index, caller_id, function, args,
+                      task_options.num_returns, task_options.resources, {},
+                      TaskTransportType::RAYLET, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 
 Status CoreWorkerTaskInterface::CreateActor(
-    const TaskID &caller_id,
-    const RayFunction &function, const std::vector<TaskArg> &args,
-    const ActorCreationOptions &actor_creation_options,
+    const TaskID &caller_id, const RayFunction &function,
+    const std::vector<TaskArg> &args, const ActorCreationOptions &actor_creation_options,
     std::unique_ptr<ActorHandle> *actor_handle) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
@@ -83,8 +81,8 @@ Status CoreWorkerTaskInterface::CreateActor(
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, next_task_index, caller_id, function,
-                      args, 1, actor_creation_options.resources,
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, next_task_index, caller_id,
+                      function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
                       TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
@@ -92,9 +90,8 @@ Status CoreWorkerTaskInterface::CreateActor(
                                    actor_creation_options.is_direct_call);
 
   *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
-      actor_id, job_id, /*actor_cursor=*/return_ids[0],
-      function.GetLanguage(), actor_creation_options.is_direct_call,
-      function.GetFunctionDescriptor()));
+      actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
+      actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
 
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
