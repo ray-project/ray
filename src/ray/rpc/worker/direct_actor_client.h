@@ -40,7 +40,7 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   /// \return if the rpc call succeeds
   ray::Status PushTask(std::unique_ptr<PushTaskRequest> request,
                        const ClientCallback<PushTaskReply> &callback) {
-    request->set_sequence_number(next_seq_no_++);
+    request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     send_queue_.push_back(std::make_pair(std::move(request), callback));
     SendRequests();
     return ray::Status::OK();
@@ -114,10 +114,6 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
       send_queue_;
-
-  /// The next sequence number to assign to a task for this server.
-  // TODO: Use the task counter in the ActorHandle.
-  int64_t next_seq_no_ = 0;
 
   /// The number of bytes currently in flight.
   int64_t rpc_bytes_in_flight_ = 0;

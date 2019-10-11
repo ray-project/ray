@@ -147,12 +147,6 @@ ObjectID TaskSpecification::ActorDummyObject() const {
   return ReturnId(NumReturns() - 1);
 }
 
-std::vector<ActorHandleID> TaskSpecification::NewActorHandles() const {
-  RAY_CHECK(IsActorTask());
-  return IdVectorFromProtobuf<ActorHandleID>(
-      message_->actor_task_spec().new_actor_handles());
-}
-
 bool TaskSpecification::IsDirectCall() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_direct_call();
