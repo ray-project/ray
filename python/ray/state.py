@@ -1083,7 +1083,7 @@ def nodes():
     return state.client_table()
 
 
-def get_current_node_id():
+def current_node_id():
     """Return the node id of the current node.
 
     For example, "node:172.10.5.34". This can be used as a custom resource,
@@ -1097,7 +1097,7 @@ def get_current_node_id():
     )
 
 
-def get_node_ids():
+def node_ids():
     """Get a list of the node ids in the cluster.
 
     For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
