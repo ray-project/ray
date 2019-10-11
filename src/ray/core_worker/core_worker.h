@@ -84,6 +84,10 @@ class CoreWorker {
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id) {
     worker_context_.SetCurrentTaskId(task_id);
+    // Clear all actor handles for non-actor tasks.
+    if (actor_id_.IsNil()) {
+      actor_handles_.clear();
+    }
   }
 
   void SetActorId(const ActorID &actor_id) {
@@ -96,6 +100,12 @@ class CoreWorker {
   }
 
   TaskID GetCallerId() const;
+
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+
+  ActorHandle &GetActorHandle(const ActorID &actor_id);
+
+  bool HasActorHandle(const ActorID &actor_id);
 
  private:
   void StartIOService();
@@ -118,6 +128,9 @@ class CoreWorker {
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+
+  /// Map from actor ID to a handle to that actor.
+  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;

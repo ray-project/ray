@@ -40,8 +40,6 @@ ActorHandle::ActorHandle(
   : ActorHandle(CreateInnerActorHandle(actor_id, job_id, initial_cursor,
         actor_language, is_direct_call,
         actor_creation_task_function_descriptor)) {
-  // Increment the task counter to account for the actor creation task.
-  task_counter_++;
 }
 
 ActorHandle::ActorHandle(const std::string &serialized)

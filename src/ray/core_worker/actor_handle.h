@@ -17,8 +17,6 @@ class ActorHandle {
     : inner_(inner),
       actor_cursor_(ObjectID::FromBinary(inner_.actor_cursor())) {}
 
-  ActorHandle(const ActorHandle &other) : ActorHandle(other.inner_) {}
-
   // Constructs a new ActorHandle as part of the actor creation process.
   ActorHandle(const ActorID &actor_id,
               const JobID &job_id, const ObjectID &initial_cursor,

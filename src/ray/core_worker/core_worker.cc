@@ -136,4 +136,20 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
+bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
+  const auto &actor_id = actor_handle->GetActorID();
+  auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle));
+  return inserted.second;
+}
+
+ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
+  auto it = actor_handles_.find(actor_id);
+  RAY_CHECK(it != actor_handles_.end());
+  return *it->second;
+}
+
+bool CoreWorker::HasActorHandle(const ActorID &actor_id) {
+  return actor_handles_.find(actor_id) != actor_handles_.end();
+}
+
 }  // namespace ray

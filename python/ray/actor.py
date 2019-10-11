@@ -372,13 +372,13 @@ class ActorClass(object):
             function_signature = self._method_signatures[function_name]
             creation_args = signature.extend_args(function_signature, args,
                                                   kwargs)
-            core_handle = worker.core_worker.create_actor(
+            actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, self._max_reconstructions, resources,
                 actor_placement_resources)
 
         actor_handle = ActorHandle(
-            core_handle,
+            actor_id,
             self._modified_class.__module__,
             self._class_name,
             self._actor_method_names,
@@ -426,7 +426,7 @@ class ActorHandle(object):
     """
 
     def __init__(self,
-                 core_handle,
+                 actor_id,
                  module_name,
                  class_name,
                  actor_method_names,
@@ -436,7 +436,7 @@ class ActorHandle(object):
                  actor_method_cpus,
                  session_and_job,
                  original_handle=False):
-        self._ray_core_handle = core_handle
+        self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         self._ray_original_handle = original_handle
         self._ray_actor_method_names = actor_method_names
@@ -490,7 +490,7 @@ class ActorHandle(object):
                     function, function_descriptor, args, num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_actor_task(
-                    self._ray_core_handle,
+                    self._ray_actor_id,
                     function_descriptor.get_function_descriptor_list(), args,
                     num_return_vals, {"CPU": self._ray_actor_method_cpus})
 
@@ -552,7 +552,7 @@ class ActorHandle(object):
             logger.warning(
                 "Actor is garbage collected in the wrong driver." +
                 " Actor id = %s, class name = %s.",
-                self._ray_core_handle.actor_id(), self._ray_class_name)
+                self._ray_actor_id, self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
@@ -561,7 +561,7 @@ class ActorHandle(object):
 
     @property
     def _actor_id(self):
-        return self._ray_core_handle.actor_id()
+        return self._ray_actor_id
 
     def _serialization_helper(self, ray_forking):
         """This is defined in order to make pickling work.
@@ -573,9 +573,10 @@ class ActorHandle(object):
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
         state = {
-            # TODO: Simplify this. Do we need to fork it?
-            "core_handle": self._ray_core_handle.fork(ray_forking).to_bytes(),
+            "core_handle": worker.core_worker.serialize_actor_handle(self._ray_actor_id),
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
             "actor_method_names": self._ray_actor_method_names,
@@ -601,8 +602,7 @@ class ActorHandle(object):
         self.__init__(
             # TODO(swang): Accessing the worker's current task ID is not
             # thread-safe.
-            ray._raylet.ActorHandle.from_bytes(state["core_handle"],
-                                               worker.current_task_id),
+            worker.core_worker.deserialize_actor_handle(state["core_handle"]),
             state["module_name"],
             state["class_name"],
             state["actor_method_names"],

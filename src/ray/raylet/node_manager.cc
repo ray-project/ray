@@ -2027,34 +2027,26 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                                           resumed_from_checkpoint, port);
         }));
   } else {
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, caller_id);
+    auto actor_entry = actor_registry_.find(actor_id);
+    RAY_CHECK(actor_entry != actor_registry_.end());
+    // Extend the actor's frontier to include the executed task.
+    const ObjectID object_to_release =
+        actor_entry->second.ExtendFrontier(caller_id, task_spec.ActorDummyObject());
+    if (!object_to_release.IsNil()) {
+      // If there were no new actor handles created, then no other actor task
+      // will depend on this execution dependency, so it safe to release.
+      HandleObjectMissing(object_to_release);
+    }
+    // Mark the dummy object as locally available to indicate that the actor's
+    // state has changed and the next method can run. This is not added to the
+    // object table, so the update will be invisible to both the local object
+    // manager and the other nodes.
+    // NOTE(swang): The dummy objects must be marked as local whenever
+    // ExtendFrontier is called, and vice versa, so that we can clean up the
+    // dummy objects properly in case the actor fails and needs to be
+    // reconstructed.
+    HandleObjectLocal(task_spec.ActorDummyObject());
   }
-}
-
-void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
-                                      const ActorID &actor_id,
-                                      const TaskID &caller_id) {
-  auto actor_entry = actor_registry_.find(actor_id);
-  RAY_CHECK(actor_entry != actor_registry_.end());
-  // Extend the actor's frontier to include the executed task.
-  const ObjectID object_to_release =
-      actor_entry->second.ExtendFrontier(caller_id, dummy_object);
-  if (!object_to_release.IsNil()) {
-    // If there were no new actor handles created, then no other actor task
-    // will depend on this execution dependency, so it safe to release.
-    HandleObjectMissing(object_to_release);
-  }
-  // Mark the dummy object as locally available to indicate that the actor's
-  // state has changed and the next method can run. This is not added to the
-  // object table, so the update will be invisible to both the local object
-  // manager and the other nodes.
-  // NOTE(swang): The dummy objects must be marked as local whenever
-  // ExtendFrontier is called, and vice versa, so that we can clean up the
-  // dummy objects properly in case the actor fails and needs to be
-  // reconstructed.
-  HandleObjectLocal(dummy_object);
 }
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
@@ -2116,10 +2108,10 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     }
   }
   if (!resumed_from_checkpoint) {
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id,
-        task_spec.CallerId());
+    // The actor was not resumed from a checkpoint. Store the
+    // initial dummy object. All future handles to the actor will
+    // depend on this object.
+    HandleObjectLocal(task_spec.ActorDummyObject());
   }
 }
 

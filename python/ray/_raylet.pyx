@@ -653,7 +653,7 @@ cdef class CoreWorker:
                      resources,
                      placement_resources):
         cdef:
-            ActorHandle actor_handle = ActorHandle.__new__(ActorHandle)
+            unique_ptr[CActorHandle] actor_handle
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[c_string] dynamic_worker_options
@@ -676,18 +676,22 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_reconstructions, False, c_resources,
                         c_placement_resources, dynamic_worker_options),
-                    &actor_handle.inner))
+                    &actor_handle))
 
-            return actor_handle
+            actor_id = ActorID(actor_handle.get().GetActorID().Binary())
+            inserted = self.core_worker.get().AddActorHandle(move(actor_handle))
+            assert inserted, "Actor {} already exists".format(actor_id)
+            return actor_id
 
     def submit_actor_task(self,
-                          ActorHandle handle,
+                          ActorID actor_id,
                           function_descriptor,
                           args,
                           int num_return_vals,
                           resources):
 
         cdef:
+            CActorID c_actor_id = actor_id.native()
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
@@ -706,7 +710,8 @@ cdef class CoreWorker:
             with nogil:
                 check_status(self.core_worker.get().Tasks().SubmitActorTask(
                       caller_id,
-                      handle.inner.get()[0], ray_function,
+                      self.core_worker.get().GetActorHandle(c_actor_id),
+                      ray_function,
                       args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
@@ -718,3 +723,18 @@ cdef class CoreWorker:
         return ProfileEvent.make(
             self.core_worker.get().CreateProfileEvent(c_event_type),
             extra_data)
+
+    def deserialize_actor_handle(self, c_string bytes):
+        cdef:
+            unique_ptr[CActorHandle] actor_handle
+        actor_handle.reset(new CActorHandle(bytes))
+        actor_id = ActorID(actor_handle.get().GetActorID().Binary())
+        self.core_worker.get().AddActorHandle(move(actor_handle))
+        return actor_id
+
+    def serialize_actor_handle(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            c_string output
+        self.core_worker.get().GetActorHandle(c_actor_id).Serialize(&output)
+        return output
