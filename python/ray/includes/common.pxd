@@ -8,7 +8,6 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorHandleID,
     CJobID,
     CWorkerID,
     CObjectID,
@@ -199,12 +198,6 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
             const c_vector[c_string] &dynamic_worker_options)
 
     cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(
-            const CActorID &actor_id,
-            const CJobID &job_id, const CObjectID &initial_cursor,
-            const CLanguage actor_language, c_bool is_direct_call,
-            const c_vector[c_string] &actor_creation_task_function_descriptor)
-        CActorHandle(CActorHandle &other)
         CActorHandle(const c_string &serialized)
 
         CActorID GetActorID() const

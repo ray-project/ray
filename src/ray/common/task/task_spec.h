@@ -140,8 +140,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID PreviousActorTaskDummyObjectId() const;
 
-  std::vector<ActorHandleID> NewActorHandles() const;
-
   bool IsDirectCall() const;
 
   ObjectID ActorDummyObject() const;

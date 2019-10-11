@@ -16,7 +16,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorHandleID, ActorClassID, profiling
+from ray import ActorID, ActorClassID, profiling
 
 logger = logging.getLogger(__name__)
 
@@ -372,9 +372,6 @@ class ActorClass(object):
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
-            ray._raylet.ActorHandle(
-                actor_id, ActorHandleID.nil(), worker.current_job_id,
-                function_descriptor.get_function_descriptor_list())
         else:
             # Export the actor.
             if (meta.last_export_session_and_job !=

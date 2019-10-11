@@ -23,6 +23,7 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
+    CActorHandle,
     CLanguage,
     CRayObject,
     CRayStatus,
