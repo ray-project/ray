@@ -25,19 +25,9 @@ class TaskSpecification;
 class CoreWorkerTaskExecutionInterface {
  public:
   // Callback that must be implemented and provided by the language-specific worker
-  // frontend to execute normal tasks.
-  using NormalTaskCallback = std::function<Status(
-      const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
-
-  // Callback that must be implemented and provided by the language-specific worker
-  // frontend to execute actor creations and tasks.
-  using ActorTaskCallback = std::function<Status(
-      const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
-      const ActorID &actor_id, bool create_actor,
+  // frontend to execute tasks and return their results.
+  using TaskExecutionCallback = std::function<Status(
+      TaskType task_type, const RayFunction &ray_function, const ActorID &actor_id,
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
@@ -48,8 +38,7 @@ class CoreWorkerTaskExecutionInterface {
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
                                    const std::shared_ptr<worker::Profiler> profiler,
-                                   const NormalTaskCallback &normal_task_callback,
-                                   const ActorTaskCallback &actor_task_callback);
+                                   const TaskExecutionCallback &task_execution_callback);
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
@@ -63,7 +52,10 @@ class CoreWorkerTaskExecutionInterface {
   void Stop();
 
  private:
-  /// TODO
+  /// Build arguments for task executor. This would loop through all the arguments
+  /// in task spec, and for each of them that's passed by reference (ObjectID),
+  /// fetch its content from store and; for arguments that are passed by value,
+  /// just copy their content.
   ///
   /// \param spec[in] Task specification.
   /// \param args[out] Argument data as RayObjects.
@@ -74,7 +66,6 @@ class CoreWorkerTaskExecutionInterface {
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
   /// \return The arguments for passing to task executor.
-  std::vector<TaskArg> BuildArgsForExecutor(const TaskSpecification &spec);
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
@@ -97,11 +88,8 @@ class CoreWorkerTaskExecutionInterface {
   // Reference to the parent CoreWorker's profiler.
   const std::shared_ptr<worker::Profiler> profiler_;
 
-  // Normal task execution callback.
-  NormalTaskCallback normal_task_callback_;
-
-  // Actor task execution callback.
-  ActorTaskCallback actor_task_callback_;
+  // Task execution callback.
+  TaskExecutionCallback task_execution_callback_;
 
   /// All the task task receivers supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>

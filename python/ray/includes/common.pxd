@@ -119,6 +119,8 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CWorkerType "ray::WorkerType":
         pass
+    cdef cppclass CTaskType "ray::TaskType":
+        pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
@@ -131,6 +133,11 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
 cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
+
+cdef extern from "ray/protobuf/common.pb.h" nogil:
+    cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
+    cdef CTaskType TASK_TYPE_ACTOR_CREATION_TASK "ray::TaskType::ACTOR_CREATION_TASK"  # noqa: E501
+    cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:

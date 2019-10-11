@@ -29,7 +29,7 @@ class CoreWorker {
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
-  /// \param[in] execution_callback Language worker callback to execute tasks.
+  /// \param[in] task_execution_callback Language worker callback to execute tasks.
   /// \param[in] use_memory_store Whether or not to use the in-memory object store
   ///            in addition to the plasma store.
   ///
@@ -37,14 +37,13 @@ class CoreWorker {
   /// NOTE(edoakes): the use_memory_store flag is a stop-gap solution to the issue
   ///                that randomly generated ObjectIDs may use the memory store
   ///                instead of the plasma store.
-  CoreWorker(
-      const WorkerType worker_type, const Language language,
-      const std::string &store_socket, const std::string &raylet_socket,
-      const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-      const std::string &log_dir, const std::string &node_ip_address,
-      const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
-      const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
-      bool use_memory_store = true);
+  CoreWorker(const WorkerType worker_type, const Language language,
+             const std::string &store_socket, const std::string &raylet_socket,
+             const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
+             const std::string &log_dir, const std::string &node_ip_address,
+             const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
+                 &task_execution_callback,
+             bool use_memory_store = true);
 
   ~CoreWorker();
 
@@ -81,12 +80,14 @@ class CoreWorker {
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
-
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id) {
     worker_context_.SetCurrentTaskId(task_id);
   }
+
+  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
 
  private:
   void StartIOService();

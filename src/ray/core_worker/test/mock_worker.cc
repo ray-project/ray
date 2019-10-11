@@ -22,12 +22,11 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
              const gcs::GcsClientOptions &gcs_options)
-      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1), gcs_options, /*log_dir=*/"",
-                /*node_id_address=*/"127.0.0.1",
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7),
-                std::bind(&MockWorker::ExecuteActorTask, this, _1, _2, _3, _4, _5, _6, _7,
-                          _8, _9, _10)) {}
+      : worker_(
+            WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+            JobID::FromInt(1), gcs_options, /*log_dir=*/"",
+            /*node_id_address=*/"127.0.0.1",
+            std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8)) {}
 
   void Run() {
     // Start executing tasks.
@@ -35,19 +34,9 @@ class MockWorker {
   }
 
  private:
-  Status ExecuteActorTask(
-      const RayFunction &ray_function, const JobID &job_id, const TaskID &task_id,
-      const ActorID &actor_id, bool create_actor,
-      const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results) {
-    return ExecuteTask(ray_function, job_id, task_id, args, arg_reference_ids, return_ids,
-                       results);
-  }
-  Status ExecuteTask(const RayFunction &ray_function, const JobID &job_id,
-                     const TaskID &task_id,
+  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
+                     const ActorID &actor_id,
+                     const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,

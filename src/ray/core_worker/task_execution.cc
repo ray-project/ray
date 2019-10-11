@@ -10,18 +10,15 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface,
     const std::shared_ptr<worker::Profiler> profiler,
-    const NormalTaskCallback &normal_task_callback,
-    const ActorTaskCallback &actor_task_callback)
+    const TaskExecutionCallback &task_execution_callback)
     : worker_context_(worker_context),
       object_interface_(object_interface),
       profiler_(profiler),
-      normal_task_callback_(normal_task_callback),
-      actor_task_callback_(actor_task_callback),
+      task_execution_callback_(task_execution_callback),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*main_service_) {
-  RAY_CHECK(normal_task_callback_ != nullptr);
-  RAY_CHECK(actor_task_callback_ != nullptr);
+  RAY_CHECK(task_execution_callback_ != nullptr);
 
   auto func =
       std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
@@ -62,21 +59,22 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   }
 
   Status status;
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+  ActorID actor_id = ActorID::Nil();
+  TaskType task_type = TaskType::NORMAL_TASK;
+  if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
-    ActorID actor_id = task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
-                                                       : task_spec.ActorId();
-    status =
-        actor_task_callback_(func, worker_context_.GetCurrentJobID(), task_spec.TaskId(),
-                             actor_id, task_spec.IsActorCreationTask(),
-                             task_spec.GetRequiredResources().GetResourceMap(), args,
-                             arg_reference_ids, return_ids, results);
-  } else {
-    status =
-        normal_task_callback_(func, worker_context_.GetCurrentJobID(), task_spec.TaskId(),
-                              args, arg_reference_ids, return_ids, results);
+    actor_id = task_spec.ActorCreationId();
+    task_type = TaskType::ACTOR_CREATION_TASK;
+  } else if (task_spec.IsActorTask()) {
+    RAY_CHECK(return_ids.size() > 0);
+    return_ids.pop_back();
+    actor_id = task_spec.ActorId();
+    task_type = TaskType::ACTOR_TASK;
   }
+  status = task_execution_callback_(task_type, func, actor_id,
+                                    task_spec.GetRequiredResources().GetResourceMap(),
+                                    args, arg_reference_ids, return_ids, results);
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.
