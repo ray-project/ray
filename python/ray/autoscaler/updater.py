@@ -34,7 +34,7 @@ KUBECTL_RSYNC = os.path.join(
 def with_interactive(cmd):
     force_interactive = ("true && source ~/.bashrc && "
                          "export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && ")
-    return ["bash", "--login", "-c", "-i", force_interactive + cmd]
+    return ["bash", "--login", "-c", "-i", quote(force_interactive + cmd)]
 
 
 class KubernetesCommandRunner(object):
@@ -70,11 +70,17 @@ class KubernetesCommandRunner(object):
             time.sleep(1)
 
         final_cmd = self.kubectl + [
-            "exec", "-it" if allocate_tty else "-i", self.node_id, "--"
+            "exec",
+            "-it" if allocate_tty else "-i",
+            self.node_id,
+            "--",
         ] + with_interactive(cmd)
         try:
             self.process_runner.check_call(
-                final_cmd, stdout=redirect, stderr=redirect)
+                " ".join(final_cmd),
+                shell=True,
+                stdout=redirect,
+                stderr=redirect)
         except subprocess.CalledProcessError:
             if exit_on_fail:
                 quoted_cmd = " ".join(final_cmd[:-1] + [quote(final_cmd[-1])])
