@@ -432,7 +432,7 @@ cdef list deserialize_args(
                         == RAW_BUFFER_METADATA):
                     results.append(data)
                 else:
-                    results.append(pickle.loads(data))
+                    results.append(pickle.loads(data.to_pybytes()))
             # Passed by reference.
             else:
                 by_reference_ids.append(
