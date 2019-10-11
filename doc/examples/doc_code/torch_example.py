@@ -113,7 +113,7 @@ def dataset_creators(use_cuda):
 import torch.optim as optim
 
 
-class Network():
+class Network(object):
     def __init__(self, lr=0.01, momentum=0.5):
         use_cuda = torch.cuda.is_available()
         self.device = device = torch.device("cuda" if use_cuda else "cpu")
