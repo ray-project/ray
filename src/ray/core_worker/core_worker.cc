@@ -148,8 +148,4 @@ ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
   return *it->second;
 }
 
-bool CoreWorker::HasActorHandle(const ActorID &actor_id) {
-  return actor_handles_.find(actor_id) != actor_handles_.end();
-}
-
 }  // namespace ray

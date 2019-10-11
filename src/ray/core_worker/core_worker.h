@@ -99,11 +99,23 @@ class CoreWorker {
 
   TaskID GetCallerId() const;
 
+  /// Give this worker a handle to an actor.
+  ///
+  /// This handle will remain as long as the current actor or task is
+  /// executing, even if the Python handle goes out of scope. Tasks submitted
+  /// through this handle are guaranteed to execute in the same order in which
+  /// they are submitted.
+  ///
+  /// \param actor_handle The handle to the actor.
+  /// \return True if the handle was added and False if we already had a handle
+  /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
 
+  /// Get a handle to an actor.
+  ///
+  /// \param actor_id The actor handle to get.
+  /// \return A handle to the requested actor.
   ActorHandle &GetActorHandle(const ActorID &actor_id);
-
-  bool HasActorHandle(const ActorID &actor_id);
 
  private:
   void StartIOService();
@@ -113,6 +125,7 @@ class CoreWorker {
   const std::string raylet_socket_;
   const std::string log_dir_;
   WorkerContext worker_context_;
+  /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
