@@ -1,5 +1,5 @@
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
 from libc.stdint cimport uint8_t, uint64_t, int64_t
@@ -191,25 +191,28 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
-        CActorCreationOptions(uint64_t max_reconstructions,
-                              const unordered_map[c_string, double] &resources)
+        CActorCreationOptions()
+        CActorCreationOptions(
+            uint64_t max_reconstructions, c_bool is_direct_call,
+            const unordered_map[c_string, double] &resources,
+            const unordered_map[c_string, double] &placement_resources,
+            const c_vector[c_string] &dynamic_worker_options)
 
     cdef cppclass CActorHandle "ray::ActorHandle":
         CActorHandle(
             const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-            const CLanguage actor_language,
+            const CJobID &job_id, const CObjectID &initial_cursor,
+            const CLanguage actor_language, c_bool is_direct_call,
             const c_vector[c_string] &actor_creation_task_function_descriptor)
+        CActorHandle(CActorHandle &other, c_bool in_band)
+        CActorHandle(
+            const c_string &serialized, const CTaskID &current_task_id)
 
-        CActorHandle(const CActorHandle &other)
-        CActorID ActorID() const
-        CActorHandleID ActorHandleID() const
-        c_vector[c_string] ActorCreationTaskFunctionDescriptor() const
-        CObjectID ActorCursor() const
-        int64_t TaskCursor() const
-        int64_t NumForks() const
-        CActorHandle Fork()
+        CActorID GetActorID() const
+        CActorHandleID GetActorHandleID() const
+        unique_ptr[CActorHandle] Fork()
+        unique_ptr[CActorHandle] ForkForSerialization()
         void Serialize(c_string *output)
-        CActorHandle Deserialize(const c_string &data)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

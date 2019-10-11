@@ -20,7 +20,7 @@ CoreWorker::CoreWorker(
       io_work_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
-  if (!log_dir_.empty()) {
+  if (log_dir_ != "") {
     std::stringstream app_name;
     app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
              << worker_context_.GetWorkerID();

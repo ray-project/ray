@@ -29,7 +29,7 @@ Quick Start
 
     .. code-block:: bash
 
-        $ pip install ray torch torchvision filelock
+        $ pip install ray[tune] torch torchvision filelock
 
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.

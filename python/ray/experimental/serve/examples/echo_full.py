@@ -4,6 +4,7 @@ Full example of ray.serve module
 
 import ray
 import ray.experimental.serve as serve
+from ray.experimental.serve.utils import pformat_color_json
 import requests
 import time
 
@@ -52,3 +53,10 @@ serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 for _ in range(10):
     print(requests.get("http://127.0.0.1:8000/echo").json())
     time.sleep(0.5)
+
+# You can also scale each backend independently.
+serve.scale("echo:v1", 2)
+serve.scale("echo:v2", 2)
+
+# As well as retrieving relevant system metrics
+print(pformat_color_json(serve.stat()))
