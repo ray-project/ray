@@ -151,6 +151,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   std::shared_ptr<rpc::DirectActorClient> grpc_client =
       rpc::DirectActorClient::make(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
+  RAY_LOG(DEBUG) << "Connect " << ip_address << ":" << port;
 
   // Submit all pending requests.
   auto &client = rpc_clients_[actor_id];

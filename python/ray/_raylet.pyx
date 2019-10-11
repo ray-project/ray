@@ -459,6 +459,7 @@ cdef CRayStatus execute_task(
         const c_vector[shared_ptr[CRayObject]] &args,
         const c_vector[CObjectID] &arg_reference_ids,
         const c_vector[CObjectID] &return_ids,
+        c_bool is_direct_call,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
@@ -467,7 +468,8 @@ cdef CRayStatus execute_task(
         # Automatically restrict the GPUs available to this task.
         ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-        assert worker.current_task_id.is_nil()
+        # TODO(ekl) this is set by the actor constructor
+        # assert worker.current_task_id.is_nil()
         assert worker.task_context.task_index == 0
         assert worker.task_context.put_index == 1
 
@@ -500,7 +502,7 @@ cdef CRayStatus execute_task(
                 VectorToObjectIDs(return_ids),
             )
         else:
-            worker._process_actor_task(
+            py_returns = worker._process_actor_task(
                 ray_function.GetFunctionDescriptor(),
                 job_id,
                 task_id,
@@ -509,7 +511,11 @@ cdef CRayStatus execute_task(
                 deserialize_args(args, arg_reference_ids),
                 VectorToObjectIDs(return_ids),
                 <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK,
+                is_direct_call,
             )
+
+            if is_direct_call:
+                to_ray_objects(py_returns, returns)  # TODO(ekl)
 
         # Reset the state fields so the next task can run.
         worker.task_context.current_task_id = TaskID.nil()
@@ -530,6 +536,30 @@ cdef CRayStatus execute_task(
 
     return CRayStatus.OK()
 
+cdef void to_ray_objects(
+        py_objects,
+        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+
+    cdef:
+        shared_ptr[CBuffer] data
+        shared_ptr[CBuffer] metadata
+        shared_ptr[CRayObject] ray_object
+        int64_t data_size
+
+    with gil:
+        for serialized_object in py_objects:
+            data_size = serialized_object.total_bytes
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>NULL, data_size, True))
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            serialized_object.write_to(stream)
+            ray_object = make_shared[CRayObject](data, metadata)
+            returns.push_back(ray_object)
+
+
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
@@ -545,14 +575,15 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), execute_task, False))
+            node_ip_address.encode("utf-8"), execute_task, True))
 
     def disconnect(self):
         with nogil:
             self.core_worker.get().Disconnect()
 
     def run_task_loop(self):
-        self.core_worker.get().Execution().Run()
+        with nogil:
+            self.core_worker.get().Execution().Run()
 
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
@@ -776,7 +807,8 @@ cdef class CoreWorker:
                      args,
                      uint64_t max_reconstructions,
                      resources,
-                     placement_resources):
+                     placement_resources,
+                     c_bool is_direct_call):
         cdef:
             ActorHandle actor_handle = ActorHandle.__new__(ActorHandle)
             CRayFunction ray_function
@@ -796,7 +828,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().Tasks().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, False, c_resources,
+                        max_reconstructions, is_direct_call, c_resources,
                         c_placement_resources, dynamic_worker_options),
                     &actor_handle.inner))
 

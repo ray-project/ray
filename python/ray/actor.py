@@ -308,7 +308,8 @@ class ActorClass(object):
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
-                resources=None):
+                resources=None,
+                is_direct_call=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -325,6 +326,7 @@ class ActorClass(object):
                 this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
+            is_direct_call: Use direct actor calls.
 
         Returns:
             A handle to the newly created actor.
@@ -407,7 +409,7 @@ class ActorClass(object):
             core_handle = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources)
+                actor_placement_resources, is_direct_call)
 
         actor_handle = ActorHandle(
             core_handle,

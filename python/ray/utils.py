@@ -518,7 +518,9 @@ def check_oversized_pickle(pickled, name, obj_type, worker):
 
 
 def is_main_thread():
-    return threading.current_thread().getName() == "MainThread"
+    # TODO(ekl) is the core worker main thread always Dummy-1?
+    return (threading.current_thread().getName() == "MainThread"
+            or threading.current_thread().getName() == "Dummy-1")
 
 
 def try_make_directory_shared(directory_path):

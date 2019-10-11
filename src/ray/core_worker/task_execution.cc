@@ -75,7 +75,9 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   }
   status = task_execution_callback_(task_type, func, actor_id,
                                     task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, results);
+                                    args, arg_reference_ids, return_ids,
+                                    worker_context_.CurrentActorUseDirectCall(),
+                                    results);
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.
