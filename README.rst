@@ -84,7 +84,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray torch torchvision filelock
+    $ pip install ray[tune] torch torchvision filelock
 
 
 This example runs a parallel grid search to train a Convolutional Neural Network using PyTorch.

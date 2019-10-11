@@ -10,19 +10,16 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     const std::shared_ptr<worker::Profiler> profiler,
-    const NormalTaskCallback &normal_task_callback,
-    const ActorTaskCallback &actor_task_callback)
+    const TaskExecutionCallback &task_execution_callback)
     : worker_context_(worker_context),
       object_interface_(object_interface),
       profiler_(profiler),
-      normal_task_callback_(normal_task_callback),
-      actor_task_callback_(actor_task_callback),
+      task_execution_callback_(task_execution_callback),
       worker_server_("Worker", 0 /* let grpc choose port */),
       rpc_io_service_(io_service),
       main_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*main_service_) {
-  RAY_CHECK(normal_task_callback_ != nullptr);
-  RAY_CHECK(actor_task_callback_ != nullptr);
+  RAY_CHECK(task_execution_callback_ != nullptr);
 
   auto func =
       std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
@@ -53,7 +50,9 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
-  std::vector<TaskArg> args = BuildArgsForExecutor(task_spec);
+  std::vector<std::shared_ptr<RayObject>> args;
+  std::vector<ObjectID> arg_reference_ids;
+  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
@@ -61,19 +60,22 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   }
 
   Status status;
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+  ActorID actor_id = ActorID::Nil();
+  TaskType task_type = TaskType::NORMAL_TASK;
+  if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
-    ActorID actor_id = task_spec.IsActorCreationTask() ? task_spec.ActorCreationId()
-                                                       : task_spec.ActorId();
-    status = actor_task_callback_(
-        func, worker_context_.GetCurrentJobID(), task_spec.TaskId(), actor_id,
-        task_spec.IsActorCreationTask(),
-        task_spec.GetRequiredResources().GetResourceMap(), args, return_ids, results);
-  } else {
-    status = normal_task_callback_(func, worker_context_.GetCurrentJobID(),
-                                   task_spec.TaskId(), args, return_ids, results);
+    actor_id = task_spec.ActorCreationId();
+    task_type = TaskType::ACTOR_CREATION_TASK;
+  } else if (task_spec.IsActorTask()) {
+    RAY_CHECK(return_ids.size() > 0);
+    return_ids.pop_back();
+    actor_id = task_spec.ActorId();
+    task_type = TaskType::ACTOR_TASK;
   }
+  status = task_execution_callback_(task_type, func, actor_id,
+                                    task_spec.GetRequiredResources().GetResourceMap(),
+                                    args, arg_reference_ids, return_ids, results);
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.
@@ -96,17 +98,26 @@ void CoreWorkerTaskExecutionInterface::Stop() {
   idle_profile_event_.reset();
 }
 
-std::vector<TaskArg> CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &task) {
-  std::vector<TaskArg> args;
+Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
+    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args,
+    std::vector<ObjectID> *arg_reference_ids) {
+  auto num_args = task.NumArgs();
+  args->resize(num_args);
+  arg_reference_ids->resize(num_args);
+
+  std::vector<ObjectID> object_ids_to_fetch;
+  std::vector<int> indices;
+
   for (size_t i = 0; i < task.NumArgs(); ++i) {
     int count = task.ArgIdCount(i);
     if (count > 0) {
-      // Passed by reference.
+      // pass by reference.
       RAY_CHECK(count == 1);
-      args.push_back(TaskArg::PassByReference(task.ArgId(i, 0)));
+      object_ids_to_fetch.push_back(task.ArgId(i, 0));
+      indices.push_back(i);
+      arg_reference_ids->at(i) = task.ArgId(i, 0);
     } else {
-      // Passed by value.
+      // pass by value.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
       if (task.ArgDataSize(i)) {
         data = std::make_shared<LocalMemoryBuffer>(const_cast<uint8_t *>(task.ArgData(i)),
@@ -117,10 +128,20 @@ std::vector<TaskArg> CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args.push_back(TaskArg::PassByValue(std::make_shared<RayObject>(data, metadata)));
+      args->at(i) = std::make_shared<RayObject>(data, metadata);
+      arg_reference_ids->at(i) = ObjectID::Nil();
     }
   }
-  return args;
+
+  std::vector<std::shared_ptr<RayObject>> results;
+  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
+  if (status.ok()) {
+    for (size_t i = 0; i < results.size(); i++) {
+      args->at(indices[i]) = results[i];
+    }
+  }
+
+  return status;
 }
 
 }  // namespace ray

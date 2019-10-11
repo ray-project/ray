@@ -36,6 +36,12 @@ def result(t, rew):
         time_total_s=t, episode_reward_mean=rew, training_iteration=int(t))
 
 
+def mock_trial_runner(trials=None):
+    trial_runner = MagicMock()
+    trial_runner.get_trials.return_value = trials or []
+    return trial_runner
+
+
 class EarlyStoppingSuite(unittest.TestCase):
     def setUp(self):
         ray.init()
@@ -47,93 +53,105 @@ class EarlyStoppingSuite(unittest.TestCase):
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        runner = mock_trial_runner()
         for i in range(10):
+            r1 = result(i, i * 100)
+            print("basicSetup:", i)
             self.assertEqual(
-                rule.on_trial_result(None, t1, result(i, i * 100)),
-                TrialScheduler.CONTINUE)
+                rule.on_trial_result(runner, t1, r1), TrialScheduler.CONTINUE)
         for i in range(5):
+            r2 = result(i, 450)
             self.assertEqual(
-                rule.on_trial_result(None, t2, result(i, 450)),
-                TrialScheduler.CONTINUE)
+                rule.on_trial_result(runner, t2, r2), TrialScheduler.CONTINUE)
         return t1, t2
 
     def testMedianStoppingConstantPerf(self):
         rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
-        rule.on_trial_complete(None, t1, result(10, 1000))
+        runner = mock_trial_runner()
+        rule.on_trial_complete(runner, t1, result(10, 1000))
         self.assertEqual(
-            rule.on_trial_result(None, t2, result(5, 450)),
+            rule.on_trial_result(runner, t2, result(5, 450)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t2, result(6, 0)),
+            rule.on_trial_result(runner, t2, result(6, 0)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t2, result(10, 450)),
+            rule.on_trial_result(runner, t2, result(10, 450)),
             TrialScheduler.STOP)
 
     def testMedianStoppingOnCompleteOnly(self):
         rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
+        runner = mock_trial_runner()
         self.assertEqual(
-            rule.on_trial_result(None, t2, result(100, 0)),
+            rule.on_trial_result(runner, t2, result(100, 0)),
             TrialScheduler.CONTINUE)
-        rule.on_trial_complete(None, t1, result(10, 1000))
+        rule.on_trial_complete(runner, t1, result(101, 1000))
         self.assertEqual(
-            rule.on_trial_result(None, t2, result(101, 0)),
+            rule.on_trial_result(runner, t2, result(101, 0)),
             TrialScheduler.STOP)
 
     def testMedianStoppingGracePeriod(self):
         rule = MedianStoppingRule(grace_period=2.5, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
-        rule.on_trial_complete(None, t1, result(10, 1000))
-        rule.on_trial_complete(None, t2, result(10, 1000))
+        runner = mock_trial_runner()
+        rule.on_trial_complete(runner, t1, result(10, 1000))
+        rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(1, 10)),
+            rule.on_trial_result(runner, t3, result(1, 10)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(2, 10)),
+            rule.on_trial_result(runner, t3, result(2, 10)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(3, 10)), TrialScheduler.STOP)
+            rule.on_trial_result(runner, t3, result(3, 10)),
+            TrialScheduler.STOP)
 
     def testMedianStoppingMinSamples(self):
         rule = MedianStoppingRule(grace_period=0, min_samples_required=2)
         t1, t2 = self.basicSetup(rule)
-        rule.on_trial_complete(None, t1, result(10, 1000))
+        runner = mock_trial_runner()
+        rule.on_trial_complete(runner, t1, result(10, 1000))
         t3 = Trial("PPO")
+        # Insufficient samples to evaluate t3
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(3, 10)),
+            rule.on_trial_result(runner, t3, result(5, 10)),
             TrialScheduler.CONTINUE)
-        rule.on_trial_complete(None, t2, result(10, 1000))
+        rule.on_trial_complete(runner, t2, result(5, 1000))
+        # Sufficient samples to evaluate t3
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(3, 10)), TrialScheduler.STOP)
+            rule.on_trial_result(runner, t3, result(5, 10)),
+            TrialScheduler.STOP)
 
     def testMedianStoppingUsesMedian(self):
         rule = MedianStoppingRule(grace_period=0, min_samples_required=1)
         t1, t2 = self.basicSetup(rule)
-        rule.on_trial_complete(None, t1, result(10, 1000))
-        rule.on_trial_complete(None, t2, result(10, 1000))
+        runner = mock_trial_runner()
+        rule.on_trial_complete(runner, t1, result(10, 1000))
+        rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(1, 260)),
+            rule.on_trial_result(runner, t3, result(1, 260)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(2, 260)),
+            rule.on_trial_result(runner, t3, result(2, 260)),
             TrialScheduler.STOP)
 
     def testMedianStoppingSoftStop(self):
         rule = MedianStoppingRule(
             grace_period=0, min_samples_required=1, hard_stop=False)
         t1, t2 = self.basicSetup(rule)
-        rule.on_trial_complete(None, t1, result(10, 1000))
-        rule.on_trial_complete(None, t2, result(10, 1000))
+        runner = mock_trial_runner()
+        rule.on_trial_complete(runner, t1, result(10, 1000))
+        rule.on_trial_complete(runner, t2, result(10, 1000))
         t3 = Trial("PPO")
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(1, 260)),
+            rule.on_trial_result(runner, t3, result(1, 260)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t3, result(2, 260)),
+            rule.on_trial_result(runner, t3, result(2, 260)),
             TrialScheduler.PAUSE)
 
     def _test_metrics(self, result_func, metric, mode):
@@ -145,20 +163,21 @@ class EarlyStoppingSuite(unittest.TestCase):
             mode=mode)
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
         t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        runner = mock_trial_runner()
         for i in range(10):
             self.assertEqual(
-                rule.on_trial_result(None, t1, result_func(i, i * 100)),
+                rule.on_trial_result(runner, t1, result_func(i, i * 100)),
                 TrialScheduler.CONTINUE)
         for i in range(5):
             self.assertEqual(
-                rule.on_trial_result(None, t2, result_func(i, 450)),
+                rule.on_trial_result(runner, t2, result_func(i, 450)),
                 TrialScheduler.CONTINUE)
-        rule.on_trial_complete(None, t1, result_func(10, 1000))
+        rule.on_trial_complete(runner, t1, result_func(10, 1000))
         self.assertEqual(
-            rule.on_trial_result(None, t2, result_func(5, 450)),
+            rule.on_trial_result(runner, t2, result_func(5, 450)),
             TrialScheduler.CONTINUE)
         self.assertEqual(
-            rule.on_trial_result(None, t2, result_func(6, 0)),
+            rule.on_trial_result(runner, t2, result_func(6, 0)),
             TrialScheduler.CONTINUE)
 
     def testAlternateMetrics(self):
@@ -677,6 +696,7 @@ class BOHBSuite(unittest.TestCase):
 class _MockTrial(Trial):
     def __init__(self, i, config):
         self.trainable_name = "trial_{}".format(i)
+        self.trial_id = Trial.generate_id()
         self.config = config
         self.experiment_tag = "{}tag".format(i)
         self.trial_name_creator = None

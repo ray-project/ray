@@ -26,6 +26,7 @@ from ray.includes.common cimport (
     CRayStatus,
     CTaskArg,
     CTaskOptions,
+    CTaskType,
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
@@ -97,17 +98,12 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const CGcsClientOptions &gcs_options,
                     const c_string &log_dir, const c_string &node_ip_address,
                     CRayStatus (
+                        CTaskType task_type,
                         const CRayFunction &ray_function,
-                        const CJobID &job_id, const CTaskID &task_id,
-                        const c_vector[CTaskArg] &args,
-                        const c_vector[CObjectID] &return_ids,
-                        c_vector[shared_ptr[CRayObject]] *returns) nogil,
-                    CRayStatus (
-                        const CRayFunction &ray_function,
-                        const CJobID &job_id, const CTaskID &task_id,
-                        const CActorID &actor_id, c_bool create_actor,
+                        const CActorID &actor_id,
                         const unordered_map[c_string, double] &resources,
-                        const c_vector[CTaskArg] &args,
+                        const c_vector[shared_ptr[CRayObject]] &args,
+                        const c_vector[CObjectID] &arg_reference_ids,
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     c_bool use_memory_store_)
@@ -125,6 +121,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayletClient &GetRayletClient()
         # TODO(edoakes): remove these once the Python core worker uses the task
         # interfaces
+        CJobID GetCurrentJobId()
         void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
         void SetCurrentTaskId(const CTaskID &task_id)

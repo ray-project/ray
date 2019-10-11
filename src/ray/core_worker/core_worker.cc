@@ -5,14 +5,13 @@
 
 namespace ray {
 
-CoreWorker::CoreWorker(
-    const WorkerType worker_type, const Language language,
-    const std::string &store_socket, const std::string &raylet_socket,
-    const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-    const std::string &log_dir, const std::string &node_ip_address,
-    const CoreWorkerTaskExecutionInterface::NormalTaskCallback &normal_task_callback,
-    const CoreWorkerTaskExecutionInterface::ActorTaskCallback &actor_task_callback,
-    bool use_memory_store)
+CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
+                       const std::string &store_socket, const std::string &raylet_socket,
+                       const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
+                       const std::string &log_dir, const std::string &node_ip_address,
+                       const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
+                           &task_execution_callback,
+                       bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
