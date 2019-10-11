@@ -34,10 +34,13 @@ class RayTaskError(RayError):
                  function_name,
                  traceback_str,
                  cause_cls,
+                 proctitle=None,
                  pid=None,
                  ip=None):
         """Initialize a RayTaskError."""
-        if setproctitle:
+        if proctitle:
+            self.proctitle = proctitle
+        elif setproctitle:
             self.proctitle = setproctitle.getproctitle()
         else:
             self.proctitle = "ray_worker"
@@ -58,24 +61,22 @@ class RayTaskError(RayError):
         if issubclass(RayTaskError, self.cause_cls):
             return self  # already satisfied
 
-        class cls(self.cause_cls, RayTaskError):
-            def __init__(self, function_name, traceback_str, cause_cls, pid,
-                         host):
+        class cls(RayTaskError, self.cause_cls):
+            def __init__(self, function_name, traceback_str, cause_cls,
+                         proctitle, pid, ip):
                 RayTaskError.__init__(self, function_name, traceback_str,
-                                      cause_cls, pid, host)
+                                      cause_cls, proctitle, pid, ip)
 
         name = "RayTaskError({})".format(self.cause_cls.__name__)
         cls.__name__ = name
         cls.__qualname__ = name
 
         return cls(self.function_name, self.traceback_str, self.cause_cls,
-                   self.pid, self.ip)
-        cls.original = self
-        return cls
+                   self.proctitle, self.pid, self.ip)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
-        lines = self.traceback_str.split("\n")
+        lines = self.traceback_str.strip().split("\n")
         out = []
         in_worker = False
         for line in lines:
