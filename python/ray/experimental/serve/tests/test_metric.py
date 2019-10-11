@@ -9,7 +9,7 @@ from ray.experimental.serve.metric import MetricMonitor
 @pytest.fixture(scope="session")
 def start_target_actor(ray_instance):
     @ray.remote
-    class Target():
+    class Target(object):
         def __init__(self):
             self.counter_value = 0
 
