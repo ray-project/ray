@@ -411,7 +411,6 @@ class ActorClass(object):
 
         actor_handle = ActorHandle(
             actor_id,
-            core_handle,
             meta.modified_class.__module__,
             meta.class_name,
             meta.actor_method_names,
