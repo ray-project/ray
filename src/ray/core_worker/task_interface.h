@@ -70,6 +70,7 @@ class CoreWorkerTaskInterface {
 
   /// Submit a normal task.
   ///
+  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
@@ -81,6 +82,7 @@ class CoreWorkerTaskInterface {
 
   /// Create an actor.
   ///
+  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
@@ -93,7 +95,7 @@ class CoreWorkerTaskInterface {
 
   /// Submit an actor task.
   ///
-  /// \param[in] actor_caller_id ID of the task submitter.
+  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] actor_handle Handle to the actor.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.

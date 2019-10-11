@@ -97,6 +97,12 @@ class CoreWorker {
 
   const ActorID &GetActorId() const { return actor_id_; }
 
+  /// Get the caller ID used to submit tasks from this worker to an actor.
+  ///
+  /// \return The caller ID. For non-actor tasks, this is the current task ID.
+  /// For actors, this is the current actor ID. To make sure that all caller
+  /// IDs have the same type, we embed the actor ID in a TaskID with the rest
+  /// of the bytes zeroed out.
   TaskID GetCallerId() const;
 
   /// Give this worker a handle to an actor.
@@ -111,7 +117,8 @@ class CoreWorker {
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
 
-  /// Get a handle to an actor.
+  /// Get a handle to an actor. This asserts that the worker actually has this
+  /// handle.
   ///
   /// \param actor_id The actor handle to get.
   /// \return A handle to the requested actor.
