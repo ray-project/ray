@@ -38,11 +38,10 @@ def test_metric_gc(ray_instance, start_target_actor):
     target_actor = start_target_actor
     # this means when new scrapes are invoked, the
     metric_monitor = MetricMonitor.remote(gc_window_seconds=0)
-    metric_monitor.add_target.remote(target_actor)
+    ray.get(metric_monitor.add_target.remote(target_actor))
 
     ray.get(metric_monitor.scrape.remote())
     df = ray.get(metric_monitor._get_dataframe.remote())
-    print(df)
     assert len(df) == 102
 
     # Old metric sould be cleared. So only 1 counter + 101 list values left.
@@ -56,10 +55,10 @@ def test_metric_system(ray_instance, start_target_actor):
 
     metric_monitor = MetricMonitor.remote()
 
-    metric_monitor.add_target.remote(target_actor)
+    ray.get(metric_monitor.add_target.remote(target_actor))
 
     # Scrape once
-    metric_monitor.scrape.remote()
+    ray.get(metric_monitor.scrape.remote())
 
     percentiles = [50, 90, 95]
     agg_windows_seconds = [60]
