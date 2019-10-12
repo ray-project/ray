@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from gym.spaces import Tuple, Discrete, Dict
-import os
 import logging
 import numpy as np
 import torch as th
@@ -172,8 +171,7 @@ class QMixTorchPolicy(Policy):
         self.has_env_global_state = False
         self.has_action_mask = False
         self.device = (th.device("cuda")
-                       if bool(os.environ.get("CUDA_VISIBLE_DEVICES", None))
-                       else th.device("cpu"))
+                       if th.cuda.is_available() else th.device("cpu"))
 
         agent_obs_space = obs_space.original_space.spaces[0]
         if isinstance(agent_obs_space, Dict):
