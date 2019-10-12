@@ -3,18 +3,22 @@ Examples Overview
 
 .. customgalleryitem::
    :tooltip: Build a simple parameter server using Ray.
+   :figure: /images/param_actor.png
    :description: :doc:`/auto_examples/plot_parameter_server`
 
 .. customgalleryitem::
    :tooltip: Asynchronous Advantage Actor Critic agent using Ray.
+   :figure: /images/a3c.png
    :description: :doc:`/auto_examples/plot_example-a3c`
 
 .. customgalleryitem::
    :tooltip: Simple parallel asynchronous hyperparameter evaluation.
+   :figure: /images/hyperparameter.png
    :description: :doc:`/auto_examples/plot_hyperparameter`
 
 .. customgalleryitem::
    :tooltip: Parallelizing a policy gradient calculation on OpenAI Gym Pong.
+   :figure: /images/pong.png
    :description: :doc:`/auto_examples/plot_pong_example`
 
 .. customgalleryitem::
