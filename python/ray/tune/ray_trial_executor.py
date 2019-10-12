@@ -78,28 +78,18 @@ class CheckpointGarbageCollector(object):
         self.checkpoint_score_desc = checkpoint_score_desc
         self.best_checkpoint_dirs = []
 
-    @classmethod
-    def delete_checkpoint(cls, checkpoint_dir):
-        """Removes subdirectory within checkpoint_folder
+    def __call__(self, checkpoint_dir, result):
+        """
+        Evaluates whether or not checkpoint should be taken.
+
+        Deletes worst checkpoints when at capacity.
 
         Args:
-            checkpoint_dir : path to checkpoint
-        """
-        if os.path.isfile(checkpoint_dir):
-            shutil.rmtree(os.path.dirname(checkpoint_dir))
-        else:
-            shutil.rmtree(checkpoint_dir)
+            checkpoint_dir: Directory at which checkpoint would be taken.
+            result: Last result prior to checkpoint.
 
-    def evaluate_checkpoint(self, checkpoint_dir, result):
-        """
-        Evaluates whether or not to checkpoint based on the result.
-
-        Returns True if checkpoint should be taken, False otherwise. Deletes
-        worst checkpoints when at capacity.
-
-        Args:
-            checkpoint_dir:
-            result:
+        Returns:
+            True if checkpoint should be taken, False otherwise.
         """
         try:
             priority = result[self.checkpoint_score_attr]
@@ -121,6 +111,23 @@ class CheckpointGarbageCollector(object):
             _, worst = heapq.heappushpop(self.best_checkpoint_dirs, queue_item)
             self.delete_checkpoint(worst)
         return take_checkpoint
+
+    @classmethod
+    def delete_checkpoint(cls, checkpoint_dir):
+        """Removes subdirectory within checkpoint_folder
+
+        Args:
+            checkpoint_dir : path to checkpoint
+        """
+        if not os.path.exists(checkpoint_dir):
+            raise FileNotFoundError(
+                "Attempted to delete checkpoint at {} but "
+                "path was not found.".format(checkpoint_dir))
+        elif os.path.isfile(checkpoint_dir):
+            shutil.rmtree(os.path.dirname(checkpoint_dir))
+        else:
+            shutil.rmtree(checkpoint_dir)
+
 
 
 class RayTrialExecutor(TrialExecutor):
@@ -207,11 +214,10 @@ class RayTrialExecutor(TrialExecutor):
         if trial.keep_checkpoints_num:
             # Register a stateful checkpoint evaluation policy that garbage
             # collects the worst checkpoints when necessary.
-            checkpoint_gc = CheckpointGarbageCollector(
+            policy = CheckpointGarbageCollector(
                 trial.keep_checkpoints_num,
                 trial.checkpoint_score_attr,
                 trial.checkpoint_score_desc)
-            policy = checkpoint_gc.evaluate_checkpoint
             ray.get(
                 remote_runner.register_checkpoint_eval_policy.remote(policy))
         return remote_runner

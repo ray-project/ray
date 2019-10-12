@@ -272,9 +272,13 @@ class Trainable(object):
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
 
-        if self.evaluate_checkpoint and self._last_result:
-            if not self.evaluate_checkpoint(checkpoint_dir, self._last_result):
-                return None
+        try:
+            if self.evaluate_checkpoint and self._last_result:
+                if not self.evaluate_checkpoint(
+                        checkpoint_dir, self._last_result):
+                    return None
+        except Exception:
+            logger.warning("Checkpoint evaluation failed.", exc_info=True)
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
