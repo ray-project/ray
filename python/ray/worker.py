@@ -975,6 +975,7 @@ class Worker(object):
     def _process_actor_task(self, function_descriptor_list, job_id, task_id,
                             actor_id, required_resources, arguments,
                             return_ids, create_actor, is_direct_call):
+        success = False
         function_descriptor = FunctionDescriptor.from_bytes_list(
             function_descriptor_list)
         if is_direct_call:
@@ -1031,6 +1032,7 @@ class Worker(object):
                                         required_resources[
                                             "object_store_memory"])))
                         outputs = function_executor(actor, *arguments)
+                        success = True
                 except Exception as e:
                     traceback_str = ray.utils.format_error_message(
                         traceback.format_exc(), task_exception=False)
@@ -1042,26 +1044,27 @@ class Worker(object):
                         intercept_returns=intercept_returns)
 
                 # Store the outputs in the local object store.
-                try:
-                    with profiling.profile("task:store_outputs"):
-                        # If this is an actor task, then the last object ID
-                        # returned by the task is a dummy output, not returned
-                        # by the function itself. Decrement to get the correct
-                        # number of return values.
-                        num_returns = len(return_ids)
-                        if num_returns == 1:
-                            outputs = (outputs, )
-                        self._store_outputs_in_object_store(
+                if success:
+                    try:
+                        with profiling.profile("task:store_outputs"):
+                            # If this is an actor task, then the last object ID
+                            # returned by the task is a dummy output, not returned
+                            # by the function itself. Decrement to get the correct
+                            # number of return values.
+                            num_returns = len(return_ids)
+                            if num_returns == 1:
+                                outputs = (outputs, )
+                            self._store_outputs_in_object_store(
+                                return_ids,
+                                outputs,
+                                intercept_returns=intercept_returns)
+                    except Exception as e:
+                        self._handle_process_task_failure(
+                            function_descriptor,
                             return_ids,
-                            outputs,
+                            e,
+                            ray.utils.format_error_message(traceback.format_exc()),
                             intercept_returns=intercept_returns)
-                except Exception as e:
-                    self._handle_process_task_failure(
-                        function_descriptor,
-                        return_ids,
-                        e,
-                        ray.utils.format_error_message(traceback.format_exc()),
-                        intercept_returns=intercept_returns)
 
         # Increase the task execution counter.
         self.function_actor_manager.increase_task_counter(
