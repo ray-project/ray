@@ -52,7 +52,7 @@ To use Ray's actor model:
     ray.init()
 
     @ray.remote
-    class Counter():
+    class Counter(object):
         def __init__(self):
             self.n = 0
 
