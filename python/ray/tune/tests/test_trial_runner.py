@@ -21,10 +21,10 @@ from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
-                             HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
-                             TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
-                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
+    EPISODES_TOTAL, TRAINING_ITERATION, TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
+    TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
@@ -117,6 +117,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             HOSTNAME,
             NODE_IP,
             TRIAL_ID,
+            EXPERIMENT_TAG,
             PID,
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
@@ -1244,7 +1245,7 @@ class VariantGeneratorTest(unittest.TestCase):
         }, "tune-pong")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
-        self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
+        self.assertTrue("PPO_Pong-v0" in str(trials[0]))
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")

@@ -335,7 +335,9 @@ def test_receiving_on_two_returns(ray_start_regular):
             or (x == results[1][0] and y == results[0][0]))
 
 
-def test_serial_tasks_reading_same_signal(ray_start_regular):
+def test_serial_tasks_reading_same_signal(shutdown_only):
+    ray.init(num_cpus=2)
+
     @ray.remote
     def send_signal(value):
         signal.send(UserSignal(value))

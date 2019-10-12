@@ -18,6 +18,9 @@ HOSTNAME = "hostname"
 # (Auto-filled) The auto-assigned id of the trial.
 TRIAL_ID = "trial_id"
 
+# (Auto-filled) The auto-assigned id of the trial.
+EXPERIMENT_TAG = "experiment_tag"
+
 # (Auto-filled) The node ip of the machine hosting the training process.
 NODE_IP = "node_ip"
 
@@ -56,6 +59,11 @@ TIME_TOTAL_S = "time_total_s"
 TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
 # yapf: enable
+
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
+
+DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, MEAN_ACCURACY,
+                       MEAN_LOSS)
 
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.

@@ -41,7 +41,7 @@ def log_sync_template():
             ).format(ssh_key=quote(ssh_key))
 
 
-class NodeSyncMixin():
+class NodeSyncMixin(object):
     """Mixin for syncing files to/from a remote dir to a local dir."""
 
     def __init__(self):

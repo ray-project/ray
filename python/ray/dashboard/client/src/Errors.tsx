@@ -1,5 +1,6 @@
 import Dialog from "@material-ui/core/Dialog";
 import IconButton from "@material-ui/core/IconButton";
+import { fade } from "@material-ui/core/styles/colorManipulator";
 import { Theme } from "@material-ui/core/styles/createMuiTheme";
 import createStyles from "@material-ui/core/styles/createStyles";
 import withStyles, { WithStyles } from "@material-ui/core/styles/withStyles";
@@ -16,85 +17,88 @@ const styles = (theme: Theme) =>
     },
     closeButton: {
       position: "absolute",
-      right: theme.spacing(1),
-      top: theme.spacing(1),
+      right: theme.spacing(1.5),
+      top: theme.spacing(1.5),
       zIndex: 1
     },
     title: {
       borderBottomColor: theme.palette.divider,
       borderBottomStyle: "solid",
       borderBottomWidth: 1,
+      fontSize: "1.5rem",
       lineHeight: 1,
       marginBottom: theme.spacing(3),
-      paddingBottom: theme.spacing(3),
-      position: "relative",
-      "&:not(:first-of-type)": {
-        marginTop: theme.spacing(6)
-      }
+      paddingBottom: theme.spacing(3)
+    },
+    header: {
+      lineHeight: 1,
+      marginBottom: theme.spacing(3),
+      marginTop: theme.spacing(3)
     },
     error: {
-      "&:not(:last-child)": {
-        marginBottom: theme.spacing(3)
-      }
+      backgroundColor: fade(theme.palette.error.main, 0.06),
+      borderLeftColor: theme.palette.error.main,
+      borderLeftStyle: "solid",
+      borderLeftWidth: 3,
+      marginTop: theme.spacing(3),
+      padding: theme.spacing(2)
     },
     timestamp: {
+      color: theme.palette.text.secondary,
       marginBottom: theme.spacing(1)
     }
   });
 
-interface Props {
-  errors: {
-    [jobId: string]: Array<{
+interface State {
+  result: {
+    [pid: string]: Array<{
       message: string;
       timestamp: number;
       type: string;
     }>;
-  };
+  } | null;
+  error: string | null;
 }
 
 class Component extends React.Component<
-  Props &
-    WithStyles<typeof styles> &
-    RouteComponentProps<{ hostname: string; pid: string | undefined }>
+  WithStyles<typeof styles> &
+    RouteComponentProps<{ hostname: string; pid: string | undefined }>,
+  State
 > {
+  state: State = {
+    result: null,
+    error: null
+  };
+
   handleClose = () => {
     this.props.history.push("/");
   };
 
-  render() {
-    const { classes, errors, match } = this.props;
-    const { hostname, pid } = match.params;
-
-    let errorsForHost: {
-      [pid: string]: Array<{
-        lines: string[];
-        timestamp: number;
-      }>;
-    } = {};
-
-    for (const jobErrors of Object.values(errors)) {
-      for (const error of jobErrors) {
-        const match = error.message.match(/\(pid=(\d+), host=(.*?)\)/);
-        if (match !== null && match[2] === hostname) {
-          const pid = match[1];
-          if (!(pid in errorsForHost)) {
-            errorsForHost[pid] = [];
-          }
-          errorsForHost[pid].push({
-            lines: error.message
-              .replace(/\u001b\[\d+m/g, "") // eslint-disable-line no-control-regex
-              .trim()
-              .split("\n"),
-            timestamp: error.timestamp
-          });
-        }
-      }
+  async componentDidMount() {
+    try {
+      const { match } = this.props;
+      const { hostname, pid } = match.params;
+      const url = new URL(
+        "/api/errors",
+        process.env.NODE_ENV === "development"
+          ? "http://localhost:8080"
+          : window.location.origin
+      );
+      url.searchParams.set("hostname", hostname);
+      url.searchParams.set("pid", pid || "");
+      const response = await fetch(url.toString());
+      const json = await response.json();
+      this.setState({ result: json.result, error: null });
+    } catch (error) {
+      this.setState({ result: null, error: error.toString() });
     }
+  }
 
-    const errorsToDisplay =
-      pid === undefined
-        ? errorsForHost
-        : { [pid]: pid in errorsForHost ? errorsForHost[pid] : [] };
+  render() {
+    const { classes, match } = this.props;
+    const { result, error } = this.state;
+
+    const { hostname } = match.params;
 
     return (
       <Dialog
@@ -108,25 +112,32 @@ class Component extends React.Component<
         <IconButton className={classes.closeButton} onClick={this.handleClose}>
           <CloseIcon />
         </IconButton>
-        {Object.entries(errorsToDisplay).map(([pid, errors]) => (
-          <React.Fragment key={pid}>
-            <Typography className={classes.title}>
-              {hostname} (PID: {pid})
-            </Typography>
-            {errors.length > 0 ? (
-              errors.map(({ lines, timestamp }, index) => (
-                <div className={classes.error} key={index}>
-                  <Typography className={classes.timestamp}>
-                    Error at {new Date(timestamp * 1000).toLocaleString()}
-                  </Typography>
-                  <NumberedLines lines={lines} />
-                </div>
-              ))
-            ) : (
-              <Typography color="textSecondary">No errors found.</Typography>
-            )}
-          </React.Fragment>
-        ))}
+        <Typography className={classes.title}>Errors</Typography>
+        {error !== null ? (
+          <Typography color="error">{error}</Typography>
+        ) : result === null ? (
+          <Typography color="textSecondary">Loading...</Typography>
+        ) : (
+          Object.entries(result).map(([pid, errors]) => (
+            <React.Fragment key={pid}>
+              <Typography className={classes.header}>
+                {hostname} (PID: {pid})
+              </Typography>
+              {errors.length > 0 ? (
+                errors.map(({ message, timestamp }, index) => (
+                  <div className={classes.error} key={index}>
+                    <Typography className={classes.timestamp}>
+                      Error at {new Date(timestamp * 1000).toLocaleString()}
+                    </Typography>
+                    <NumberedLines lines={message.trim().split("\n")} />
+                  </div>
+                ))
+              ) : (
+                <Typography color="textSecondary">No errors found.</Typography>
+              )}
+            </React.Fragment>
+          ))
+        )}
       </Dialog>
     );
   }
