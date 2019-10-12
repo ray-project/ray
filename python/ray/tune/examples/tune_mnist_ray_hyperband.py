@@ -36,7 +36,7 @@ from ray.tune import Trainable, sample_from
 from ray.tune.schedulers import HyperBandScheduler
 from tensorflow.examples.tutorials.mnist import input_data
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import numpy as np
 
 activation_fn = None  # e.g. tf.nn.relu
