@@ -39,7 +39,7 @@ from ray.tune import grid_search, register_trainable
 from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
 
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 
 FLAGS = None
 status_reporter = None  # used to report training status back to Ray
