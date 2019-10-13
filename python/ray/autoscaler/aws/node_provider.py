@@ -336,7 +336,7 @@ class AWSNodeProvider(NodeProvider):
                     "AWSNodeProvider: terminating nodes {} (spot nodes cannot "
                     "be stopped, only terminated)".format(spot_ids))
                 self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
-            else:
+            if on_demand_ids:
                 logger.info(
                     "AWSNodeProvider: stopping nodes {}. To terminate nodes "
                     "on stop, set 'cache_stopped_nodes: False' in the "
