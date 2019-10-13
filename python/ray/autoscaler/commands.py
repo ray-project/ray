@@ -112,7 +112,7 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
                 head = remaining_heads()
             while A:
                 logger.info("teardown_cluster: "
-                            "Shutting down {} nodes...".format(len(A)))
+                            "Shutting down {} worker nodes...".format(len(A)))
                 provider.terminate_nodes(A)
                 time.sleep(1)
                 A = remaining_workers()
