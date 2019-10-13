@@ -403,7 +403,7 @@ class NodeUpdater(object):
                     logger.debug(self.log_prefix +
                                  "Waiting for remote shell...")
 
-                    # Setting redirect=False allows the user to see errors like
+                    # Setting redirect=None allows the user to see errors like
                     # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too
                     # long for Unix domain socket.
                     self.cmd_runner.run("uptime", timeout=5, redirect=None)
