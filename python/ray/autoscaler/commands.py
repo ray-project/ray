@@ -84,33 +84,38 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
 
-        def remaining_nodes():
-            if workers_only:
-                A = []
-            else:
-                A = [
-                    node_id for node_id in provider.non_terminated_nodes({
-                        TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
-                    })
-                ]
+        def remaining_heads():
+            return [
+                node_id for node_id in provider.non_terminated_nodes({
+                    TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+                })
+            ]
 
-            A += [
+        def remaining_workers():
+            return [
                 node_id for node_id in provider.non_terminated_nodes({
                     TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
                 })
             ]
-            return A
 
         # Loop here to check that both the head and worker nodes are actually
         #   really gone
-        A = remaining_nodes()
+        head = remaining_heads()
+        A = remaining_workers()
         with LogTimer("teardown_cluster: done."):
+            while head and not workers_only:
+                logger.info("teardown_cluster: "
+                            "Shutting down {} head node(s)...".format(
+                                len(head)))
+                provider.terminate_nodes(head)
+                time.sleep(1)
+                head = remaining_heads()
             while A:
                 logger.info("teardown_cluster: "
                             "Shutting down {} nodes...".format(len(A)))
                 provider.terminate_nodes(A)
                 time.sleep(1)
-                A = remaining_nodes()
+                A = remaining_workers()
     finally:
         provider.cleanup()
 
