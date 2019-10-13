@@ -553,7 +553,10 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
-        # Update nodes with out-of-date files
+        # Update nodes with out-of-date files.
+        # TODO(edoakes): Spawning these threads directly seems to cause
+        # problems. They should at a minimum be spawned as daemon threads.
+        # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
