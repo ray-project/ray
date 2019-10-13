@@ -430,9 +430,9 @@ class NodeUpdater(object):
 
         node_tags = self.provider.node_tags(self.node_id)
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
-            logger.info(
-                "NodeUpdater: {} already up-to-date, skip to ray start".format(
-                    self.node_id))
+            logger.info(self.log_prefix +
+                        "{} already up-to-date, skip to ray start".format(
+                            self.node_id))
         else:
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
