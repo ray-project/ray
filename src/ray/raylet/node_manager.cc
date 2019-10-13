@@ -410,7 +410,8 @@ void NodeManager::WarnResourceDeadlock() {
         << " pending actors on this node. "
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
-        << "resources available to this Ray cluster.";
+        << "resources available to this Ray cluster. You can ignore this message "
+        << "if this Ray cluster is expected to auto-scale.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
         current_time_ms()));
