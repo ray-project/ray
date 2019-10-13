@@ -554,10 +554,18 @@ class StandardAutoscaler(object):
             self.log_info_string(nodes, target_workers)
 
         # Update nodes with out-of-date files
+        T = []
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
             if node_id is not None:
-                self.spawn_updater(node_id, commands, ray_start)
+                T.append(
+                    threading.Thread(
+                        target=self.spawn_updater,
+                        args=(node_id, commands, ray_start)))
+        for t in T:
+            t.start()
+        for t in T:
+            t.join()
 
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
