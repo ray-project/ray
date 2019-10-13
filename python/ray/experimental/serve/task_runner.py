@@ -104,8 +104,7 @@ class RayServeMixin:
             self._ray_serve_cached_work_token = None
         else:
             self._ray_serve_cached_work_token = work_token
-            self._ray_serve_self_handle._ray_serve_main_loop.remote(
-                self._ray_serve_self_handle)
+            self._ray_serve_self_handle._ray_serve_main_loop.remote()
             return
 
         if work_item.request_context == TaskContext.Web:
