@@ -123,6 +123,8 @@ int main(int argc, char *argv[]) {
       RayConfig::instance().heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
+  node_manager_config.fair_queueing_enabled =
+      RayConfig::instance().fair_queueing_enabled();
   node_manager_config.max_lineage_size = RayConfig::instance().max_lineage_size();
   node_manager_config.store_socket_name = store_socket_name;
   node_manager_config.temp_dir = temp_dir;

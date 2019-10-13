@@ -369,9 +369,7 @@ class ActorClass(object):
         # Instead, instantiate the actor locally and add it to the worker's
         # dictionary
         if worker.mode == ray.LOCAL_MODE:
-            actor_id = ActorID.of(worker.current_job_id,
-                                  worker.current_task_id,
-                                  worker.task_context.task_index + 1)
+            actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
             core_handle = ray._raylet.ActorHandle(

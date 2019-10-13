@@ -106,9 +106,9 @@ def _start_replica(backend_tag):
 
     runner = creator()
     setup_done = runner._ray_serve_setup.remote(
-        backend_tag, global_state.router_actor_handle)
+        backend_tag, global_state.router_actor_handle, runner)
     ray.get(setup_done)
-    runner._ray_serve_main_loop.remote(runner)
+    runner._ray_serve_main_loop.remote()
 
     global_state.backend_replicas[backend_tag].append(runner)
     global_state.metric_monitor_handle.add_target.remote(runner)

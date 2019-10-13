@@ -158,6 +158,15 @@ class TrialExecutor(object):
         """
         raise NotImplementedError
 
+    def get_next_failed_trial(self):
+        """Non-blocking call that detects and returns one failed trial.
+
+        Returns:
+            A Trial object that is ready for failure processing. None if
+            no failure detected.
+        """
+        raise NotImplementedError
+
     def fetch_result(self, trial):
         """Fetches one result for the trial.
 

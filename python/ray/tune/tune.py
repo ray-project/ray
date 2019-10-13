@@ -13,6 +13,7 @@ from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
@@ -25,6 +26,12 @@ _SCHEDULERS = {
     "HyperBand": HyperBandScheduler,
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
+
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
 
 
 def _make_scheduler(args):
@@ -181,13 +188,13 @@ def run(run_or_experiment,
         >>> tune.run(mytrainable, num_samples=5, reuse_actors=True)
 
         >>> tune.run(
-                "PG",
-                num_samples=5,
-                config={
-                    "env": "CartPole-v0",
-                    "lr": tune.sample_from(lambda _: np.random.rand())
-                }
-            )
+        >>>     "PG",
+        >>>     num_samples=5,
+        >>>     config={
+        >>>         "env": "CartPole-v0",
+        >>>         "lr": tune.sample_from(lambda _: np.random.rand())
+        >>>     }
+        >>> )
     """
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
@@ -238,15 +245,17 @@ def run(run_or_experiment,
 
     runner.add_experiment(experiment)
 
-    if verbose:
-        print(runner.debug_string(max_debug=99999))
+    if IS_NOTEBOOK:
+        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+    else:
+        reporter = CLIReporter()
 
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
             if verbose:
-                print(runner.debug_string())
+                reporter.report(runner)
             last_debug = time.time()
 
     try:
@@ -255,7 +264,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        print(runner.debug_string(max_debug=99999))
+        reporter.report(runner)
 
     wait_for_sync()
 
