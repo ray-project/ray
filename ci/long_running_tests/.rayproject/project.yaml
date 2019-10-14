@@ -15,7 +15,7 @@ commands:
     params:
       - name: wheel
         help: "URL to the ray wheel to test (defaults to latest)."
-        default: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp36-cp36m-manylinux1_x86_64.whl
+        default: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
       - name: workload
         help: "Name of the workload to run."
         choices: ["actor_deaths", "apex", "impala", "many_actor_tasks", "many_drivers", "many_tasks", "node_failures", "pbt"]

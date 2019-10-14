@@ -403,11 +403,11 @@ class NodeUpdater(object):
                     logger.debug(self.log_prefix +
                                  "Waiting for remote shell...")
 
-                    # Setting redirect=False allows the user to see errors like
+                    # Setting redirect=None allows the user to see errors like
                     # unix_listener: path "/tmp/rkn_ray_ssh_sockets/..." too
                     # long for Unix domain socket.
-                    self.cmd_runner.run("uptime", timeout=5, redirect=False)
-
+                    self.cmd_runner.run("uptime", timeout=5, redirect=None)
+                    logger.debug("Uptime succeeded.")
                     return True
 
                 except Exception as e:
@@ -429,10 +429,11 @@ class NodeUpdater(object):
         self.wait_ready(deadline)
 
         node_tags = self.provider.node_tags(self.node_id)
+        logger.debug("Node tags: {}".format(str(node_tags)))
         if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
-            logger.info(
-                "NodeUpdater: {} already up-to-date, skip to ray start".format(
-                    self.node_id))
+            logger.info(self.log_prefix +
+                        "{} already up-to-date, skip to ray start".format(
+                            self.node_id))
         else:
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
