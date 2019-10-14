@@ -111,7 +111,8 @@ class CoreWorkerTaskInterface {
   ///
   /// \param[in] actor_id The ID of the actor whose status has changed.
   /// \param[in] actor_data The actor's new status information.
-  void HandleDirectActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
+  void HandleDirectActorUpdate(const ActorID &actor_id,
+                               const gcs::ActorTableData &actor_data);
 
  private:
   /// Build common attributes of the task spec, and compute return ids.

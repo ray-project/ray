@@ -48,8 +48,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] actor_id The ID of the actor whose status has changed.
   /// \param[in] actor_data The actor's new status information.
-  void HandleActorUpdate(const ActorID &actor_id,
-      const gcs::ActorTableData &actor_data);
+  void HandleActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
 
  private:
   /// Push a task to a remote actor via the given client.

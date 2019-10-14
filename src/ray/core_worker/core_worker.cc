@@ -174,8 +174,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ", port: " << actor_data.port();
     };
 
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(actor_id, actor_notification_callback,
-                                               nullptr));
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
 }
