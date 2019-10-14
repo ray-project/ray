@@ -2081,12 +2081,12 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
 
-        def on_step_begin(self):
+        def on_step_begin(self, trialrunner):
             self._update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             setattr(self, "pre_step", cnt + 1)
 
-        def on_step_end(self):
+        def on_step_end(self, trialrunner):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             setattr(self, "post_step", 1 + cnt)
 

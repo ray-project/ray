@@ -523,7 +523,7 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "? CPUs, ? GPUs"
 
-    def on_step_begin(self):
+    def on_step_begin(self, trial_runner):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
 
