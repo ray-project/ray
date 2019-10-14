@@ -201,6 +201,7 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     CoreWorkerObjectInterface &object_interface,
                                     boost::asio::io_service &io_service,
+                                    boost::asio::io_service &main_io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
@@ -225,6 +226,8 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The IO event loop for running tasks on.
+  boost::asio::io_service &task_main_io_service_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<ActorHandleID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;

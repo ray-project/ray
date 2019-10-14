@@ -33,7 +33,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
           new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                                rpc_io_service_, worker_server_, func)));
+                                                rpc_io_service_, *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();

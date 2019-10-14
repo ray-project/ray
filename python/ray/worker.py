@@ -1063,7 +1063,8 @@ class Worker(object):
                             function_descriptor,
                             return_ids,
                             e,
-                            ray.utils.format_error_message(traceback.format_exc()),
+                            ray.utils.format_error_message(
+                                traceback.format_exc()),
                             intercept_returns=intercept_returns)
 
         # Increase the task execution counter.

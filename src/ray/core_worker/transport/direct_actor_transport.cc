@@ -66,7 +66,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // to have a timeout to mark it as invalid if it doesn't show up in the
     // specified time.
     pending_requests_[actor_id].emplace_back(std::move(request));
-    RAY_LOG(ERROR) << "Actor " << actor_id << " is not yet created.";
+    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
@@ -101,7 +101,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates(
         ActorStateData(actor_data.state(), actor_data.ip_address(), actor_data.port()));
 
     if (actor_data.state() == ActorTableData::ALIVE) {
-      RAY_LOG(ERROR) << "Actor is alive " << actor_id;
+      RAY_LOG(DEBUG) << "Actor is alive " << actor_id;
       // Check if this actor is the one that we're interested, if we already have
       // a connection to the actor, or have pending requests for it, we should
       // create a new connection.
@@ -137,13 +137,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates(
       }
     }
 
-    RAY_LOG(ERROR) << "received notification on actor, state="
+    RAY_LOG(DEBUG) << "received notification on actor, state="
                   << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
                   << ", ip address: " << actor_data.ip_address()
                   << ", port: " << actor_data.port();
   };
 
-  RAY_LOG(ERROR) << "AsyncSubscribe " << actor_id;
   return gcs_client_.Actors().AsyncSubscribe(actor_id, actor_notification_callback,
                                              nullptr);
 }
@@ -153,7 +152,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
   std::shared_ptr<rpc::DirectActorClient> grpc_client =
       rpc::DirectActorClient::make(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
-  RAY_LOG(ERROR) << "Connect " << ip_address << ":" << port;
+  RAY_LOG(DEBUG) << "Connect " << ip_address << ":" << port;
 
   // Submit all pending requests.
   auto &client = rpc_clients_[actor_id];
@@ -239,13 +238,15 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) {
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, CoreWorkerObjectInterface &object_interface,
-    boost::asio::io_service &io_service, rpc::GrpcServer &server,
+    boost::asio::io_service &io_service, boost::asio::io_service &main_io_service,
+    rpc::GrpcServer &server,
     const TaskHandler &task_handler)
     : worker_context_(worker_context),
       io_service_(io_service),
       object_interface_(object_interface),
-      task_service_(io_service, *this),
-      task_handler_(task_handler) {
+      task_service_(main_io_service, *this),
+      task_handler_(task_handler),
+      task_main_io_service_(main_io_service) {
   server.RegisterService(task_service_);
 }
 
@@ -270,7 +271,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
         task_spec.ActorHandleId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(io_service_)));
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(task_main_io_service_)));
     it = result.first;
   }
   it->second->Add(
