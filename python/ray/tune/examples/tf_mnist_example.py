@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 # coding: utf-8
+#
 # This example showcases how to use TF2.0 APIs with Tune.
+# Original code: https://www.tensorflow.org/tutorials/quickstart/advanced
 #
 # As of 10/12/2019: One caveat of using TF2.0 is that TF AutoGraph
 # functionality does not interact nicely with Ray actors. One way to get around
 # this is to `import tensorflow` inside the Tune Trainable.
 #
-# Original code: https://www.tensorflow.org/tutorials/quickstart/advanced
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
+import argparse
 from tensorflow.keras.layers import Dense, Flatten, Conv2D
 from tensorflow.keras import Model
 from tensorflow.keras.datasets.mnist import load_data
@@ -21,6 +23,13 @@ from ray import tune
 
 
 MAX_TRAIN_BATCH = 10
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--smoke-test", action="store_true", help="Finish quickly for testing")
+args, _ = parser.parse_known_args()
+
 
 class MyModel(Model):
     def __init__(self, hiddens=128):
@@ -39,7 +48,7 @@ class MyModel(Model):
 
 class MNISTTrainable(tune.Trainable):
     def _setup(self, config):
-        # See the above note.
+        # IMPORTANT: See the above note.
         import tensorflow as tf
         (x_train, y_train), (x_test, y_test) = load_data()
         x_train, x_test = x_train / 255.0, x_test / 255.0
@@ -117,6 +126,6 @@ if __name__ == '__main__':
     import ray
     tune.run(
         MNISTTrainable,
-        stop={"training_iteration": 5},
+        stop={"training_iteration": 5 if args.smoke_test else 50},
         verbose=1,
         config={"hiddens": tune.grid_search([32, 64, 128])})
