@@ -8,18 +8,16 @@ namespace ray {
 
 CoreWorkerTaskInterface::CoreWorkerTaskInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    gcs::RedisGcsClient &gcs_client)
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service)
     : worker_context_(worker_context) {
   task_submitters_.emplace(TaskTransportType::RAYLET,
                            std::unique_ptr<CoreWorkerRayletTaskSubmitter>(
                                new CoreWorkerRayletTaskSubmitter(raylet_client)));
-  task_submitters_.emplace(
-      TaskTransportType::DIRECT_ACTOR,
-      std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-          new CoreWorkerDirectActorTaskSubmitter(
-              io_service, gcs_client,
-              object_interface.CreateStoreProvider(StoreProviderType::MEMORY))));
+  task_submitters_.emplace(TaskTransportType::DIRECT_ACTOR,
+                           std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
+                               new CoreWorkerDirectActorTaskSubmitter(
+                                   io_service, object_interface.CreateStoreProvider(
+                                                   StoreProviderType::MEMORY))));
 }
 
 void CoreWorkerTaskInterface::BuildCommonTaskSpec(

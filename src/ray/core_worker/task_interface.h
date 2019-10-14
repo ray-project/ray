@@ -65,8 +65,7 @@ class CoreWorkerTaskInterface {
   CoreWorkerTaskInterface(WorkerContext &worker_context,
                           std::unique_ptr<RayletClient> &raylet_client,
                           CoreWorkerObjectInterface &object_interface,
-                          boost::asio::io_service &io_service,
-                          gcs::RedisGcsClient &gcs_client);
+                          boost::asio::io_service &io_service);
 
   /// Submit a normal task.
   ///

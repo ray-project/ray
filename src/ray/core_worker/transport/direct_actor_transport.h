@@ -35,7 +35,7 @@ struct ActorStateData {
 class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+      boost::asio::io_service &io_service,
       std::unique_ptr<CoreWorkerStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
@@ -93,9 +93,6 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
-
-  /// Gcs client.
-  gcs::RedisGcsClient &gcs_client_;
 
   /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
   rpc::ClientCallManager client_call_manager_;

@@ -15,10 +15,9 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 }
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
-    boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+    boost::asio::io_service &io_service,
     std::unique_ptr<CoreWorkerStoreProvider> store_provider)
     : io_service_(io_service),
-      gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 

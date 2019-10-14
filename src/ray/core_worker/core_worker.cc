@@ -49,7 +49,7 @@ CoreWorker::CoreWorker(
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
           worker_context_, raylet_client_, store_socket, use_memory_store));
   task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
-      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
+      worker_context_, raylet_client_, *object_interface_, io_service_));
 
   // Initialize task execution.
   int rpc_server_port = 0;
