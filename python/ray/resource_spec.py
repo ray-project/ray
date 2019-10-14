@@ -113,8 +113,10 @@ class ResourceSpec(
                                  "Received {}.".format(resources))
             if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
                 raise ValueError(
-                    "Resource quantities must be at most {}.".format(
-                        ray_constants.MAX_RESOURCE_QUANTITY))
+                    "Resource quantities must be at most {}. "
+                    "Received {}.".format(
+                        ray_constants.MAX_RESOURCE_QUANTITY,
+                        resources))
 
         return resources
 
