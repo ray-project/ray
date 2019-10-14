@@ -5,7 +5,6 @@ from docutils.statemachine import StringList
 from docutils import nodes
 import os
 import sphinx_gallery
-from sphinx_gallery.gen_rst import scale_image
 
 try:
     FileNotFoundError
@@ -78,8 +77,7 @@ class CustomGalleryItemDirective(Directive):
             thumb_dir = os.path.join(env.srcdir, "_static/thumbs/")
             os.makedirs(thumb_dir, exist_ok=True)
             image_path = os.path.join(thumb_dir, os.path.basename(figname))
-            sphinx_gallery.gen_rst.scale_image(
-                figname, image_path, 400, 280)
+            sphinx_gallery.gen_rst.scale_image(figname, image_path, 400, 280)
 
             thumbnail = os.path.relpath(image_path, env.srcdir)
         else:
