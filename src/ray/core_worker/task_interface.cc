@@ -128,6 +128,13 @@ Status CoreWorkerTaskInterface::SubmitActorTask(const TaskID &caller_id,
   return_ids->pop_back();
 
   return status;
+
+}
+
+void CoreWorkerTaskInterface::HandleDirectActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data) {
+  auto &submitter = task_submitters_[TaskTransportType::DIRECT_ACTOR];
+  auto &direct_actor_submitter = reinterpret_cast<std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> &>(submitter);
+  direct_actor_submitter->HandleActorUpdate(actor_id, actor_data);
 }
 
 }  // namespace ray

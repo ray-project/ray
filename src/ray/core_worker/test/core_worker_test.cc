@@ -48,12 +48,11 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
   return std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size(), true);
 }
 
-std::unique_ptr<ActorHandle> CreateActorHelper(
+ActorHandle &CreateActorHelper(
     CoreWorker &worker, std::unordered_map<std::string, double> &resources,
     bool is_direct_call, uint64_t max_reconstructions) {
   std::unique_ptr<ActorHandle> actor_handle;
 
-  // Test creating actor.
   uint8_t array[] = {1, 2, 3};
   auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
 
@@ -67,7 +66,9 @@ std::unique_ptr<ActorHandle> CreateActorHelper(
   // Create an actor.
   RAY_CHECK_OK(worker.Tasks().CreateActor(worker.GetCallerId(), func, args, actor_options,
                                           &actor_handle));
-  return actor_handle;
+  ActorID actor_id = actor_handle->GetActorID();
+  RAY_CHECK(worker.AddActorHandle(std::move(actor_handle)));
+  return worker.GetActorHandle(actor_id);
 }
 
 class CoreWorkerTest : public ::testing::Test {
@@ -267,7 +268,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
                     nullptr);
 
-  auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
+  auto &actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
   // Test submitting some tasks with by-value args for that actor.
   {
@@ -287,7 +288,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
-      RAY_CHECK_OK(driver.Tasks().SubmitActorTask(driver.GetCallerId(), *actor_handle,
+      RAY_CHECK_OK(driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
                                                   func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
@@ -328,7 +329,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
-    auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), *actor_handle,
+    auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
                                                  func, args, options, &return_ids);
     if (is_direct_call) {
       // For direct actor call, submitting a task with by-reference arguments
@@ -358,10 +359,10 @@ void CoreWorkerTest::TestActorReconstruction(
                     nullptr);
 
   // creating actor.
-  auto actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
+  auto &actor_handle = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
   // Wait for actor alive event.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), true,
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle.GetActorID(), true,
                                           30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
@@ -376,9 +377,9 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), false,
+        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle.GetActorID(), false,
                                                 30 * 1000 /* 30s */));
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), true,
+        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle.GetActorID(), true,
                                                 30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
@@ -396,7 +397,7 @@ void CoreWorkerTest::TestActorReconstruction(
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
-      auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), *actor_handle,
+      auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
                                                    func, args, options, &return_ids);
       RAY_CHECK_OK(status);
       ASSERT_EQ(return_ids.size(), 1);
@@ -417,7 +418,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
                     nullptr);
 
   // creating actor.
-  auto actor_handle =
+  auto &actor_handle =
       CreateActorHelper(driver, resources, is_direct_call, 0 /* not reconstructable */);
 
   // Test submitting some tasks with by-value args for that actor.
@@ -443,7 +444,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
-      auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), *actor_handle,
+      auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
                                                    func, args, options, &return_ids);
       if (i < task_index_to_kill_worker) {
         RAY_CHECK_OK(status);
@@ -700,24 +701,15 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, "",
                     "127.0.0.1", nullptr);
-  std::unique_ptr<ActorHandle> actor_handle;
   std::vector<ObjectID> object_ids;
-
-  // Test creating actor.
-  uint8_t array[] = {1, 2, 3};
-  auto buffer = std::make_shared<LocalMemoryBuffer>(array, sizeof(array));
-  RayFunction func(ray::Language::PYTHON, {});
-  std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
-
-  std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{
-      0, /*is_direct_call*/ true, resources, resources, {}};
   // Create an actor.
-  RAY_CHECK_OK(driver.Tasks().CreateActor(driver.GetCallerId(), func, args, actor_options,
-                                          &actor_handle));
+  std::unordered_map<std::string, double> resources;
+  auto &actor_handle = CreateActorHelper(
+      driver, resources,
+      /*is_direct_call=*/true,
+      /*max_reconstructions=*/0);
   // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle->GetActorID(), true,
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_handle.GetActorID(), true,
                                           30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
@@ -735,7 +727,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
 
-    RAY_CHECK_OK(driver.Tasks().SubmitActorTask(driver.GetCallerId(), *actor_handle, func,
+    RAY_CHECK_OK(driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle, func,
                                                 args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);

@@ -107,6 +107,12 @@ class CoreWorkerTaskInterface {
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
 
+  /// Handle an update about an actor.
+  ///
+  /// \param[in] actor_id The ID of the actor whose status has changed.
+  /// \param[in] actor_data The actor's new status information.
+  void HandleDirectActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
+
  private:
   /// Build common attributes of the task spec, and compute return ids.
   ///

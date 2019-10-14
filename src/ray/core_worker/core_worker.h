@@ -82,13 +82,7 @@ class CoreWorker {
   void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id) {
-    worker_context_.SetCurrentTaskId(task_id);
-    // Clear all actor handles for non-actor tasks.
-    if (actor_id_.IsNil()) {
-      actor_handles_.clear();
-    }
-  }
+  void SetCurrentTaskId(const TaskID &task_id);
 
   void SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());

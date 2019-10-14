@@ -44,10 +44,14 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// \return Status.
   Status SubmitTask(const TaskSpecification &task_spec) override;
 
- private:
-  /// Subscribe to updates of an actor.
-  Status SubscribeActorUpdates(const ActorID &actor_id);
+  /// Handle an update about an actor.
+  ///
+  /// \param[in] actor_id The ID of the actor whose status has changed.
+  /// \param[in] actor_data The actor's new status information.
+  void HandleActorUpdate(const ActorID &actor_id,
+      const gcs::ActorTableData &actor_data);
 
+ private:
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
@@ -86,7 +90,7 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id);
+  bool IsActorAlive(const ActorID &actor_id) const;
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
@@ -116,9 +120,6 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
 
   /// Map from actor id to the tasks that are waiting for reply.
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
-
-  /// The set of actors which are subscribed for further updates.
-  std::unordered_set<ActorID> subscribed_actors_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerStoreProvider> store_provider_;

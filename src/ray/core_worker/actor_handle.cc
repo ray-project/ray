@@ -58,4 +58,10 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
+void ActorHandle::Reset() {
+  std::unique_lock<std::mutex> guard(mutex_);
+  task_counter_ = 0;
+  actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
+}
+
 }  // namespace ray

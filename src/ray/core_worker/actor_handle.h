@@ -44,6 +44,14 @@ class ActorHandle {
 
   void Serialize(std::string *output);
 
+  /// Reset the handle state next task submitted.
+  ///
+  /// This should be called whenever the actor is restarted, since the new
+  /// instance of the actor does not have the previous sequence number.
+  /// TODO: We should also move the other actor state (status and IP) inside
+  /// ActorHandle and reset them in this method.
+  void Reset();
+
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
