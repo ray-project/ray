@@ -270,9 +270,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
         self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
 
-        # Infeasible even with queueing enabled (no gpus)
-        self.assertRaises(TuneError, lambda: f(1, 1, True))
-
         # Too large resource request
         self.assertRaises(TuneError, lambda: f(100, 100, False))
         self.assertRaises(TuneError, lambda: f(0, 100, False))

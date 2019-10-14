@@ -457,6 +457,8 @@ class RayTrialExecutor(TrialExecutor):
                 for res in resources.custom_resources))
 
         if have_space:
+            # The assumption right now is that we block all trials if one
+            # trial is queued.
             self._trial_queued = False
             return True
 
