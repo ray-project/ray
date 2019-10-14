@@ -45,6 +45,9 @@ class RayTrialExecutor(TrialExecutor):
                  ray_auto_init=False,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
+        # Check for if we are launching a trial without resources in kick off
+        # autoscaler.
+        self._trial_queued = False
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
@@ -454,22 +457,14 @@ class RayTrialExecutor(TrialExecutor):
                 for res in resources.custom_resources))
 
         if have_space:
+            # The assumption right now is that we block all trials if one
+            # trial is queued.
+            self._trial_queued = False
             return True
 
-        can_overcommit = self._queue_trials
-
-        if ((resources.cpu_total() > 0 and currently_available.cpu <= 0)
-                or (resources.gpu_total() > 0 and currently_available.gpu <= 0)
-                or
-            (resources.memory_total() > 0 and currently_available.memory <= 0)
-                or (resources.object_store_memory_total() > 0
-                    and currently_available.object_store_memory <= 0) or any(
-                        (resources.get_res_total(res_name) > 0
-                         and currently_available.get(res_name) <= 0)
-                        for res_name in resources.custom_resources)):
-            can_overcommit = False  # requested resource is already saturated
-
+        can_overcommit = self._queue_trials and not self._trial_queued
         if can_overcommit:
+            self._trial_queued = True
             logger.warning(
                 "Allowing trial to start even though the "
                 "cluster does not have enough free resources. Trial actors "
