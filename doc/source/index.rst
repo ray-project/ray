@@ -263,7 +263,6 @@ Getting Involved
    auto_examples/plot_newsreader.rst
    auto_examples/plot_hyperparameter.rst
    auto_examples/plot_pong_example.rst
-   auto_examples/plot_resnet.rst
    auto_examples/plot_streaming.rst
    auto_examples/plot_parameter_server.rst
    auto_examples/plot_example-a3c.rst
