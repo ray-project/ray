@@ -4,6 +4,7 @@ Full example of ray.serve module
 
 import ray
 import ray.experimental.serve as serve
+from ray.experimental.serve.utils import pformat_color_json
 import requests
 import time
 
@@ -16,8 +17,11 @@ serve.create_endpoint("my_endpoint", "/echo")
 
 
 # a backend can be a function or class.
-def echo_v1(request):
-    return request
+# it can be made to be invoked from web as well as python.
+def echo_v1(flask_request, response="hello from python!"):
+    if serve.context.web:
+        response = flask_request.url
+    return response
 
 
 serve.create_backend(echo_v1, "echo:v1")
@@ -29,14 +33,14 @@ serve.link("my_endpoint", "echo:v1")
 print(requests.get("http://127.0.0.1:8000/echo").json())
 # The service will be reachable from http
 
-print(ray.get(serve.get_handle("my_endpoint").remote("hello")))
+print(ray.get(serve.get_handle("my_endpoint").remote(response="hello")))
 
 # as well as within the ray system.
 
 
 # We can also add a new backend and split the traffic.
-def echo_v2(request):
-    # magic
+def echo_v2(flask_request):
+    # magic, only from web.
     return "something new"
 
 
@@ -49,3 +53,10 @@ serve.split("my_endpoint", {"echo:v1": 0.5, "echo:v2": 0.5})
 for _ in range(10):
     print(requests.get("http://127.0.0.1:8000/echo").json())
     time.sleep(0.5)
+
+# You can also scale each backend independently.
+serve.scale("echo:v1", 2)
+serve.scale("echo:v2", 2)
+
+# As well as retrieving relevant system metrics
+print(pformat_color_json(serve.stat()))

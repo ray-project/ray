@@ -45,6 +45,9 @@ class RayTrialExecutor(TrialExecutor):
                  ray_auto_init=False,
                  refresh_period=RESOURCE_REFRESH_PERIOD):
         super(RayTrialExecutor, self).__init__(queue_trials)
+        # Check for if we are launching a trial without resources in kick off
+        # autoscaler.
+        self._trial_queued = False
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object id generated.
@@ -301,18 +304,22 @@ class RayTrialExecutor(TrialExecutor):
     def get_current_trial_ips(self):
         return {t.node_ip for t in self.get_running_trials()}
 
-    def get_next_available_trial(self):
+    def get_next_failed_trial(self):
+        """Gets the first trial found to be running on a node presumed dead.
+
+        Returns:
+            A Trial object that is ready for failure processing. None if
+            no failure detected.
+        """
         if ray.worker._mode() != ray.worker.LOCAL_MODE:
             live_cluster_ips = self.get_alive_node_ips()
             if live_cluster_ips - self.get_current_trial_ips():
                 for trial in self.get_running_trials():
                     if trial.node_ip and trial.node_ip not in live_cluster_ips:
-                        logger.warning(
-                            "{} (ip: {}) detected as stale. This is likely "
-                            "because the node was lost. Processing this "
-                            "trial first.".format(trial, trial.node_ip))
                         return trial
+        return None
 
+    def get_next_available_trial(self):
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
         # Note: We shuffle the results because `ray.wait` by default returns
@@ -450,22 +457,14 @@ class RayTrialExecutor(TrialExecutor):
                 for res in resources.custom_resources))
 
         if have_space:
+            # The assumption right now is that we block all trials if one
+            # trial is queued.
+            self._trial_queued = False
             return True
 
-        can_overcommit = self._queue_trials
-
-        if ((resources.cpu_total() > 0 and currently_available.cpu <= 0)
-                or (resources.gpu_total() > 0 and currently_available.gpu <= 0)
-                or
-            (resources.memory_total() > 0 and currently_available.memory <= 0)
-                or (resources.object_store_memory_total() > 0
-                    and currently_available.object_store_memory <= 0) or any(
-                        (resources.get_res_total(res_name) > 0
-                         and currently_available.get(res_name) <= 0)
-                        for res_name in resources.custom_resources)):
-            can_overcommit = False  # requested resource is already saturated
-
+        can_overcommit = self._queue_trials and not self._trial_queued
         if can_overcommit:
+            self._trial_queued = True
             logger.warning(
                 "Allowing trial to start even though the "
                 "cluster does not have enough free resources. Trial actors "
@@ -524,7 +523,7 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "? CPUs, ? GPUs"
 
-    def on_step_begin(self):
+    def on_step_begin(self, trial_runner):
         """Before step() called, update the available resources."""
         self._update_avail_resources()
 
