@@ -8,7 +8,7 @@ from __future__ import print_function
 from tensorflow.keras.models import Sequential, Model, load_model
 from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import (Input, Activation, Dense, Permute,
-                                            Dropout)
+                                     Dropout)
 from tensorflow.keras.layers import add, dot, concatenate
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.optimizers import RMSprop
@@ -223,7 +223,9 @@ class MemNNModel(Trainable):
 
     def _train(self):
         # train
-        self.model.fit([self.inputs_train, self.queries_train], self.answers_train,
+        self.model.fit(
+            [self.inputs_train, self.queries_train],
+            self.answers_train,
             batch_size=self.config.get("batch_size", 32),
             epochs=self.config.get("epochs", 1),
             validation_data=([self.inputs_test, self.queries_test],
