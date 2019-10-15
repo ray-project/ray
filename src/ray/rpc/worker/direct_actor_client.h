@@ -78,9 +78,9 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
               if (seq_no > max_finished_seq_no_) {
                 max_finished_seq_no_ = seq_no;
               }
+              rpc_bytes_in_flight_ -= task_size;
+              RAY_CHECK(rpc_bytes_in_flight_ >= 0);
             }
-            rpc_bytes_in_flight_ -= task_size;
-            RAY_CHECK(rpc_bytes_in_flight_ >= 0);
             SendRequests();
             callback(status, reply);
           });
