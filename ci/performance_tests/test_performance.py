@@ -119,7 +119,7 @@ def no_op(*values):
 
 
 @ray.remote
-class Actor():
+class Actor(object):
     def ping(self, *values):
         pass
 

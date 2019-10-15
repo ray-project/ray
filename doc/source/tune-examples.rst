@@ -16,7 +16,6 @@ General Examples
 - `pbt_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_example.py>`__: Example of using a Trainable class with PopulationBasedTraining scheduler.
 - `pbt_ppo_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_ppo_example.py>`__: Example of optimizing a distributed RLlib algorithm (PPO) with the PopulationBasedTraining scheduler.
 - `logging_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__: Example of custom loggers and custom trial directory naming.
-- `pbt_memnn_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_memnn_example.py>`__: Example of training a Memory NN on bAbI with Keras using PBT.
 
 Search Algorithm Examples
 -------------------------
@@ -26,10 +25,11 @@ Search Algorithm Examples
 - `Nevergrad example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py>`__: Optimize a simple toy function with the gradient-free optimization package `Nevergrad <https://github.com/facebookresearch/nevergrad>`_ with 4 parallel workers.
 - `Bayesian Optimization example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/bayesopt_example.py>`__: Optimize a simple toy function using `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ with 4 parallel workers.
 
-Keras Examples
---------------
+Tensorflow/Keras Examples
+-------------------------
 
 - `tune_mnist_keras <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_keras.py>`__: Converts the Keras MNIST example to use Tune with the function-based API and a Keras callback. Also shows how to easily convert something relying on argparse to use Tune.
+- `pbt_memnn_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_memnn_example.py>`__: Example of training a Memory NN on bAbI with Keras using PBT.
 
 
 PyTorch Examples
@@ -37,14 +37,6 @@ PyTorch Examples
 
 - `mnist_pytorch <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch.py>`__: Converts the PyTorch MNIST example to use Tune with the function-based API. Also shows how to easily convert something relying on argparse to use Tune.
 - `mnist_pytorch_trainable <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/mnist_pytorch_trainable.py>`__: Converts the PyTorch MNIST example to use Tune with Trainable API. Also uses the HyperBandScheduler and checkpoints the model at the end.
-
-
-TensorFlow Examples
--------------------
-
-- `tune_mnist_ray <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray.py>`__: A basic example of tuning a TensorFlow model on MNIST using the Trainable class.
-- `tune_mnist_ray_hyperband <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_ray_hyperband.py>`__: A basic example of tuning a TensorFlow model on MNIST using the Trainable class and the HyperBand scheduler.
-- `tune_mnist_async_hyperband <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_mnist_async_hyperband.py>`__: Example of tuning a TensorFlow model on MNIST using AsyncHyperBand.
 
 
 XGBoost Example
