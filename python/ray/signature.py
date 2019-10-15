@@ -38,7 +38,7 @@ Attributes:
 DUMMY_TYPE = "__arg_dummy__"
 
 
-def get_signature_params(func):
+def get_signature(func):
     """Get signature parameters
 
     Support Cython functions by grabbing relevant attributes from the Cython
@@ -74,7 +74,7 @@ def get_signature_params(func):
             raise TypeError("{!r} is not a Python function we can process"
                             .format(func))
 
-    return list(funcsigs.signature(func).parameters.items())
+    return funcsigs.signature(func)
 
 
 def extract_signature(func, ignore_first=False):
@@ -89,33 +89,37 @@ def extract_signature(func, ignore_first=False):
         A function signature object, which includes the names of the keyword
             arguments as well as their default values.
     """
-    sig_params = get_signature_params(func)
+    signature = get_signature(func)
+    signature_parameters = signature.parameters
 
     if ignore_first:
-        if len(sig_params) == 0:
+        if len(signature_parameters) == 0:
             raise Exception("Methods must take a 'self' argument, but the "
                             "method '{}' does not have one.".format(
                                 func.__name__))
-        sig_params = sig_params[1:]
+        # sig_params = sig_params[1:]
 
-    # Construct the argument default values and other argument information.
-    arg_names = []
-    arg_defaults = []
-    arg_is_positionals = []
-    keyword_names = set()
-    for arg_name, parameter in sig_params:
-        arg_names.append(arg_name)
-        arg_defaults.append(parameter.default)
-        arg_is_positionals.append(parameter.kind == parameter.VAR_POSITIONAL)
-        if parameter.kind == Parameter.POSITIONAL_OR_KEYWORD:
-            # Note KEYWORD_ONLY arguments currently unsupported.
-            keyword_names.add(arg_name)
+    _scrub_signature_parameters(signature_parameters)
+    return signature_parameters
 
-    return FunctionSignature(arg_names, arg_defaults, arg_is_positionals,
-                             keyword_names, func.__name__)
+    # # Construct the argument default values and other argument information.
+    # arg_names = []
+    # arg_defaults = []
+    # arg_is_positionals = []
+    # keyword_names = set()
+    # for arg_name, parameter in sig_params:
+    #     arg_names.append(arg_name)
+    #     arg_defaults.append(parameter.default)
+    #     arg_is_positionals.append(parameter.kind == parameter.VAR_POSITIONAL)
+    #     if parameter.kind == Parameter.POSITIONAL_OR_KEYWORD:
+    #         # Note KEYWORD_ONLY arguments currently unsupported.
+    #         keyword_names.add(arg_name)
+
+    # return FunctionSignature(arg_names, arg_defaults, arg_is_positionals,
+    #                          keyword_names, func.__name__)
 
 
-def validate_args(function_signature, args, kwargs):
+def validate_args(signature_parameters, args, kwargs):
     """Checks the function signature and validates the provided arguments.
 
     Args:
@@ -128,50 +132,60 @@ def validate_args(function_signature, args, kwargs):
         Exception: An exception may be raised if the function cannot be called
             with these arguments.
     """
-    arg_names = function_signature.arg_names
-    arg_defaults = function_signature.arg_defaults
-    arg_is_positionals = function_signature.arg_is_positionals
-    keyword_names = function_signature.keyword_names
-    function_name = function_signature.function_name
+    _restore_signature_parameters(signature_parameters)
+    reconstructed_signature = funcsigs.Signature(
+        parameters=signature_parameters)
+    try:
+        reconstructed_signature.bind(*args, **kwargs)
+    except TypeError as exc:
+        raise TypeError(str(exc))
+    finally:
+        _scrub_signature_parameters(signature_parameters)
 
-    args = list(args)
+    # arg_names = function_signature.arg_names
+    # arg_defaults = function_signature.arg_defaults
+    # arg_is_positionals = function_signature.arg_is_positionals
+    # keyword_names = function_signature.keyword_names
+    # function_name = function_signature.function_name
 
-    # for keyword_name in kwargs:
-    #     if keyword_name not in keyword_names:
-    #         raise Exception("The name '{}' is not a valid keyword argument "
-    #                         "for the function '{}'.".format(
-    #                             keyword_name, function_name))
+    # args = list(args)
 
-    # # Fill in the remaining arguments.
-    # for skipped_name in arg_names[0:len(args)]:
-    #     if skipped_name in kwargs:
-    #         raise Exception("Positional and keyword value provided for the "
-    #                         "argument '{}' for the function '{}'".format(
-    #                             keyword_name, function_name))
+    # # for keyword_name in kwargs:
+    # #     if keyword_name not in keyword_names:
+    # #         raise Exception("The name '{}' is not a valid keyword argument "
+    # #                         "for the function '{}'.".format(
+    # #                             keyword_name, function_name))
 
-    zipped_info = zip(arg_names, arg_defaults, arg_is_positionals)
-    zipped_info = list(zipped_info)[len(args):]
-    for keyword_name, default_value, is_positional in zipped_info:
-        if keyword_name in kwargs:
-            args.append(kwargs[keyword_name])
-        else:
-            if default_value != funcsigs._empty:
-                args.append(default_value)
-            else:
-                # This means that there is a missing argument. Unless this is
-                # the last argument and it is a *args argument in which case it
-                # can be omitted.
-                if not is_positional:
-                    pass
-                    # raise Exception("No value was provided for the argument "
-                    #                 "'{}' for the function '{}'.".format(
-                    #                     keyword_name, function_name))
+    # # # Fill in the remaining arguments.
+    # # for skipped_name in arg_names[0:len(args)]:
+    # #     if skipped_name in kwargs:
+    # #         raise Exception("Positional and keyword value provided for the "
+    # #                         "argument '{}' for the function '{}'".format(
+    # #                             keyword_name, function_name))
 
-    no_positionals = len(arg_is_positionals) == 0 or not arg_is_positionals[-1]
-    too_many_arguments = len(args) > len(arg_names) and no_positionals
-    if too_many_arguments:
-        raise Exception("Too many arguments were passed to the function '{}'"
-                        .format(function_name))
+    # zipped_info = zip(arg_names, arg_defaults, arg_is_positionals)
+    # zipped_info = list(zipped_info)[len(args):]
+    # for keyword_name, default_value, is_positional in zipped_info:
+    #     if keyword_name in kwargs:
+    #         args.append(kwargs[keyword_name])
+    #     else:
+    #         if default_value != funcsigs._empty:
+    #             args.append(default_value)
+    #         else:
+    #             # This means that there is a missing argument. Unless this is
+    #             # the last argument and it is a *args argument in which case it
+    #             # can be omitted.
+    #             if not is_positional:
+    #                 pass
+    #                 # raise Exception("No value was provided for the argument "
+    #                 #                 "'{}' for the function '{}'.".format(
+    #                 #                     keyword_name, function_name))
+
+    # no_positionals = len(arg_is_positionals) == 0 or not arg_is_positionals[-1]
+    # too_many_arguments = len(args) > len(arg_names) and no_positionals
+    # if too_many_arguments:
+    #     raise Exception("Too many arguments were passed to the function '{}'"
+    #                     .format(function_name))
 
 
 def flatten_args(args, kwargs):
@@ -220,3 +234,60 @@ def recover_args(flattened_args):
             kwargs[name] = arg
 
     return args, kwargs
+
+
+def _scrub_signature_parameters(parameters):
+    """This modifies the data structure in place."""
+    for parameter in parameters.values():
+        parameter._kind = _convert_from_parameter_kind(parameter._kind)
+
+
+def _restore_signature_parameters(parameters):
+    """This modifies the data structure in place."""
+    for parameter in parameters.values():
+        parameter._kind = _convert_to_parameter_kind(parameter._kind)
+
+
+def _convert_from_parameter_kind(kind):
+    if kind == Parameter.POSITIONAL_ONLY:
+        return 0
+    if kind == Parameter.POSITIONAL_OR_KEYWORD:
+        return 1
+    if kind == Parameter.VAR_POSITIONAL:
+        return 2
+    if kind == Parameter.KEYWORD_ONLY:
+        return 3
+    if kind == Parameter.VAR_KEYWORD:
+        return 4
+
+
+def _convert_to_parameter_kind(value):
+    if value == 0:
+        return Parameter.POSITIONAL_ONLY
+    if value == 1:
+        return Parameter.POSITIONAL_OR_KEYWORD
+    if value == 2:
+        return Parameter.VAR_POSITIONAL
+    if value == 3:
+        return Parameter.KEYWORD_ONLY
+    if value == 4:
+        return Parameter.VAR_KEYWORD
+
+
+if __name__ == '__main__':
+
+    def starkwargs(a, b, **kwargs):
+        return a, b, kwargs
+
+    def hello(a, x="hello", **kwargs):
+        return a, x, kwargs
+
+    def args_intertwined(a, *args, x="hello", **kwargs):
+        return a, args, x, kwargs
+
+    import cloudpickle
+    for func in [args_intertwined, hello, starkwargs]:
+        signature = funcsigs.signature(func)
+        parameter_list = list(signature.parameters.items())
+        _scrub_signature_parameters(parameter_list)
+        cloudpickle.loads(cloudpickle.dumps(signature))

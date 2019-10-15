@@ -880,7 +880,8 @@ def test_args_intertwined(ray_start_regular):
 
     remote_args_intertwined = ray.remote(args_intertwined)
     test_function(args_intertwined, remote_args_intertwined)
-    ray.get(remote_test_function.remote(args_intertwined, remote_args_intertwined))
+    ray.get(
+        remote_test_function.remote(args_intertwined, remote_args_intertwined))
 
     remote_actor_class = ray.remote(TestActor)
     remote_actor = remote_actor_class.remote()
@@ -924,7 +925,8 @@ def test_args_stars_after(ray_start_regular):
 
     remote_star_args_after = ray.remote(star_args_after)
     test_function(star_args_after, remote_star_args_after)
-    ray.get(remote_test_function.remote(star_args_after, remote_star_args_after))
+    ray.get(
+        remote_test_function.remote(star_args_after, remote_star_args_after))
 
     remote_actor_class = ray.remote(TestActor)
     remote_actor = remote_actor_class.remote()
