@@ -1109,7 +1109,7 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="type")
-        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # Tell Ray to serialize _RayParameters as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(
             ray.signature._RayParameter,

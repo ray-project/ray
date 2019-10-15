@@ -34,7 +34,7 @@ Attributes:
         inspected. This is used for printing better error messages.
 """
 
-DUMMY_TYPE = "__arg_dummy__"
+DUMMY_TYPE = "__RAY_DUMMY__"
 
 
 def get_signature(func):
@@ -171,7 +171,7 @@ def recover_args(flattened_args):
 
 
 def _scrub_parameters(parameters):
-    """This returns a scrubbed list of parameters."""
+    """This returns a scrubbed list of _RayParameters."""
     return [
         _RayParameter(
             name=param.name,
@@ -183,7 +183,7 @@ def _scrub_parameters(parameters):
 
 
 def _restore_parameters(ray_parameters):
-    """This modifies the data structure in place."""
+    """This reconstructs the funcsigs.Parameter objects."""
     return [
         Parameter(
             rayparam.name,

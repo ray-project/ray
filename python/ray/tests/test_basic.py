@@ -29,6 +29,7 @@ import pickle
 import pytest
 
 import ray
+from ray import signature
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
@@ -796,7 +797,7 @@ def test_args_starkwargs(ray_start_regular):
 
     remote_starkwargs = ray.remote(starkwargs)
     test_function(starkwargs, remote_starkwargs)
-    # ray.get(remote_test_function.remote(starkwargs, remote_starkwargs))
+    ray.get(remote_test_function.remote(starkwargs, remote_starkwargs))
 
     remote_actor_class = ray.remote(TestActor)
     remote_actor = remote_actor_class.remote()
@@ -804,7 +805,7 @@ def test_args_starkwargs(ray_start_regular):
     local_actor = TestActor()
     local_method = local_actor.starkwargs
     test_function(local_method, actor_method)
-    # ray.get(remote_test_function.remote(local_method, actor_method))
+    ray.get(remote_test_function.remote(local_method, actor_method))
 
 
 @pytest.mark.parametrize(
@@ -961,7 +962,8 @@ def test_args_force_positional(ray_start_regular):
 
     remote_force_positional = ray.remote(force_positional)
     test_function(force_positional, remote_force_positional)
-    # ray.get(remote_test_function.remote(force_positional, remote_force_positional))
+    ray.get(
+        remote_test_function.remote(force_positional, remote_force_positional))
 
     remote_actor_class = ray.remote(TestActor)
     remote_actor = remote_actor_class.remote()
@@ -969,7 +971,7 @@ def test_args_force_positional(ray_start_regular):
     local_actor = TestActor()
     local_method = local_actor.force_positional
     test_function(local_method, actor_method)
-    # ray.get(remote_test_function.remote(local_method, actor_method))
+    ray.get(remote_test_function.remote(local_method, actor_method))
 
 
 def test_variable_number_of_args(shutdown_only):
@@ -2844,7 +2846,10 @@ def test_global_state_api(shutdown_only):
 
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_actor_id_hex
-    assert task_spec["Args"] == [1, "hi", x_id]
+    assert task_spec["Args"] == [
+        signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "hi",
+        signature.DUMMY_TYPE, x_id
+    ]
     assert task_spec["JobID"] == job_id.hex()
     assert task_spec["ReturnObjectIDs"] == [result_id]
 
