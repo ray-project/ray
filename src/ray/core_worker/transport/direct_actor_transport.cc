@@ -21,10 +21,10 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 
-void CoreWorkerDirectActorTaskSubmitter::SubmitTask(
-    const TaskSpecification &task_spec) {
+void CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-  RAY_CHECK(!HasByReferenceArgs(task_spec)) << "Direct actor call only supports by-value arguments";
+  RAY_CHECK(!HasByReferenceArgs(task_spec))
+      << "Direct actor call only supports by-value arguments";
 
   RAY_CHECK(task_spec.IsActorTask());
   const auto &actor_id = task_spec.ActorId();

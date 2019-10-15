@@ -144,7 +144,7 @@ class CoreWorker {
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
   ///
@@ -156,7 +156,7 @@ class CoreWorker {
   /// \return ID of the created actor. This can be used to submit tasks on the
   /// actor.
   ActorID CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
-                     const ActorCreationOptions &actor_creation_options);
+                      const ActorCreationOptions &actor_creation_options);
 
   /// Submit an actor task.
   ///
@@ -167,9 +167,8 @@ class CoreWorker {
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                         const std::vector<TaskArg> &args,
-                         const TaskOptions &task_options,
-                         std::vector<ObjectID> *return_ids);
+                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                       std::vector<ObjectID> *return_ids);
 
   /// Add an ActorHandle from a serialized string.
   ///

@@ -49,8 +49,8 @@ std::shared_ptr<Buffer> GenerateRandomBuffer() {
 }
 
 ActorID CreateActorHelper(CoreWorker &worker,
-                               std::unordered_map<std::string, double> &resources,
-                               bool is_direct_call, uint64_t max_reconstructions) {
+                          std::unordered_map<std::string, double> &resources,
+                          bool is_direct_call, uint64_t max_reconstructions) {
   std::unique_ptr<ActorHandle> actor_handle;
 
   uint8_t array[] = {1, 2, 3};
@@ -348,8 +348,7 @@ void CoreWorkerTest::TestActorReconstruction(
   auto actor_id = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
   // Wait for actor alive event.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true,
-                                          30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
   // Test submitting some tasks with by-value args for that actor.
@@ -363,10 +362,10 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, false,
-                                                30 * 1000 /* 30s */));
-        ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true,
-                                                30 * 1000 /* 30s */));
+        ASSERT_TRUE(
+            WaitForDirectCallActorState(driver, actor_id, false, 30 * 1000 /* 30s */));
+        ASSERT_TRUE(
+            WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
       }
@@ -685,11 +684,10 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   // Create an actor.
   std::unordered_map<std::string, double> resources;
   auto actor_id = CreateActorHelper(driver, resources,
-                                         /*is_direct_call=*/true,
-                                         /*max_reconstructions=*/0);
+                                    /*is_direct_call=*/true,
+                                    /*max_reconstructions=*/0);
   // wait for actor creation finish.
-  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true,
-                                          30 * 1000 /* 30s */));
+  ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
   // Test submitting some tasks with by-value args for that actor.
   int64_t start_ms = current_time_ms();
   const int num_tasks = 100000;

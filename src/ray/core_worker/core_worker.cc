@@ -233,10 +233,9 @@ ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
   return *it->second;
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function,
-                              const std::vector<TaskArg> &args,
-                              const TaskOptions &task_options,
-                              std::vector<ObjectID> *return_ids) {
+void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                            const TaskOptions &task_options,
+                            std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -250,8 +249,8 @@ void CoreWorker::SubmitTask(const RayFunction &function,
 }
 
 ActorID CoreWorker::CreateActor(const RayFunction &function,
-                               const std::vector<TaskArg> &args,
-                               const ActorCreationOptions &actor_creation_options) {
+                                const std::vector<TaskArg> &args,
+                                const ActorCreationOptions &actor_creation_options) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -271,16 +270,17 @@ ActorID CoreWorker::CreateActor(const RayFunction &function,
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
       actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle))) << "Actor " << actor_id << " already exists";
+  RAY_CHECK(AddActorHandle(std::move(actor_handle)))
+      << "Actor " << actor_id << " already exists";
 
   RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
   return actor_id;
 }
 
 void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                   const std::vector<TaskArg> &args,
-                                   const TaskOptions &task_options,
-                                   std::vector<ObjectID> *return_ids) {
+                                 const std::vector<TaskArg> &args,
+                                 const TaskOptions &task_options,
+                                 std::vector<ObjectID> *return_ids) {
   auto &actor_handle = GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
