@@ -410,7 +410,8 @@ void NodeManager::WarnResourceDeadlock() {
         << " pending actors on this node. "
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
-        << "resources available to this Ray cluster.";
+        << "resources available to this Ray cluster. You can ignore this message "
+        << "if this Ray cluster is expected to auto-scale.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
         current_time_ms()));
@@ -786,8 +787,8 @@ void NodeManager::DispatchTasks(
   if (fair_queueing_enabled_) {
     std::sort(
         std::begin(fair_order), std::end(fair_order),
-        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&a,
-               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *&b) {
+        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *a,
+               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *b) {
           return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
