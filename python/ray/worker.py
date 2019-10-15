@@ -2296,6 +2296,7 @@ def make_decorator(num_return_vals=None,
                    memory=None,
                    object_store_memory=None,
                    resources=None,
+                   soft_resources=None,
                    max_calls=None,
                    max_reconstructions=None,
                    worker=None):
@@ -2309,7 +2310,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls)
+                object_store_memory, resources, soft_resources,
+                num_return_vals, max_calls)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -2321,7 +2323,7 @@ def make_decorator(num_return_vals=None,
 
             return worker.make_actor(function_or_class, num_cpus, num_gpus,
                                      memory, object_store_memory, resources,
-                                     max_reconstructions)
+                                     soft_resources, max_reconstructions)
 
         raise Exception("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2357,6 +2359,10 @@ def remote(*args, **kwargs):
     * **resources:** The quantity of various custom resources to reserve for
       this task or for the lifetime of the actor. This is a dictionary mapping
       strings (resource names) to numbers.
+    * **soft_resources:** The resources preferred for placing this task, but
+      not required for execution. The raylet will try to place the task on a
+      node that has these resources, but will ignore them if not immediately
+      available.
     * **max_calls:** Only for *remote functions*. This specifies the maximum
       number of times that a given worker can execute the given remote function
       before it must exit (this can be used to address memory leaks in
@@ -2394,6 +2400,7 @@ def remote(*args, **kwargs):
                     "'@ray.remote', or it must be applied using some of "
                     "the arguments 'num_return_vals', 'num_cpus', 'num_gpus', "
                     "'memory', 'object_store_memory', 'resources', "
+                    "'soft_resources', "
                     "'max_calls', or 'max_reconstructions', like "
                     "'@ray.remote(num_return_vals=2, "
                     "resources={\"CustomResource\": 1})'.")
@@ -2406,6 +2413,7 @@ def remote(*args, **kwargs):
             "memory",
             "object_store_memory",
             "resources",
+            "soft_resources",
             "max_calls",
             "max_reconstructions",
         ], error_string
@@ -2413,6 +2421,7 @@ def remote(*args, **kwargs):
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs else None
     resources = kwargs.get("resources")
+    soft_resources = kwargs.get("soft_resources")
     if not isinstance(resources, dict) and resources is not None:
         raise Exception("The 'resources' keyword argument must be a "
                         "dictionary, but received type {}.".format(
@@ -2435,6 +2444,7 @@ def remote(*args, **kwargs):
         memory=memory,
         object_store_memory=object_store_memory,
         resources=resources,
+        soft_resources=soft_resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
         worker=worker)

@@ -27,6 +27,8 @@ void TaskSpecification::ComputeResources() {
   }
   required_resources_.reset(new ResourceSet(required_resources));
   required_placement_resources_.reset(new ResourceSet(required_placement_resources));
+  RAY_CHECK(!required_resources_->HasSoftResources())
+      << "Soft resource constraints are only allowed for placement, not execution.";
 
   // Map the scheduling class descriptor to an integer for performance.
   auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());

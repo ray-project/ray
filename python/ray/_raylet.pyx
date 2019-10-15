@@ -615,9 +615,11 @@ cdef class CoreWorker:
                     function_descriptor,
                     args,
                     int num_return_vals,
-                    resources):
+                    resources,
+                    soft_resources):
         cdef:
             unordered_map[c_string, double] c_resources
+            unordered_map[c_string, double] c_soft_resources
             CTaskOptions task_options
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -625,7 +627,9 @@ cdef class CoreWorker:
 
         with profiling.profile("submit_task"):
             prepare_resources(resources, &c_resources)
-            task_options = CTaskOptions(num_return_vals, c_resources)
+            prepare_resources(soft_resources, &c_soft_resources)
+            task_options = CTaskOptions(
+                num_return_vals, c_resources, c_soft_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)

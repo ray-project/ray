@@ -132,6 +132,7 @@ class ActorClassMetadata(object):
         memory: The heap memory quota for this actor.
         object_store_memory: The object store memory quota for this actor.
         resources: The default resources required by the actor creation task.
+        soft_resources: The default resources required for actor creation.
         actor_method_cpus: The number of CPUs required by actor method tasks.
         last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
@@ -151,7 +152,8 @@ class ActorClassMetadata(object):
     """
 
     def __init__(self, modified_class, class_id, max_reconstructions, num_cpus,
-                 num_gpus, memory, object_store_memory, resources):
+                 num_gpus, memory, object_store_memory, resources,
+                 soft_resources):
         self.modified_class = modified_class
         self.class_id = class_id
         self.class_name = modified_class.__name__
@@ -161,6 +163,7 @@ class ActorClassMetadata(object):
         self.memory = memory
         self.object_store_memory = object_store_memory
         self.resources = resources
+        self.soft_resources = soft_resources
         self.last_export_session_and_job = None
 
         self.actor_methods = inspect.getmembers(
@@ -259,9 +262,9 @@ class ActorClass(object):
                             self.__ray_metadata__.class_name))
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id,
-                                 max_reconstructions, num_cpus, num_gpus,
-                                 memory, object_store_memory, resources):
+    def _ray_from_modified_class(
+            cls, modified_class, class_id, max_reconstructions, num_cpus,
+            num_gpus, memory, object_store_memory, resources, soft_resources):
         for attribute in ["remote", "_remote", "_ray_from_modified_class"]:
             if hasattr(modified_class, attribute):
                 logger.warning("Creating an actor from class {} overwrites "
@@ -283,7 +286,7 @@ class ActorClass(object):
 
         self.__ray_metadata__ = ActorClassMetadata(
             modified_class, class_id, max_reconstructions, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+            memory, object_store_memory, resources, soft_resources)
 
         return self
 
@@ -308,7 +311,8 @@ class ActorClass(object):
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
-                resources=None):
+                resources=None,
+                soft_resources=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -325,6 +329,8 @@ class ActorClass(object):
                 this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
+            soft_resources: The soft resources required by the actor creation
+                task for placement.
 
         Returns:
             A handle to the newly created actor.
@@ -387,10 +393,12 @@ class ActorClass(object):
                 worker.function_actor_manager.export_actor_class(
                     meta.modified_class, meta.actor_method_names)
 
-            resources = ray.utils.resources_from_resource_arguments(
-                cpus_to_use, meta.num_gpus, meta.memory,
-                meta.object_store_memory, meta.resources, num_cpus, num_gpus,
-                memory, object_store_memory, resources)
+            (resources,
+             soft_resources) = ray.utils.resources_from_resource_arguments(
+                 cpus_to_use, meta.num_gpus, meta.memory,
+                 meta.object_store_memory, meta.resources, meta.soft_resources,
+                 num_cpus, num_gpus, memory, object_store_memory, resources,
+                 soft_resources)
 
             # If the actor methods require CPU resources, then set the required
             # placement resources. If actor_placement_resources is empty, then
@@ -400,6 +408,7 @@ class ActorClass(object):
             if actor_method_cpu == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
+            actor_placement_resources.update(soft_resources)
 
             function_signature = meta.method_signatures[function_name]
             creation_args = signature.extend_args(function_signature, args,
@@ -653,7 +662,7 @@ class ActorHandle(object):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               max_reconstructions):
+               soft_resources, max_reconstructions):
     # Give an error if cls is an old-style class.
     if not issubclass(cls, object):
         raise TypeError(
@@ -702,7 +711,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
 
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_reconstructions, num_cpus,
-        num_gpus, memory, object_store_memory, resources)
+        num_gpus, memory, object_store_memory, resources, soft_resources)
 
 
 def exit_actor():

@@ -63,7 +63,8 @@ Status CoreWorkerTaskInterface::SubmitTask(const RayFunction &function,
                             worker_context_.GetCurrentTaskID(), next_task_index);
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       next_task_index, function, args, task_options.num_returns,
-                      task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
+                      task_options.resources, task_options.soft_resources,
+                      TaskTransportType::RAYLET, return_ids);
   return task_submitters_[TaskTransportType::RAYLET]->SubmitTask(builder.Build());
 }
 

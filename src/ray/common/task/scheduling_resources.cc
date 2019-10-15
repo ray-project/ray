@@ -74,18 +74,30 @@ double FractionalResourceQuantity::ToDouble() const {
 ResourceSet::ResourceSet() {}
 
 ResourceSet::ResourceSet(
-    const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map)
-    : resource_capacity_(resource_map) {
+    const std::unordered_map<std::string, FractionalResourceQuantity> &resource_map) {
   for (auto const &resource_pair : resource_map) {
     RAY_CHECK(resource_pair.second > 0);
+    if (resource_pair.first.find("soft:") == 0) {
+      const auto &key = resource_pair.first.substr(5);
+      resource_capacity_[key] = resource_pair.second;
+      soft_resource_keys_.insert(key);
+    } else {
+      resource_capacity_[resource_pair.first] = resource_pair.second;
+    }
   }
 }
 
 ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource_map) {
   for (auto const &resource_pair : resource_map) {
     RAY_CHECK(resource_pair.second > 0);
-    resource_capacity_[resource_pair.first] =
-        FractionalResourceQuantity(resource_pair.second);
+    if (resource_pair.first.find("soft:") == 0) {
+      const auto &key = resource_pair.first.substr(5);
+      resource_capacity_[key] = FractionalResourceQuantity(resource_pair.second);
+      soft_resource_keys_.insert(key);
+    } else {
+      resource_capacity_[resource_pair.first] =
+          FractionalResourceQuantity(resource_pair.second);
+    }
   }
 }
 
@@ -94,8 +106,14 @@ ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
   for (uint i = 0; i < resource_labels.size(); i++) {
     RAY_CHECK(resource_capacity[i] > 0);
-    resource_capacity_[resource_labels[i]] =
-        FractionalResourceQuantity(resource_capacity[i]);
+    if (resource_labels[i].find("soft:") == 0) {
+      const auto &key = resource_labels[i].substr(5);
+      resource_capacity_[key] = FractionalResourceQuantity(resource_capacity[i]);
+      soft_resource_keys_.insert(key);
+    } else {
+      resource_capacity_[resource_labels[i]] =
+          FractionalResourceQuantity(resource_capacity[i]);
+    }
   }
 }
 
@@ -105,9 +123,18 @@ bool ResourceSet::operator==(const ResourceSet &rhs) const {
   return (this->IsSubset(rhs) && rhs.IsSubset(*this));
 }
 
-bool ResourceSet::IsEmpty() const {
-  // Check whether the capacity of each resource type is zero. Exit early if not.
-  return resource_capacity_.empty();
+bool ResourceSet::IsEmpty() const { return resource_capacity_.empty(); }
+
+bool ResourceSet::HasSoftResources() const { return !soft_resource_keys_.empty(); }
+
+ResourceSet ResourceSet::WithoutSoftResources() const {
+  ResourceSet hard_resource_set;
+  for (const auto &pair : resource_capacity_) {
+    if (soft_resource_keys_.count(pair.first) == 0) {
+      hard_resource_set.resource_capacity_[pair.first] = pair.second;
+    }
+  }
+  return hard_resource_set;
 }
 
 bool ResourceSet::IsSubset(const ResourceSet &other) const {

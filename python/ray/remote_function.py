@@ -33,6 +33,7 @@ class RemoteFunction(object):
         _object_store_memory: The object store memory request for this task.
         _resources: The default custom resource requirements for invocations of
             this remote function.
+        _soft_resources: The soft resource requirements for this task.
         _num_return_vals: The default number of return values for invocations
             of this remote function.
         _max_calls: The number of times a worker can execute this function
@@ -54,7 +55,8 @@ class RemoteFunction(object):
     """
 
     def __init__(self, function, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, num_return_vals, max_calls):
+                 object_store_memory, resources, soft_resources,
+                 num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
         self._function_name = (
@@ -68,6 +70,7 @@ class RemoteFunction(object):
                 "setting object_store_memory is not implemented for tasks")
         self._object_store_memory = None
         self._resources = resources
+        self._soft_resources = soft_resources
         self._num_return_vals = (DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS if
                                  num_return_vals is None else num_return_vals)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
@@ -116,7 +119,8 @@ class RemoteFunction(object):
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
-                resources=None):
+                resources=None,
+                soft_resources=None):
         """Submit the remote function for execution."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
@@ -134,10 +138,12 @@ class RemoteFunction(object):
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
-        resources = ray.utils.resources_from_resource_arguments(
-            self._num_cpus, self._num_gpus, self._memory,
-            self._object_store_memory, self._resources, num_cpus, num_gpus,
-            memory, object_store_memory, resources)
+        (resources,
+         soft_resources) = ray.utils.resources_from_resource_arguments(
+             self._num_cpus, self._num_gpus, self._memory,
+             self._object_store_memory, self._resources, self._soft_resources,
+             num_cpus, num_gpus, memory, object_store_memory, resources,
+             soft_resources)
 
         def invocation(args, kwargs):
             args = ray.signature.extend_args(self._function_signature, args,
@@ -150,7 +156,7 @@ class RemoteFunction(object):
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._function_descriptor.get_function_descriptor_list(),
-                    args, num_return_vals, resources)
+                    args, num_return_vals, resources, soft_resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

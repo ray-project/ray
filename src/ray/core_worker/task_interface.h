@@ -23,11 +23,16 @@ struct TaskOptions {
   TaskOptions() {}
   TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
       : num_returns(num_returns), resources(resources) {}
+  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources,
+              std::unordered_map<std::string, double> &soft_resources)
+      : num_returns(num_returns), resources(resources), soft_resources(soft_resources) {}
 
   /// Number of returns of this task.
   int num_returns = 1;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
+  /// Soft resources of this task.
+  std::unordered_map<std::string, double> soft_resources;
 };
 
 /// Options of an actor creation task.

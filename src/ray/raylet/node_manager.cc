@@ -773,7 +773,7 @@ std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
 void NodeManager::DispatchTasks(
     const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class) {
   std::unordered_set<TaskID> removed_task_ids;
-  std::vector<const TaskID> retry_without_soft_resources;
+  bool should_retry_without_soft_resources = false;
 
   // Dispatch tasks in priority order by class. This avoids starvation problems where
   // one class of tasks become stuck behind others in the queue, causing Ray to start
@@ -802,27 +802,44 @@ void NodeManager::DispatchTasks(
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
       if (!local_available_resources_.Contains(task_resources)) {
         if (task_resources.HasSoftResources()) {
-          retry_without_soft_resources.push_back(task_id);
-        } else {
-          // All the tasks in it.second have the same resource shape, so
-          // once the first task is not feasible, we can break out of this loop
-          break;
+          should_retry_without_soft_resources = true;
         }
+        // All the tasks in it.second have the same resource shape, so
+        // once the first task is not feasible, we can break out of this loop
+        break;
       }
       if (AssignTask(task)) {
         removed_task_ids.insert(task_id);
       }
     }
   }
+  // Requeue any tasks without soft resources, and retry dispatch.
+  if (should_retry_without_soft_resources) {
+    for (const auto &it : fair_order) {
+      // Without soft resources
+      const auto &hard_resources =
+          TaskSpecification::GetSchedulingClassDescriptor(it->first)
+              .first.WithoutSoftResources();
+      for (const auto &task_id : it->second) {
+        const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
+        if (!local_available_resources_.Contains(hard_resources)) {
+          // All the tasks in it.second have the same resource shape, so
+          // once the first task is not feasible, we can break out of this loop
+          break;
+        }
+        RAY_LOG(INFO) << "Dispatching task " << task_id
+                      << " ignoring soft resource constraints.";
+        if (AssignTask(task)) {
+          removed_task_ids.insert(task_id);
+        }
+      }
+    }
+  }
+
   // Move the ASSIGNED task to the SWAP queue so that we remember that we have
   // it queued locally. Once the GetTaskReply has been sent, the task will get
   // re-queued, depending on whether the message succeeded or not.
   local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
-
-  // Requeue any tasks without soft resources, and retry dispatch.
-  if (!retry_without_soft_resources.empty()) {
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
 }
 
 void NodeManager::ProcessClientMessage(
@@ -1861,7 +1878,7 @@ bool NodeManager::AssignTask(const Task &task) {
 
   if (spec.IsActorCreationTask()) {
     // Check that the actor's placement resource requirements are satisfied.
-    RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
+    RAY_CHECK(spec.GetRequiredPlacementResources().WithoutSoftResources().IsSubset(
         cluster_resource_map_[my_client_id].GetTotalResources()));
     worker->SetLifetimeResourceIds(acquired_resources);
   } else {

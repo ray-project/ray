@@ -173,6 +173,16 @@ class ResourceSet {
   /// \return True if the resource capacity is zero. False otherwise.
   bool IsEmpty() const;
 
+  /// Return true if the resource set has any soft constraints.
+  ///
+  /// \return True if the resource set has any soft constraints.
+  bool HasSoftResources() const;
+
+  /// Return the resource set without any soft constraints.
+  ///
+  /// \return The resource set without any soft constraints.
+  ResourceSet WithoutSoftResources() const;
+
   // TODO(atumanov): implement const_iterator class for the ResourceSet container.
   // TODO(williamma12): Make sure that everywhere we use doubles we don't
   // convert it back to FractionalResourceQuantity.
@@ -194,6 +204,8 @@ class ResourceSet {
  private:
   /// Resource capacity map.
   std::unordered_map<std::string, FractionalResourceQuantity> resource_capacity_;
+  /// The set of the keys that are soft constraints only.
+  std::unordered_set<std::string> soft_resource_keys_;
 };
 
 /// \class ResourceIds

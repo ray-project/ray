@@ -189,6 +189,9 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
         CTaskOptions()
         CTaskOptions(int num_returns,
                      unordered_map[c_string, double] &resources)
+        CTaskOptions(int num_returns,
+                     unordered_map[c_string, double] &resources,
+                     unordered_map[c_string, double] &soft_resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
         CActorCreationOptions()

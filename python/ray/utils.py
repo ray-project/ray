@@ -274,9 +274,10 @@ def set_cuda_visible_devices(gpu_ids):
 
 def resources_from_resource_arguments(
         default_num_cpus, default_num_gpus, default_memory,
-        default_object_store_memory, default_resources, runtime_num_cpus,
-        runtime_num_gpus, runtime_memory, runtime_object_store_memory,
-        runtime_resources):
+        default_object_store_memory, default_resources, default_soft_resources,
+        runtime_num_cpus, runtime_num_gpus, runtime_memory,
+        runtime_object_store_memory, runtime_resources,
+        runtime_soft_resources):
     """Determine a task's resource requirements.
 
     Args:
@@ -290,6 +291,8 @@ def resources_from_resource_arguments(
             by this function or actor method.
         default_resources: The default custom resources required by this
             function or actor method.
+        default_soft_resources: The default soft resources for this function or
+            actor method.
         runtime_num_cpus: The number of CPUs requested when the task was
             invoked.
         runtime_num_gpus: The number of GPUs requested when the task was
@@ -299,6 +302,8 @@ def resources_from_resource_arguments(
             the task was invoked.
         runtime_resources: The custom resources requested when the task was
             invoked.
+        runtime_soft_resources: The custom soft resources requested when the
+            task was invoked.
 
     Returns:
         A dictionary of the resource requirements for the task.
@@ -309,6 +314,12 @@ def resources_from_resource_arguments(
         resources = default_resources.copy()
     else:
         resources = {}
+    if runtime_soft_resources is not None:
+        soft_resources = runtime_soft_resources.copy()
+    elif default_soft_resources is not None:
+        soft_resources = default_soft_resources.copy()
+    else:
+        soft_resources = {}
 
     if "CPU" in resources or "GPU" in resources:
         raise ValueError("The resources dictionary must not "
@@ -336,7 +347,7 @@ def resources_from_resource_arguments(
         resources["object_store_memory"] = ray_constants.to_memory_units(
             object_store_memory, round_up=True)
 
-    return resources
+    return resources, {"soft:" + k: v for k, v in soft_resources.items()}
 
 
 _default_handler = None

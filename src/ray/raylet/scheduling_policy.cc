@@ -78,7 +78,7 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
       new_load.AddResources(resource_demand);
       cluster_resources[dst_client_id].SetLoadResources(std::move(new_load));
     } else {
-      // If the task doesn't fit, place randomly subject to hard constraints.
+      // If the task doesn't fit, place randomly subject to hard+soft constraints.
       for (const auto &client_resource_pair2 : cluster_resources) {
         // pair = ClientID, SchedulingResources
         ClientID node_client_id = client_resource_pair2.first;
@@ -88,6 +88,24 @@ std::unordered_map<TaskID, ClientID> SchedulingPolicy::Schedule(
           client_keys.push_back(node_client_id);
         }
       }
+
+      // Retry one last time, dropping any soft constraints.
+      if (client_keys.empty() && resource_demand.HasSoftResources()) {
+        for (const auto &client_resource_pair2 : cluster_resources) {
+          ClientID node_client_id = client_resource_pair2.first;
+          const auto &node_resources = client_resource_pair2.second;
+          const auto &hard_demand = resource_demand.WithoutSoftResources();
+          if (hard_demand.IsSubset(node_resources.GetTotalResources())) {
+            client_keys.push_back(node_client_id);
+          }
+        }
+        if (!client_keys.empty()) {
+          RAY_LOG(INFO) << "The actor or task with ID " << task_id << " requesting "
+                        << spec.GetRequiredPlacementResources().ToString()
+                        << " could only be placed ignoring soft constraints.";
+        }
+      }
+
       // client candidate list constructed, pick randomly.
       if (!client_keys.empty()) {
         // Choose index at random.
