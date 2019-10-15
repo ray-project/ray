@@ -511,12 +511,14 @@ class ActorHandle(object):
             if worker.mode == ray.LOCAL_MODE:
                 function = getattr(worker.actors[self._actor_id], method_name)
                 object_ids = worker.local_mode_manager.execute(
-                    function, function_descriptor, args, kwargs, num_return_vals)
+                    function, function_descriptor, args, kwargs,
+                    num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_actor_task(
                     self._ray_core_handle,
-                    function_descriptor.get_function_descriptor_list(), list_args,
-                    num_return_vals, {"CPU": self._ray_actor_method_cpus})
+                    function_descriptor.get_function_descriptor_list(),
+                    list_args, num_return_vals,
+                    {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]

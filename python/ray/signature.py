@@ -35,6 +35,8 @@ Attributes:
         inspected. This is used for printing better error messages.
 """
 
+DUMMY_TYPE = "__arg_dummy__"
+
 
 def get_signature_params(func):
     """Get signature parameters
@@ -75,50 +77,6 @@ def get_signature_params(func):
     return list(funcsigs.signature(func).parameters.items())
 
 
-def check_signature_supported(func, warn=False):
-    """Check if we support the signature of this function.
-
-    We currently do not allow remote functions to have **kwargs. We also do not
-    support keyword arguments in conjunction with a *args argument.
-
-    Args:
-        func: The function whose signature should be checked.
-        warn: If this is true, a warning will be printed if the signature is
-            not supported. If it is false, an exception will be raised if the
-            signature is not supported.
-
-    Raises:
-        Exception: An exception is raised if the signature is not supported.
-    """
-    function_name = func.__name__
-    sig_params = get_signature_params(func)
-
-    has_kwargs_param = False
-    has_kwonly_param = False
-    for keyword_name, parameter in sig_params:
-        if parameter.kind == Parameter.VAR_KEYWORD:
-            has_kwargs_param = True
-        if parameter.kind == Parameter.KEYWORD_ONLY:
-            has_kwonly_param = True
-
-    if has_kwargs_param:
-        message = ("The function {} has a **kwargs argument, which is "
-                   "currently not supported.".format(function_name))
-        if warn:
-            logger.debug(message)
-        else:
-            raise Exception(message)
-
-    if has_kwonly_param:
-        message = ("The function {} has a keyword only argument "
-                   "(defined after * or *args), which is currently "
-                   "not supported.".format(function_name))
-        if warn:
-            logger.debug(message)
-        else:
-            raise Exception(message)
-
-
 def extract_signature(func, ignore_first=False):
     """Extract the function signature from the function.
 
@@ -157,20 +115,14 @@ def extract_signature(func, ignore_first=False):
                              keyword_names, func.__name__)
 
 
-def extend_args(function_signature, args, kwargs):
-    """Extend the arguments that were passed into a function.
-
-    This extends the arguments that were passed into a function with the
-    default arguments provided in the function definition.
+def validate_args(function_signature, args, kwargs):
+    """Checks the function signature and validates the provided arguments.
 
     Args:
         function_signature: The function signature of the function being
             called.
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
-
-    Returns:
-        An extended list of arguments to pass into the function.
 
     Raises:
         Exception: An exception may be raised if the function cannot be called
@@ -184,18 +136,18 @@ def extend_args(function_signature, args, kwargs):
 
     args = list(args)
 
-    for keyword_name in kwargs:
-        if keyword_name not in keyword_names:
-            raise Exception("The name '{}' is not a valid keyword argument "
-                            "for the function '{}'.".format(
-                                keyword_name, function_name))
+    # for keyword_name in kwargs:
+    #     if keyword_name not in keyword_names:
+    #         raise Exception("The name '{}' is not a valid keyword argument "
+    #                         "for the function '{}'.".format(
+    #                             keyword_name, function_name))
 
-    # Fill in the remaining arguments.
-    for skipped_name in arg_names[0:len(args)]:
-        if skipped_name in kwargs:
-            raise Exception("Positional and keyword value provided for the "
-                            "argument '{}' for the function '{}'".format(
-                                keyword_name, function_name))
+    # # Fill in the remaining arguments.
+    # for skipped_name in arg_names[0:len(args)]:
+    #     if skipped_name in kwargs:
+    #         raise Exception("Positional and keyword value provided for the "
+    #                         "argument '{}' for the function '{}'".format(
+    #                             keyword_name, function_name))
 
     zipped_info = zip(arg_names, arg_defaults, arg_is_positionals)
     zipped_info = list(zipped_info)[len(args):]
@@ -219,8 +171,6 @@ def extend_args(function_signature, args, kwargs):
     if too_many_arguments:
         raise Exception("Too many arguments were passed to the function '{}'"
                         .format(function_name))
-    return args
-
 
 
 def flatten_args(args, kwargs):

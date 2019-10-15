@@ -10,7 +10,6 @@ import hashlib
 import inspect
 import io
 import json
-import funcsigs
 import logging
 import numpy as np
 import os
@@ -1110,15 +1109,14 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="type")
-        # ParameterKind implementation in funcsigs is not pickleable.
+        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # used when passing around actor handles.
         register_custom_serializer(
-            funcsigs._ParameterKind,
-            use_pickle=False,
+            ray.signature.FunctionSignature,
+            use_dict=True,
             local=True,
             job_id=job_id,
-            serializer=ray.signature.parameterkind_serializer,
-            deserializer=ray.signature.parameterkind_deserializer,
-            class_id="funcsigs._ParameterKind")
+            class_id="ray.signature.FunctionSignature")
         # Tell Ray to serialize StringIO with pickle. We do this because
         # Ray's default __dict__ serialization is incorrect for this type
         # (the object's __dict__ is empty and therefore doesn't
