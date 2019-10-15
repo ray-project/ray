@@ -21,9 +21,7 @@ from tensorflow.keras.datasets.mnist import load_data
 
 from ray import tune
 
-
 MAX_TRAIN_BATCH = 10
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -56,13 +54,12 @@ class MNISTTrainable(tune.Trainable):
         # Add a channels dimension
         x_train = x_train[..., tf.newaxis]
         x_test = x_test[..., tf.newaxis]
-        self.train_ds = tf.data.Dataset.from_tensor_slices(
-                (x_train, y_train))
+        self.train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
         self.train_ds = self.train_ds.shuffle(10000).batch(
             config.get("batch", 32))
 
-        self.test_ds = tf.data.Dataset.from_tensor_slices(
-            (x_test, y_test)).batch(32)
+        self.test_ds = tf.data.Dataset.from_tensor_slices((x_test,
+                                                           y_test)).batch(32)
 
         self.model = MyModel(hiddens=config.get("hiddens", 128))
         self.loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
@@ -116,14 +113,13 @@ class MNISTTrainable(tune.Trainable):
         return {
             "epoch": self.iteration,
             "loss": self.train_loss.result().numpy(),
-            "accuracy": self.train_accuracy.result().numpy()*100,
+            "accuracy": self.train_accuracy.result().numpy() * 100,
             "test_loss": self.test_loss.result().numpy(),
-            "mean_accuracy": self.test_accuracy.result().numpy()*100
+            "mean_accuracy": self.test_accuracy.result().numpy() * 100
         }
 
 
-if __name__ == '__main__':
-    import ray
+if __name__ == "__main__":
     tune.run(
         MNISTTrainable,
         stop={"training_iteration": 5 if args.smoke_test else 50},
