@@ -2413,6 +2413,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         del resources["memory"]
         del resources["object_store_memory"]
+        for key in list(resources.keys()):
+            if key.startswith("node:"):
+                del resources[key]
 
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
@@ -2421,7 +2424,7 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
             raise RuntimeError(
-                "Resources were available even after five retries.")
+                "Resources were available even after five retries.", resources)
 
         return resources
 
