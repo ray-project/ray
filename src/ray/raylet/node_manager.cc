@@ -333,9 +333,7 @@ void NodeManager::Heartbeat() {
   std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
   if (active_object_ids.size() <= max_size) {
     for (const auto &object_id : active_object_ids) {
-      std::string object_id_bytes = object_id.Binary();
-      heartbeat_data->add_active_object_id(object_id_bytes.data(),
-                                           object_id_bytes.size());
+      heartbeat_data->add_active_object_id(object_id.Binary());
     }
   } else {
     // If there are more than the configured maximum number of object IDs to send per
@@ -346,9 +344,7 @@ void NodeManager::Heartbeat() {
     random_sample(active_object_ids.begin(), active_object_ids.end(), max_size,
                   &downsampled);
     for (const auto &object_id : downsampled) {
-      std::string object_id_bytes = object_id.Binary();
-      heartbeat_data->add_active_object_id(object_id_bytes.data(),
-                                           object_id_bytes.size());
+      heartbeat_data->add_active_object_id(object_id.Binary());
     }
   }
 
