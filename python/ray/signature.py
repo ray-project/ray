@@ -90,7 +90,7 @@ def extract_signature(func, ignore_first=False):
             arguments as well as their default values.
     """
     signature = get_signature(func)
-    signature_parameters = signature.parameters
+    signature_parameters = list(signature.parameters.values())
 
     if ignore_first:
         if len(signature_parameters) == 0:
@@ -238,13 +238,13 @@ def recover_args(flattened_args):
 
 def _scrub_signature_parameters(parameters):
     """This modifies the data structure in place."""
-    for parameter in parameters.values():
+    for parameter in parameters:
         parameter._kind = _convert_from_parameter_kind(parameter._kind)
 
 
 def _restore_signature_parameters(parameters):
     """This modifies the data structure in place."""
-    for parameter in parameters.values():
+    for parameter in parameters:
         parameter._kind = _convert_to_parameter_kind(parameter._kind)
 
 
