@@ -501,8 +501,7 @@ class ActorHandle(object):
         args = args or []
         kwargs = kwargs or {}
 
-        signature.validate_args(
-            function_signature, args, kwargs, actor_call=True)
+        signature.validate_args(function_signature, args, kwargs)
         list_args = signature.flatten_args(args, kwargs)
 
         function_descriptor = FunctionDescriptor(
