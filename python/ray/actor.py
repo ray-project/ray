@@ -399,6 +399,7 @@ class ActorClass(object):
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
             function_signature = meta.method_signatures[function_name]
+            signature.validate_args(function_signature, args, kwargs)
             creation_args = signature.flatten_args(args, kwargs)
             core_handle = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
