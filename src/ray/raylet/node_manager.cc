@@ -813,18 +813,15 @@ void NodeManager::DispatchTasks(
       }
     }
   }
-  // Requeue any tasks without soft resources, and retry dispatch.
+  // See if we can dispatch any tasks ignoring their soft placement resources.
   if (should_retry_without_soft_resources) {
     for (const auto &it : fair_order) {
-      // Without soft resources
       const auto &hard_resources =
           TaskSpecification::GetSchedulingClassDescriptor(it->first)
               .first.WithoutSoftResources();
       for (const auto &task_id : it->second) {
         const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
         if (!local_available_resources_.Contains(hard_resources)) {
-          // All the tasks in it.second have the same resource shape, so
-          // once the first task is not feasible, we can break out of this loop
           break;
         }
         RAY_LOG(INFO) << "Dispatching task " << task_id
