@@ -155,11 +155,16 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
       if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
-        // We have to reset the actor handle since the next instance of the
-        // actor will not have the last sequence number that we sent.
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
-        it->second->Reset();
+        if (it->second->IsDirectCallActor()) {
+          // We have to reset the actor handle since the next instance of the
+          // actor will not have the last sequence number that we sent.
+          // TODO: Remove the check for direct calls. We do not reset for the
+          // raylet codepath because it tries to replay all tasks since the
+          // last actor checkpoint.
+          it->second->Reset();
+        }
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
         RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
         // We cannot erase the actor handle here because clients can still
