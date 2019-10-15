@@ -23,7 +23,6 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
-    CActorHandle,
     CLanguage,
     CRayObject,
     CRayStatus,
@@ -651,7 +650,6 @@ cdef class CoreWorker:
                      resources,
                      placement_resources):
         cdef:
-            unique_ptr[CActorHandle] actor_handle
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[c_string] dynamic_worker_options
@@ -666,17 +664,13 @@ cdef class CoreWorker:
             prepare_args(args, &args_vector)
 
             with nogil:
-                self.core_worker.get().CreateActor(
+                c_actor_id = self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
                         max_reconstructions, False, c_resources,
-                        c_placement_resources, dynamic_worker_options),
-                    &actor_handle)
+                        c_placement_resources, dynamic_worker_options))
 
-            actor_id = ActorID(actor_handle.get().GetActorID().Binary())
-            inserted = self.core_worker.get().AddActorHandle(
-                    move(actor_handle))
-            assert inserted, "Actor {} already exists".format(actor_id)
+            actor_id = ActorID(c_actor_id.Binary())
             return actor_id
 
     def submit_actor_task(self,
@@ -703,7 +697,7 @@ cdef class CoreWorker:
 
             with nogil:
                 self.core_worker.get().SubmitActorTask(
-                      self.core_worker.get().GetActorHandle(c_actor_id),
+                      c_actor_id,
                       ray_function,
                       args_vector, task_options, &return_ids)
 
@@ -717,17 +711,14 @@ cdef class CoreWorker:
             self.core_worker.get().CreateProfileEvent(c_event_type),
             extra_data)
 
-    def deserialize_actor_handle(self, c_string bytes):
-        cdef:
-            unique_ptr[CActorHandle] actor_handle
-        actor_handle.reset(new CActorHandle(bytes))
-        actor_id = ActorID(actor_handle.get().GetActorID().Binary())
-        self.core_worker.get().AddActorHandle(move(actor_handle))
+    def deserialize_actor_handle(self, const c_string &bytes):
+        c_actor_id = self.core_worker.get().DeserializeActorHandle(bytes)
+        actor_id = ActorID(c_actor_id.Binary())
         return actor_id
 
     def serialize_actor_handle(self, ActorID actor_id):
         cdef:
             CActorID c_actor_id = actor_id.native()
             c_string output
-        self.core_worker.get().GetActorHandle(c_actor_id).Serialize(&output)
+        self.core_worker.get().SerializeActorHandle(c_actor_id, &output)
         return output

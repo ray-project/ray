@@ -21,12 +21,10 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
+void CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    return Status::Invalid("Direct actor call only supports by-value arguments");
-  }
+  RAY_CHECK(!HasByReferenceArgs(task_spec)) << "Direct actor call only supports by-value arguments";
 
   RAY_CHECK(task_spec.IsActorTask());
   const auto &actor_id = task_spec.ActorId();
@@ -50,7 +48,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // specified time.
     pending_requests_[actor_id].emplace_back(std::move(request));
     RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
-    return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
     if (rpc_clients_.count(actor_id) == 0) {
@@ -62,13 +59,10 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // Submit request.
     auto &client = rpc_clients_[actor_id];
     PushTask(*client, std::move(request), actor_id, task_id, num_returns);
-    return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
-    // Return OK here so that we can get the error from store with get operation.
-    return Status::OK();
   }
 }
 

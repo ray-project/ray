@@ -249,10 +249,9 @@ void CoreWorker::SubmitTask(const RayFunction &function,
   RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
 }
 
-void CoreWorker::CreateActor(const RayFunction &function,
+ActorID CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
-                               const ActorCreationOptions &actor_creation_options,
-                               std::unique_ptr<ActorHandle> *actor_handle) {
+                               const ActorCreationOptions &actor_creation_options) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -269,17 +268,21 @@ void CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.is_direct_call);
 
-  *actor_handle = std::unique_ptr<ActorHandle>(new ActorHandle(
+  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
       actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
+  RAY_CHECK(AddActorHandle(std::move(actor_handle))) << "Actor " << actor_id << " already exists";
 
   RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
+  return actor_id;
 }
 
-void CoreWorker::SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
+void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
                                    const std::vector<TaskArg> &args,
                                    const TaskOptions &task_options,
                                    std::vector<ObjectID> *return_ids) {
+  auto &actor_handle = GetActorHandle(actor_id);
+
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
 
@@ -303,13 +306,25 @@ void CoreWorker::SubmitActorTask(ActorHandle &actor_handle, const RayFunction &f
 
   // Submit task.
   if (is_direct_call) {
-    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(builder.Build()));
+    direct_actor_submitter_->SubmitTask(builder.Build());
   } else {
     RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
   }
 
   // Remove cursor from return ids.
   return_ids->pop_back();
+}
+
+ActorID CoreWorker::DeserializeActorHandle(const std::string &serialized) {
+  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
+  const ActorID actor_id = actor_handle->GetActorID();
+  RAY_UNUSED(AddActorHandle(std::move(actor_handle)));
+  return actor_id;
+}
+
+void CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output) {
+  auto &actor_handle = GetActorHandle(actor_id);
+  actor_handle.Serialize(output);
 }
 
 }  // namespace ray

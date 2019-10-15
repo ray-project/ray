@@ -12,7 +12,6 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.common cimport (
     CActorCreationOptions,
-    CActorHandle,
     CBuffer,
     CRayFunction,
     CRayObject,
@@ -65,12 +64,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids)
-        void CreateActor(
+        CActorID CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options,
-            unique_ptr[CActorHandle] *handle)
+            const CActorCreationOptions &options)
         void SubmitActorTask(
-            CActorHandle &handle, const CRayFunction &function,
+            const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
 
@@ -89,5 +87,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetActorId(const CActorID &actor_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
-        c_bool AddActorHandle(unique_ptr[CActorHandle] handle)
-        CActorHandle &GetActorHandle(const CActorID &actor_id)
+        CActorID DeserializeActorHandle(const c_string &bytes)
+        void SerializeActorHandle(const CActorID &actor_id, c_string *bytes)

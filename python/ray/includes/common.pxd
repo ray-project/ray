@@ -197,12 +197,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options)
 
-    cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(const c_string &serialized)
-
-        CActorID GetActorID() const
-        void Serialize(c_string *output)
-
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &ip, int port,

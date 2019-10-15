@@ -136,6 +136,53 @@ class CoreWorker {
   /// of the bytes zeroed out.
   TaskID GetCallerId() const;
 
+  /* Methods related to task submission. */
+  /// Submit a normal task.
+  ///
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] task_options Options for this task.
+  /// \param[out] return_ids Ids of the return objects.
+  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+
+  /// Create an actor.
+  ///
+  /// \param[in] caller_id ID of the task submitter.
+  /// \param[in] function The remote function that generates the actor object.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] actor_creation_options Options for this actor creation task.
+  /// \param[out] actor_handle Handle to the actor.
+  /// \return ID of the created actor. This can be used to submit tasks on the
+  /// actor.
+  ActorID CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+                     const ActorCreationOptions &actor_creation_options);
+
+  /// Submit an actor task.
+  ///
+  /// \param[in] caller_id ID of the task submitter.
+  /// \param[in] actor_handle Handle to the actor.
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] task_options Options for this task.
+  /// \param[out] return_ids Ids of the return objects.
+  void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                         const std::vector<TaskArg> &args,
+                         const TaskOptions &task_options,
+                         std::vector<ObjectID> *return_ids);
+
+  /// Add an ActorHandle from a serialized string.
+  ///
+  /// This should be called when an ActorHandle is given to us by another task
+  /// or actor. This may be called even if we already have a handle to the same
+  /// actor.
+  ///
+  /// \param[in] serialized The serialized actor handle.
+  /// \param[out] The ActorID of the serialized handle.
+  ActorID DeserializeActorHandle(const std::string &serialized);
+  void SerializeActorHandle(const ActorID &actor_id, std::string *output);
+
+ private:
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -155,46 +202,6 @@ class CoreWorker {
   /// \return A handle to the requested actor.
   ActorHandle &GetActorHandle(const ActorID &actor_id);
 
-  /* Methods related to task submission. */
-  /// Submit a normal task.
-  ///
-  /// \param[in] function The remote function to execute.
-  /// \param[in] args Arguments of this task.
-  /// \param[in] task_options Options for this task.
-  /// \param[out] return_ids Ids of the return objects.
-  /// \return Status.
-  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
-
-  /// Create an actor.
-  ///
-  /// \param[in] caller_id ID of the task submitter.
-  /// \param[in] function The remote function that generates the actor object.
-  /// \param[in] args Arguments of this task.
-  /// \param[in] actor_creation_options Options for this actor creation task.
-  /// \param[out] actor_handle Handle to the actor.
-  /// \return Status.
-  void CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
-                     const ActorCreationOptions &actor_creation_options,
-                     std::unique_ptr<ActorHandle> *actor_handle);
-  // TODO: Remove Status.
-  // TODO: Remove ActorHandle.
-
-  /// Submit an actor task.
-  ///
-  /// \param[in] caller_id ID of the task submitter.
-  /// \param[in] actor_handle Handle to the actor.
-  /// \param[in] function The remote function to execute.
-  /// \param[in] args Arguments of this task.
-  /// \param[in] task_options Options for this task.
-  /// \param[out] return_ids Ids of the return objects.
-  /// \return Status.
-  void SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
-                         const std::vector<TaskArg> &args,
-                         const TaskOptions &task_options,
-                         std::vector<ObjectID> *return_ids);
-
- private:
   void StartIOService();
 
   const WorkerType worker_type_;
