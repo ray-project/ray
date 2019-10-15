@@ -32,10 +32,17 @@ class RayDistributedActor:
         args.distributed_rank = world_rank
         args.distributed_init_method = url
 
-        # Add a hook to the original save_checkpoint function to check whether
-        # or not there is new computational resources available. If so, raise
-        # an exception to restart the training process and make use of the new
-        # resources.
+        # Add a checkpoint hook to make use of new resources.
+        self.add_checkpoint_hook(args)
+
+        # Call the original main function of fairseq.
+        main(args, init_distributed=(args.distributed_world_size > 1))
+
+    def add_checkpoint_hook(self, args):
+        """Add a hook to the original save_checkpoint function to check whether
+        or not there is new computational resources available. If so, raise
+        an exception to restart the training process and make use of the new
+        resources."""
         if args.cpu:
             original_n_cpus = args.distributed_world_size
 
@@ -56,9 +63,6 @@ class RayDistributedActor:
                                     % (original_n_gpus, n_gpus))
         fairseq.checkpoint_utils.save_checkpoint = _new_save_checkpoint
 
-        # Call the original main function of fairseq.
-        main(args, init_distributed=(args.distributed_world_size > 1))
-
     def get_node_ip(self):
         """Returns the IP address of the current node."""
         return ray.services.get_node_ip_address()
@@ -71,21 +75,7 @@ class RayDistributedActor:
             return s.getsockname()[1]
 
 
-def add_ray_args(parser):
-    """Add ray and fault-tolerance related parser arguments to the parser."""
-    group = parser.add_argument_group('Ray related arguments')
-    # fmt: off
-    group.add_argument('--ray-address', default="auto", type=str,
-                       help='address for ray initialization')
-    group.add_argument('--fix-batch-size', default=None, type=int,
-                       help='fix batch size (max_sentences * update_freq '
-                            '* n_GPUs) to be a fixed input value for different '
-                            'number of GPUs or CPUs')
-    # fmt: on
-    return group
-
-
-def ray_main():
+def run_fault_tolerant_loop():
     """Entrance function to the fairseq library, providing fault-tolerance."""
 
     # Parse the command line arguments.
@@ -102,26 +92,8 @@ def ray_main():
         # Initialize Ray.
         ray.init(address=args.ray_address)
 
-        # Get the number of resources and set the corresponding fields.
-        if args.cpu:
-            args.distributed_world_size = int(ray.cluster_resources()["CPU"])
-        else:
-            n_gpus = int(ray.cluster_resources().get("GPU", 0))
-            while n_gpus == 0:
-                print("No GPUs available, wait 10 seconds")
-                time.sleep(10)
-                n_gpus = int(ray.cluster_resources().get("GPU", 0))
-            args.distributed_world_size = n_gpus
-
-        # Set the total batch_size to a fixed number no matter how many GPUs we
-        # will use.
-        if args.fix_batch_size is not None:
-            args.update_freq = math.ceil(
-                args.fix_batch_size / (args.max_sentences *
-                                       args.distributed_world_size))
-            print("Training on %d GPUs, max_sentences=%d, update_freq=%d"
-                  % (args.distributed_world_size, args.max_sentences,
-                     args.fix_batch_size))
+        set_num_resources(args)
+        set_batch_size(args)
 
         # Set up Ray distributed actors.
         Actor = ray.remote(
@@ -150,5 +122,44 @@ def ray_main():
         ray.shutdown()
 
 
+def add_ray_args(parser):
+    """Add ray and fault-tolerance related parser arguments to the parser."""
+    group = parser.add_argument_group('Ray related arguments')
+    # fmt: off
+    group.add_argument('--ray-address', default="auto", type=str,
+                       help='address for ray initialization')
+    group.add_argument('--fix-batch-size', default=None, type=int,
+                       help='fix batch size (max_sentences * update_freq '
+                            '* n_GPUs) to be a fixed input value for different '
+                            'number of GPUs or CPUs')
+    # fmt: on
+    return group
+
+
+def set_num_resources(args):
+    """Get the number of resources and set the corresponding fields."""
+    if args.cpu:
+        args.distributed_world_size = int(ray.cluster_resources()["CPU"])
+    else:
+        n_gpus = int(ray.cluster_resources().get("GPU", 0))
+        while n_gpus == 0:
+            print("No GPUs available, wait 10 seconds")
+            time.sleep(10)
+            n_gpus = int(ray.cluster_resources().get("GPU", 0))
+        args.distributed_world_size = n_gpus
+
+
+def set_batch_size(args):
+    """Set the total batch_size to a fixed number no matter how many GPUs we
+    will use."""
+    if args.fix_batch_size is not None:
+        args.update_freq = math.ceil(
+            args.fix_batch_size / (args.max_sentences *
+                                   args.distributed_world_size))
+        print("Training on %d GPUs, max_sentences=%d, update_freq=%d"
+              % (args.distributed_world_size, args.max_sentences,
+                 args.fix_batch_size))
+
+
 if __name__ == '__main__':
-    ray_main()
+    run_fault_tolerant_loop()

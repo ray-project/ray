@@ -1,3 +1,5 @@
+#!/bin/bash
+
 TOTAL_UPDATES=125000       # Total number of training steps
 WARMUP_UPDATES=10000       # Warmup the learning rate over this many updates
 PEAK_LR=0.0005             # Peak learning rate, adjust as needed

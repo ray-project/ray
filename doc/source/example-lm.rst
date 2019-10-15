@@ -81,7 +81,7 @@ Training
 
 We provide ``ray_train.py`` (`link <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrence to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use them by restarting. 
 
-Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a new main function ``ray_main()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and call the ``main`` of Fairseq:
+Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a function ``run_fault_tolerant_loop()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and call the ``main`` of Fairseq:
 
 .. code-block:: python
 
@@ -117,10 +117,17 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
           args.distributed_rank = world_rank
           args.distributed_init_method = url
 
-          # Add a hook to the original save_checkpoint function to check whether
-          # or not there is new computational resources available. If so, raise
-          # an exception to restart the training process and make use of the new
-          # resources.
+          # Add a checkpoint hook to make use of new resources.
+          self.add_checkpoint_hook(args)
+
+          # Call the original main function of fairseq.
+          main(args, init_distributed=(args.distributed_world_size > 1))
+
+      def add_checkpoint_hook(self, args):
+          """Add a hook to the original save_checkpoint function to check whether
+          or not there is new computational resources available. If so, raise
+          an exception to restart the training process and make use of the new
+          resources."""
           if args.cpu:
               original_n_cpus = args.distributed_world_size
 
@@ -141,9 +148,6 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
                                       % (original_n_gpus, n_gpus))
           fairseq.checkpoint_utils.save_checkpoint = _new_save_checkpoint
 
-          # Call the original main function of fairseq.
-          main(args, init_distributed=(args.distributed_world_size > 1))
-
       def get_node_ip(self):
           """Returns the IP address of the current node."""
           return ray.services.get_node_ip_address()
@@ -155,25 +159,11 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
               s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
               return s.getsockname()[1]
 
-The new main function ``ray_main()`` provides fault-tolerance and keeps the effective batch size the same for different number of GPUs:
+The function ``run_fault_tolerant_loop()`` provides fault-tolerance by catching failure and restart the computation:
 
 .. code-block:: python
 
-  def add_ray_args(parser):
-      """Add ray and fault-tolerance related parser arguments to the parser."""
-      group = parser.add_argument_group('Ray related arguments')
-      # fmt: off
-      group.add_argument('--ray-address', default="auto", type=str,
-                        help='address for ray initialization')
-      group.add_argument('--fix-batch-size', default=None, type=int,
-                        help='fix batch size (max_sentences * update_freq '
-                              '* n_GPUs) to be a fixed input value for different '
-                              'number of GPUs or CPUs')
-      # fmt: on
-      return group
-
-
-  def ray_main():
+  def run_fault_tolerant_loop():
       """Entrance function to the fairseq library, providing fault-tolerance."""
 
       # Parse the command line arguments.
@@ -190,26 +180,8 @@ The new main function ``ray_main()`` provides fault-tolerance and keeps the effe
           # Initialize Ray.
           ray.init(address=args.ray_address)
 
-          # Get the number of resources and set the corresponding fields.
-          if args.cpu:
-              args.distributed_world_size = int(ray.cluster_resources()["CPU"])
-          else:
-              n_gpus = int(ray.cluster_resources().get("GPU", 0))
-              while n_gpus == 0:
-                  print("No GPUs available, wait 10 seconds")
-                  time.sleep(10)
-                  n_gpus = int(ray.cluster_resources().get("GPU", 0))
-              args.distributed_world_size = n_gpus
-
-          # Set the total batch_size to a fixed number no matter how many GPUs we
-          # will use.
-          if args.fix_batch_size is not None:
-              args.update_freq = math.ceil(
-                  args.fix_batch_size / (args.max_sentences *
-                                        args.distributed_world_size))
-              print("Training on %d GPUs, max_sentences=%d, update_freq=%d"
-                    % (args.distributed_world_size, args.max_sentences,
-                      args.fix_batch_size))
+          set_num_resources(args)
+          set_batch_size(args)
 
           # Set up Ray distributed actors.
           Actor = ray.remote(
@@ -237,9 +209,54 @@ The new main function ``ray_main()`` provides fault-tolerance and keeps the effe
               retry = True
           ray.shutdown()
 
+In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`` adds Ray and fault-tolerant training related arguments to the argument parser:
 
-  if __name__ == '__main__':
-      ray_main()
+.. code-block:: python
+
+  def add_ray_args(parser):
+      """Add ray and fault-tolerance related parser arguments to the parser."""
+      group = parser.add_argument_group('Ray related arguments')
+      # fmt: off
+      group.add_argument('--ray-address', default="auto", type=str,
+                        help='address for ray initialization')
+      group.add_argument('--fix-batch-size', default=None, type=int,
+                        help='fix batch size (max_sentences * update_freq '
+                              '* n_GPUs) to be a fixed input value for different '
+                              'number of GPUs or CPUs')
+      # fmt: on
+      return group
+
+``set_num_resources()`` sets the distributed world size to be the number of resources. Also if we want to use GPUs but the current number of GPUs is 0, the function will wait until there is GPU available:
+
+.. code-block:: python
+
+  def set_num_resources(args):
+      """Get the number of resources and set the corresponding fields."""
+      if args.cpu:
+          args.distributed_world_size = int(ray.cluster_resources()["CPU"])
+      else:
+          n_gpus = int(ray.cluster_resources().get("GPU", 0))
+          while n_gpus == 0:
+              print("No GPUs available, wait 10 seconds")
+              time.sleep(10)
+              n_gpus = int(ray.cluster_resources().get("GPU", 0))
+          args.distributed_world_size = n_gpus
+
+``set_batch_size()`` keeps the effective batch size to be relatively the same given different number of GPUs:
+
+.. code-block:: python
+
+  def set_batch_size(args):
+      """Set the total batch_size to a fixed number no matter how many GPUs we
+      will use."""
+      if args.fix_batch_size is not None:
+          args.update_freq = math.ceil(
+              args.fix_batch_size / (args.max_sentences *
+                                    args.distributed_world_size))
+          print("Training on %d GPUs, max_sentences=%d, update_freq=%d"
+                % (args.distributed_world_size, args.max_sentences,
+                  args.fix_batch_size))
+
 
 
 To start training, run `following commands <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.sh>`__ (``ray_train.sh``) on the head machine:
@@ -273,7 +290,7 @@ To start training, run `following commands <https://github.com/ray-project/ray/t
       --save-interval-updates $SAVE_INTERVAL_UPDATES \
       --save-dir $LOG_DIR --ddp-backend=no_c10d
 
-``SAVE_INTERVAL_UPDATES`` controls how often to save a checkpoint, which can be tuned based on the `stability of chosed instances <https://aws.amazon.com/ec2/spot/instance-advisor/>`__. ``FIX_BATCH_SIZE`` controls the total batch size to be a roughly fixed number.
+``SAVE_INTERVAL_UPDATES`` controls how often to save a checkpoint, which can be tuned based on the `stability of chosen instances <https://aws.amazon.com/ec2/spot/instance-advisor/>`__. ``FIX_BATCH_SIZE`` controls the total batch size to be a roughly fixed number.
 
 Helpful Ray Commands
 --------------------
