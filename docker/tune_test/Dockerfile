@@ -6,7 +6,8 @@ FROM ray-project/base-deps
 # a test runner.
 RUN conda install -y numpy
 RUN pip install -U pip
-RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl boto3
+RUN pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl || pip install -U https://ray-wheels.s3-us-west-2.amazonaws.com/latest/ray-0.8.0.dev5-cp36-cp36m-manylinux1_x86_64.whl
+RUN pip install -U boto3
 # We install this after the latest wheels -- this should not override the latest wheels.
 RUN apt-get install -y zlib1g-dev
 # The following is needed to support TensorFlow 1.14
