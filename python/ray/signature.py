@@ -162,9 +162,10 @@ def validate_args(function_signature, args, kwargs):
                 # the last argument and it is a *args argument in which case it
                 # can be omitted.
                 if not is_positional:
-                    raise Exception("No value was provided for the argument "
-                                    "'{}' for the function '{}'.".format(
-                                        keyword_name, function_name))
+                    pass
+                    # raise Exception("No value was provided for the argument "
+                    #                 "'{}' for the function '{}'.".format(
+                    #                     keyword_name, function_name))
 
     no_positionals = len(arg_is_positionals) == 0 or not arg_is_positionals[-1]
     too_many_arguments = len(args) > len(arg_names) and no_positionals
