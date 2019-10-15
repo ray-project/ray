@@ -81,8 +81,6 @@ class TaskArg {
 
 enum class StoreProviderType { PLASMA, MEMORY };
 
-enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
-
 }  // namespace ray
 
 #endif  // RAY_CORE_WORKER_COMMON_H

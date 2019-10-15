@@ -37,6 +37,10 @@ void CoreWorkerTaskInterface::BuildCommonTaskSpec(
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
+      // TODO(ekl) remove this check once we support passing DAC objects around
+      RAY_CHECK(!arg.GetReference().IsDirectActorType()) <<
+        "(NotImplemented): Objects produced by direct actor calls cannot be " <<
+        "passed to other tasks as arguments.";
       builder.AddByRefArg(arg.GetReference());
     } else {
       builder.AddByValueArg(arg.GetValue());

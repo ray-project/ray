@@ -1193,11 +1193,22 @@ def _initialize_serialization(job_id, worker=global_worker):
     serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
+    def id_serializer(obj):
+        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
+            raise NotImplementedError(
+                "Objects produced by direct actor calls cannot be "
+                "passed to other tasks as arguments.")
+        return pickle.dumps(obj)
+
+    def id_deserializer(serialized_obj):
+        return pickle.loads(serialized_obj)
+
     for id_type in ray._raylet._ID_TYPES:
         serialization_context.register_type(
             id_type,
             "{}.{}".format(id_type.__module__, id_type.__name__),
-            pickle=True)
+            custom_serializer=id_serializer,
+            custom_deserializer=id_deserializer)
 
     def actor_handle_serializer(obj):
         return obj._serialization_helper(True)
