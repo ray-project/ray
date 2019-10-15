@@ -170,16 +170,24 @@ class CoreWorker {
                        const std::vector<TaskArg> &args, const TaskOptions &task_options,
                        std::vector<ObjectID> *return_ids);
 
-  /// Add an ActorHandle from a serialized string.
+  /// Add an actor handle from a serialized string.
   ///
-  /// This should be called when an ActorHandle is given to us by another task
+  /// This should be called when an actor handle is given to us by another task
   /// or actor. This may be called even if we already have a handle to the same
   /// actor.
   ///
   /// \param[in] serialized The serialized actor handle.
-  /// \param[out] The ActorID of the serialized handle.
+  /// \return The ActorID of the deserialized handle.
   ActorID DeserializeActorHandle(const std::string &serialized);
-  void SerializeActorHandle(const ActorID &actor_id, std::string *output);
+
+  /// Serialize an actor handle.
+  ///
+  /// This should be called when passing an actor handle to another task or
+  /// actor.
+  ///
+  /// \param[in] actor_id The ID of the actor handle to serialize.
+  /// \param[out] The serialized handle.
+  void SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
  private:
   /// Give this worker a handle to an actor.
