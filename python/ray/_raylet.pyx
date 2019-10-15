@@ -641,7 +641,7 @@ cdef class CoreWorker:
             caller_id = self.core_worker.get().GetCallerId()
 
             with nogil:
-                check_status(self.core_worker.get().Tasks().SubmitTask(
+                check_status(self.core_worker.get().SubmitTask(
                     caller_id,
                     ray_function, args_vector, task_options, &return_ids))
 
@@ -671,7 +671,7 @@ cdef class CoreWorker:
             caller_id = self.core_worker.get().GetCallerId()
 
             with nogil:
-                check_status(self.core_worker.get().Tasks().CreateActor(
+                check_status(self.core_worker.get().CreateActor(
                     caller_id,
                     ray_function, args_vector,
                     CActorCreationOptions(
@@ -710,7 +710,7 @@ cdef class CoreWorker:
             caller_id = self.core_worker.get().GetCallerId()
 
             with nogil:
-                check_status(self.core_worker.get().Tasks().SubmitActorTask(
+                check_status(self.core_worker.get().SubmitActorTask(
                       caller_id,
                       self.core_worker.get().GetActorHandle(c_actor_id),
                       ray_function,

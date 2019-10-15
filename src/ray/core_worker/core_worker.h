@@ -2,16 +2,57 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "ray/common/buffer.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/task_execution.h"
-#include "ray/core_worker/task_interface.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
+
+/// Options of a non-actor-creation task.
+struct TaskOptions {
+  TaskOptions() {}
+  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
+      : num_returns(num_returns), resources(resources) {}
+
+  /// Number of returns of this task.
+  int num_returns = 1;
+  /// Resources required by this task.
+  std::unordered_map<std::string, double> resources;
+};
+
+/// Options of an actor creation task.
+struct ActorCreationOptions {
+  ActorCreationOptions() {}
+  ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::unordered_map<std::string, double> &placement_resources,
+                       const std::vector<std::string> &dynamic_worker_options)
+      : max_reconstructions(max_reconstructions),
+        is_direct_call(is_direct_call),
+        resources(resources),
+        placement_resources(placement_resources),
+        dynamic_worker_options(dynamic_worker_options) {}
+
+  /// Maximum number of times that the actor should be reconstructed when it dies
+  /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
+  const uint64_t max_reconstructions = 0;
+  /// Whether to use direct actor call. If this is set to true, callers will submit
+  /// tasks directly to the created actor without going through raylet.
+  const bool is_direct_call = false;
+  /// Resources required by the whole lifetime of this actor.
+  const std::unordered_map<std::string, double> resources;
+  /// Resources required to place this actor.
+  const std::unordered_map<std::string, double> placement_resources;
+  /// The dynamic options used in the worker command when starting a worker process for
+  /// an actor creation task.
+  const std::vector<std::string> dynamic_worker_options;
+};
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
@@ -57,10 +98,6 @@ class CoreWorker {
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
   RayletClient &GetRayletClient() { return *raylet_client_; }
-
-  /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
-  /// submisson.
-  CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
@@ -118,6 +155,45 @@ class CoreWorker {
   /// \return A handle to the requested actor.
   ActorHandle &GetActorHandle(const ActorID &actor_id);
 
+  /* Methods related to task submission. */
+  /// Submit a normal task.
+  ///
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] task_options Options for this task.
+  /// \param[out] return_ids Ids of the return objects.
+  /// \return Status.
+  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+
+  /// Create an actor.
+  ///
+  /// \param[in] caller_id ID of the task submitter.
+  /// \param[in] function The remote function that generates the actor object.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] actor_creation_options Options for this actor creation task.
+  /// \param[out] actor_handle Handle to the actor.
+  /// \return Status.
+  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+                     const ActorCreationOptions &actor_creation_options,
+                     std::unique_ptr<ActorHandle> *actor_handle);
+  // TODO: Remove Status.
+  // TODO: Remove ActorHandle.
+
+  /// Submit an actor task.
+  ///
+  /// \param[in] caller_id ID of the task submitter.
+  /// \param[in] actor_handle Handle to the actor.
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] task_options Options for this task.
+  /// \param[out] return_ids Ids of the return objects.
+  /// \return Status.
+  Status SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
+                         const std::vector<TaskArg> &args,
+                         const TaskOptions &task_options,
+                         std::vector<ObjectID> *return_ids);
+
  private:
   void StartIOService();
 
@@ -141,8 +217,8 @@ class CoreWorker {
   std::thread io_thread_;
   std::shared_ptr<worker::Profiler> profiler_;
   std::unique_ptr<RayletClient> raylet_client_;
+  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
-  std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
   /// Map from actor ID to a handle to that actor.
@@ -150,6 +226,8 @@ class CoreWorker {
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
+
+  friend class CoreWorkerTest;
 };
 
 }  // namespace ray

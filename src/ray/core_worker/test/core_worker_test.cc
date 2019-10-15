@@ -64,8 +64,7 @@ ActorHandle &CreateActorHelper(CoreWorker &worker,
       max_reconstructions, is_direct_call, resources, resources, {}};
 
   // Create an actor.
-  RAY_CHECK_OK(worker.Tasks().CreateActor(worker.GetCallerId(), func, args, actor_options,
-                                          &actor_handle));
+  RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, &actor_handle));
   ActorID actor_id = actor_handle->GetActorID();
   RAY_CHECK(worker.AddActorHandle(std::move(actor_handle)));
   return worker.GetActorHandle(actor_id);
@@ -205,14 +204,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
                                                  const ActorID &actor_id, bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [&worker, actor_id, wait_alive]() -> bool {
-    auto &task_submitters = worker.Tasks().task_submitters_;
-    RAY_CHECK(task_submitters.count(TaskTransportType::DIRECT_ACTOR) > 0);
-    auto submitter =
-        worker.Tasks().task_submitters_[TaskTransportType::DIRECT_ACTOR].get();
-    auto direct_actor_submitter =
-        dynamic_cast<CoreWorkerDirectActorTaskSubmitter *>(submitter);
-    RAY_CHECK(direct_actor_submitter != nullptr);
-    bool actor_alive = direct_actor_submitter->IsActorAlive(actor_id);
+    bool actor_alive = worker.direct_actor_submitter_->IsActorAlive(actor_id);
     return wait_alive ? actor_alive : !actor_alive;
   };
 
@@ -243,8 +235,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       TaskOptions options;
 
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(driver.Tasks().SubmitTask(driver.GetCallerId(), func, args, options,
-                                             &return_ids));
+      RAY_CHECK_OK(driver.SubmitTask(func, args, options, &return_ids));
 
       ASSERT_EQ(return_ids.size(), 1);
 
@@ -288,8 +279,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
-      RAY_CHECK_OK(driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
-                                                  func, args, options, &return_ids));
+      RAY_CHECK_OK(
+          driver.SubmitActorTask(actor_handle, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
       ASSERT_EQ(
@@ -329,8 +320,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
-    auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle, func,
-                                                 args, options, &return_ids);
+    auto status = driver.SubmitActorTask(actor_handle, func, args, options, &return_ids);
     if (is_direct_call) {
       // For direct actor call, submitting a task with by-reference arguments
       // would fail.
@@ -397,8 +387,8 @@ void CoreWorkerTest::TestActorReconstruction(
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
-      auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
-                                                   func, args, options, &return_ids);
+      auto status =
+          driver.SubmitActorTask(actor_handle, func, args, options, &return_ids);
       RAY_CHECK_OK(status);
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
@@ -444,8 +434,8 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
-      auto status = driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle,
-                                                   func, args, options, &return_ids);
+      auto status =
+          driver.SubmitActorTask(actor_handle, func, args, options, &return_ids);
       if (i < task_index_to_kill_worker) {
         RAY_CHECK_OK(status);
       }
@@ -726,8 +716,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
 
-    RAY_CHECK_OK(driver.Tasks().SubmitActorTask(driver.GetCallerId(), actor_handle, func,
-                                                args, options, &return_ids));
+    RAY_CHECK_OK(driver.SubmitActorTask(actor_handle, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }
