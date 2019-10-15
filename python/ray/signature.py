@@ -14,11 +14,10 @@ from ray.utils import is_cython
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-FunctionSignature = namedtuple("FunctionSignature", [
-    "arg_names", "arg_defaults", "arg_is_positionals", "keyword_names",
-    "function_name"
-])
-"""This class is used to represent a function signature.
+_RayParameter = namedtuple(
+    "_RayParameter",
+    ["name", "kind_int", "default", "annotation", "partial_kwarg"])
+"""This class is used to represent a function parameter.
 
 Attributes:
     arg_names: A list containing the name of all arguments.
@@ -99,8 +98,7 @@ def extract_signature(func, ignore_first=False):
                                 func.__name__))
         signature_parameters = signature_parameters[1:]
 
-    _scrub_signature_parameters(signature_parameters)
-    return signature_parameters
+    return _scrub_parameters(signature_parameters)
 
     # # Construct the argument default values and other argument information.
     # arg_names = []
@@ -132,15 +130,12 @@ def validate_args(signature_parameters, args, kwargs):
         Exception: An exception may be raised if the function cannot be called
             with these arguments.
     """
-    _restore_signature_parameters(signature_parameters)
-    reconstructed_signature = funcsigs.Signature(
-        parameters=signature_parameters)
+    restored = _restore_parameters(signature_parameters)
+    reconstructed_signature = funcsigs.Signature(parameters=restored)
     try:
         reconstructed_signature.bind(*args, **kwargs)
     except TypeError as exc:
         raise TypeError(str(exc))
-    finally:
-        _scrub_signature_parameters(signature_parameters)
 
     # arg_names = function_signature.arg_names
     # arg_defaults = function_signature.arg_defaults
@@ -236,16 +231,29 @@ def recover_args(flattened_args):
     return args, kwargs
 
 
-def _scrub_signature_parameters(parameters):
-    """This modifies the data structure in place."""
-    for parameter in parameters:
-        parameter._kind = _convert_from_parameter_kind(parameter._kind)
+def _scrub_parameters(parameters):
+    """This returns a scrubbed list of parameters."""
+    return [
+        _RayParameter(
+            name=param.name,
+            kind_int=_convert_from_parameter_kind(param.kind),
+            default=param.default,
+            annotation=param.annotation,
+            partial_kwarg=param._partial_kwarg) for param in parameters
+    ]
 
 
-def _restore_signature_parameters(parameters):
+def _restore_parameters(ray_parameters):
     """This modifies the data structure in place."""
-    for parameter in parameters:
-        parameter._kind = _convert_to_parameter_kind(parameter._kind)
+    return [
+        Parameter(
+            rayparam.name,
+            _convert_to_parameter_kind(rayparam.kind_int),
+            default=rayparam.default,
+            annotation=rayparam.annotation,
+            _partial_kwarg=rayparam.partial_kwarg)
+        for rayparam in ray_parameters
+    ]
 
 
 def _convert_from_parameter_kind(kind):
@@ -286,8 +294,8 @@ if __name__ == '__main__':
         return a, args, x, kwargs
 
     import cloudpickle
+    def timeme(func):
+        validate_args(1,2)
     for func in [args_intertwined, hello, starkwargs]:
-        signature = funcsigs.signature(func)
-        parameter_list = list(signature.parameters.items())
-        _scrub_signature_parameters(parameter_list)
-        cloudpickle.loads(cloudpickle.dumps(signature))
+        ray_parameters = cloudpickle.loads(cloudpickle.dumps(extract_signature(func)))
+
