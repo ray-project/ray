@@ -789,8 +789,8 @@ def test_args_starkwargs(ray_start_regular):
 
     def test_function(fn, remote_fn):
         assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
-        # with pytest.raises(TypeError):
-        #     remote_fn.remote(3)
+        with pytest.raises(TypeError):
+            remote_fn.remote(3)
 
     remote_test_function = ray.remote(test_function)
 
@@ -830,8 +830,8 @@ def test_args_named_and_star(ray_start_regular):
         assert fn(1, ) == ray.get(remote_fn.remote(1, ))
         assert fn(1) == ray.get(remote_fn.remote(1))
 
-        # with pytest.raises(TypeError):
-        #     remote_fn.remote(1, 2, x=3)
+        with pytest.raises(TypeError):
+            remote_fn.remote(1, 2, x=3)
 
     remote_test_function = ray.remote(test_function)
 
