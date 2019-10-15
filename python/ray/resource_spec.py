@@ -107,20 +107,17 @@ class ResourceSpec(
                     and not resource_quantity.is_integer()):
                 raise ValueError(
                     "Resource quantities must all be whole numbers. "
-                    "Violated by resource '{}' in {}."
-                    .format(resource_label, resources))
-            if resource_quantity < 0:
-                raise ValueError(
-                    "Resource quantities must be nonnegative. "
-                    "Violated by resource '{}' in {}."
-                    .format(resource_label, resources))
-            if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
-                raise ValueError(
-                    "Resource quantities must be at most {}. "
                     "Violated by resource '{}' in {}.".format(
-                        ray_constants.MAX_RESOURCE_QUANTITY,
-                        resource_label,
-                        resources))
+                        resource_label, resources))
+            if resource_quantity < 0:
+                raise ValueError("Resource quantities must be nonnegative. "
+                                 "Violated by resource '{}' in {}.".format(
+                                     resource_label, resources))
+            if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
+                raise ValueError("Resource quantities must be at most {}. "
+                                 "Violated by resource '{}' in {}.".format(
+                                     ray_constants.MAX_RESOURCE_QUANTITY,
+                                     resource_label, resources))
 
         return resources
 
