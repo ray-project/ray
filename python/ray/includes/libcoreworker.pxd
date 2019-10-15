@@ -30,23 +30,6 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
-    cdef cppclass CTaskSubmissionInterface "CoreWorkerTaskInterface":
-        CRayStatus SubmitTask(
-            const CTaskID &caller_id,
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CTaskOptions &options, c_vector[CObjectID] *return_ids)
-        CRayStatus CreateActor(
-            const CTaskID &caller_id,
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options,
-            unique_ptr[CActorHandle] *handle)
-        CRayStatus SubmitActorTask(
-            const CTaskID &caller_id,
-            CActorHandle &handle, const CRayFunction &function,
-            const c_vector[CTaskArg] &args, const CTaskOptions &options,
-            c_vector[CObjectID] *return_ids)
-
 cdef extern from "ray/core_worker/object_interface.h" nogil:
     cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
@@ -78,7 +61,19 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        CTaskSubmissionInterface &Tasks()
+
+        void SubmitTask(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CTaskOptions &options, c_vector[CObjectID] *return_ids)
+        void CreateActor(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CActorCreationOptions &options,
+            unique_ptr[CActorHandle] *handle)
+        void SubmitActorTask(
+            CActorHandle &handle, const CRayFunction &function,
+            const c_vector[CTaskArg] &args, const CTaskOptions &options,
+            c_vector[CObjectID] *return_ids)
+
         # CTaskExecutionInterface &Execution()
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)

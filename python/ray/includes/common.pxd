@@ -183,7 +183,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
-cdef extern from "ray/core_worker/task_interface.h" nogil:
+cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(int num_returns,

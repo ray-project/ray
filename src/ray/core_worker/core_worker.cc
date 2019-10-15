@@ -233,7 +233,7 @@ ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
   return *it->second;
 }
 
-Status CoreWorker::SubmitTask(const RayFunction &function,
+void CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
                               std::vector<ObjectID> *return_ids) {
@@ -246,10 +246,10 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
                       {}, TaskTransportType::RAYLET, return_ids);
-  return raylet_client_->SubmitTask(builder.Build());
+  RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
 }
 
-Status CoreWorker::CreateActor(const RayFunction &function,
+void CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
                                std::unique_ptr<ActorHandle> *actor_handle) {
@@ -273,10 +273,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
       actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
 
-  return raylet_client_->SubmitTask(builder.Build());
+  RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
 }
 
-Status CoreWorker::SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
+void CoreWorker::SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
                                    const std::vector<TaskArg> &args,
                                    const TaskOptions &task_options,
                                    std::vector<ObjectID> *return_ids) {
@@ -302,17 +302,14 @@ Status CoreWorker::SubmitActorTask(ActorHandle &actor_handle, const RayFunction 
   actor_handle.SetActorTaskSpec(builder, transport_type, new_cursor);
 
   // Submit task.
-  ray::Status status;
   if (is_direct_call) {
-    status = direct_actor_submitter_->SubmitTask(builder.Build());
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(builder.Build()));
   } else {
-    status = raylet_client_->SubmitTask(builder.Build());
+    RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
   }
 
   // Remove cursor from return ids.
   return_ids->pop_back();
-
-  return status;
 }
 
 }  // namespace ray

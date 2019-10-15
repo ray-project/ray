@@ -630,7 +630,6 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
-            CTaskID caller_id
 
         with profiling.profile("submit_task"):
             prepare_resources(resources, &c_resources)
@@ -638,12 +637,10 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
-            caller_id = self.core_worker.get().GetCallerId()
 
             with nogil:
-                check_status(self.core_worker.get().SubmitTask(
-                    caller_id,
-                    ray_function, args_vector, task_options, &return_ids))
+                self.core_worker.get().SubmitTask(
+                    ray_function, args_vector, task_options, &return_ids)
 
             return VectorToObjectIDs(return_ids)
 
@@ -660,7 +657,6 @@ cdef class CoreWorker:
             c_vector[c_string] dynamic_worker_options
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
-            CTaskID caller_id
 
         with profiling.profile("submit_task"):
             prepare_resources(resources, &c_resources)
@@ -668,16 +664,14 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
-            caller_id = self.core_worker.get().GetCallerId()
 
             with nogil:
-                check_status(self.core_worker.get().CreateActor(
-                    caller_id,
+                self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
                         max_reconstructions, False, c_resources,
                         c_placement_resources, dynamic_worker_options),
-                    &actor_handle))
+                    &actor_handle)
 
             actor_id = ActorID(actor_handle.get().GetActorID().Binary())
             inserted = self.core_worker.get().AddActorHandle(
@@ -699,7 +693,6 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
-            CTaskID caller_id
 
         with profiling.profile("submit_task"):
             prepare_resources(resources, &c_resources)
@@ -707,14 +700,12 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
-            caller_id = self.core_worker.get().GetCallerId()
 
             with nogil:
-                check_status(self.core_worker.get().SubmitActorTask(
-                      caller_id,
+                self.core_worker.get().SubmitActorTask(
                       self.core_worker.get().GetActorHandle(c_actor_id),
                       ray_function,
-                      args_vector, task_options, &return_ids))
+                      args_vector, task_options, &return_ids)
 
             return VectorToObjectIDs(return_ids)
 
