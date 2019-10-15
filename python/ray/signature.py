@@ -196,16 +196,7 @@ def _restore_parameters(ray_parameters):
 
 
 def _convert_from_parameter_kind(kind):
-    if kind == Parameter.POSITIONAL_ONLY:
-        return 0
-    if kind == Parameter.POSITIONAL_OR_KEYWORD:
-        return 1
-    if kind == Parameter.VAR_POSITIONAL:
-        return 2
-    if kind == Parameter.KEYWORD_ONLY:
-        return 3
-    if kind == Parameter.VAR_KEYWORD:
-        return 4
+    return int(kind)
 
 
 def _convert_to_parameter_kind(value):
@@ -219,24 +210,3 @@ def _convert_to_parameter_kind(value):
         return Parameter.KEYWORD_ONLY
     if value == 4:
         return Parameter.VAR_KEYWORD
-
-
-if __name__ == '__main__':
-
-    def starkwargs(a, b, **kwargs):
-        return a, b, kwargs
-
-    def hello(a, x="hello", **kwargs):
-        return a, x, kwargs
-
-    def args_intertwined(a, *args, x="hello", **kwargs):
-        return a, args, x, kwargs
-
-    import cloudpickle
-
-    def timeme(func):
-        validate_args(func, 1, 2)
-
-    for func in [args_intertwined, hello, starkwargs]:
-        ray_parameters = cloudpickle.loads(
-            cloudpickle.dumps(extract_signature(func)))
