@@ -147,7 +147,8 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
   // Check if we can accommodate infeasible tasks.
   for (const auto &task : scheduling_queue_.GetTasks(TaskState::INFEASIBLE)) {
     const auto &spec = task.GetTaskSpecification();
-    const auto &placement_resources = spec.GetRequiredPlacementResources();
+    const auto &placement_resources =
+        spec.GetRequiredPlacementResources().WithoutSoftResources();
     if (placement_resources.IsSubset(remote_scheduling_resources.GetTotalResources())) {
       decision.push_back(spec.TaskId());
       new_load.AddResources(spec.GetRequiredResources());
@@ -159,7 +160,7 @@ std::vector<TaskID> SchedulingPolicy::SpillOver(
     const auto &spec = task.GetTaskSpecification();
     if (!spec.IsActorTask()) {
       // Make sure the node has enough available resources to prevent forwarding cycles.
-      if (spec.GetRequiredPlacementResources().IsSubset(
+      if (spec.GetRequiredPlacementResources().WithoutSoftResources().IsSubset(
               remote_scheduling_resources.GetAvailableResources())) {
         decision.push_back(spec.TaskId());
         new_load.AddResources(spec.GetRequiredResources());
