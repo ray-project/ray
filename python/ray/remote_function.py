@@ -74,6 +74,10 @@ class RemoteFunction(object):
                            if max_calls is None else max_calls)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
+
+        self._function_signature = ray.signature.extract_signature(
+            self._function)
+
         self._last_export_session_and_job = None
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -135,10 +139,8 @@ class RemoteFunction(object):
             self._object_store_memory, self._resources, num_cpus, num_gpus,
             memory, object_store_memory, resources)
 
-        function_signature = funcsigs.signature(self._function)
-
         def invocation(args, kwargs):
-            ray.signature.validate_args(function_signature, args, kwargs)
+            ray.signature.validate_args(self._function_signature, args, kwargs)
             list_args = ray.signature.flatten_args(args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:

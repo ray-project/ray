@@ -193,7 +193,6 @@ class ActorClassMetadata(object):
             # supported. We don't raise an exception because if the actor
             # inherits from a class that has a method whose signature we
             # don't support, there may not be much the user can do about it.
-            signature.check_signature_supported(method, warn=True)
             self.method_signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not ray.utils.is_class_method(method))
             # Set the default number of return values for this method.
@@ -400,8 +399,6 @@ class ActorClass(object):
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
             function_signature = meta.method_signatures[function_name]
-            creation_args = signature.extend_args(function_signature, args,
-                                                  kwargs)
             creation_args = signature.flatten_args(args, kwargs)
             core_handle = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
@@ -504,7 +501,8 @@ class ActorHandle(object):
         args = args or []
         kwargs = kwargs or {}
 
-        signature.validate_args(function_signature, args, kwargs, actor_call=True)
+        signature.validate_args(
+            function_signature, args, kwargs, actor_call=True)
         list_args = signature.flatten_args(args, kwargs)
 
         function_descriptor = FunctionDescriptor(
