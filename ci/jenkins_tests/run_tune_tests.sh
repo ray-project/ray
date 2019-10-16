@@ -50,6 +50,9 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
     bash -c 'pip install -U tensorflow && python /ray/python/ray/tune/tests/test_logger.py'
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    bash -c 'pip install -U tensorflow==1.15 && python /ray/python/ray/tune/tests/test_logger.py'
+
+$SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     bash -c 'pip install -U tensorflow==1.14 && python /ray/python/ray/tune/tests/test_logger.py'
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
