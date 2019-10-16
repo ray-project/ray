@@ -601,8 +601,10 @@ class ActorHandle(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
         state = {
+            # Local mode just uses the actor ID.
             "core_handle": worker.core_worker.serialize_actor_handle(
-                self._ray_actor_id),
+                self._ray_actor_id)
+            if hasattr(worker, "core_worker") else self._ray_actor_id,
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
             "actor_method_names": self._ray_actor_method_names,
@@ -628,7 +630,9 @@ class ActorHandle(object):
         self.__init__(
             # TODO(swang): Accessing the worker's current task ID is not
             # thread-safe.
-            worker.core_worker.deserialize_actor_handle(state["core_handle"]),
+            # Local mode just uses the actor ID.
+            worker.core_worker.deserialize_actor_handle(state["core_handle"])
+            if hasattr(worker, "core_worker") else state["core_handle"],
             state["module_name"],
             state["class_name"],
             state["actor_method_names"],
