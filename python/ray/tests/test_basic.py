@@ -1447,13 +1447,13 @@ def test_multithreading(ray_start_2_cpus):
             time.sleep(delay_ms / 1000.0)
         return value
 
-    @ray.remote
-    class Echo(object):
-        def echo(self, value):
-            return value
-
     def test_api_in_multi_threads():
         """Test using Ray api in multiple threads."""
+
+        @ray.remote
+        class Echo(object):
+            def echo(self, value):
+                return value
 
         # Test calling remote functions in multiple threads.
         def test_remote_call():

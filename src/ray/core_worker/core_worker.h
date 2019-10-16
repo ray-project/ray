@@ -126,6 +126,10 @@ class CoreWorker {
   const std::string raylet_socket_;
   const std::string log_dir_;
   WorkerContext worker_context_;
+  /// The ID of the current task being executed by the main thread. If there
+  /// are multiple threads, they will have a thread-local task ID stored in the
+  /// worker context.
+  TaskID main_thread_task_id_;
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
 

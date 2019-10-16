@@ -129,6 +129,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
+  main_thread_task_id_ = task_id;
   // Clear all actor handles for non-actor tasks.
   if (actor_id_.IsNil()) {
     for (const auto &handle : actor_handles_) {
@@ -139,10 +140,12 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 TaskID CoreWorker::GetCallerId() const {
-  TaskID caller_id = GetCurrentTaskId();
+  TaskID caller_id;
   ActorID actor_id = GetActorId();
   if (!actor_id.IsNil()) {
     caller_id = TaskID::ForActorCreationTask(actor_id);
+  } else {
+    caller_id = main_thread_task_id_;
   }
   return caller_id;
 }
