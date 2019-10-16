@@ -13,6 +13,10 @@ import ray.ray_constants as ray_constants
 
 logger = logging.getLogger(__name__)
 
+# Prefix for the node id resource that is automatically added to each node.
+# For example, a node may have id `node:172.23.42.1`.
+NODE_ID_PREFIX = "node:"
+
 
 class ResourceSpec(
         namedtuple("ResourceSpec", [
@@ -126,6 +130,10 @@ class ResourceSpec(
         assert "GPU" not in resources, resources
         assert "memory" not in resources, resources
         assert "object_store_memory" not in resources, resources
+
+        # Automatically create a node id resource on each node. This is
+        # queryable with ray.state.node_ids() and ray.state.current_node_id().
+        resources[NODE_ID_PREFIX + ray.services.get_node_ip_address()] = 1.0
 
         num_cpus = self.num_cpus
         if num_cpus is None:

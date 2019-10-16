@@ -496,6 +496,7 @@ class RayTrialExecutor(TrialExecutor):
                     self._committed_resources.get_res_total(name),
                     self._avail_resources.get_res_total(name), name)
                 for name in self._avail_resources.custom_resources
+                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX)
             ])
             if customs:
                 status += " ({})".format(customs)
