@@ -19,17 +19,17 @@ def test_single_prod_cons_queue(serve_instance):
 def test_alter_backend(serve_instance):
     q = CentralizedQueues()
 
+    q.set_traffic("svc", {"backend-1": 1})
     result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
     work_object_id = q.dequeue_request("backend-1")
-    q.set_traffic("svc", {"backend-1": 1})
     got_work = ray.get(ray.ObjectID(work_object_id))
     assert got_work.request_args == 1
     ray.worker.global_worker.put_object(got_work.result_object_id, 2)
     assert ray.get(ray.ObjectID(result_object_id)) == 2
 
+    q.set_traffic("svc", {"backend-2": 1})
     result_object_id = q.enqueue_request("svc", 1, "kwargs", None)
     work_object_id = q.dequeue_request("backend-2")
-    q.set_traffic("svc", {"backend-2": 1})
     got_work = ray.get(ray.ObjectID(work_object_id))
     assert got_work.request_args == 1
     ray.worker.global_worker.put_object(got_work.result_object_id, 2)
@@ -39,12 +39,11 @@ def test_alter_backend(serve_instance):
 def test_split_traffic(serve_instance):
     q = CentralizedQueues()
 
+    q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
     q.enqueue_request("svc", 1, "kwargs", None)
     q.enqueue_request("svc", 1, "kwargs", None)
-    q.set_traffic("svc", {})
     work_object_id_1 = q.dequeue_request("backend-1")
     work_object_id_2 = q.dequeue_request("backend-2")
-    q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
 
     got_work = ray.get(
         [ray.ObjectID(work_object_id_1),
