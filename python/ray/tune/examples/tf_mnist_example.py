@@ -120,6 +120,7 @@ class MNISTTrainable(tune.Trainable):
 
 
 if __name__ == "__main__":
+    load_data()  # we download data on the driver to avoid race conditions.
     tune.run(
         MNISTTrainable,
         stop={"training_iteration": 5 if args.smoke_test else 50},
