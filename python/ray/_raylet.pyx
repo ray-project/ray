@@ -478,7 +478,6 @@ cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
 cdef _store_task_outputs(worker, return_ids, outputs):
     if len(return_ids) == 1:
         outputs = (outputs,)
-    assert len(return_ids) == len(outputs)
     for i in range(len(return_ids)):
         return_id, output = return_ids[i], outputs[i]
         if isinstance(output, ray.actor.ActorHandle):
@@ -520,6 +519,18 @@ cdef CRayStatus execute_task(
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             ray_function.GetFunctionDescriptor())
+
+        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+            worker.actor_id = actor_id
+            actor_class = worker.function_actor_manager.load_actor_class(
+                job_id, function_descriptor)
+            worker.actors[actor_id] = actor_class.__new__(actor_class)
+            worker.actor_checkpoint_info[actor_id] = (
+                ray.worker.ActorCheckpointInfo(
+                    num_tasks_since_last_checkpoint=0,
+                    last_checkpoint_timestamp=int(1000 * time.time()),
+                    checkpoint_ids=[]))
+
         execution_info = worker.function_actor_manager.get_execution_info(
             job_id, function_descriptor)
         function_name = execution_info.function_name
@@ -533,16 +544,6 @@ cdef CRayStatus execute_task(
             next_title = "ray_worker"
             function_executor = execution_info.function
         else:
-            if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-                worker.actor_id = actor_id
-                actor_class = worker.function_actor_manager.load_actor_class(
-                    job_id, function_descriptor)
-                worker.actors[actor_id] = actor_class.__new__(actor_class)
-                worker.actor_checkpoint_info[actor_id] = (
-                    ray.worker.ActorCheckpointInfo(
-                        num_tasks_since_last_checkpoint=0,
-                        last_checkpoint_timestamp=int(1000 * time.time()),
-                        checkpoint_ids=[]))
             actor = worker.actors[worker.actor_id]
             class_name = actor.__class__.__name__
             title = "ray_{}:{}()".format(class_name, function_name)
@@ -562,7 +563,7 @@ cdef CRayStatus execute_task(
                             required_resources[
                                 "object_store_memory"])))
 
-            def function_executor(arguments):
+            def function_executor(*arguments):
                 execution_info.function(actor, *arguments)
 
         with profiling.profile("task", extra_data=extra_data):
