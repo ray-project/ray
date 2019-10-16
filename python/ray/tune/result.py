@@ -39,20 +39,20 @@ MEAN_ACCURACY = "mean_accuracy"
 # Number of episodes in this iteration.
 EPISODES_THIS_ITER = "episodes_this_iter"
 
-# (Optional/Auto-filled) Accumulated number of episodes for this experiment.
+# (Optional/Auto-filled) Accumulated number of episodes for this trial.
 EPISODES_TOTAL = "episodes_total"
 
 # Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
-# (Auto-filled) Accumulated number of timesteps for this entire experiment.
+# (Auto-filled) Accumulated number of timesteps for this entire trial.
 TIMESTEPS_TOTAL = "timesteps_total"
 
 # (Auto-filled) Time in seconds this iteration took to run.
 # This may be overriden to override the system-computed time difference.
 TIME_THIS_ITER_S = "time_this_iter_s"
 
-# (Auto-filled) Accumulated time in seconds for this entire experiment.
+# (Auto-filled) Accumulated time in seconds for this entire trial.
 TIME_TOTAL_S = "time_total_s"
 
 # (Auto-filled) The index of this training iteration.

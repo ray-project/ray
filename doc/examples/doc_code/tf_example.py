@@ -48,7 +48,7 @@ def random_one_hot_labels(shape):
 # Use GPU wth
 # @ray.remote(num_gpus=1)
 @ray.remote
-class Network():
+class Network(object):
     def __init__(self):
         self.model = create_keras_model()
         self.dataset = np.random.random((1000, 32))
