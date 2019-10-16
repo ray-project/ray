@@ -2,6 +2,8 @@ import json
 import sqlite3
 from abc import ABC
 
+import cloudpickle as pickle
+
 import ray
 import ray.experimental.internal_kv as ray_kv
 from ray.experimental.serve.utils import logger
@@ -206,16 +208,26 @@ class BackendTable:
         self.backend_table = kv_connector("backend_creator")
         self.replica_table = kv_connector("replica_tables")
     
-    def register_backend(self, backend_tag: str, backend_creator_serialized: str):
+    def register_backend(self, backend_tag: str, backend_creator):
+        backend_creator_serialized = pickle.dumps(backend_creator)
         self.backend_table.put(backend_tag, backend_creator_serialized)
     
+    def get_backend_creator(self, backend_tag):
+        return pickle.loads(self.backend_table.get(backend_tag))
+
+    def list_backends(self):
+        return list(self.backend_table.as_dict().keys())
+
+    def list_replicas(self, backend_tag: str):
+        return json.loads(self.replica_table.get(backend_tag, "[]"))
+
     def add_replica(self, backend_tag: str, new_replica_tag: str):
-        replica_tags = json.loads(self.replica_table.get(backend_tag, "[]"))
+        replica_tags = self.list_replicas(backend_tag)
         replica_tags.append(new_replica_tag)
         self.replica_table.put(backend_tag, json.dumps(replica_tags))
     
     def remove_replica(self, backend_tag):
-        replica_tags = json.loads(self.replica_table.get(backend_tag, "[]"))
+        replica_tags = self.list_replicas(backend_tag)
         removed_replica = replica_tags.pop()
         self.replica_table.put(backend_tag, json.dumps(replica_tags))
         return removed_replica

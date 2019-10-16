@@ -46,6 +46,7 @@ class MetricMonitor:
             handle._serve_metric.remote()
             for handle in self.actor_handles.values()
         ]
+        #TODO(simon): handle the possibility that an actor_handle is removed
         for handle_result in ray.get(result):
             for metric_name, metric_info in handle_result.items():
                 data_entry = {

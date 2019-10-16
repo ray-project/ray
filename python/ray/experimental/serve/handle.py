@@ -61,7 +61,7 @@ class RayServeHandle:
         return """
 RayServeHandle(
     Endpoint="{endpoint_name}",
-    URL="{http_endpoint}/{endpoint_name},
+    URL="{http_endpoint}/{endpoint_name}",
     Traffic={traffic_policy}
 )
 """.format(endpoint_name=self.endpoint_name,

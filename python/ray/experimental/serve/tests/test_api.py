@@ -5,11 +5,10 @@ import requests
 import ray
 from ray.experimental import serve
 
-
 def test_e2e(serve_instance):
+    serve.init() # so we have access to global state
     serve.create_endpoint("endpoint", "/api", blocking=True)
-    result = ray.get(
-        serve.global_state.kv_store_actor_handle.list_service.remote())
+    result = serve.global_state.route_table.list_service()
     assert result == {"/api": "endpoint"}
 
     retry_count = 5

@@ -1,6 +1,8 @@
+import random
 import json
 import logging
 import time
+import string
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -62,3 +64,6 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
             raise Exception(
                 "HTTP server not ready after {} retries.".format(
                     num_retries))
+
+def get_random_letters(length=6):
+    return "".join(random.choices(string.ascii_letters, k=length))
