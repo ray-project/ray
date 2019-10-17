@@ -439,7 +439,9 @@ class Worker(object):
                 writer = Pickle5Writer()
                 if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
                     inband = pickle.dumps(
-                        value, protocol=5, buffer_callback=writer.buffer_callback)
+                        value,
+                        protocol=5,
+                        buffer_callback=writer.buffer_callback)
                 else:
                     inband = pickle.dumps(value, protocol=4)
                 self.core_worker.put_pickle5_buffers(object_id, inband, writer,

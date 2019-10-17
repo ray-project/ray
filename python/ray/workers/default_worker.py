@@ -66,8 +66,7 @@ parser.add_argument(
     "--use-pickle",
     default=False,
     action="store_true",
-    help="True if cloudpickle should be used for serialization."
-)
+    help="True if cloudpickle should be used for serialization.")
 
 if __name__ == "__main__":
     args = parser.parse_args()

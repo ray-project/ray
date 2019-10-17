@@ -237,7 +237,8 @@ def start(node_ip_address, redis_address, address, redis_port,
           head, include_webui, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, use_pickle, internal_config):
+          java_worker_options, load_code_from_local, use_pickle,
+          internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
