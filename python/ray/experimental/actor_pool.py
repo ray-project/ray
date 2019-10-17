@@ -48,7 +48,7 @@ class ActorPool(object):
             [2, 4, 6, 8]
         """
         for v in values:
-            self.submit(lambda a, v: fn(a, v), v)
+            self.submit(fn, v)
         while self.has_next():
             yield self.get_next()
 
@@ -75,7 +75,7 @@ class ActorPool(object):
             [6, 2, 4, 8]
         """
         for v in values:
-            self.submit(lambda a, v: fn(a, v), v)
+            self.submit(fn, v)
         while self.has_next():
             yield self.get_next_unordered()
 
