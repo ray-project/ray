@@ -554,7 +554,7 @@ print("success")
 
 
 @pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1 --use-pickle"],
+    "call_ray_start", ["ray start --head --num-cpus=1 --use-pickle"],
     indirect=True)
 def test_use_pickle(call_ray_start):
     address = call_ray_start
