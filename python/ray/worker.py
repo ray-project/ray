@@ -2057,7 +2057,7 @@ def register_custom_serializer(cls,
     assert isinstance(job_id, JobID)
 
     def register_class_for_serialization(worker_info):
-        if worker.use_pickle:
+        if worker_info["worker"].use_pickle:
             if pickle.FAST_CLOUDPICKLE_USED:
                 # construct a reducer
                 pickle.CloudPickler.dispatch[
