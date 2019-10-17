@@ -57,7 +57,7 @@ class CentralizedCriticModel(TFModelV2):
                                            num_outputs, model_config, name)
         self.register_variables(self.model.variables())
 
-        # Central VF maps (obs, opp_ops, opp_act) -> vf_pred
+        # Central VF maps (obs, opp_obs, opp_act) -> vf_pred
         obs = tf.keras.layers.Input(shape=(6, ), name="obs")
         opp_obs = tf.keras.layers.Input(shape=(6, ), name="opp_obs")
         opp_act = tf.keras.layers.Input(shape=(2, ), name="opp_act")
