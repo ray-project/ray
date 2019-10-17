@@ -476,8 +476,6 @@ cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
 
 
 cdef _store_task_outputs(worker, return_ids, outputs):
-    if len(return_ids) == 1:
-        outputs = (outputs,)
     for i in range(len(return_ids)):
         return_id, output = return_ids[i], outputs[i]
         if isinstance(output, ray.actor.ActorHandle):
@@ -564,13 +562,13 @@ cdef CRayStatus execute_task(
                                 "object_store_memory"])))
 
             def function_executor(*arguments):
-                execution_info.function(actor, *arguments)
+                return execution_info.function(actor, *arguments)
 
         with profiling.profile("task", extra_data=extra_data):
             try:
                 task_exception = False
                 if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                        and function_name != "__ray_terminate__"):
+                        and function_name == "__ray_terminate__"):
                     worker.reraise_actor_init_error()
                     worker.memory_monitor.raise_if_low_memory()
 
@@ -580,6 +578,8 @@ cdef CRayStatus execute_task(
                         task_exception = True
                         outputs = function_executor(*args)
                         task_exception = False
+                        if len(return_ids) == 1:
+                            outputs = (outputs,)
 
                 # Store the outputs in the object store.
                 with profiling.profile("task:store_outputs"):
@@ -608,19 +608,6 @@ cdef CRayStatus execute_task(
                 # Send signal with the error.
                 ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
-        # Reset the state of the worker for the next task to execute.
-        # Increase the task execution counter.
-        worker.function_actor_manager.increase_task_counter(
-            job_id, function_descriptor)
-
-        # If we've reached the max number of executions for this worker, exit.
-        reached_max_executions = (
-            worker.function_actor_manager.get_task_counter(
-                job_id, function_descriptor) == execution_info.max_calls)
-        if reached_max_executions:
-            worker.core_worker.disconnect()
-            sys.exit(0)
-
         # Reset the state fields so the next task can run.
         worker.task_context.current_task_id = TaskID.nil()
         worker.core_worker.set_current_task_id(TaskID.nil())
@@ -634,9 +621,22 @@ cdef CRayStatus execute_task(
             worker.current_job_id = WorkerID.nil()
             worker.core_worker.set_current_job_id(JobID.nil())
 
-        # Reset signal counters so that the next task can get
-        # all past signals.
-        ray_signal.reset()
+            # Reset signal counters so that the next task can get
+            # all past signals.
+            ray_signal.reset()
+
+        # Reset the state of the worker for the next task to execute.
+        # Increase the task execution counter.
+        worker.function_actor_manager.increase_task_counter(
+            job_id, function_descriptor)
+
+        # If we've reached the max number of executions for this worker, exit.
+        reached_max_executions = (
+            worker.function_actor_manager.get_task_counter(
+                job_id, function_descriptor) == execution_info.max_calls)
+        if reached_max_executions:
+            worker.core_worker.disconnect()
+            sys.exit(0)
 
     return CRayStatus.OK()
 
