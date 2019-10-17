@@ -672,8 +672,7 @@ cdef class CoreWorker:
                         c_placement_resources, dynamic_worker_options),
                     &c_actor_id))
 
-            actor_id = ActorID(c_actor_id.Binary())
-            return actor_id
+            return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
                           ActorID actor_id,

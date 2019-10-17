@@ -29,7 +29,7 @@ void BuildCommonTaskSpec(
   }
 
   // Compute return IDs.
-  (*return_ids).resize(num_returns);
+  return_ids->resize(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
     (*return_ids)[i] =
         ObjectID::ForTaskReturn(task_id, i + 1,
@@ -279,11 +279,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
 
-  auto status = raylet_client_->SubmitTask(builder.Build());
-  if (status.ok()) {
-    *return_actor_id = actor_id;
-  }
-  return status;
+  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(builder.Build()));
+  *return_actor_id = actor_id;
+  return Status::OK();
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
