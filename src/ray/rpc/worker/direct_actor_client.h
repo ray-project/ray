@@ -7,6 +7,7 @@
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
+#include "absl/base/thread_annotations.h"
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
@@ -115,14 +116,15 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   ClientCallManager &client_call_manager_;
 
   /// Queue of requests to send.
-  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
-      send_queue_;
+  GUARDED_BY(mutex_)
+  std::deque<std::pair<std::unique_ptr<PushTaskRequest>,
+                       ClientCallback<PushTaskReply>>> send_queue_;
 
   /// The number of bytes currently in flight.
-  int64_t rpc_bytes_in_flight_ = 0;
+  GUARDED_BY(mutex_) int64_t rpc_bytes_in_flight_ = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ = -1;
+  GUARDED_BY(mutex_) int64_t max_finished_seq_no_ = -1;
 };
 
 }  // namespace rpc

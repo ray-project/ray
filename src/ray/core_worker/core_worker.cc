@@ -227,15 +227,20 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
   return inserted;
 }
 
-ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) const {
+Status CoreWorker::GetActorHandle(const ActorID &actor_id,
+                                  ActorHandle **actor_handle) const {
   auto it = actor_handles_.find(actor_id);
-  RAY_CHECK(it != actor_handles_.end());
-  return *it->second;
+  if (it == actor_handles_.end()) {
+    return Status::Invalid("Handle for actor does not exist");
+  }
+  *actor_handle = it->second.get();
+  return Status::OK();
 }
 
-void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                            const TaskOptions &task_options,
-                            std::vector<ObjectID> *return_ids) {
+Status CoreWorker::SubmitTask(const RayFunction &function,
+                              const std::vector<TaskArg> &args,
+                              const TaskOptions &task_options,
+                              std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -245,12 +250,13 @@ void CoreWorker::SubmitTask(const RayFunction &function, const std::vector<TaskA
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
                       {}, TaskTransportType::RAYLET, return_ids);
-  RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
+  return raylet_client_->SubmitTask(builder.Build());
 }
 
-ActorID CoreWorker::CreateActor(const RayFunction &function,
-                                const std::vector<TaskArg> &args,
-                                const ActorCreationOptions &actor_creation_options) {
+Status CoreWorker::CreateActor(const RayFunction &function,
+                               const std::vector<TaskArg> &args,
+                               const ActorCreationOptions &actor_creation_options,
+                               ActorID *return_actor_id) {
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const ActorID actor_id =
       ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
@@ -273,20 +279,24 @@ ActorID CoreWorker::CreateActor(const RayFunction &function,
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
 
-  RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
-  return actor_id;
+  auto status = raylet_client_->SubmitTask(builder.Build());
+  if (status.ok()) {
+    *return_actor_id = actor_id;
+  }
+  return status;
 }
 
-void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                                 const std::vector<TaskArg> &args,
-                                 const TaskOptions &task_options,
-                                 std::vector<ObjectID> *return_ids) {
-  auto &actor_handle = GetActorHandle(actor_id);
+Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                                   const std::vector<TaskArg> &args,
+                                   const TaskOptions &task_options,
+                                   std::vector<ObjectID> *return_ids) {
+  ActorHandle *actor_handle = nullptr;
+  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
 
-  const bool is_direct_call = actor_handle.IsDirectCallActor();
+  const bool is_direct_call = actor_handle->IsDirectCallActor();
   const TaskTransportType transport_type =
       is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
 
@@ -295,37 +305,42 @@ void CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &fun
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
-      next_task_index, actor_handle.GetActorID());
-  BuildCommonTaskSpec(builder, actor_handle.CreationJobID(), actor_task_id,
+      next_task_index, actor_handle->GetActorID());
+  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, num_returns, task_options.resources, {},
                       transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
-  actor_handle.SetActorTaskSpec(builder, transport_type, new_cursor);
-
-  // Submit task.
-  if (is_direct_call) {
-    direct_actor_submitter_->SubmitTask(builder.Build());
-  } else {
-    RAY_CHECK_OK(raylet_client_->SubmitTask(builder.Build()));
-  }
-
+  actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
   // Remove cursor from return ids.
   return_ids->pop_back();
+
+  // Submit task.
+  Status status;
+  if (is_direct_call) {
+    status = direct_actor_submitter_->SubmitTask(builder.Build());
+  } else {
+    status = raylet_client_->SubmitTask(builder.Build());
+  }
+  return status;
 }
 
-ActorID CoreWorker::DeserializeActorHandle(const std::string &serialized) {
+ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
   RAY_UNUSED(AddActorHandle(std::move(actor_handle)));
   return actor_id;
 }
 
-void CoreWorker::SerializeActorHandle(const ActorID &actor_id,
-                                      std::string *output) const {
-  auto &actor_handle = GetActorHandle(actor_id);
-  actor_handle.Serialize(output);
+Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
+                                        std::string *output) const {
+  ActorHandle *actor_handle = nullptr;
+  auto status = GetActorHandle(actor_id, &actor_handle);
+  if (status.ok()) {
+    actor_handle->Serialize(output);
+  }
+  return status;
 }
 
 }  // namespace ray

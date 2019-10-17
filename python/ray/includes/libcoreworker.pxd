@@ -61,13 +61,13 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
 
-        void SubmitTask(
+        CRayStatus SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids)
-        CActorID CreateActor(
+        CRayStatus CreateActor(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options)
-        void SubmitActorTask(
+            const CActorCreationOptions &options, CActorID *actor_id)
+        CRayStatus SubmitActorTask(
             const CActorID &actor_id, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
@@ -87,5 +87,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetActorId(const CActorID &actor_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
-        CActorID DeserializeActorHandle(const c_string &bytes)
-        void SerializeActorHandle(const CActorID &actor_id, c_string *bytes)
+        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
+        CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
+                                        *bytes)

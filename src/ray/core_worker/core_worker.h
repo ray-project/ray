@@ -143,8 +143,9 @@ class CoreWorker {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  void SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                  const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+  /// \return Status error if task submission fails, likely due to raylet failure.
+  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
   ///
@@ -153,10 +154,12 @@ class CoreWorker {
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[out] actor_handle Handle to the actor.
-  /// \return ID of the created actor. This can be used to submit tasks on the
-  /// actor.
-  ActorID CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
-                      const ActorCreationOptions &actor_creation_options);
+  /// \param[out] actor_id ID of the created actor. This can be used to submit
+  /// tasks on the actor.
+  /// \return Status error if actor creation fails, likely due to raylet failure.
+  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+                     const ActorCreationOptions &actor_creation_options,
+                     ActorID *actor_id);
 
   /// Submit an actor task.
   ///
@@ -166,9 +169,13 @@ class CoreWorker {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
-  void SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
-                       const std::vector<TaskArg> &args, const TaskOptions &task_options,
-                       std::vector<ObjectID> *return_ids);
+  /// \return Status error if the task is invalid or if the task submission
+  /// failed. Tasks can be invalid for direct actor calls because not all tasks
+  /// are currently supported.
+  Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                         const std::vector<TaskArg> &args,
+                         const TaskOptions &task_options,
+                         std::vector<ObjectID> *return_ids);
 
   /// Add an actor handle from a serialized string.
   ///
@@ -178,7 +185,7 @@ class CoreWorker {
   ///
   /// \param[in] serialized The serialized actor handle.
   /// \return The ActorID of the deserialized handle.
-  ActorID DeserializeActorHandle(const std::string &serialized);
+  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized);
 
   /// Serialize an actor handle.
   ///
@@ -187,7 +194,8 @@ class CoreWorker {
   ///
   /// \param[in] actor_id The ID of the actor handle to serialize.
   /// \param[out] The serialized handle.
-  void SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+  /// \return Status::Invalid if we don't have the specified handle.
+  Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
  private:
   /// Give this worker a handle to an actor.
@@ -205,9 +213,10 @@ class CoreWorker {
   /// Get a handle to an actor. This asserts that the worker actually has this
   /// handle.
   ///
-  /// \param actor_id The actor handle to get.
-  /// \return A handle to the requested actor.
-  ActorHandle &GetActorHandle(const ActorID &actor_id) const;
+  /// \param[in] actor_id The actor handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::Invalid if we don't have this actor handle.
+  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
   void StartIOService();
 

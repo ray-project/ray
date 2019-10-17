@@ -21,10 +21,12 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 
-void CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
+    const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-  RAY_CHECK(!HasByReferenceArgs(task_spec))
-      << "Direct actor call only supports by-value arguments";
+  if (HasByReferenceArgs(task_spec)) {
+    return Status::Invalid("Direct actor call only supports by-value arguments");
+  }
 
   RAY_CHECK(task_spec.IsActorTask());
   const auto &actor_id = task_spec.ActorId();
@@ -64,6 +66,10 @@ void CoreWorkerDirectActorTaskSubmitter::SubmitTask(const TaskSpecification &tas
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
   }
+
+  // If the task submission subsequently fails, then the client will receive
+  // the error in a callback.
+  return Status::OK();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
@@ -97,15 +103,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
       waiting_reply_tasks_.erase(actor_id);
     }
 
-    // If this actor is permanently dead and there are pending requests, treat
-    // the pending tasks as failed.
-    if (actor_data.state() == ActorTableData::DEAD &&
-        pending_requests_.count(actor_id) > 0) {
-      for (const auto &request : pending_requests_[actor_id]) {
+    // If there are pending requests, treat the pending tasks as failed.
+    auto pending_it = pending_requests_.find(actor_id);
+    if (pending_it != pending_requests_.end()) {
+      for (const auto &request : pending_it->second) {
         TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
                           request->task_spec().num_returns(), rpc::ErrorType::ACTOR_DIED);
       }
-      pending_requests_.erase(actor_id);
+      pending_requests_.erase(pending_it);
     }
   }
 }

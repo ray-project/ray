@@ -42,7 +42,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
-  void SubmitTask(const TaskSpecification &task_spec);
+  /// \return Status::Invalid if the task is not yet supported.
+  Status SubmitTask(const TaskSpecification &task_spec);
 
   /// Handle an update about an actor.
   ///
