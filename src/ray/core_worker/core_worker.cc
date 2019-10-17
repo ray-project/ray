@@ -130,8 +130,8 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
-  // Clear all actor handles for non-actor tasks.
-  if (actor_id_.IsNil()) {
+  // Clear all actor handles at the end of each non-actor task.
+  if (actor_id_.IsNil() && task_id.IsNil()) {
     for (const auto &handle : actor_handles_) {
       RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
