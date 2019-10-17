@@ -207,7 +207,7 @@ class CoreWorker {
   ///
   /// \param actor_id The actor handle to get.
   /// \return A handle to the requested actor.
-  ActorHandle &GetActorHandle(const ActorID &actor_id);
+  ActorHandle &GetActorHandle(const ActorID &actor_id) const;
 
   void StartIOService();
 

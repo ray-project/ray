@@ -227,7 +227,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
   return inserted;
 }
 
-ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
+ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) const {
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end());
   return *it->second;
@@ -322,7 +322,7 @@ ActorID CoreWorker::DeserializeActorHandle(const std::string &serialized) {
   return actor_id;
 }
 
-void CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output) {
+void CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output) const {
   auto &actor_handle = GetActorHandle(actor_id);
   actor_handle.Serialize(output);
 }
