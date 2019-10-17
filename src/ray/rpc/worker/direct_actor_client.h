@@ -100,9 +100,7 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   DirectActorClient(const std::string &address, const int port,
                     ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager),
-        rpc_bytes_in_flight_(0),
-        max_finished_seq_no_(-1) {
+      : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
     stub_ = DirectActorService::NewStub(channel);
@@ -118,14 +116,14 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   ClientCallManager &client_call_manager_;
 
   /// Queue of requests to send.
-  std::deque<std::pair<std::unique_ptr<PushTaskRequest>,
-                       ClientCallback<PushTaskReply>>> send_queue_ GUARDED_BY(mutex_);
+  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
+      send_queue_ GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.
-  int64_t rpc_bytes_in_flight_ GUARDED_BY(mutex_);
+  int64_t rpc_bytes_in_flight_ GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ GUARDED_BY(mutex_);
+  int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
 };
 
 }  // namespace rpc
