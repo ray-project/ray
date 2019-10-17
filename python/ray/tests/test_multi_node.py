@@ -567,7 +567,7 @@ def test_use_pickle(call_ray_start):
     @ray.remote
     def f(x):
         assert x == (2, "hello")
-        assert ray.worker.global_worker.use_pickle == True
+        assert ray.worker.global_worker.use_pickle
         return (3, "world")
 
     assert ray.get(f.remote(x)) == (3, "world")
