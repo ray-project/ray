@@ -104,21 +104,24 @@ class ResourceSpec(
         }
 
         # Check types.
-        for _, resource_quantity in resources.items():
+        for resource_label, resource_quantity in resources.items():
             assert (isinstance(resource_quantity, int)
                     or isinstance(resource_quantity, float))
             if (isinstance(resource_quantity, float)
                     and not resource_quantity.is_integer()):
                 raise ValueError(
                     "Resource quantities must all be whole numbers. "
-                    "Received {}.".format(resources))
+                    "Violated by resource '{}' in {}.".format(
+                        resource_label, resources))
             if resource_quantity < 0:
                 raise ValueError("Resource quantities must be nonnegative. "
-                                 "Received {}.".format(resources))
+                                 "Violated by resource '{}' in {}.".format(
+                                     resource_label, resources))
             if resource_quantity > ray_constants.MAX_RESOURCE_QUANTITY:
-                raise ValueError(
-                    "Resource quantities must be at most {}.".format(
-                        ray_constants.MAX_RESOURCE_QUANTITY))
+                raise ValueError("Resource quantities must be at most {}. "
+                                 "Violated by resource '{}' in {}.".format(
+                                     ray_constants.MAX_RESOURCE_QUANTITY,
+                                     resource_label, resources))
 
         return resources
 
