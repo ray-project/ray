@@ -2290,6 +2290,26 @@ def test_custom_resources(ray_start_cluster):
     ray.get([h.remote() for _ in range(5)])
 
 
+def test_node_id_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=3)
+    ray.init(address=cluster.address)
+
+    local_node = ray.state.current_node_id()
+
+    # Note that these will have the same IP in the test cluster
+    assert len(ray.state.node_ids()) == 2
+    assert local_node in ray.state.node_ids()
+
+    @ray.remote(resources={local_node: 1})
+    def f():
+        return ray.state.current_node_id()
+
+    # Check the node id resource is automatically usable for scheduling.
+    assert ray.get(f.remote()) == ray.state.current_node_id()
+
+
 def test_two_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -2393,6 +2413,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         del resources["memory"]
         del resources["object_store_memory"]
+        for key in list(resources.keys()):
+            if key.startswith("node:"):
+                del resources[key]
 
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
@@ -2401,7 +2424,7 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
             raise RuntimeError(
-                "Resources were available even after five retries.")
+                "Resources were available even after five retries.", resources)
 
         return resources
 
