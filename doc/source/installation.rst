@@ -120,7 +120,19 @@ steps are included in the installation instructions above.
 
 .. _`Node.js`: https://nodejs.org/
 
-The dashboard requires Python 3, and can be enabled by setting
+The dashboard also requires:
+
+-  Python 3
+-  aiohttp
+-  psutil
+
+The latter two can be installed via pip:
+
+.. code-block:: bash
+
+  pip install aiohttp psutil
+ 
+The dashboard is enabled by setting
 ``include_webui=True`` during initialization, i.e.
 
 .. code-block:: python
