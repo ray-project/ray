@@ -105,6 +105,31 @@ def test_simple_serialization(ray_start_regular):
             assert type(obj) == type(new_obj_2)
 
 
+def test_fair_queueing(shutdown_only):
+    ray.init(
+        num_cpus=1, _internal_config=json.dumps({
+            "fair_queueing_enabled": 1
+        }))
+
+    @ray.remote
+    def h():
+        return 0
+
+    @ray.remote
+    def g():
+        return ray.get(h.remote())
+
+    @ray.remote
+    def f():
+        return ray.get(g.remote())
+
+    # This will never finish without fair queueing of {f, g, h}:
+    # https://github.com/ray-project/ray/issues/3644
+    ready, _ = ray.wait(
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+    assert len(ready) == 1000, len(ready)
+
+
 def test_complex_serialization(ray_start_regular):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
@@ -1205,10 +1230,8 @@ def test_running_function_on_all_workers(ray_start_regular):
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
     def f():
-        with ray.profile(
-                "custom_event",
-                extra_data={"name": "custom name"}) as ray_prof:
-            ray_prof.set_attribute("key", "value")
+        with ray.profile("custom_event", extra_data={"name": "custom name"}):
+            pass
 
     ray.put(1)
     object_id = f.remote()
@@ -1220,10 +1243,6 @@ def test_profiling_api(ray_start_2_cpus):
     timeout_seconds = 20
     start_time = time.time()
     while True:
-        if time.time() - start_time > timeout_seconds:
-            raise RayTestTimeoutException(
-                "Timed out while waiting for information in "
-                "profile table.")
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
@@ -1245,6 +1264,15 @@ def test_profiling_api(ray_start_2_cpus):
         if all(expected_type in event_types
                for expected_type in expected_types):
             break
+
+        if time.time() - start_time > timeout_seconds:
+            raise RayTestTimeoutException(
+                "Timed out while waiting for information in "
+                "profile table. Missing events: {}.".format(
+                    set(expected_types) - set(event_types)))
+
+        # The profiling information only flushes once every second.
+        time.sleep(1.1)
 
 
 def test_wait_cluster(ray_start_cluster):
@@ -1419,13 +1447,13 @@ def test_multithreading(ray_start_2_cpus):
             time.sleep(delay_ms / 1000.0)
         return value
 
-    @ray.remote
-    class Echo(object):
-        def echo(self, value):
-            return value
-
     def test_api_in_multi_threads():
         """Test using Ray api in multiple threads."""
+
+        @ray.remote
+        class Echo(object):
+            def echo(self, value):
+                return value
 
         # Test calling remote functions in multiple threads.
         def test_remote_call():
@@ -1762,6 +1790,28 @@ def test_local_mode(shutdown_only):
         ray.get(obj1)
     with pytest.raises(Exception, match=exception_str):
         ray.get(obj2)
+
+    # Check that Actors are not overwritten by remote calls from different
+    # classes.
+    @ray.remote
+    class RemoteActor1(object):
+        def __init__(self):
+            pass
+
+        def function1(self):
+            return 0
+
+    @ray.remote
+    class RemoteActor2(object):
+        def __init__(self):
+            pass
+
+        def function2(self):
+            return 1
+
+    actor1 = RemoteActor1.remote()
+    _ = RemoteActor2.remote()
+    assert ray.get(actor1.function1.remote()) == 0
 
 
 def test_resource_constraints(shutdown_only):
@@ -2240,6 +2290,26 @@ def test_custom_resources(ray_start_cluster):
     ray.get([h.remote() for _ in range(5)])
 
 
+def test_node_id_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=3)
+    ray.init(address=cluster.address)
+
+    local_node = ray.state.current_node_id()
+
+    # Note that these will have the same IP in the test cluster
+    assert len(ray.state.node_ids()) == 2
+    assert local_node in ray.state.node_ids()
+
+    @ray.remote(resources={local_node: 1})
+    def f():
+        return ray.state.current_node_id()
+
+    # Check the node id resource is automatically usable for scheduling.
+    assert ray.get(f.remote()) == ray.state.current_node_id()
+
+
 def test_two_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -2343,6 +2413,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         del resources["memory"]
         del resources["object_store_memory"]
+        for key in list(resources.keys()):
+            if key.startswith("node:"):
+                del resources[key]
 
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
@@ -2351,7 +2424,7 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
             raise RuntimeError(
-                "Resources were available even after five retries.")
+                "Resources were available even after five retries.", resources)
 
         return resources
 

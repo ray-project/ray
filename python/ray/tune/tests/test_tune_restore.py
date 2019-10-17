@@ -71,11 +71,6 @@ class TuneExampleTest(unittest.TestCase):
         ray.shutdown()
         _register_all()
 
-    def testTensorFlowMNIST(self):
-        from ray.tune.examples.tune_mnist_ray_hyperband import TrainMNIST
-        validate_save_restore(TrainMNIST)
-        validate_save_restore(TrainMNIST, use_object_store=True)
-
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
         from tensorflow.python.keras.datasets import cifar10

@@ -42,6 +42,8 @@ ray_autoscaler_files = [
     "ray/autoscaler/aws/example-full.yaml",
     "ray/autoscaler/gcp/example-full.yaml",
     "ray/autoscaler/local/example-full.yaml",
+    "ray/autoscaler/kubernetes/example-full.yaml",
+    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
 ]
 
 ray_project_files = [
@@ -71,11 +73,13 @@ if "RAY_USE_NEW_GCS" in os.environ and os.environ["RAY_USE_NEW_GCS"] == "on":
 
 extras = {
     "rllib": [
-        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy"
+        "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
+        "tabulate"
     ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "psutil", "setproctitle"],
-    "serve": ["uvicorn", "pygments", "werkzeug"],
+    "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
+    "tune": ["tabulate"],
 }
 
 

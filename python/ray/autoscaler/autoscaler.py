@@ -77,6 +77,12 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
+            "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
+
+            # k8s autoscaler permissions, if using k8s
+            "autoscaler_service_account": (dict, OPTIONAL),
+            "autoscaler_role": (dict, OPTIONAL),
+            "autoscaler_role_binding": (dict, OPTIONAL),
             "extra_config": (dict, OPTIONAL),  # provider-specific config
 
             # Whether to try to reuse previously stopped nodes instead of
@@ -89,10 +95,10 @@ CLUSTER_CONFIG_SCHEMA = {
     # How Ray will authenticate with newly launched nodes.
     "auth": (
         {
-            "ssh_user": (str, REQUIRED),  # e.g. ubuntu
+            "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
             "ssh_private_key": (str, OPTIONAL),
         },
-        REQUIRED),
+        OPTIONAL),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
@@ -348,7 +354,7 @@ class NodeLauncher(threading.Thread):
         logger.info(prefix + " {}".format(statement))
 
 
-class ConcurrentCounter():
+class ConcurrentCounter(object):
     def __init__(self):
         self._value = 0
         self._lock = threading.Lock()
@@ -547,11 +553,22 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
-        # Update nodes with out-of-date files
+        # Update nodes with out-of-date files.
+        # TODO(edoakes): Spawning these threads directly seems to cause
+        # problems. They should at a minimum be spawned as daemon threads.
+        # See https://github.com/ray-project/ray/pull/5903 for more info.
+        T = []
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
             if node_id is not None:
-                self.spawn_updater(node_id, commands, ray_start)
+                T.append(
+                    threading.Thread(
+                        target=self.spawn_updater,
+                        args=(node_id, commands, ray_start)))
+        for t in T:
+            t.start()
+        for t in T:
+            t.join()
 
         # Attempt to recover unhealthy nodes
         for node_id in nodes:
@@ -812,6 +829,7 @@ def fillout_defaults(config):
     defaults.update(config)
     merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
+    defaults["auth"] = defaults.get("auth", {})
     return defaults
 
 

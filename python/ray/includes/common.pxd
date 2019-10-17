@@ -1,5 +1,5 @@
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
 from libc.stdint cimport uint8_t, uint64_t, int64_t
@@ -8,12 +8,30 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorHandleID,
     CJobID,
     CWorkerID,
     CObjectID,
     CTaskID,
 )
+
+
+cdef extern from * namespace "polyfill":
+    """
+    namespace polyfill {
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T& t) {
+        return std::move(t);
+    }
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T&& t) {
+        return std::move(t);
+    }
+
+    }  // namespace polyfill
+    """
+    cdef T move[T](T)
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
@@ -172,25 +190,18 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
-        CActorCreationOptions(uint64_t max_reconstructions,
-                              const unordered_map[c_string, double] &resources)
+        CActorCreationOptions()
+        CActorCreationOptions(
+            uint64_t max_reconstructions, c_bool is_direct_call,
+            const unordered_map[c_string, double] &resources,
+            const unordered_map[c_string, double] &placement_resources,
+            const c_vector[c_string] &dynamic_worker_options)
 
     cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(
-            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-            const CLanguage actor_language,
-            const c_vector[c_string] &actor_creation_task_function_descriptor)
+        CActorHandle(const c_string &serialized)
 
-        CActorHandle(const CActorHandle &other)
-        CActorID ActorID() const
-        CActorHandleID ActorHandleID() const
-        c_vector[c_string] ActorCreationTaskFunctionDescriptor() const
-        CObjectID ActorCursor() const
-        int64_t TaskCursor() const
-        int64_t NumForks() const
-        CActorHandle Fork()
+        CActorID GetActorID() const
         void Serialize(c_string *output)
-        CActorHandle Deserialize(const c_string &data)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

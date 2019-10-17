@@ -52,7 +52,7 @@ To use Ray's actor model:
     ray.init()
 
     @ray.remote
-    class Counter():
+    class Counter(object):
         def __init__(self):
             self.n = 0
 
@@ -252,6 +252,7 @@ Getting Involved
    projects.rst
    signals.rst
    async_api.rst
+   serve.rst
 
 .. toctree::
    :maxdepth: -1
@@ -262,7 +263,6 @@ Getting Involved
    auto_examples/plot_newsreader.rst
    auto_examples/plot_hyperparameter.rst
    auto_examples/plot_pong_example.rst
-   auto_examples/plot_resnet.rst
    auto_examples/plot_streaming.rst
    auto_examples/plot_parameter_server.rst
    auto_examples/plot_example-a3c.rst

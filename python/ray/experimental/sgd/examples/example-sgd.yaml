@@ -47,7 +47,7 @@ worker_nodes:
     #         MarketType: spot
 
 setup_commands:
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp36-cp36m-manylinux1_x86_64.whl
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
     - conda install -y pytorch torchvision cudatoolkit=9.0 -c pytorch
     - pip install -U ipdb ray[rllib]
 

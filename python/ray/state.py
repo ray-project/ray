@@ -1083,6 +1083,38 @@ def nodes():
     return state.client_table()
 
 
+def current_node_id():
+    """Return the node id of the current node.
+
+    For example, "node:172.10.5.34". This can be used as a custom resource,
+    e.g., {node_id: 1} to reserve the whole node, or {node_id: 0.001} to
+    just force placement on the node.
+
+    Returns:
+        Id of the current node.
+    """
+    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
+    )
+
+
+def node_ids():
+    """Get a list of the node ids in the cluster.
+
+    For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
+    as custom resources, e.g., {node_id: 1} to reserve the whole node, or
+    {node_id: 0.001} to just force placement on the node.
+
+    Returns:
+        List of the node resource ids.
+    """
+    node_ids = []
+    for node in nodes():
+        for k, v in node["Resources"].items():
+            if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
+                node_ids.append(k)
+    return node_ids
+
+
 def tasks(task_id=None):
     """Fetch and parse the task table information for one or more task IDs.
 

@@ -41,7 +41,7 @@ def easy_objective(config, reporter):
     import time
     time.sleep(0.2)
     for i in range(config["iterations"]):
-        x = np.array([config.get(f"x{i+1}") for i in range(6)])
+        x = np.array([config.get("x{}".format(i + 1)) for i in range(6)])
         reporter(
             timesteps_total=i,
             hartmann6=hartmann6(x),
@@ -113,4 +113,8 @@ if __name__ == "__main__":
     )
     algo = AxSearch(client, max_concurrent=4)
     scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="max")
-    run(easy_objective, name="ax", search_alg=algo, **config)
+    run(easy_objective,
+        name="ax",
+        search_alg=algo,
+        scheduler=scheduler,
+        **config)

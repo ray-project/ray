@@ -40,13 +40,16 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   /// \return if the rpc call succeeds
   ray::Status PushTask(std::unique_ptr<PushTaskRequest> request,
                        const ClientCallback<PushTaskReply> &callback) {
-    request->set_sequence_number(next_seq_no_++);
-    send_queue_.push_back(std::make_pair(std::move(request), callback));
+    request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      send_queue_.push_back(std::make_pair(std::move(request), callback));
+    }
     SendRequests();
     return ray::Status::OK();
   }
 
-  /// Send as many pending tasks as possible. This method is thread-safe.
+  /// Send as many pending tasks as possible. This method is NOT thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
@@ -114,9 +117,6 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
       send_queue_;
-
-  /// The next sequence number to assign to a task for this server.
-  int64_t next_seq_no_ = 0;
 
   /// The number of bytes currently in flight.
   int64_t rpc_bytes_in_flight_ = 0;
