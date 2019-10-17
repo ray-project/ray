@@ -524,10 +524,14 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
-            if (USE_NEW_SERIALIZER
+            if (self.use_pickle
                     and metadata == ray_constants.PICKLE5_BUFFER_METADATA):
-                in_band, buffers = unpack_pickle5_buffers(data)
-                return pickle.loads(in_band, buffers=buffers)
+                if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
+                    in_band, buffers = unpack_pickle5_buffers(data)
+                    return pickle.loads(in_band, buffers=buffers)
+                else:
+                    r = pyarrow.deserialize(data, serialization_context)
+                    return pickle.loads(r)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -546,15 +550,6 @@ class Worker(object):
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             # If data is not empty, deserialize the object.
-            if self.use_pickle:
-                if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
-                    r, buffers = pyarrow.deserialize(data, serialization_context)
-                    buffers = [PickleBuffer(b) for b in buffers]
-                    return pickle.loads(r, buffers=buffers)
-                else:
-                    r = pyarrow.deserialize(data, serialization_context)
-                    return pickle.loads(r)
-            else:
                 return pyarrow.deserialize(data, serialization_context)
         else:
             # Object isn't available in plasma.
