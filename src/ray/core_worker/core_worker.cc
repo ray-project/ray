@@ -322,7 +322,8 @@ ActorID CoreWorker::DeserializeActorHandle(const std::string &serialized) {
   return actor_id;
 }
 
-void CoreWorker::SerializeActorHandle(const ActorID &actor_id, std::string *output) const {
+void CoreWorker::SerializeActorHandle(const ActorID &actor_id,
+                                      std::string *output) const {
   auto &actor_handle = GetActorHandle(actor_id);
   actor_handle.Serialize(output);
 }
