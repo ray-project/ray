@@ -41,7 +41,6 @@ cdef extern from "ray/core_worker/task_execution.h" namespace "ray" nogil:
     cdef cppclass CTaskExecutionInterface "CoreWorkerTaskExecutionInterface":
         void Run()
         void Stop()
-        const ResourceMappingType &GetResourceIDs() const
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -131,3 +130,4 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCallerId()
         c_bool AddActorHandle(unique_ptr[CActorHandle] handle)
         CActorHandle &GetActorHandle(const CActorID &actor_id)
+        const ResourceMappingType &GetResourceIDs() const

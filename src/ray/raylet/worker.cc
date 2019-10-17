@@ -131,7 +131,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     auto status = rpc_client_->AssignTask(request, [](Status status,
                                                       const rpc::AssignTaskReply &reply) {
       if (!status.ok()) {
-        RAY_LOG(ERROR) << "Worker failed to finish executing task: " << status.ToString();
+        RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
       }
       // Worker has finished this task. There's nothing to do here
       // and assigning new task will be done when raylet receives

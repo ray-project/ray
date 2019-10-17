@@ -539,7 +539,7 @@ cdef execute_task(
         next_title = "ray_worker"
         function_executor = execution_info.function
     else:
-        actor = worker.actors[worker.actor_id]
+        actor = worker.actors[actor_id]
         class_name = actor.__class__.__name__
         title = "ray_{}:{}()".format(class_name, function_name)
         next_title = "ray_{}".format(class_name)
@@ -978,7 +978,7 @@ cdef class CoreWorker:
     def resource_ids(self):
         cdef:
             ResourceMappingType resource_mapping = (
-                self.core_worker.get().Execution().GetResourceIDs())
+                self.core_worker.get().GetResourceIDs())
             unordered_map[
                 c_string, c_vector[pair[int64_t, double]]
             ].iterator iterator = resource_mapping.begin()

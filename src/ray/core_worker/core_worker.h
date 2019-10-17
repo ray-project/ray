@@ -77,6 +77,9 @@ class CoreWorker {
     return *task_execution_interface_;
   }
 
+  // Get the resource IDs available to this worker (as assigned by the raylet).
+  const ResourceMappingType GetResourceIDs() const;
+
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 

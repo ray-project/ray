@@ -70,10 +70,9 @@ def send(signal):
         signal: Signal to be sent.
     """
     if ray.worker.global_worker.actor_id.is_nil():
-        source_key = ray.worker.global_worker.actor_id.hex()
-    else:
-        # No actors; this function must have been called from a task
         source_key = ray.worker.global_worker.current_task_id.hex()
+    else:
+        source_key = ray.worker.global_worker.actor_id.hex()
 
     encoded_signal = ray.utils.binary_to_hex(cloudpickle.dumps(signal))
     ray.worker.global_worker.redis_client.execute_command(

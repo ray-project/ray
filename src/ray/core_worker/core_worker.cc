@@ -191,4 +191,12 @@ ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
   return *it->second;
 }
 
+const ResourceMappingType CoreWorker::GetResourceIDs() const {
+  if (worker_type_ == WorkerType::DRIVER) {
+    ResourceMappingType empty;
+    return empty;
+  }
+  return task_execution_interface_->GetResourceIDs();
+}
+
 }  // namespace ray
