@@ -97,7 +97,7 @@ class ActorRegistration {
   ///
   /// \return The actor frontier, a map from handle ID to execution state for
   /// that handle.
-  const std::unordered_map<ActorHandleID, FrontierLeaf> &GetFrontier() const;
+  const std::unordered_map<TaskID, FrontierLeaf> &GetFrontier() const;
 
   /// Get all the dummy objects of this actor's tasks.
   const std::unordered_map<ObjectID, int64_t> &GetDummyObjects() const {
@@ -112,18 +112,7 @@ class ActorRegistration {
   /// state. This is the execution dependency returned by the task.
   /// \return The dummy object that can be released as a result of the executed
   /// task. If no dummy object can be released, then this is nil.
-  ObjectID ExtendFrontier(const ActorHandleID &handle_id,
-                          const ObjectID &execution_dependency);
-
-  /// Add a new handle to the actor frontier. This does nothing if the actor
-  /// handle already exists.
-  ///
-  /// \param handle_id The ID of the handle to add.
-  /// \param execution_dependency This is the expected execution dependency for
-  /// the first task submitted on the new handle. If the new handle hasn't been
-  /// seen yet, then this dependency will be added to the actor frontier and is
-  /// not safe to release until the first task has been submitted.
-  void AddHandle(const ActorHandleID &handle_id, const ObjectID &execution_dependency);
+  ObjectID ExtendFrontier(const TaskID &caller_id, const ObjectID &execution_dependency);
 
   /// Returns num handles to this actor entry.
   ///
@@ -150,7 +139,7 @@ class ActorRegistration {
   /// The execution frontier of the actor, which represents which tasks have
   /// executed so far and which tasks may execute next, based on execution
   /// dependencies. This is indexed by handle.
-  std::unordered_map<ActorHandleID, FrontierLeaf> frontier_;
+  std::unordered_map<TaskID, FrontierLeaf> frontier_;
   /// This map is used to track all the unreleased dummy objects for this
   /// actor.  The map key is the dummy object ID, and the map value is the
   /// number of actor handles that depend on that dummy object. When the map

@@ -65,42 +65,53 @@ class CoreWorkerTaskInterface {
   CoreWorkerTaskInterface(WorkerContext &worker_context,
                           std::unique_ptr<RayletClient> &raylet_client,
                           CoreWorkerObjectInterface &object_interface,
-                          boost::asio::io_service &io_service,
-                          gcs::RedisGcsClient &gcs_client);
+                          boost::asio::io_service &io_service);
 
   /// Submit a normal task.
   ///
+  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+  Status SubmitTask(const TaskID &caller_id, const RayFunction &function,
+                    const std::vector<TaskArg> &args, const TaskOptions &task_options,
+                    std::vector<ObjectID> *return_ids);
 
   /// Create an actor.
   ///
+  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] function The remote function that generates the actor object.
   /// \param[in] args Arguments of this task.
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[out] actor_handle Handle to the actor.
   /// \return Status.
-  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+  Status CreateActor(const TaskID &caller_id, const RayFunction &function,
+                     const std::vector<TaskArg> &args,
                      const ActorCreationOptions &actor_creation_options,
                      std::unique_ptr<ActorHandle> *actor_handle);
 
   /// Submit an actor task.
   ///
+  /// \param[in] caller_id ID of the task submitter.
   /// \param[in] actor_handle Handle to the actor.
   /// \param[in] function The remote function to execute.
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status.
-  Status SubmitActorTask(ActorHandle &actor_handle, const RayFunction &function,
-                         const std::vector<TaskArg> &args,
+  Status SubmitActorTask(const TaskID &caller_id, ActorHandle &actor_handle,
+                         const RayFunction &function, const std::vector<TaskArg> &args,
                          const TaskOptions &task_options,
                          std::vector<ObjectID> *return_ids);
+
+  /// Handle an update about an actor.
+  ///
+  /// \param[in] actor_id The ID of the actor whose status has changed.
+  /// \param[in] actor_data The actor's new status information.
+  void HandleDirectActorUpdate(const ActorID &actor_id,
+                               const gcs::ActorTableData &actor_data);
 
  private:
   /// Build common attributes of the task spec, and compute return ids.
@@ -120,8 +131,8 @@ class CoreWorkerTaskInterface {
   /// \return Void.
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-      const int task_index, const RayFunction &function, const std::vector<TaskArg> &args,
-      uint64_t num_returns,
+      const int task_index, const TaskID &caller_id, const RayFunction &function,
+      const std::vector<TaskArg> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       TaskTransportType transport_type, std::vector<ObjectID> *return_ids);
