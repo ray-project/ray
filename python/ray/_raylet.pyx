@@ -423,35 +423,34 @@ cdef list deserialize_args(
     cdef:
         c_vector[shared_ptr[CRayObject]] by_reference_objects
 
-    with profiling.profile("task:deserialize_arguments"):
-        results = []
-        by_reference_ids = []
-        by_reference_indices = []
-        for i in range(args.size()):
-            # Passed by value.
-            if arg_reference_ids[i].IsNil():
-                data = Buffer.make(args[i].get().GetData())
-                if (args[i].get().HasMetadata()
-                    and Buffer.make(
-                        args[i].get().GetMetadata()).to_pybytes()
-                        == RAW_BUFFER_METADATA):
-                    results.append(data)
-                else:
-                    results.append(pickle.loads(data.to_pybytes()))
-            # Passed by reference.
+    results = []
+    by_reference_ids = []
+    by_reference_indices = []
+    for i in range(args.size()):
+        # Passed by value.
+        if arg_reference_ids[i].IsNil():
+            data = Buffer.make(args[i].get().GetData())
+            if (args[i].get().HasMetadata()
+                and Buffer.make(
+                    args[i].get().GetMetadata()).to_pybytes()
+                    == RAW_BUFFER_METADATA):
+                results.append(data)
             else:
-                by_reference_ids.append(
-                    ObjectID(arg_reference_ids[i].Binary()))
-                by_reference_indices.append(i)
-                by_reference_objects.push_back(args[i])
-                results.append(None)
+                results.append(pickle.loads(data.to_pybytes()))
+        # Passed by reference.
+        else:
+            by_reference_ids.append(
+                ObjectID(arg_reference_ids[i].Binary()))
+            by_reference_indices.append(i)
+            by_reference_objects.push_back(args[i])
+            results.append(None)
 
-        data_metadata_pairs = RayObjectsToDataMetadataPairs(
-            by_reference_objects)
-        for i, result in enumerate(
-            ray.worker.global_worker.deserialize_objects(
-                data_metadata_pairs, by_reference_ids)):
-            results[by_reference_indices[i]] = result
+    data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        by_reference_objects)
+    for i, result in enumerate(
+        ray.worker.global_worker.deserialize_objects(
+            data_metadata_pairs, by_reference_ids)):
+        results[by_reference_indices[i]] = result
 
     return results
 
@@ -534,9 +533,6 @@ cdef execute_task(
     function_name = execution_info.function_name
     extra_data = {"name": function_name, "task_id": task_id.hex()}
 
-    return_ids = VectorToObjectIDs(c_return_ids)
-    args = deserialize_args(c_args, c_arg_reference_ids)
-
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
         title = "ray_worker:{}()".format(function_name)
         next_title = "ray_worker"
@@ -564,6 +560,7 @@ cdef execute_task(
         def function_executor(*arguments):
             return execution_info.function(actor, *arguments)
 
+    return_ids = VectorToObjectIDs(c_return_ids)
     with profiling.profile("task", extra_data=extra_data):
         try:
             task_exception = False
@@ -571,6 +568,9 @@ cdef execute_task(
                     and function_name == "__ray_terminate__"):
                 worker.reraise_actor_init_error()
                 worker.memory_monitor.raise_if_low_memory()
+
+            with profiling.profile("task:deserialize_arguments"):
+                args = deserialize_args(c_args, c_arg_reference_ids)
 
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
