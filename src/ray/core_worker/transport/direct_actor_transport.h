@@ -32,6 +32,7 @@ struct ActorStateData {
   std::pair<std::string, int> location_;
 };
 
+// This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(

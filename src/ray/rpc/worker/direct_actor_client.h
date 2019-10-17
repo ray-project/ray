@@ -49,7 +49,7 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     return ray::Status::OK();
   }
 
-  /// Send as many pending tasks as possible. This method is NOT thread-safe.
+  /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
