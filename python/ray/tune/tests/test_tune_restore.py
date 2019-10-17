@@ -157,25 +157,25 @@ class AbstractWarmStartTest(object):
         self.assertEqual(trials_1_config + trials_2_config, trials_3_config)
 
 
-class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "x": hp.uniform("x", 0, 10),
-            "y": hp.uniform("y", -10, 10),
-            "z": hp.uniform("z", -10, 0)
-        }
+# class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+#     def set_basic_conf(self):
+#         space = {
+#             "x": hp.uniform("x", 0, 10),
+#             "y": hp.uniform("y", -10, 10),
+#             "z": hp.uniform("z", -10, 0)
+#         }
 
-        def cost(space, reporter):
-            loss = space["x"]**2 + space["y"]**2 + space["z"]**2
-            reporter(loss=loss)
+#         def cost(space, reporter):
+#             loss = space["x"]**2 + space["y"]**2 + space["z"]**2
+#             reporter(loss=loss)
 
-        search_alg = HyperOptSearch(
-            space,
-            max_concurrent=1,
-            metric="loss",
-            mode="min",
-            random_state_seed=5)
-        return search_alg, cost
+#         search_alg = HyperOptSearch(
+#             space,
+#             max_concurrent=1,
+#             metric="loss",
+#             mode="min",
+#             random_state_seed=5)
+#         return search_alg, cost
 
 
 class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
