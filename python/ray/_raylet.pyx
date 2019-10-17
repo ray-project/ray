@@ -491,7 +491,153 @@ cdef _store_task_outputs(worker, return_ids, outputs):
             worker.put_object(return_id, output)
 
 
-cdef CRayStatus execute_task(
+cdef execute_task(
+        CTaskType task_type,
+        const CRayFunction &ray_function,
+        const CActorID &c_actor_id,
+        const unordered_map[c_string, double] &c_resources,
+        const c_vector[shared_ptr[CRayObject]] &c_args,
+        const c_vector[CObjectID] &c_arg_reference_ids,
+        const c_vector[CObjectID] &c_return_ids,
+        c_vector[shared_ptr[CRayObject]] *returns):
+
+    worker = ray.worker.global_worker
+
+    actor_id = ActorID(c_actor_id.Binary())
+    job_id = worker.core_worker.get_current_job_id()
+    task_id = worker.core_worker.get_current_task_id()
+
+    # Check that the worker is in the expected state to execute the task.
+    _check_worker_state(worker, task_type, job_id)
+    worker.task_context.current_task_id = task_id
+
+    # Automatically restrict the GPUs available to this task.
+    ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
+
+    function_descriptor = FunctionDescriptor.from_bytes_list(
+        ray_function.GetFunctionDescriptor())
+
+    if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        worker.actor_id = actor_id
+        actor_class = worker.function_actor_manager.load_actor_class(
+            job_id, function_descriptor)
+        worker.actors[actor_id] = actor_class.__new__(actor_class)
+        worker.actor_checkpoint_info[actor_id] = (
+            ray.worker.ActorCheckpointInfo(
+                num_tasks_since_last_checkpoint=0,
+                last_checkpoint_timestamp=int(1000 * time.time()),
+                checkpoint_ids=[]))
+
+    execution_info = worker.function_actor_manager.get_execution_info(
+        job_id, function_descriptor)
+    function_name = execution_info.function_name
+    extra_data = {"name": function_name, "task_id": task_id.hex()}
+
+    return_ids = VectorToObjectIDs(c_return_ids)
+    args = deserialize_args(c_args, c_arg_reference_ids)
+
+    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
+        title = "ray_worker:{}()".format(function_name)
+        next_title = "ray_worker"
+        function_executor = execution_info.function
+    else:
+        actor = worker.actors[worker.actor_id]
+        class_name = actor.__class__.__name__
+        title = "ray_{}:{}()".format(class_name, function_name)
+        next_title = "ray_{}".format(class_name)
+        worker_name = "ray_{}_{}".format(class_name, os.getpid())
+        required_resources = resource_map_to_dict(c_resources)
+        if "memory" in required_resources:
+            worker.memory_monitor.set_heap_limit(
+                worker_name,
+                ray_constants.from_memory_units(
+                    required_resources["memory"]))
+        if "object_store_memory" in required_resources:
+            worker._set_object_store_client_options(
+                worker_name,
+                int(
+                    ray_constants.from_memory_units(
+                        required_resources[
+                            "object_store_memory"])))
+
+        def function_executor(*arguments):
+            return execution_info.function(actor, *arguments)
+
+    with profiling.profile("task", extra_data=extra_data):
+        try:
+            task_exception = False
+            if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
+                    and function_name == "__ray_terminate__"):
+                worker.reraise_actor_init_error()
+                worker.memory_monitor.raise_if_low_memory()
+
+            # Execute the task.
+            with ray.worker._changeproctitle(title, next_title):
+                with profiling.profile("task:execute"):
+                    task_exception = True
+                    outputs = function_executor(*args)
+                    task_exception = False
+                    if len(return_ids) == 1:
+                        outputs = (outputs,)
+
+            # Store the outputs in the object store.
+            with profiling.profile("task:store_outputs"):
+                _store_task_outputs(worker, return_ids, outputs)
+        except Exception as error:
+            if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
+                worker.mark_actor_init_failed(error)
+
+            backtrace = ray.utils.format_error_message(
+                traceback.format_exc(), task_exception=task_exception)
+            if isinstance(error, RayTaskError):
+                # Avoid recursive nesting of RayTaskError.
+                failure_object = RayTaskError(function_name, backtrace,
+                                              error.cause_cls)
+            else:
+                failure_object = RayTaskError(function_name, backtrace,
+                                              error.__class__)
+            _store_task_outputs(
+                worker, return_ids, [failure_object] * len(return_ids))
+            ray.utils.push_error_to_driver(
+                worker,
+                ray_constants.TASK_PUSH_ERROR,
+                str(failure_object),
+                job_id=worker.current_job_id)
+
+            # Send signal with the error.
+            ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
+
+    # Reset the state fields so the next task can run.
+    worker.task_context.current_task_id = TaskID.nil()
+    worker.core_worker.set_current_task_id(TaskID.nil())
+    worker.task_context.task_index = 0
+    worker.task_context.put_index = 1
+
+    # Don't need to reset `current_job_id` if the worker is an
+    # actor. Because the following tasks should all have the
+    # same driver id.
+    if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
+        worker.current_job_id = WorkerID.nil()
+        worker.core_worker.set_current_job_id(JobID.nil())
+
+        # Reset signal counters so that the next task can get
+        # all past signals.
+        ray_signal.reset()
+
+    # Reset the state of the worker for the next task to execute.
+    # Increase the task execution counter.
+    worker.function_actor_manager.increase_task_counter(
+        job_id, function_descriptor)
+
+    # If we've reached the max number of executions for this worker, exit.
+    reached_max_executions = (
+        worker.function_actor_manager.get_task_counter(
+            job_id, function_descriptor) == execution_info.max_calls)
+    if reached_max_executions:
+        worker.core_worker.disconnect()
+        sys.exit(0)
+
+cdef CRayStatus execute_task_callback(
         CTaskType task_type,
         const CRayFunction &ray_function,
         const CActorID &c_actor_id,
@@ -502,141 +648,25 @@ cdef CRayStatus execute_task(
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
-        worker = ray.worker.global_worker
-
-        actor_id = ActorID(c_actor_id.Binary())
-        job_id = worker.core_worker.get_current_job_id()
-        task_id = worker.core_worker.get_current_task_id()
-
-        # Check that the worker is in the expected state to execute the task.
-        _check_worker_state(worker, task_type, job_id)
-        worker.task_context.current_task_id = task_id
-
-        # Automatically restrict the GPUs available to this task.
-        ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
-
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
-
-        if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-            worker.actor_id = actor_id
-            actor_class = worker.function_actor_manager.load_actor_class(
-                job_id, function_descriptor)
-            worker.actors[actor_id] = actor_class.__new__(actor_class)
-            worker.actor_checkpoint_info[actor_id] = (
-                ray.worker.ActorCheckpointInfo(
-                    num_tasks_since_last_checkpoint=0,
-                    last_checkpoint_timestamp=int(1000 * time.time()),
-                    checkpoint_ids=[]))
-
-        execution_info = worker.function_actor_manager.get_execution_info(
-            job_id, function_descriptor)
-        function_name = execution_info.function_name
-        extra_data = {"name": function_name, "task_id": task_id.hex()}
-
-        return_ids = VectorToObjectIDs(c_return_ids)
-        args = deserialize_args(c_args, c_arg_reference_ids)
-
-        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-            title = "ray_worker:{}()".format(function_name)
-            next_title = "ray_worker"
-            function_executor = execution_info.function
-        else:
-            actor = worker.actors[worker.actor_id]
-            class_name = actor.__class__.__name__
-            title = "ray_{}:{}()".format(class_name, function_name)
-            next_title = "ray_{}".format(class_name)
-            worker_name = "ray_{}_{}".format(class_name, os.getpid())
-            required_resources = resource_map_to_dict(c_resources)
-            if "memory" in required_resources:
-                worker.memory_monitor.set_heap_limit(
-                    worker_name,
-                    ray_constants.from_memory_units(
-                        required_resources["memory"]))
-            if "object_store_memory" in required_resources:
-                worker._set_object_store_client_options(
-                    worker_name,
-                    int(
-                        ray_constants.from_memory_units(
-                            required_resources[
-                                "object_store_memory"])))
-
-            def function_executor(*arguments):
-                return execution_info.function(actor, *arguments)
-
-        with profiling.profile("task", extra_data=extra_data):
-            try:
-                task_exception = False
-                if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
-                        and function_name == "__ray_terminate__"):
-                    worker.reraise_actor_init_error()
-                    worker.memory_monitor.raise_if_low_memory()
-
-                # Execute the task.
-                with ray.worker._changeproctitle(title, next_title):
-                    with profiling.profile("task:execute"):
-                        task_exception = True
-                        outputs = function_executor(*args)
-                        task_exception = False
-                        if len(return_ids) == 1:
-                            outputs = (outputs,)
-
-                # Store the outputs in the object store.
-                with profiling.profile("task:store_outputs"):
-                    _store_task_outputs(worker, return_ids, outputs)
-            except Exception as error:
-                if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
-                    worker.mark_actor_init_failed(error)
-
-                backtrace = ray.utils.format_error_message(
-                    traceback.format_exc(), task_exception=task_exception)
-                if isinstance(error, RayTaskError):
-                    # Avoid recursive nesting of RayTaskError.
-                    failure_object = RayTaskError(function_name, backtrace,
-                                                  error.cause_cls)
-                else:
-                    failure_object = RayTaskError(function_name, backtrace,
-                                                  error.__class__)
-                _store_task_outputs(
-                    worker, return_ids, [failure_object] * len(return_ids))
-                ray.utils.push_error_to_driver(
-                    worker,
-                    ray_constants.TASK_PUSH_ERROR,
-                    str(failure_object),
-                    job_id=worker.current_job_id)
-
-                # Send signal with the error.
-                ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
-
-        # Reset the state fields so the next task can run.
-        worker.task_context.current_task_id = TaskID.nil()
-        worker.core_worker.set_current_task_id(TaskID.nil())
-        worker.task_context.task_index = 0
-        worker.task_context.put_index = 1
-
-        # Don't need to reset `current_job_id` if the worker is an
-        # actor. Because the following tasks should all have the
-        # same driver id.
-        if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-            worker.current_job_id = WorkerID.nil()
-            worker.core_worker.set_current_job_id(JobID.nil())
-
-            # Reset signal counters so that the next task can get
-            # all past signals.
-            ray_signal.reset()
-
-        # Reset the state of the worker for the next task to execute.
-        # Increase the task execution counter.
-        worker.function_actor_manager.increase_task_counter(
-            job_id, function_descriptor)
-
-        # If we've reached the max number of executions for this worker, exit.
-        reached_max_executions = (
-            worker.function_actor_manager.get_task_counter(
-                job_id, function_descriptor) == execution_info.max_calls)
-        if reached_max_executions:
-            worker.core_worker.disconnect()
-            sys.exit(0)
+        try:
+            # The call to execute_task should never raise an exception. If it
+            # does, that indicates that there was an unexpected internal error.
+            execute_task(task_type, ray_function, c_actor_id, c_resources,
+                         c_args, c_arg_reference_ids, c_return_ids, returns)
+        except Exception:
+            traceback_str = traceback.format_exc() + (
+                "An unexpected internal error occurred while the worker was"
+                "executing a task.")
+            ray.utils.push_error_to_driver(
+                ray.worker.global_worker,
+                "worker_crash",
+                traceback_str,
+                job_id=None)
+            # TODO(rkn): Note that if the worker was in the middle of executing
+            # a task, then any worker or driver that is blocking in a get call
+            # and waiting for the output of that task will hang. We need to
+            # address this.
+            sys.exit(1)
 
     return CRayStatus.OK()
 
@@ -655,7 +685,7 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), execute_task, False))
+            node_ip_address.encode("utf-8"), execute_task_callback, False))
 
     def disconnect(self):
         with nogil:
