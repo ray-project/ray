@@ -15,10 +15,9 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 }
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
-    boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
+    boost::asio::io_service &io_service,
     std::unique_ptr<CoreWorkerStoreProvider> store_provider)
     : io_service_(io_service),
-      gcs_client_(gcs_client),
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 
@@ -39,11 +38,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
-
-  if (subscribed_actors_.find(actor_id) == subscribed_actors_.end()) {
-    RAY_CHECK_OK(SubscribeActorUpdates(actor_id));
-    subscribed_actors_.insert(actor_id);
-  }
 
   auto iter = actor_states_.find(actor_id);
   if (iter == actor_states_.end() ||
@@ -78,61 +72,48 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   }
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubscribeActorUpdates(
-    const ActorID &actor_id) {
-  // Register a callback to handle actor notifications.
-  auto actor_notification_callback = [this](const ActorID &actor_id,
-                                            const ActorTableData &actor_data) {
-    std::unique_lock<std::mutex> guard(mutex_);
-    actor_states_.erase(actor_id);
-    actor_states_.emplace(
-        actor_id,
-        ActorStateData(actor_data.state(), actor_data.ip_address(), actor_data.port()));
+void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
+    const ActorID &actor_id, const ActorTableData &actor_data) {
+  std::unique_lock<std::mutex> guard(mutex_);
+  actor_states_.erase(actor_id);
+  actor_states_.emplace(
+      actor_id,
+      ActorStateData(actor_data.state(), actor_data.ip_address(), actor_data.port()));
 
-    if (actor_data.state() == ActorTableData::ALIVE) {
-      // Check if this actor is the one that we're interested, if we already have
-      // a connection to the actor, or have pending requests for it, we should
-      // create a new connection.
-      if (pending_requests_.count(actor_id) > 0) {
-        ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
-      }
-    } else {
-      // Remove rpc client if it's dead or being reconstructed.
-      rpc_clients_.erase(actor_id);
+  if (actor_data.state() == ActorTableData::ALIVE) {
+    // Check if this actor is the one that we're interested, if we already have
+    // a connection to the actor, or have pending requests for it, we should
+    // create a new connection.
+    if (pending_requests_.count(actor_id) > 0) {
+      ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
+    }
+  } else {
+    // Remove rpc client if it's dead or being reconstructed.
+    rpc_clients_.erase(actor_id);
 
-      // For tasks that have been sent and are waiting for replies, treat them
-      // as failed when the destination actor is dead or reconstructing.
-      auto iter = waiting_reply_tasks_.find(actor_id);
-      if (iter != waiting_reply_tasks_.end()) {
-        for (const auto &entry : iter->second) {
-          const auto &task_id = entry.first;
-          const auto num_returns = entry.second;
-          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
-        }
-        waiting_reply_tasks_.erase(actor_id);
+    // For tasks that have been sent and are waiting for replies, treat them
+    // as failed when the destination actor is dead or reconstructing.
+    auto iter = waiting_reply_tasks_.find(actor_id);
+    if (iter != waiting_reply_tasks_.end()) {
+      for (const auto &entry : iter->second) {
+        const auto &task_id = entry.first;
+        const auto num_returns = entry.second;
+        TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
       }
-
-      // If this actor is permanently dead and there are pending requests, treat
-      // the pending tasks as failed.
-      if (actor_data.state() == ActorTableData::DEAD &&
-          pending_requests_.count(actor_id) > 0) {
-        for (const auto &request : pending_requests_[actor_id]) {
-          TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
-                            request->task_spec().num_returns(),
-                            rpc::ErrorType::ACTOR_DIED);
-        }
-        pending_requests_.erase(actor_id);
-      }
+      waiting_reply_tasks_.erase(actor_id);
     }
 
-    RAY_LOG(INFO) << "received notification on actor, state="
-                  << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                  << ", ip address: " << actor_data.ip_address()
-                  << ", port: " << actor_data.port();
-  };
-
-  return gcs_client_.Actors().AsyncSubscribe(actor_id, actor_notification_callback,
-                                             nullptr);
+    // If this actor is permanently dead and there are pending requests, treat
+    // the pending tasks as failed.
+    if (actor_data.state() == ActorTableData::DEAD &&
+        pending_requests_.count(actor_id) > 0) {
+      for (const auto &request : pending_requests_[actor_id]) {
+        TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
+                          request->task_spec().num_returns(), rpc::ErrorType::ACTOR_DIED);
+      }
+      pending_requests_.erase(actor_id);
+    }
+  }
 }
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
@@ -211,13 +192,8 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
   }
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) {
+bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   std::unique_lock<std::mutex> guard(mutex_);
-
-  if (subscribed_actors_.find(actor_id) == subscribed_actors_.end()) {
-    RAY_CHECK_OK(SubscribeActorUpdates(actor_id));
-    subscribed_actors_.insert(actor_id);
-  }
 
   auto iter = actor_states_.find(actor_id);
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
@@ -252,10 +228,10 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
-  auto it = scheduling_queue_.find(task_spec.ActorHandleId());
+  auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.ActorHandleId(),
+        task_spec.CallerId(),
         std::unique_ptr<SchedulingQueue>(new SchedulingQueue(io_service_)));
     it = result.first;
   }

@@ -326,7 +326,7 @@ class TrialRunner(object):
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin()
+            self.trial_executor.on_step_begin(self)
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
@@ -367,7 +367,7 @@ class TrialRunner(object):
             if self.is_finished():
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end()
+            self.trial_executor.on_step_end(self)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
