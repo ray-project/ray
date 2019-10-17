@@ -433,7 +433,7 @@ class ActorHandle(object):
     cloudpickle).
 
     Attributes:
-        _ray_core_handle: Core worker actor handle for this actor.
+        _ray_actor_id: Actor ID.
         _ray_module_name: The module name of this actor.
         _ray_actor_method_names: The names of the actor methods.
         _ray_method_decorators: Optional decorators for the function
