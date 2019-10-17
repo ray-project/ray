@@ -519,6 +519,7 @@ cdef execute_task(
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         worker.actor_id = actor_id
+        worker.core_worker.set_actor_id(actor_id)
         actor_class = worker.function_actor_manager.load_actor_class(
             job_id, function_descriptor)
         worker.actors[actor_id] = actor_class.__new__(actor_class)
