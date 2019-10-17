@@ -82,9 +82,41 @@ class CoreWorker {
   void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id) {
-    worker_context_.SetCurrentTaskId(task_id);
+  void SetCurrentTaskId(const TaskID &task_id);
+
+  void SetActorId(const ActorID &actor_id) {
+    RAY_CHECK(actor_id_.IsNil());
+    actor_id_ = actor_id;
   }
+
+  const ActorID &GetActorId() const { return actor_id_; }
+
+  /// Get the caller ID used to submit tasks from this worker to an actor.
+  ///
+  /// \return The caller ID. For non-actor tasks, this is the current task ID.
+  /// For actors, this is the current actor ID. To make sure that all caller
+  /// IDs have the same type, we embed the actor ID in a TaskID with the rest
+  /// of the bytes zeroed out.
+  TaskID GetCallerId() const;
+
+  /// Give this worker a handle to an actor.
+  ///
+  /// This handle will remain as long as the current actor or task is
+  /// executing, even if the Python handle goes out of scope. Tasks submitted
+  /// through this handle are guaranteed to execute in the same order in which
+  /// they are submitted.
+  ///
+  /// \param actor_handle The handle to the actor.
+  /// \return True if the handle was added and False if we already had a handle
+  /// to the same actor.
+  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+
+  /// Get a handle to an actor. This asserts that the worker actually has this
+  /// handle.
+  ///
+  /// \param actor_id The actor handle to get.
+  /// \return A handle to the requested actor.
+  ActorHandle &GetActorHandle(const ActorID &actor_id);
 
  private:
   void StartIOService();
@@ -94,6 +126,12 @@ class CoreWorker {
   const std::string raylet_socket_;
   const std::string log_dir_;
   WorkerContext worker_context_;
+  /// The ID of the current task being executed by the main thread. If there
+  /// are multiple threads, they will have a thread-local task ID stored in the
+  /// worker context.
+  TaskID main_thread_task_id_;
+  /// Our actor ID. If this is nil, then we execute only stateless tasks.
+  ActorID actor_id_;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
@@ -106,6 +144,9 @@ class CoreWorker {
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+
+  /// Map from actor ID to a handle to that actor.
+  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;

@@ -23,12 +23,12 @@ namespace {
 int64_t GetExpectedTaskCounter(
     const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
         &actor_registry,
-    const ray::ActorID &actor_id, const ray::ActorHandleID &actor_handle_id) {
+    const ray::ActorID &actor_id, const ray::TaskID &actor_caller_id) {
   auto actor_entry = actor_registry.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry.end());
   const auto &frontier = actor_entry->second.GetFrontier();
   int64_t expected_task_counter = 0;
-  auto frontier_entry = frontier.find(actor_handle_id);
+  auto frontier_entry = frontier.find(actor_caller_id);
   if (frontier_entry != frontier.end()) {
     expected_task_counter = frontier_entry->second.task_counter;
   }
@@ -1605,8 +1605,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
         if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
           // The actor is local.
-          int64_t expected_task_counter = GetExpectedTaskCounter(
-              actor_registry_, spec.ActorId(), spec.ActorHandleId());
+          int64_t expected_task_counter =
+              GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
           if (static_cast<int64_t>(spec.ActorCounter()) < expected_task_counter) {
             // A task that has already been executed before has been found. The
             // task will be treated as failed if at least one of the task's
@@ -1825,7 +1825,7 @@ bool NodeManager::AssignTask(const Task &task) {
     // An actor task should only be ready to be assigned if it matches the
     // expected task counter.
     int64_t expected_task_counter =
-        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.ActorHandleId());
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
     RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
         << "Expected actor counter: " << expected_task_counter << ", task "
         << spec.TaskId() << " has: " << spec.ActorCounter();
@@ -1985,18 +1985,18 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorID actor_id;
-  ActorHandleID actor_handle_id;
+  TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
   bool resumed_from_checkpoint = false;
   if (task_spec.IsActorCreationTask()) {
     actor_id = task_spec.ActorCreationId();
-    actor_handle_id = ActorHandleID::Nil();
+    caller_id = TaskID::Nil();
     if (checkpoint_id_to_restore_.count(actor_id) > 0) {
       resumed_from_checkpoint = true;
     }
   } else {
     actor_id = task_spec.ActorId();
-    actor_handle_id = task_spec.ActorHandleId();
+    caller_id = task_spec.CallerId();
   }
 
   if (task_spec.IsActorCreationTask()) {
@@ -2004,7 +2004,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     worker.AssignActorId(actor_id);
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
-    RAY_CHECK(actor_handle_id.IsNil());
     int port = worker.Port();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
@@ -2052,34 +2051,26 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                                           resumed_from_checkpoint, port);
         }));
   } else {
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, actor_handle_id);
+    auto actor_entry = actor_registry_.find(actor_id);
+    RAY_CHECK(actor_entry != actor_registry_.end());
+    // Extend the actor's frontier to include the executed task.
+    const ObjectID object_to_release =
+        actor_entry->second.ExtendFrontier(caller_id, task_spec.ActorDummyObject());
+    if (!object_to_release.IsNil()) {
+      // If there were no new actor handles created, then no other actor task
+      // will depend on this execution dependency, so it safe to release.
+      HandleObjectMissing(object_to_release);
+    }
+    // Mark the dummy object as locally available to indicate that the actor's
+    // state has changed and the next method can run. This is not added to the
+    // object table, so the update will be invisible to both the local object
+    // manager and the other nodes.
+    // NOTE(swang): The dummy objects must be marked as local whenever
+    // ExtendFrontier is called, and vice versa, so that we can clean up the
+    // dummy objects properly in case the actor fails and needs to be
+    // reconstructed.
+    HandleObjectLocal(task_spec.ActorDummyObject());
   }
-}
-
-void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
-                                      const ActorID &actor_id,
-                                      const ActorHandleID &actor_handle_id) {
-  auto actor_entry = actor_registry_.find(actor_id);
-  RAY_CHECK(actor_entry != actor_registry_.end());
-  // Extend the actor's frontier to include the executed task.
-  const ObjectID object_to_release =
-      actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
-  if (!object_to_release.IsNil()) {
-    // If there were no new actor handles created, then no other actor task
-    // will depend on this execution dependency, so it safe to release.
-    HandleObjectMissing(object_to_release);
-  }
-  // Mark the dummy object as locally available to indicate that the actor's
-  // state has changed and the next method can run. This is not added to the
-  // object table, so the update will be invisible to both the local object
-  // manager and the other nodes.
-  // NOTE(swang): The dummy objects must be marked as local whenever
-  // ExtendFrontier is called, and vice versa, so that we can clean up the
-  // dummy objects properly in case the actor fails and needs to be
-  // reconstructed.
-  HandleObjectLocal(dummy_object);
 }
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
@@ -2141,9 +2132,10 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     }
   }
   if (!resumed_from_checkpoint) {
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, ActorHandleID::Nil());
+    // The actor was not resumed from a checkpoint. Store the
+    // initial dummy object. All future handles to the actor will
+    // depend on this object.
+    HandleObjectLocal(task_spec.ActorDummyObject());
   }
 }
 
@@ -2450,28 +2442,10 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     // We successfully assigned the task to the worker.
     worker.AssignTaskId(spec.TaskId());
     worker.AssignJobId(spec.JobId());
-    // Actor tasks require extra accounting to track the actor's state.
-    if (spec.IsActorTask()) {
-      auto actor_entry = actor_registry_.find(spec.ActorId());
-      RAY_CHECK(actor_entry != actor_registry_.end());
-      // Process any new actor handles that were created since the
-      // previous task on this handle was executed. The first task
-      // submitted on a new actor handle will depend on the dummy object
-      // returned by the previous task, so the dependency will not be
-      // released until this first task is submitted.
-      for (auto &new_handle_id : spec.NewActorHandles()) {
-        const auto prev_actor_task_id = spec.PreviousActorTaskDummyObjectId();
-        RAY_CHECK(!prev_actor_task_id.IsNil());
-        // Add the new handle and give it a reference to the finished task's
-        // execution dependency.
-        actor_entry->second.AddHandle(new_handle_id, prev_actor_task_id);
-      }
-
-      // TODO(swang): For actors with multiple actor handles, to
-      // guarantee that tasks are replayed in the same order after a
-      // failure, we must update the task's execution dependency to be
-      // the actor's current execution dependency.
-    }
+    // TODO(swang): For actors with multiple actor handles, to
+    // guarantee that tasks are replayed in the same order after a
+    // failure, we must update the task's execution dependency to be
+    // the actor's current execution dependency.
 
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)

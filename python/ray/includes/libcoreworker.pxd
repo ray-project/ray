@@ -5,6 +5,7 @@ from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
+    CActorID,
     CJobID,
     CTaskID,
     CObjectID,
@@ -32,13 +33,16 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
 cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
     cdef cppclass CTaskSubmissionInterface "CoreWorkerTaskInterface":
         CRayStatus SubmitTask(
+            const CTaskID &caller_id,
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CTaskOptions &options, c_vector[CObjectID] *return_ids)
         CRayStatus CreateActor(
+            const CTaskID &caller_id,
             const CRayFunction &function, const c_vector[CTaskArg] &args,
             const CActorCreationOptions &options,
             unique_ptr[CActorHandle] *handle)
         CRayStatus SubmitActorTask(
+            const CTaskID &caller_id,
             CActorHandle &handle, const CRayFunction &function,
             const c_vector[CTaskArg] &args, const CTaskOptions &options,
             c_vector[CObjectID] *return_ids)
@@ -87,3 +91,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
         void SetCurrentTaskId(const CTaskID &task_id)
+        void SetActorId(const CActorID &actor_id)
+        const CActorID &GetActorId()
+        CTaskID GetCallerId()
+        c_bool AddActorHandle(unique_ptr[CActorHandle] handle)
+        CActorHandle &GetActorHandle(const CActorID &actor_id)

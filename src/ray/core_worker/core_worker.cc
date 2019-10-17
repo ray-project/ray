@@ -49,7 +49,7 @@ CoreWorker::CoreWorker(
       std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
           worker_context_, raylet_client_, store_socket, use_memory_store));
   task_interface_ = std::unique_ptr<CoreWorkerTaskInterface>(new CoreWorkerTaskInterface(
-      worker_context_, raylet_client_, *object_interface_, io_service_, *gcs_client_));
+      worker_context_, raylet_client_, *object_interface_, io_service_));
 
   // Initialize task execution.
   int rpc_server_port = 0;
@@ -90,7 +90,7 @@ CoreWorker::CoreWorker(
     builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
                               worker_context_.GetCurrentJobID(),
                               TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
-                              0, 0, empty_resources, empty_resources);
+                              0, GetCallerId(), 0, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -125,6 +125,73 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {
   return std::unique_ptr<worker::ProfileEvent>(
       new worker::ProfileEvent(profiler_, event_type));
+}
+
+void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
+  worker_context_.SetCurrentTaskId(task_id);
+  main_thread_task_id_ = task_id;
+  // Clear all actor handles at the end of each non-actor task.
+  if (actor_id_.IsNil() && task_id.IsNil()) {
+    for (const auto &handle : actor_handles_) {
+      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
+    }
+    actor_handles_.clear();
+  }
+}
+
+TaskID CoreWorker::GetCallerId() const {
+  TaskID caller_id;
+  ActorID actor_id = GetActorId();
+  if (!actor_id.IsNil()) {
+    caller_id = TaskID::ForActorCreationTask(actor_id);
+  } else {
+    caller_id = main_thread_task_id_;
+  }
+  return caller_id;
+}
+
+bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
+  const auto &actor_id = actor_handle->GetActorID();
+  auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+  if (inserted) {
+    // Register a callback to handle actor notifications.
+    auto actor_notification_callback = [this](const ActorID &actor_id,
+                                              const gcs::ActorTableData &actor_data) {
+      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+        auto it = actor_handles_.find(actor_id);
+        RAY_CHECK(it != actor_handles_.end());
+        if (it->second->IsDirectCallActor()) {
+          // We have to reset the actor handle since the next instance of the
+          // actor will not have the last sequence number that we sent.
+          // TODO: Remove the check for direct calls. We do not reset for the
+          // raylet codepath because it tries to replay all tasks since the
+          // last actor checkpoint.
+          it->second->Reset();
+        }
+      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+        RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
+        // We cannot erase the actor handle here because clients can still
+        // submit tasks to dead actors.
+      }
+
+      task_interface_->HandleDirectActorUpdate(actor_id, actor_data);
+
+      RAY_LOG(INFO) << "received notification on actor, state="
+                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                    << ", ip address: " << actor_data.ip_address()
+                    << ", port: " << actor_data.port();
+    };
+
+    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
+  }
+  return inserted;
+}
+
+ActorHandle &CoreWorker::GetActorHandle(const ActorID &actor_id) {
+  auto it = actor_handles_.find(actor_id);
+  RAY_CHECK(it != actor_handles_.end());
+  return *it->second;
 }
 
 }  // namespace ray
