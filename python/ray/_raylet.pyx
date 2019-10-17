@@ -714,8 +714,8 @@ cdef class CoreWorker:
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
-        c_actor_id =
-        self.core_worker.get().DeserializeAndRegisterActorHandle(bytes)
+        c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
+            bytes)
         actor_id = ActorID(c_actor_id.Binary())
         return actor_id
 
