@@ -11,7 +11,6 @@ import os
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorClassID,
-    CActorHandleID,
     CActorID,
     CClientID,
     CConfigID,
@@ -343,16 +342,6 @@ cdef class ActorID(BaseID):
         return self.data.Hash()
 
 
-cdef class ActorHandleID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorHandleID.FromBinary(<c_string>id)
-
-    cdef CActorHandleID native(self):
-        return <CActorHandleID>self.data
-
-
 cdef class ActorCheckpointID(UniqueID):
 
     def __init__(self, id):
@@ -385,7 +374,6 @@ cdef class ActorClassID(UniqueID):
 _ID_TYPES = [
     ActorCheckpointID,
     ActorClassID,
-    ActorHandleID,
     ActorID,
     ClientID,
     JobID,

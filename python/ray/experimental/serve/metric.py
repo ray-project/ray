@@ -27,11 +27,11 @@ class MetricMonitor:
         return True
 
     def add_target(self, target_handle):
-        hex_id = target_handle._ray_core_handle.actor_id().hex()
+        hex_id = target_handle._actor_id.hex()
         self.actor_handles[hex_id] = target_handle
 
     def remove_target(self, target_handle):
-        hex_id = target_handle._ray_core_handle.actor_id().hex()
+        hex_id = target_handle._actor_id.hex()
         self.actor_handles.pop(hex_id)
 
     def scrape(self):
