@@ -149,14 +149,15 @@ class ActorPool(object):
         if self._next_return_index >= self._next_task_index:
             raise ValueError("It is not allowed to call get_next() after "
                              "get_next_unordered().")
-        future = self._index_to_future.pop(self._next_return_index)
-        self._next_return_index += 1
-        i, a = self._future_to_actor.pop(future)
-        self._return_actor(a)
+        future = self._index_to_future[self._next_return_index]
         if timeout is not None:
             res, _ = ray.wait([future], timeout=timeout)
             if not res:
                 raise TimeoutError("Timed out waiting for result")
+        del self._index_to_future[self._next_return_index]
+        self._next_return_index += 1
+        i, a = self._future_to_actor.pop(future)
+        self._return_actor(a)
         return ray.get(future)
 
     def get_next_unordered(self, timeout=None):
@@ -211,7 +212,6 @@ if __name__ == "__main__":
             pass
 
         def f(self, x):
-            time.sleep(0.1)
             return x + 1
 
     ray.init()
