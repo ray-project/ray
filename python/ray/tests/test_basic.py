@@ -130,7 +130,7 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
-def test_complex_serialization(ray_start_regular):
+def complex_serialization(use_pickle):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
                         or type(obj2).__module__ == np.__name__)
@@ -338,6 +338,15 @@ def test_complex_serialization(ray_start_regular):
     line = s.readline()
     s.seek(0)
     assert ray.get(ray.put(s)).readline() == line
+
+
+def test_complex_serialization(ray_start_regular):
+    complex_serialization(use_pickle=False)
+
+
+def test_complex_serialization_with_pickle():
+    ray.init(use_pickle=True)
+    complex_serialization(use_pickle=True)
 
 
 def test_nested_functions(ray_start_regular):
