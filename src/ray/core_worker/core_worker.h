@@ -158,17 +158,15 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
-<<<<<<< HEAD
+  /// Map from actor ID to a handle to that actor.
+  std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;
+
   /// Set of object IDs that are in scope in the language worker.
   std::unordered_set<ObjectID> active_object_ids_;
 
   /// Indicates whether or not the active_object_ids map has changed since the
   /// last time it was sent to the raylet.
   bool active_object_ids_updated_ = false;
-=======
-  /// Map from actor ID to a handle to that actor.
-  std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;
->>>>>>> master
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
