@@ -631,7 +631,8 @@ class ActorHandle(object):
             # TODO(swang): Accessing the worker's current task ID is not
             # thread-safe.
             # Local mode just uses the actor ID.
-            worker.core_worker.deserialize_actor_handle(state["core_handle"])
+            worker.core_worker.deserialize_and_register_actor_handle(
+                state["core_handle"])
             if hasattr(worker, "core_worker") else state["core_handle"],
             state["module_name"],
             state["class_name"],

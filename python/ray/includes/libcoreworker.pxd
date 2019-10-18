@@ -12,7 +12,6 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.common cimport (
     CActorCreationOptions,
-    CActorHandle,
     CBuffer,
     CRayFunction,
     CRayObject,
@@ -29,23 +28,6 @@ from ray.includes.libraylet cimport CRayletClient
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
-
-cdef extern from "ray/core_worker/task_interface.h" namespace "ray" nogil:
-    cdef cppclass CTaskSubmissionInterface "CoreWorkerTaskInterface":
-        CRayStatus SubmitTask(
-            const CTaskID &caller_id,
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CTaskOptions &options, c_vector[CObjectID] *return_ids)
-        CRayStatus CreateActor(
-            const CTaskID &caller_id,
-            const CRayFunction &function, const c_vector[CTaskArg] &args,
-            const CActorCreationOptions &options,
-            unique_ptr[CActorHandle] *handle)
-        CRayStatus SubmitActorTask(
-            const CTaskID &caller_id,
-            CActorHandle &handle, const CRayFunction &function,
-            const c_vector[CTaskArg] &args, const CTaskOptions &options,
-            c_vector[CObjectID] *return_ids)
 
 cdef extern from "ray/core_worker/object_interface.h" nogil:
     cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
@@ -78,7 +60,18 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        CTaskSubmissionInterface &Tasks()
+
+        CRayStatus SubmitTask(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CTaskOptions &options, c_vector[CObjectID] *return_ids)
+        CRayStatus CreateActor(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CActorCreationOptions &options, CActorID *actor_id)
+        CRayStatus SubmitActorTask(
+            const CActorID &actor_id, const CRayFunction &function,
+            const c_vector[CTaskArg] &args, const CTaskOptions &options,
+            c_vector[CObjectID] *return_ids)
+
         # CTaskExecutionInterface &Execution()
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
@@ -94,5 +87,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetActorId(const CActorID &actor_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
-        c_bool AddActorHandle(unique_ptr[CActorHandle] handle)
-        CActorHandle &GetActorHandle(const CActorID &actor_id)
+        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
+        CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
+                                        *bytes)

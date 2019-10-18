@@ -32,7 +32,8 @@ struct ActorStateData {
   std::pair<std::string, int> location_;
 };
 
-class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
+// This class is thread-safe.
+class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       boost::asio::io_service &io_service,
@@ -41,8 +42,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
-  /// \return Status.
-  Status SubmitTask(const TaskSpecification &task_spec) override;
+  /// \return Status::Invalid if the task is not yet supported.
+  Status SubmitTask(const TaskSpecification &task_spec);
 
   /// Handle an update about an actor.
   ///
