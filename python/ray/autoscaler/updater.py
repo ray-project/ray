@@ -61,7 +61,8 @@ class KubernetesCommandRunner(object):
             if not isinstance(port_forward, list):
                 port_forward = [port_forward]
             port_forward_cmd = self.kubectl + [
-                "port-forward", self.node_id,
+                "port-forward",
+                self.node_id,
             ] + [str(fwd) for fwd in port_forward]
             port_forward_process = subprocess.Popen(port_forward_cmd)
             # Give port-forward a grace period to run and print output before
