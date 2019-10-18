@@ -62,8 +62,7 @@ class KubernetesCommandRunner(object):
                 port_forward = [port_forward]
             port_forward_cmd = self.kubectl + [
                 "port-forward", self.node_id,
-                *[str(fwd) for fwd in port_forward]
-            ]
+            ] + [str(fwd) for fwd in port_forward]
             port_forward_process = subprocess.Popen(port_forward_cmd)
             # Give port-forward a grace period to run and print output before
             # running the actual command. This is a little ugly, but it should
