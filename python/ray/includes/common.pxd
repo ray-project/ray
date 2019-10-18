@@ -183,7 +183,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
-cdef extern from "ray/core_worker/task_interface.h" nogil:
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(int num_returns,
@@ -196,12 +195,6 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options)
-
-    cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(const c_string &serialized)
-
-        CActorID GetActorID() const
-        void Serialize(c_string *output)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

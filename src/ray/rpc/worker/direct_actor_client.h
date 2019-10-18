@@ -7,6 +7,7 @@
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
+#include "absl/base/thread_annotations.h"
 
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
@@ -49,7 +50,7 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     return ray::Status::OK();
   }
 
-  /// Send as many pending tasks as possible. This method is NOT thread-safe.
+  /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
   /// sent at once. This prevents the server scheduling queue from being overwhelmed.
@@ -116,13 +117,13 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
 
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
-      send_queue_;
+      send_queue_ GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.
-  int64_t rpc_bytes_in_flight_ = 0;
+  int64_t rpc_bytes_in_flight_ GUARDED_BY(mutex_) = 0;
 
   /// The max sequence number we have processed responses for.
-  int64_t max_finished_seq_no_ = -1;
+  int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
 };
 
 }  // namespace rpc
