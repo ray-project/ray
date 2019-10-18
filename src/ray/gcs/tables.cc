@@ -96,6 +96,18 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
 }
 
 template <typename ID, typename Data>
+Status Log<ID, Data>::SyncAppendAt(const JobID &job_id, const ID &id,
+                                   const std::shared_ptr<Data> &data, int log_length) {
+  num_appends_++;
+  std::string str = data->SerializeAsString();
+  auto reply =
+      GetRedisContext(id)->RunSync(GetLogAppendCommand(command_type_), id, str.data(),
+                                   str.length(), prefix_, pubsub_channel_, log_length);
+  Status status = reply ? reply->ReadAsStatus() : Status::RedisError("Redis error");
+  return status;
+}
+
+template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
   num_lookups_++;
   auto callback = [this, id, lookup](std::shared_ptr<CallbackReply> reply) {
