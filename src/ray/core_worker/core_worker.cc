@@ -55,7 +55,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-        new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
+        new CoreWorkerTaskExecutionInterface(*this, worker_context_, raylet_client_,
                                              *object_interface_, profiler_,
                                              task_execution_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();

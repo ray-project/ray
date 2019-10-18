@@ -7,11 +7,13 @@
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
+    CoreWorker &core_worker, WorkerContext &worker_context,
+    std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface,
     const std::shared_ptr<worker::Profiler> profiler,
     const TaskExecutionCallback &task_execution_callback)
-    : worker_context_(worker_context),
+    : core_worker_(core_worker),
+      worker_context_(worker_context),
       object_interface_(object_interface),
       profiler_(profiler),
       task_execution_callback_(task_execution_callback),
@@ -46,6 +48,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
 
   resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
+  core_worker_.SetCurrentTaskId(task_spec.TaskId());
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
@@ -66,6 +69,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     return_ids.pop_back();
     actor_id = task_spec.ActorCreationId();
     task_type = TaskType::ACTOR_CREATION_TASK;
+    core_worker_.SetActorId(actor_id);
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();

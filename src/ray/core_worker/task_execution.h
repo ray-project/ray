@@ -34,7 +34,7 @@ class CoreWorkerTaskExecutionInterface {
       const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  CoreWorkerTaskExecutionInterface(WorkerContext &worker_context,
+  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker, WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
                                    const std::shared_ptr<worker::Profiler> profiler,
@@ -79,6 +79,13 @@ class CoreWorkerTaskExecutionInterface {
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const ResourceMappingType &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *results);
+
+  /// Reference to the parent CoreWorker.
+  /// TODO(edoakes) this is very ugly, but unfortunately necessary so that we
+  /// can clear the ActorHandle state when we start executing a task. Two
+  /// possible solutions are to either move the ActorHandle state into the
+  /// WorkerContext or to remove this interface entirely.
+  CoreWorker &core_worker_;
 
   /// Reference to the parent CoreWorker's context.
   WorkerContext &worker_context_;

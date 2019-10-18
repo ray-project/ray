@@ -519,7 +519,6 @@ cdef execute_task(
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
         worker.actor_id = actor_id
-        worker.core_worker.set_actor_id(actor_id)
         actor_class = worker.function_actor_manager.load_actor_class(
             job_id, function_descriptor)
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -619,7 +618,7 @@ cdef execute_task(
     # actor. Because the following tasks should all have the
     # same driver id.
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        worker.current_job_id = WorkerID.nil()
+        worker.current_job_id = JobID.nil()
         worker.core_worker.set_current_job_id(JobID.nil())
 
         # Reset signal counters so that the next task can get
@@ -715,13 +714,6 @@ cdef class CoreWorker:
 
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
-
-    def set_actor_id(self, ActorID actor_id):
-        cdef:
-            CActorID c_actor_id = actor_id.native()
-
-        with nogil:
-            self.core_worker.get().SetActorId(c_actor_id)
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:

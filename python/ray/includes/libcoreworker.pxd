@@ -125,7 +125,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
         void SetCurrentTaskId(const CTaskID &task_id)
-        void SetActorId(const CActorID &actor_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
         c_bool AddActorHandle(unique_ptr[CActorHandle] handle)
