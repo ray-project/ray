@@ -139,6 +139,8 @@ cdef class ObjectID(BaseID):
 
     def __init__(self, id):
         check_id(id)
+        self.data = CObjectID.FromBinary(<c_string>id)
+
         worker = ray.worker.global_worker
         # TODO(edoakes): there are dummy object IDs being created in
         # includes/task.pxi before the core worker is initialized.
