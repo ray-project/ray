@@ -344,7 +344,7 @@ def test_complex_serialization(ray_start_regular):
     complex_serialization(use_pickle=False)
 
 
-def test_complex_serialization_with_pickle():
+def test_complex_serialization_with_pickle(shutdown_only):
     ray.init(use_pickle=True)
     complex_serialization(use_pickle=True)
 
