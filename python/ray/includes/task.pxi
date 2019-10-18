@@ -20,6 +20,9 @@ cdef class TaskSpec:
         self.task_spec = &task_spec
         return self
 
+    def __dealloc__(self):
+        del self.task_spec
+
     @staticmethod
     def from_string(const c_string& task_spec_str):
         """Convert a string to a Ray task specification Python object.
