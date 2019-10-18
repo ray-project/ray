@@ -50,7 +50,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // specified time.
     pending_requests_[actor_id].emplace_back(std::move(request));
     RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
-    return Status::OK();
   } else if (iter->second.state_ == ActorTableData::ALIVE) {
     // Actor is alive, submit the request.
     if (rpc_clients_.count(actor_id) == 0) {
@@ -62,14 +61,15 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     // Submit request.
     auto &client = rpc_clients_[actor_id];
     PushTask(*client, std::move(request), actor_id, task_id, num_returns);
-    return Status::OK();
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
     TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
-    // Return OK here so that we can get the error from store with get operation.
-    return Status::OK();
   }
+
+  // If the task submission subsequently fails, then the client will receive
+  // the error in a callback.
+  return Status::OK();
 }
 
 void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
@@ -103,15 +103,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
       waiting_reply_tasks_.erase(actor_id);
     }
 
-    // If this actor is permanently dead and there are pending requests, treat
-    // the pending tasks as failed.
-    if (actor_data.state() == ActorTableData::DEAD &&
-        pending_requests_.count(actor_id) > 0) {
-      for (const auto &request : pending_requests_[actor_id]) {
+    // If there are pending requests, treat the pending tasks as failed.
+    auto pending_it = pending_requests_.find(actor_id);
+    if (pending_it != pending_requests_.end()) {
+      for (const auto &request : pending_it->second) {
         TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
                           request->task_spec().num_returns(), rpc::ErrorType::ACTOR_DIED);
       }
-      pending_requests_.erase(actor_id);
+      pending_requests_.erase(pending_it);
     }
   }
 }

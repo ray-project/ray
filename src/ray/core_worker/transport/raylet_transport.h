@@ -10,25 +10,6 @@
 
 namespace ray {
 
-/// In raylet task submitter and receiver, a task is submitted to raylet, and possibly
-/// gets forwarded to another raylet on which node the task should be executed, and
-/// then a worker on that node gets this task and starts executing it.
-
-class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
- public:
-  CoreWorkerRayletTaskSubmitter(std::unique_ptr<RayletClient> &raylet_client);
-
-  /// Submit a task for execution to raylet.
-  ///
-  /// \param[in] task The task spec to submit.
-  /// \return Status.
-  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
-
- private:
-  /// Raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
-};
-
 class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
                                      public rpc::WorkerTaskHandler {
  public:
