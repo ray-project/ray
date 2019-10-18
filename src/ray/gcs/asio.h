@@ -49,8 +49,12 @@ class RedisAsioClient {
   void cleanup();
 
  private:
+  void do_add_read();
+  void do_add_write();
+  
   ray::gcs::RedisAsyncContext &redis_async_context_;
 
+  boost::asio::io_service &io_service_;
   boost::asio::ip::tcp::socket socket_;
   // Hiredis wanted to add a read operation to the event loop
   // but the read might not have happened yet

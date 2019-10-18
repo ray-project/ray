@@ -5,6 +5,7 @@
 RedisAsioClient::RedisAsioClient(boost::asio::io_service &io_service,
                                  ray::gcs::RedisAsyncContext &redis_async_context)
     : redis_async_context_(redis_async_context),
+      io_service_(io_service),
       socket_(io_service),
       read_requested_(false),
       write_requested_(false),
@@ -67,6 +68,10 @@ void RedisAsioClient::handle_write(boost::system::error_code error_code) {
 }
 
 void RedisAsioClient::add_read() {
+  io_service_.dispatch(boost::bind(&RedisAsioClient::do_add_read, this));
+}
+
+void RedisAsioClient::do_add_read() {
   read_requested_ = true;
   operate();
 }
@@ -74,6 +79,10 @@ void RedisAsioClient::add_read() {
 void RedisAsioClient::del_read() { read_requested_ = false; }
 
 void RedisAsioClient::add_write() {
+  io_service_.dispatch(boost::bind(&RedisAsioClient::do_add_write, this));
+}
+
+void RedisAsioClient::do_add_write() {
   write_requested_ = true;
   operate();
 }
