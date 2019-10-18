@@ -11,7 +11,7 @@ RUN pip install -U pip
 RUN pip install gym[atari] opencv-python-headless tensorflow lz4 keras pytest-timeout smart_open tensorflow_probability
 RUN pip install -U h5py  # Mutes FutureWarnings
 RUN pip install --upgrade bayesian-optimization
-RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
+RUN pip install --upgrade hyperopt==0.1.2
 RUN pip install ConfigSpace==0.4.10
 RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost torch torchvision
 RUN pip install -U tabulate mlflow
