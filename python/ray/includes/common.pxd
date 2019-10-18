@@ -191,10 +191,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
-        c_bool IsPassedByReference() const
-        const CObjectID &GetReference() const
-        const CRayObject &GetValue() const
-
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(int num_returns,
