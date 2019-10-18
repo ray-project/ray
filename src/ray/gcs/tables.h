@@ -72,9 +72,12 @@ class LogInterface {
       std::function<void(RedisGcsClient *client, const ID &id, const Data &data)>;
   virtual Status Append(const JobID &job_id, const ID &id,
                         const std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
+
   virtual Status AppendAt(const JobID &job_id, const ID &id,
                           const std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
+  virtual Status SyncAppendAt(const JobID &job_id, const ID &id,
+                              const std::shared_ptr<Data> &data, int log_length) = 0;
   virtual ~LogInterface(){};
 };
 
@@ -155,6 +158,16 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status AppendAt(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
+
+  /// Append a log entry to a key synchronously if and only if the log has the
+  /// given number of entries.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to append to the log.
+  /// \return Status
+  Status SyncAppendAt(const JobID &job_id, const ID &id,
+                      const std::shared_ptr<Data> &data, int log_length);
 
   /// Lookup the log values at a key asynchronously.
   ///
