@@ -57,10 +57,12 @@ class KubernetesCommandRunner(object):
         logger.info(self.log_prefix + "Running {}...".format(cmd))
 
         if port_forward:
+            if not isinstance(port_forward, list):
+                port_forward = [port_forward]
             port_forward_cmd = self.kubectl + [
-                "port-forward", self.node_id,
-                str(port_forward)
-            ]
+                "port-forward",
+                self.node_id,
+            ] + [str(fwd) for fwd in port_forward]
             port_forward_process = subprocess.Popen(port_forward_cmd)
             # Give port-forward a grace period to run and print output before
             # running the actual command. This is a little ugly, but it should
@@ -242,7 +244,10 @@ class SSHCommandRunner(object):
             ssh.append("-tt")
 
         if port_forward:
-            ssh += ["-L", "{}:localhost:{}".format(port_forward, port_forward)]
+            if not isinstance(port_forward, list):
+                port_forward = [port_forward]
+            for fwd in port_forward:
+                ssh += ["-L", "{}:localhost:{}".format(fwd, fwd)]
 
         final_cmd = ssh + self.get_default_ssh_options(timeout) + [
             "{}@{}".format(self.ssh_user, self.ssh_ip)
