@@ -51,7 +51,7 @@ class RedisAsioClient {
  private:
   void do_add_read();
   void do_add_write();
-  
+
   ray::gcs::RedisAsyncContext &redis_async_context_;
 
   boost::asio::io_service &io_service_;
