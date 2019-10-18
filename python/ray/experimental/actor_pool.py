@@ -1,5 +1,4 @@
 import ray
-import time
 
 
 class ActorPool(object):
