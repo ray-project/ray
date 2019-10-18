@@ -251,12 +251,16 @@ def run(run_or_experiment,
         reporter = CLIReporter()
 
     # User Warning for GPUs
-    if trial_executor.has_gpus() and all("GPU" not in t.resources
-                                         for t in runner.get_trials()):
-        logger.warning("Tune detects GPUs, but no trials are using GPUs. "
-                       "To enable trials to use GPUs, set "
-                       "tune.run(resources_per_trial={'gpu': 1}...) "
-                       "which allows Tune to expose 1 GPU to each trial.")
+    if trial_executor.has_gpus():
+        if isinstance(resources_per_trial,
+                      dict) and "gpu" in resources_per_trial:
+            # "gpu" is manually set.
+            pass
+        else:
+            logger.warning("Tune detects GPUs, but no trials are using GPUs. "
+                           "To enable trials to use GPUs, set "
+                           "tune.run(resources_per_trial={'gpu': 1}...) "
+                           "which allows Tune to expose 1 GPU to each trial.")
 
     last_debug = 0
     while not runner.is_finished():
