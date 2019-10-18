@@ -2,12 +2,13 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "ray/common/buffer.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/task_execution.h"
-#include "ray/core_worker/task_interface.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
 
@@ -58,10 +59,6 @@ class CoreWorker {
 
   RayletClient &GetRayletClient() { return *raylet_client_; }
 
-  /// Return the `CoreWorkerTaskInterface` that contains the methods related to task
-  /// submisson.
-  CoreWorkerTaskInterface &Tasks() { return *task_interface_; }
-
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
   CoreWorkerObjectInterface &Objects() { return *object_interface_; }
@@ -99,6 +96,69 @@ class CoreWorker {
   /// of the bytes zeroed out.
   TaskID GetCallerId() const;
 
+  /* Methods related to task submission. */
+
+  /// Submit a normal task.
+  ///
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] task_options Options for this task.
+  /// \param[out] return_ids Ids of the return objects.
+  /// \return Status error if task submission fails, likely due to raylet failure.
+  Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+
+  /// Create an actor.
+  ///
+  /// \param[in] caller_id ID of the task submitter.
+  /// \param[in] function The remote function that generates the actor object.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] actor_creation_options Options for this actor creation task.
+  /// \param[out] actor_handle Handle to the actor.
+  /// \param[out] actor_id ID of the created actor. This can be used to submit
+  /// tasks on the actor.
+  /// \return Status error if actor creation fails, likely due to raylet failure.
+  Status CreateActor(const RayFunction &function, const std::vector<TaskArg> &args,
+                     const ActorCreationOptions &actor_creation_options,
+                     ActorID *actor_id);
+
+  /// Submit an actor task.
+  ///
+  /// \param[in] caller_id ID of the task submitter.
+  /// \param[in] actor_handle Handle to the actor.
+  /// \param[in] function The remote function to execute.
+  /// \param[in] args Arguments of this task.
+  /// \param[in] task_options Options for this task.
+  /// \param[out] return_ids Ids of the return objects.
+  /// \return Status error if the task is invalid or if the task submission
+  /// failed. Tasks can be invalid for direct actor calls because not all tasks
+  /// are currently supported.
+  Status SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
+                         const std::vector<TaskArg> &args,
+                         const TaskOptions &task_options,
+                         std::vector<ObjectID> *return_ids);
+
+  /// Add an actor handle from a serialized string.
+  ///
+  /// This should be called when an actor handle is given to us by another task
+  /// or actor. This may be called even if we already have a handle to the same
+  /// actor.
+  ///
+  /// \param[in] serialized The serialized actor handle.
+  /// \return The ActorID of the deserialized handle.
+  ActorID DeserializeAndRegisterActorHandle(const std::string &serialized);
+
+  /// Serialize an actor handle.
+  ///
+  /// This should be called when passing an actor handle to another task or
+  /// actor.
+  ///
+  /// \param[in] actor_id The ID of the actor handle to serialize.
+  /// \param[out] The serialized handle.
+  /// \return Status::Invalid if we don't have the specified handle.
+  Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+
+ private:
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -114,11 +174,11 @@ class CoreWorker {
   /// Get a handle to an actor. This asserts that the worker actually has this
   /// handle.
   ///
-  /// \param actor_id The actor handle to get.
-  /// \return A handle to the requested actor.
-  ActorHandle &GetActorHandle(const ActorID &actor_id);
+  /// \param[in] actor_id The actor handle to get.
+  /// \param[out] actor_handle A handle to the requested actor.
+  /// \return Status::Invalid if we don't have this actor handle.
+  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
- private:
   void StartIOService();
 
   const WorkerType worker_type_;
@@ -141,8 +201,8 @@ class CoreWorker {
   std::thread io_thread_;
   std::shared_ptr<worker::Profiler> profiler_;
   std::unique_ptr<RayletClient> raylet_client_;
+  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
-  std::unique_ptr<CoreWorkerTaskInterface> task_interface_;
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
   /// Map from actor ID to a handle to that actor.
@@ -150,6 +210,8 @@ class CoreWorker {
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
+
+  friend class CoreWorkerTest;
 };
 
 }  // namespace ray
