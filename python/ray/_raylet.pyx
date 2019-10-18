@@ -432,6 +432,13 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentTaskId(c_task_id)
 
+    def set_actor_id(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            self.core_worker.get().SetActorId(c_actor_id)
+
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
 
@@ -631,7 +638,7 @@ cdef class CoreWorker:
             prepare_args(args, &args_vector)
 
             with nogil:
-                check_status(self.core_worker.get().Tasks().SubmitTask(
+                check_status(self.core_worker.get().SubmitTask(
                     ray_function, args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
@@ -643,12 +650,12 @@ cdef class CoreWorker:
                      resources,
                      placement_resources):
         cdef:
-            ActorHandle actor_handle = ActorHandle.__new__(ActorHandle)
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[c_string] dynamic_worker_options
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
+            CActorID c_actor_id
 
         with profiling.profile("submit_task"):
             prepare_resources(resources, &c_resources)
@@ -658,23 +665,24 @@ cdef class CoreWorker:
             prepare_args(args, &args_vector)
 
             with nogil:
-                check_status(self.core_worker.get().Tasks().CreateActor(
+                check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
                         max_reconstructions, False, c_resources,
                         c_placement_resources, dynamic_worker_options),
-                    &actor_handle.inner))
+                    &c_actor_id))
 
-            return actor_handle
+            return ActorID(c_actor_id.Binary())
 
     def submit_actor_task(self,
-                          ActorHandle handle,
+                          ActorID actor_id,
                           function_descriptor,
                           args,
                           int num_return_vals,
                           resources):
 
         cdef:
+            CActorID c_actor_id = actor_id.native()
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
             CRayFunction ray_function
@@ -689,8 +697,9 @@ cdef class CoreWorker:
             prepare_args(args, &args_vector)
 
             with nogil:
-                check_status(self.core_worker.get().Tasks().SubmitActorTask(
-                      handle.inner.get()[0], ray_function,
+                check_status(self.core_worker.get().SubmitActorTask(
+                      c_actor_id,
+                      ray_function,
                       args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
@@ -702,3 +711,17 @@ cdef class CoreWorker:
         return ProfileEvent.make(
             self.core_worker.get().CreateProfileEvent(c_event_type),
             extra_data)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes):
+        c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
+            bytes)
+        actor_id = ActorID(c_actor_id.Binary())
+        return actor_id
+
+    def serialize_actor_handle(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            c_string output
+        check_status(self.core_worker.get().SerializeActorHandle(
+            c_actor_id, &output))
+        return output

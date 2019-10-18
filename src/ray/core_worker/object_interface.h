@@ -115,6 +115,10 @@ class CoreWorkerObjectInterface {
   /// \return std::string The string describing memory usage.
   std::string MemoryUsageString();
 
+  /// Create a new store provider for the specified type on demand.
+  std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
+      StoreProviderType type) const;
+
  private:
   /// Helper function to group object IDs by the store provider that should be used
   /// for them.
@@ -137,10 +141,6 @@ class CoreWorkerObjectInterface {
   Status WaitFromMultipleStoreProviders(
       EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
       int64_t timeout_ms, int *num_objects, std::unordered_set<ObjectID> *results);
-
-  /// Create a new store provider for the specified type on demand.
-  std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
-      StoreProviderType type) const;
 
   /// Add a store provider for the specified type.
   void AddStoreProvider(StoreProviderType type);
