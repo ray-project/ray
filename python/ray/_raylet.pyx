@@ -494,6 +494,7 @@ cdef _store_task_outputs(worker, return_ids, outputs):
 cdef execute_task(
         CTaskType task_type,
         const CRayFunction &ray_function,
+        const CJobID &c_job_id,
         const CActorID &c_actor_id,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -504,7 +505,7 @@ cdef execute_task(
     worker = ray.worker.global_worker
 
     actor_id = ActorID(c_actor_id.Binary())
-    job_id = worker.core_worker.get_current_job_id()
+    job_id = JobID(c_job_id.Binary())
     task_id = worker.core_worker.get_current_task_id()
 
     # Check that the worker is in the expected state to execute the task.
@@ -638,9 +639,10 @@ cdef execute_task(
         worker.core_worker.disconnect()
         sys.exit(0)
 
-cdef CRayStatus execute_task_callback(
+cdef CRayStatus task_execution_handler(
         CTaskType task_type,
         const CRayFunction &ray_function,
+        const CJobID &c_job_id,
         const CActorID &c_actor_id,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -652,8 +654,9 @@ cdef CRayStatus execute_task_callback(
         try:
             # The call to execute_task should never raise an exception. If it
             # does, that indicates that there was an unexpected internal error.
-            execute_task(task_type, ray_function, c_actor_id, c_resources,
-                         c_args, c_arg_reference_ids, c_return_ids, returns)
+            execute_task(task_type, ray_function, c_job_id,
+                         c_actor_id, c_resources, c_args,
+                         c_arg_reference_ids, c_return_ids, returns)
         except Exception:
             traceback_str = traceback.format_exc() + (
                 "An unexpected internal error occurred while the worker was"
@@ -686,7 +689,7 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), execute_task_callback, False))
+            node_ip_address.encode("utf-8"), task_execution_handler, False))
 
     def disconnect(self):
         with nogil:

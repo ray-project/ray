@@ -100,6 +100,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     CRayStatus (
                         CTaskType task_type,
                         const CRayFunction &ray_function,
+                        const CJobID &job_id,
                         const CActorID &actor_id,
                         const unordered_map[c_string, double] &resources,
                         const c_vector[shared_ptr[CRayObject]] &args,
