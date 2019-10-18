@@ -443,7 +443,7 @@ class Worker(object):
                         protocol=5,
                         buffer_callback=writer.buffer_callback)
                 else:
-                    inband = pickle.dumps(value, protocol=4)
+                    inband = pickle.dumps(value)
                 self.core_worker.put_pickle5_buffers(object_id, inband, writer,
                                                      self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
