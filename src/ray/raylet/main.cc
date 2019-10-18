@@ -167,22 +167,11 @@ int main(int argc, char *argv[]) {
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
-    auto shutdown_callback = [&server, &main_service, &gcs_client]() {
-      server.reset();
-      gcs_client->Disconnect();
-      main_service.stop();
-      RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
-    };
-    RAY_CHECK_OK(gcs_client->client_table().Disconnect(shutdown_callback));
-    // Give a timeout for this Disconnect operation.
-    boost::posix_time::milliseconds stop_timeout(800);
-    boost::asio::deadline_timer timer(main_service);
-    timer.expires_from_now(stop_timeout);
-    timer.async_wait([shutdown_callback](const boost::system::error_code &error) {
-      if (!error) {
-        shutdown_callback();
-      }
-    });
+    RAY_CHECK_OK(gcs_client->client_table().Disconnect());
+    server.reset();
+    gcs_client->Disconnect();
+    main_service.stop();
+    RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     remove(raylet_socket_name.c_str());
   };
   boost::asio::signal_set signals(main_service, SIGTERM);

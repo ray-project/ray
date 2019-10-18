@@ -72,9 +72,13 @@ class LogInterface {
       std::function<void(RedisGcsClient *client, const ID &id, const Data &data)>;
   virtual Status Append(const JobID &job_id, const ID &id,
                         const std::shared_ptr<Data> &data, const WriteCallback &done) = 0;
-  virtual Status AppendAt(const JobID &job_id, const ID &task_id,
+  virtual Status SyncAppend(const JobID &job_id, const ID &id,
+                            const std::shared_ptr<Data> &data) = 0;
+  virtual Status AppendAt(const JobID &job_id, const ID &id,
                           const std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
+  virtual Status SyncAppendAt(const JobID &job_id, const ID &id,
+                              const std::shared_ptr<Data> &data, int log_length) = 0;
   virtual ~LogInterface(){};
 };
 
@@ -132,6 +136,14 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status Append(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                 const WriteCallback &done);
 
+  /// Append a log entry to a key synchronously.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to append to the log.
+  /// \return Status
+  Status SyncAppend(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data);
+
   /// Append a log entry to a key if and only if the log has the given number
   /// of entries.
   ///
@@ -147,6 +159,16 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
   Status AppendAt(const JobID &job_id, const ID &id, const std::shared_ptr<Data> &data,
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
+
+  /// Append a log entry to a key synchronously if and only if the log has the
+  /// given number of entries.
+  ///
+  /// \param job_id The ID of the job.
+  /// \param id The ID of the data that is added to the GCS.
+  /// \param data Data to append to the log.
+  /// \return Status
+  Status SyncAppendAt(const JobID &job_id, const ID &id,
+                      const std::shared_ptr<Data> &data, int log_length);
 
   /// Lookup the log values at a key asynchronously.
   ///
@@ -837,7 +859,7 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
         // ClientTable have the same key.
         client_log_key_(),
         disconnected_(false),
-        node_id_(node_id),
+        //        node_id_(node_id),
         local_node_info_() {
     pubsub_channel_ = TablePubsub::CLIENT_PUBSUB;
     prefix_ = TablePrefix::CLIENT;
@@ -858,7 +880,7 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// registration should never be reused after disconnecting.
   ///
   /// \return Status
-  ray::Status Disconnect(const DisconnectCallback &callback = nullptr);
+  ray::Status Disconnect();
 
   /// Mark a different client as disconnected. The client ID should never be
   /// reused for a new client.
@@ -933,7 +955,7 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This node's ID.
-  const ClientID node_id_;
+  ClientID node_id_;
   /// Information about this node.
   GcsNodeInfo local_node_info_;
   /// The callback to call when a new client is added.

@@ -46,11 +46,18 @@ namespace ray {
 
 namespace gcs {
 
-CallbackReply::CallbackReply(redisReply *redis_reply) {
+CallbackReply::CallbackReply(redisReply *redis_reply, bool own_reply) {
   RAY_CHECK(nullptr != redis_reply);
   RAY_CHECK(redis_reply->type != REDIS_REPLY_ERROR)
       << "Got an error in redis reply: " << redis_reply->str;
   this->redis_reply_ = redis_reply;
+  this->own_reply_ = own_reply;
+}
+
+CallbackReply::~CallbackReply() {
+  if (own_reply_) {
+    freeReplyObject(redis_reply_);
+  }
 }
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == redis_reply_->type; }
