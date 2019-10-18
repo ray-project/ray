@@ -3,13 +3,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import pytest
+
 import ray
-from ray import signature
-import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
-
-from ray.tests.utils import RayTestTimeoutException
 
 
 @pytest.mark.parametrize(
