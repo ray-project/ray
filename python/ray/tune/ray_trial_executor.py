@@ -622,6 +622,11 @@ class RayTrialExecutor(TrialExecutor):
                 trial.runner.export_model.remote(trial.export_formats))
         return {}
 
+    def has_gpus(self):
+        if self._resources_initialized:
+            self._update_avail_resources()
+            return self._avail_resources.gpu > 0
+
 
 def _to_gb(n_bytes):
     return round(n_bytes / (1024**3), 2)
