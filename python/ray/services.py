@@ -971,7 +971,8 @@ def start_reporter(redis_address,
     return process_info
 
 
-def start_dashboard(redis_address,
+def start_dashboard(host,
+                    redis_address,
                     temp_dir,
                     stdout_file=None,
                     stderr_file=None,
@@ -979,6 +980,7 @@ def start_dashboard(redis_address,
     """Start a dashboard process.
 
     Args:
+        host (str): The host to bind the dashboard web server to.
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
@@ -1007,8 +1009,9 @@ def start_dashboard(redis_address,
         sys.executable,
         "-u",
         dashboard_filepath,
+        "--host={}".format(host),
+        "--port={}".format(port),
         "--redis-address={}".format(redis_address),
-        "--http-port={}".format(port),
         "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
@@ -1030,9 +1033,16 @@ def start_dashboard(redis_address,
         ray_constants.PROCESS_TYPE_DASHBOARD,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}".format(get_node_ip_address(), port)
+    dashboard_url = "http://{}:{}".format(
+        host if host == "127.0.0.1" else get_node_ip_address(), port)
     print("\n" + "=" * 70)
     print("View the dashboard at {}".format(dashboard_url))
+    if host == "127.0.0.1":
+        print("Note: If Ray is running on a remote node, you will need to set "
+              "up an SSH tunnel with local port forwarding in order to access "
+              "the dashboard in your browser, e.g. by running "
+              "'ssh -L {}:{}:{} <username>@{}'.".format(
+                  port, host, port, get_node_ip_address()))
     print("=" * 70 + "\n")
     return dashboard_url, process_info
 

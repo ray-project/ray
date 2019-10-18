@@ -50,12 +50,19 @@ class Dashboard(object):
         redis_client: A client used to communicate with the Redis server.
     """
 
-    def __init__(self, redis_address, http_port, temp_dir,
+    def __init__(self,
+                 host,
+                 port,
+                 redis_address,
+                 temp_dir,
                  redis_password=None):
         """Initialize the dashboard object."""
-        self.ip = ray.services.get_node_ip_address()
-        self.port = http_port
+        self.host = host
+        self.port = port
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
         self.temp_dir = temp_dir
+
         self.node_stats = NodeStats(redis_address, redis_password)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
@@ -161,7 +168,7 @@ class Dashboard(object):
         self.app.router.add_get("/{_}", get_forbidden)
 
     def log_dashboard_url(self):
-        url = "http://{}:{}".format(self.ip, self.port)
+        url = ray.services.get_webui_url_from_redis(self.redis_client)
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
@@ -169,7 +176,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.node_stats.start()
-        aiohttp.web.run_app(self.app, host="0.0.0.0", port=self.port)
+        aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 
 class NodeStats(threading.Thread):
@@ -347,7 +354,13 @@ if __name__ == "__main__":
         description=("Parse Redis server for the "
                      "dashboard to connect to."))
     parser.add_argument(
-        "--http-port",
+        "--host",
+        required=True,
+        type=str,
+        choices=["127.0.0.1", "0.0.0.0"],
+        help="The host to use for the HTTP server.")
+    parser.add_argument(
+        "--port",
         required=True,
         type=int,
         help="The port to use for the HTTP server.")
@@ -386,8 +399,9 @@ if __name__ == "__main__":
 
     try:
         dashboard = Dashboard(
+            args.host,
+            args.port,
             args.redis_address,
-            args.http_port,
             args.temp_dir,
             redis_password=args.redis_password,
         )
