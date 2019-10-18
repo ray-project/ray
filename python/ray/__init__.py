@@ -65,7 +65,6 @@ except ImportError as e:
 from ray._raylet import (
     ActorCheckpointID,
     ActorClassID,
-    ActorHandleID,
     ActorID,
     ClientID,
     Config as _Config,
@@ -154,7 +153,6 @@ __all__ = [
 __all__ += [
     "ActorCheckpointID",
     "ActorClassID",
-    "ActorHandleID",
     "ActorID",
     "ClientID",
     "JobID",

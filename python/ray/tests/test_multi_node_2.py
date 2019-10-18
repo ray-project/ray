@@ -82,6 +82,12 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
             del resource_usage[2]["memory"]
         if "object_store_memory" in resource_usage[2]:
             del resource_usage[2]["object_store_memory"]
+        for key in list(resource_usage[1].keys()):
+            if key.startswith("node:"):
+                del resource_usage[1][key]
+        for key in list(resource_usage[2].keys()):
+            if key.startswith("node:"):
+                del resource_usage[2][key]
 
         if expected_resource_usage is None:
             if all(x for x in resource_usage[1:]):
