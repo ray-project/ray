@@ -637,7 +637,7 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help="Port to forward.")
+    "--port-forward", required=False, multiple=True, type=int, help="Port to forward.")
 @click.argument("script", required=True, type=str)
 @click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
@@ -665,7 +665,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
         command_parts += [args]
     cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
-                 cluster_name, port_forward)
+                 cluster_name, list(port_forward))
 
 
 @cli.command()
@@ -700,11 +700,11 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help="Port to forward.")
+    "--port-forward", required=False, multiple=True, type=int, help="Port to forward.")
 def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
              cluster_name, port_forward):
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+                 cluster_name, list(port_forward))
 
 
 @cli.command()
