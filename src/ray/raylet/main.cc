@@ -15,6 +15,8 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(redis_address, "", "The ip address of redis server.");
 DEFINE_int32(redis_port, -1, "The port of redis server.");
+// This parameter is deprecated and replaced by the `RayConfig#num_initial_workers`.
+// TODO(qwang): We should delete num_initial_workers in `service.py` as well.
 DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
@@ -46,7 +48,6 @@ int main(int argc, char *argv[]) {
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
-  const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
@@ -102,7 +103,6 @@ int main(int argc, char *argv[]) {
                  << node_manager_config.resource_config.ToString();
   node_manager_config.node_manager_address = node_ip_address;
   node_manager_config.node_manager_port = node_manager_port;
-  node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
 
   if (!python_worker_command.empty()) {
@@ -150,6 +150,13 @@ int main(int argc, char *argv[]) {
                  << "rpc_service_threads_number = "
                  << object_manager_config.rpc_service_threads_number
                  << ", object_chunk_size = " << object_manager_config.object_chunk_size;
+
+  if (RayConfig::instance().num_initial_workers() < 0) {
+    node_manager_config.num_initial_workers = num_cpus;
+  } else {
+    node_manager_config.num_initial_workers =
+        static_cast<int>(RayConfig::instance().num_initial_workers());
+  }
 
   // Initialize the node manager.
   boost::asio::io_service main_service;
