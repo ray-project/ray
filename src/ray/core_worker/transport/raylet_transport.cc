@@ -4,15 +4,6 @@
 
 namespace ray {
 
-CoreWorkerRayletTaskSubmitter::CoreWorkerRayletTaskSubmitter(
-    std::unique_ptr<RayletClient> &raylet_client)
-    : raylet_client_(raylet_client) {}
-
-Status CoreWorkerRayletTaskSubmitter::SubmitTask(const TaskSpecification &task) {
-  RAY_CHECK(raylet_client_ != nullptr);
-  return raylet_client_->SubmitTask(task);
-}
-
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,

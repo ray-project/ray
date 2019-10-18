@@ -148,8 +148,7 @@ collected.
 Passing Around Actor Handles
 ----------------------------
 
-Actor handles can be passed into other tasks. To see an example of this, take a
-look at the `asynchronous parameter server example`_. To illustrate this with a
+Actor handles can be passed into other tasks. To illustrate this with a
 simple example, consider a simple actor definition.
 
 .. code-block:: python
@@ -190,5 +189,3 @@ If we instantiate an actor, we can pass the handle around to various tasks.
   for _ in range(10):
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
-
-.. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/latest/example-parameter-server.html

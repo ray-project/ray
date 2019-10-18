@@ -867,7 +867,9 @@ class Worker(object):
         # TODO(rkn): It would be preferable for actor creation tasks to share
         # more of the code path with regular task execution.
         if task.is_actor_creation_task():
+            # TODO: Remove Worker.actor_id and just use CoreWorker.GetActorId.
             self.actor_id = task.actor_creation_id()
+            self.core_worker.set_actor_id(task.actor_creation_id())
             self.actor_creation_task_id = task.task_id()
             actor_class = self.function_actor_manager.load_actor_class(
                 job_id, function_descriptor)
