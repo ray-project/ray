@@ -12,6 +12,7 @@ import resource
 import socket
 import subprocess
 import sys
+import textwrap
 import time
 import redis
 
@@ -1036,13 +1037,17 @@ def start_dashboard(host,
     dashboard_url = "http://{}:{}".format(
         host if host == "127.0.0.1" else get_node_ip_address(), port)
     print("\n" + "=" * 70)
-    print("View the dashboard at {}".format(dashboard_url))
+    print("View the dashboard at {}.".format(dashboard_url))
     if host == "127.0.0.1":
-        print("Note: If Ray is running on a remote node, you will need to set "
-              "up an SSH tunnel with local port forwarding in order to access "
-              "the dashboard in your browser, e.g. by running "
-              "'ssh -L {}:{}:{} <username>@{}'.".format(
-                  port, host, port, get_node_ip_address()))
+        note = (
+            "Note: If Ray is running on a remote node, you will need to set "
+            "up an SSH tunnel with local port forwarding in order to access "
+            "the dashboard in your browser, e.g. by running "
+            "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can set "
+            "webui_host=\"0.0.0.0\" in the call to ray.init() to allow direct "
+            "access from external machines.")
+        note = note.format(port, host, port)
+        print("\n".join(textwrap.wrap(note, width=70)))
     print("=" * 70 + "\n")
     return dashboard_url, process_info
 
