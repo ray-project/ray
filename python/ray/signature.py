@@ -182,7 +182,7 @@ def _scrub_parameters(parameters):
 
 
 def _restore_parameters(ray_parameters):
-    """This reconstructs the funcsigs.Parameter objects."""
+    """Reconstructs the funcsigs.Parameter objects."""
     return [
         Parameter(
             rayparam.name,
