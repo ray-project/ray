@@ -1,6 +1,8 @@
 #ifndef RAY_CORE_WORKER_PROFILING_H
 #define RAY_CORE_WORKER_PROFILING_H
 
+#include "absl/synchronization/mutex.h"
+
 #include "ray/core_worker/context.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/util.h"
@@ -30,9 +32,11 @@ class Profiler {
 
   // RPC message containing profiling data. Holds the queue of profile events
   // until they are flushed.
-  rpc::ProfileTableData rpc_profile_data_;
+  rpc::ProfileTableData rpc_profile_data_ GUARDED_BY(mu_);
 
   std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
+
+  absl::Mutex mu_;
 };
 
 class ProfileEvent {

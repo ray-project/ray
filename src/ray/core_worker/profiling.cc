@@ -19,6 +19,7 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
     : io_service_(io_service),
       timer_(io_service_, boost::asio::chrono::seconds(1)),
       gcs_client_(gcs_client) {
+  absl::MutexLock l(&mu_);
   rpc_profile_data_.set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
   rpc_profile_data_.set_component_id(worker_context.GetWorkerID().Binary());
   rpc_profile_data_.set_node_ip_address(node_ip_address);
@@ -26,12 +27,12 @@ Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_add
 }
 
 void Profiler::AddEvent(const rpc::ProfileTableData::ProfileEvent &event) {
-  io_service_.post([this, event]() -> void {
-    rpc_profile_data_.add_profile_events()->CopyFrom(event);
-  });
+  absl::MutexLock l(&mu_);
+  rpc_profile_data_.add_profile_events()->CopyFrom(event);
 }
 
 void Profiler::FlushEvents() {
+  absl::MutexLock l(&mu_);
   if (rpc_profile_data_.profile_events_size() != 0) {
     // TODO(edoakes): this should be migrated to use the new GCS client interface
     // instead of the raw table interface once it's ready.

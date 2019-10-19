@@ -688,19 +688,21 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
+            unique_ptr[CProfileEvent] profile_event
 
-        # with profiling.profile("submit_task"):
         prepare_resources(resources, &c_resources)
         task_options = CTaskOptions(num_return_vals, c_resources)
         ray_function = CRayFunction(
             LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
         prepare_args(args, &args_vector)
 
-            # with nogil:
-            #     check_status(self.core_worker.get().SubmitActorTask(
-            #           c_actor_id,
-            #           ray_function,
-            #           args_vector, task_options, &return_ids))
+        profile_event = self.core_worker.get().CreateProfileEvent(b"submit_task")
+
+        with nogil:
+           check_status(self.core_worker.get().SubmitActorTask(
+                 c_actor_id,
+                 ray_function,
+                 args_vector, task_options, &return_ids))
 
         return VectorToObjectIDs(return_ids)
 
