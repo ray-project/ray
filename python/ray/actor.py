@@ -516,7 +516,7 @@ class ActorHandle(object):
             with profiling.profile("submit_task"):
                 function = getattr(worker.actors[self._actor_id], method_name)
                 object_ids = worker.local_mode_manager.execute(
-                    function, function_descriptor, args, num_return_vals)
+                    function, method_name, args, num_return_vals)
         else:
             # The profiling.profile("submit_task") is inside submit_actor_task.
             object_ids = worker.core_worker.submit_actor_task(

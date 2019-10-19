@@ -10,8 +10,6 @@
 #include <string>
 #include <unordered_map>
 
-#include "absl/time/clock.h"
-
 #include "ray/common/status.h"
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
@@ -42,11 +40,6 @@ inline int64_t current_sys_time_us() {
       std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::system_clock::now().time_since_epoch());
   return mu_since_epoch.count();
-}
-
-inline double current_sys_time_seconds() {
-  int64_t nanoseconds_in_seconds = 1000000000;
-  return static_cast<double>(absl::GetCurrentTimeNanos()) / nanoseconds_in_seconds;
 }
 
 inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {

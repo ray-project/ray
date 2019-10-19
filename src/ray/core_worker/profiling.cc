@@ -10,7 +10,7 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> profiler,
                            const std::string &event_type)
     : profiler_(profiler) {
   rpc_event_.set_event_type(event_type);
-  rpc_event_.set_start_time(current_sys_time_seconds());
+  rpc_event_.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
 }
 
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,

@@ -29,7 +29,7 @@ class LocalModeManager(object):
     def __init__(self):
         """Initialize a LocalModeManager."""
 
-    def execute(self, function, function_descriptor, args, num_return_vals):
+    def execute(self, function, function_name, args, num_return_vals):
         """Synchronously executes a "remote" function or actor method.
 
         Stores results directly in the generated and returned
@@ -39,7 +39,7 @@ class LocalModeManager(object):
 
         Args:
             function: The function to execute.
-            function_descriptor: Metadata about the function.
+            function_name: Name of the function to execute.
             args: Arguments to the function. These will not be modified by
                 the function execution.
             num_return_vals: Number of expected return values specified in the
@@ -59,7 +59,6 @@ class LocalModeManager(object):
                 for object_id, result in zip(object_ids, results):
                     object_id.value = result
         except Exception as e:
-            function_name = function_descriptor.function_name
             backtrace = format_error_message(traceback.format_exc())
             task_error = RayTaskError(function_name, backtrace, e.__class__)
             for object_id in object_ids:
