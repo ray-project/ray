@@ -15,7 +15,7 @@ from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
-import ray.tune.registry as registry
+from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -120,7 +120,7 @@ class Trial(object):
         in ray.tune.config_parser.
         """
 
-        registry.validate_trainable(trainable_name)
+        validate_trainable(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
@@ -350,7 +350,7 @@ class Trial(object):
         return False
 
     def get_trainable_cls(self):
-        return registry.get_trainable_cls(self.trainable_name)
+        return get_trainable_cls(self.trainable_name)
 
     def set_verbose(self, verbose):
         self.verbose = verbose
@@ -415,6 +415,6 @@ class Trial(object):
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
-        registry.validate_trainable(self.trainable_name)
+        validate_trainable(self.trainable_name)
         if logger_started:
             self.init_logger()
