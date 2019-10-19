@@ -473,9 +473,9 @@ class ActorHandle(object):
         self._ray_session_and_job = session_and_job
         self._ray_function_descriptor_lists = {
             method_name: FunctionDescriptor(
-                self._ray_module_name, method_name, self._ray_class_name).get_function_descriptor_list()
-            for method_name in self._ray_method_signatures.keys()
-        }
+                self._ray_module_name, method_name,
+                self._ray_class_name).get_function_descriptor_list()
+            for method_name in self._ray_method_signatures.keys()}
 
     def _actor_method_call(self,
                            method_name,
@@ -503,7 +503,6 @@ class ActorHandle(object):
 
         worker.check_connected()
 
-        function_signature = self._ray_method_signatures[method_name]
         if args is None:
             args = []
         if kwargs is None:
@@ -521,7 +520,7 @@ class ActorHandle(object):
             # The profiling.profile("submit_task") is inside submit_actor_task.
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_id,
-                function_descriptor_list, args,
+                self._ray_method_signatures[method_name], args,
                 num_return_vals, {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
