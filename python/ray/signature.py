@@ -91,8 +91,7 @@ def extract_signature(func, ignore_first=False):
         A function signature object, which includes the names of the keyword
             arguments as well as their default values.
     """
-    signature = get_signature(func)
-    signature_parameters = list(signature.parameters.values())
+    signature_parameters = list(get_signature(func).parameters.values())
 
     if ignore_first:
         if len(signature_parameters) == 0:
