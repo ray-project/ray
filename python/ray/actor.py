@@ -499,9 +499,7 @@ class ActorHandle(object):
         args = args or []
         kwargs = kwargs or {}
 
-        signature.validate_args(function_signature, args, kwargs)
-        list_args = signature.flatten_args(args, kwargs)
-
+        list_args = signature.flatten_args(function_signature, args, kwargs)
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
         with profiling.profile("submit_task"):

@@ -14,24 +14,27 @@ from ray.utils import is_cython
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-_RayParameter = namedtuple(
-    "_RayParameter",
+RayParameter = namedtuple(
+    "RayParameter",
     ["name", "kind_int", "default", "annotation", "partial_kwarg"])
-"""This class is used to represent a function parameter.
+"""This class is used to represent a function parameter in Ray.
+
+Note that this is different from the funcsigs.Parameter object because
+we replace the funcsigs ParameterKind with an int. This is needed because
+ParameterKind objects are currently non-serializable and the package is not
+being updated. Replacement is done in `_scrub_parameters` and
+`_restore_parameters`.
 
 Attributes:
-    arg_names: A list containing the name of all arguments.
-    arg_defaults: A dictionary mapping from argument name to argument default
-        value. If the argument is not a keyword argument, the default value
-        will be funcsigs._empty.
-    arg_is_positionals: A dictionary mapping from argument name to a bool. The
-        bool will be true if the argument is a *args argument. Otherwise it
-        will be false.
-    keyword_names: A set containing the names of the keyword arguments.
-        Note most arguments in Python can be called as positional or keyword
-        arguments, so this overlaps (sometimes completely) with arg_names.
-    function_name: The name of the function whose signature is being
-        inspected. This is used for printing better error messages.
+    name (str): The name of the parameter as a string.
+    default (object): The default value for the parameter if specified.  If the
+        parameter has no default value, this attribute is not set.
+    annotation: The annotation for the parameter if specified.  If the
+        parameter has no annotation, this attribute is not set.
+    kind (int): Describes how argument values are bound to the parameter. See
+        funcsigs.Parameter and `_convert_to_parameter_kind`.
+    partial_kwarg (bool): True if the parameter is mapped
+        by 'functools.partial'.
 """
 
 DUMMY_TYPE = "__RAY_DUMMY__"
@@ -101,29 +104,15 @@ def extract_signature(func, ignore_first=False):
     return _scrub_parameters(signature_parameters)
 
 
-def validate_args(signature_parameters, args, kwargs):
-    """Checks the function signature and validates the provided arguments.
+def flatten_args(signature_parameters, args, kwargs):
+    """Validates the arguments against the signature and flattens them.
 
-    Args:
-        function_signature: The function signature of the function being
-            called.
-        args: The non-keyword arguments passed into the function.
-        kwargs: The keyword arguments passed into the function.
-
-    Raises:
-        Exception: An exception may be raised if the function cannot be called
-            with these arguments.
-    """
-    restored = _restore_parameters(signature_parameters)
-    reconstructed_signature = funcsigs.Signature(parameters=restored)
-    try:
-        reconstructed_signature.bind(*args, **kwargs)
-    except TypeError as exc:
-        raise TypeError(str(exc))
-
-
-def flatten_args(args, kwargs):
-    """Generates a serializable format for the arguments.
+    The flat list representation is a serializable format for arguments.
+    Since the flatbuffer representation of function arguments is a list, we
+    combine both keyword arguments and positional arguments. We represent
+    this with two entries per argument value - [DUMMY_TYPE, x] for positional
+    arguments and [KEY, VALUE] for keyword arguments. See the below example.
+    See `recover_args` for logic restoring the flat list back to args/kwargs.
 
     Args:
         args: The non-keyword arguments passed into the function.
@@ -133,10 +122,19 @@ def flatten_args(args, kwargs):
         List of args and kwargs. Non-keyword arguments are prefixed
             by internal enum DUMMY_TYPE.
 
+    Raises:
+        TypeError: Raised if arguments do not fit in the function signature.
+
     Example:
         >>> flatten_args([1, 2, 3], {"a": 4})
         [None, 1, None, 2, None, 3, "a", 4]
     """
+    restored = _restore_parameters(signature_parameters)
+    reconstructed_signature = funcsigs.Signature(parameters=restored)
+    try:
+        reconstructed_signature.bind(*args, **kwargs)
+    except TypeError as exc:
+        raise TypeError(str(exc))
     list_args = []
     for arg in args:
         list_args += [DUMMY_TYPE, arg]
@@ -157,7 +155,8 @@ def recover_args(flattened_args):
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
     """
-    assert len(flattened_args) % 2 == 0, "Unexpected argument formatting."
+    assert len(flattened_args) % 2 == 0, (
+        "Flattened arguments need to be even. See `flatten_args`.")
     args = []
     kwargs = {}
     for name_index in range(0, len(flattened_args), 2):
@@ -171,9 +170,9 @@ def recover_args(flattened_args):
 
 
 def _scrub_parameters(parameters):
-    """This returns a scrubbed list of _RayParameters."""
+    """This returns a scrubbed list of RayParameters."""
     return [
-        _RayParameter(
+        RayParameter(
             name=param.name,
             kind_int=_convert_from_parameter_kind(param.kind),
             default=param.default,
@@ -196,7 +195,16 @@ def _restore_parameters(ray_parameters):
 
 
 def _convert_from_parameter_kind(kind):
-    return int(kind)
+    if kind == Parameter.POSITIONAL_ONLY:
+        return 0
+    if kind == Parameter.POSITIONAL_OR_KEYWORD:
+        return 1
+    if kind == Parameter.VAR_POSITIONAL:
+        return 2
+    if kind == Parameter.KEYWORD_ONLY:
+        return 3
+    if kind == Parameter.VAR_KEYWORD:
+        return 4
 
 
 def _convert_to_parameter_kind(value):
