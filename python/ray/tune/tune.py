@@ -46,10 +46,9 @@ def _make_scheduler(args):
 
 def _check_default_resources_override(run_identifier):
     trainable_cls = get_trainable_cls(run_identifier)
-    return hasattr(
-        trainable_cls,
-        "default_resource_request") and (trainable_cls.default_resource_request
-                                         != Trainable.default_resource_request)
+    return hasattr(trainable_cls, "default_resource_request") and (
+        trainable_cls.default_resource_request.__code__ !=
+        Trainable.default_resource_request.__code__)
 
 
 def run(run_or_experiment,
