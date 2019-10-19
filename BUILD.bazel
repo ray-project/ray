@@ -746,7 +746,11 @@ pyx_library(
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
+        "@cysignals//:cysignals_lib",
     ],
+		includes= [
+        "@cysignals//:cysignals",
+		],
 )
 
 cc_binary(
