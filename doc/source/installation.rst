@@ -34,14 +34,14 @@ master branch). To install these wheels, run the following command:
 ===================  ===================
 
 
-.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp37-cp37m-manylinux1_x86_64.whl
-.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp36-cp36m-manylinux1_x86_64.whl
-.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp35-cp35m-manylinux1_x86_64.whl
-.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp27-cp27mu-manylinux1_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp37-cp37m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp36-cp36m-macosx_10_6_intel.whl
-.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp35-cp35m-macosx_10_6_intel.whl
-.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp27-cp27m-macosx_10_6_intel.whl
+.. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp37-cp37m-manylinux1_x86_64.whl
+.. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
+.. _`Linux Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp35-cp35m-manylinux1_x86_64.whl
+.. _`Linux Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp27-cp27mu-manylinux1_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp37-cp37m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-macosx_10_6_intel.whl
+.. _`MacOS Python 3.5`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp35-cp35m-macosx_10_6_intel.whl
+.. _`MacOS Python 2.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp27-cp27m-macosx_10_6_intel.whl
 
 Building Ray from Source
 ------------------------
@@ -120,7 +120,19 @@ steps are included in the installation instructions above.
 
 .. _`Node.js`: https://nodejs.org/
 
-The dashboard requires Python 3, and can be enabled by setting
+The dashboard also requires:
+
+-  Python 3
+-  aiohttp
+-  psutil
+
+The latter two can be installed via pip:
+
+.. code-block:: bash
+
+  pip install aiohttp psutil
+ 
+The dashboard is enabled by setting
 ``include_webui=True`` during initialization, i.e.
 
 .. code-block:: python

@@ -4,30 +4,26 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
+// Persistent state of an ActorHandle.
 message ActorHandle {
   // ID of the actor.
   bytes actor_id = 1;
 
-  // ID of this actor handle.
-  bytes actor_handle_id = 2;
+  // ID of the job that created the actor (it is possible that the handle
+  // exists on a job with a different job ID).
+  bytes creation_job_id = 3;
 
   // Language of the actor.
-  Language actor_language = 3;
+  Language actor_language = 4;
 
   // Function descriptor of actor creation task.
-  repeated string actor_creation_task_function_descriptor = 4;
+  repeated string actor_creation_task_function_descriptor = 5;
 
-  // The unique id of the last return of the last task.
-  // It's used as a dependency for the next task.
-  bytes actor_cursor = 5;
-
-  // The number of tasks that have been invoked on this actor.
-  int64 task_counter = 6;
-
-  // The number of times that this actor handle has been forked.
-  // It's used to make sure ids of actor handles are unique.
-  int64 num_forks = 7;
+  // The unique id of the dummy object returned by the actor creation task.
+  // It's used as a dependency for the first task.
+  // TODO: Remove this once scheduling is done by task counter only.
+  bytes actor_cursor = 6;
 
   // Whether direct actor call is used.
-  bool is_direct_call = 8;
+  bool is_direct_call = 7;
 }

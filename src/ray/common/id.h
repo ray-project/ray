@@ -366,16 +366,8 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 #undef DEFINE_UNIQUE_ID
 
-// Restore the compiler alignment to defult (8 bytes).
+// Restore the compiler alignment to default (8 bytes).
 #pragma pack(pop)
-
-/// Compute the next actor handle ID of a new actor handle during a fork operation.
-///
-/// \param actor_handle_id The actor handle ID of original actor.
-/// \param num_forks The count of forks of original actor.
-/// \return The next actor handle ID generated from the given info.
-const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
-                                             int64_t num_forks);
 
 template <typename T>
 BaseID<T>::BaseID() {

@@ -146,7 +146,7 @@ def tf2_compat_logger(config, logdir, trial=None):
     else:
         import tensorflow as tf
         use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
-                       distutils.version.LooseVersion("2.0.0"))
+                       distutils.version.LooseVersion("1.15.0"))
         if use_tf2_api:
             tf = tf.compat.v2  # setting this for TF2.0
             return TF2Logger(config, logdir, trial)
@@ -238,7 +238,7 @@ class TFLogger(Logger):
 
     def _init(self):
         logger.debug("Initializing TFLogger instead of TF2Logger.")
-        self._file_writer = tf.compat.v1.summary.FileWriter(self.logdir)
+        self._file_writer = tf.summary.FileWriter(self.logdir)
 
     def on_result(self, result):
         tmp = result.copy()
