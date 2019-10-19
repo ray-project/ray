@@ -347,7 +347,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
         stop: whether to stop the cluster after command run
         start: whether to start the cluster if it isn't up
         override_cluster_name: set the name of the cluster
-        port_forward: port to forward
+        port_forward (int or list[int]): port(s) to forward
     """
     assert not (screen and tmux), "Can specify only one of `screen` or `tmux`."
 
