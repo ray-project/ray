@@ -62,6 +62,11 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if code is loaded from local files, as opposed to the GCS.")
+parser.add_argument(
+    "--use-pickle",
+    default=False,
+    action="store_true",
+    help="True if cloudpickle should be used for serialization.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -75,7 +80,8 @@ if __name__ == "__main__":
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
-        load_code_from_local=args.load_code_from_local)
+        load_code_from_local=args.load_code_from_local,
+        use_pickle=args.use_pickle)
 
     node = ray.node.Node(
         ray_params, head=False, shutdown_at_exit=False, connect_only=True)

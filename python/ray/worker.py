@@ -26,7 +26,6 @@ import random
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
-from ray.cloudpickle import USE_NEW_SERIALIZER
 import ray.experimental.signal as ray_signal
 import ray.experimental.no_return
 import ray.gcs_utils
@@ -175,6 +174,11 @@ class Worker(object):
     def load_code_from_local(self):
         self.check_connected()
         return self.node.load_code_from_local
+
+    @property
+    def use_pickle(self):
+        self.check_connected()
+        return self.node.use_pickle
 
     @property
     def task_context(self):
@@ -391,7 +395,7 @@ class Worker(object):
         for attempt in reversed(
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
-                if USE_NEW_SERIALIZER:
+                if self.use_pickle:
                     self.store_with_plasma(object_id, value)
                 else:
                     self._try_store_and_register(object_id, value)
@@ -433,8 +437,13 @@ class Worker(object):
                     value, object_id, memcopy_threads=self.memcopy_threads)
             else:
                 writer = Pickle5Writer()
-                inband = pickle.dumps(
-                    value, protocol=5, buffer_callback=writer.buffer_callback)
+                if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
+                    inband = pickle.dumps(
+                        value,
+                        protocol=5,
+                        buffer_callback=writer.buffer_callback)
+                else:
+                    inband = pickle.dumps(value)
                 self.core_worker.put_pickle5_buffers(object_id, inband, writer,
                                                      self.memcopy_threads)
         except pyarrow.plasma.PlasmaObjectExists:
@@ -512,10 +521,12 @@ class Worker(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id,
                                        serialization_context):
         if metadata:
-            if (USE_NEW_SERIALIZER
-                    and metadata == ray_constants.PICKLE5_BUFFER_METADATA):
+            if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
                 in_band, buffers = unpack_pickle5_buffers(data)
-                return pickle.loads(in_band, buffers=buffers)
+                if len(buffers) > 0:
+                    return pickle.loads(in_band, buffers=buffers)
+                else:
+                    return pickle.loads(in_band)
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -1085,7 +1096,7 @@ def _initialize_serialization(job_id, worker=global_worker):
 
     worker.serialization_context_map[job_id] = serialization_context
 
-    if not USE_NEW_SERIALIZER:
+    if not worker.use_pickle:
         for error_cls in RAY_EXCEPTION_TYPES:
             register_custom_serializer(
                 error_cls,
@@ -1158,6 +1169,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
+         use_pickle=False,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
@@ -1242,6 +1254,7 @@ def init(address=None,
             directory for the Ray process.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
+        use_pickle: Whether data objects should be serialized with cloudpickle.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
 
@@ -1316,6 +1329,7 @@ def init(address=None,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
             load_code_from_local=load_code_from_local,
+            use_pickle=use_pickle,
             _internal_config=_internal_config,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
@@ -1372,7 +1386,8 @@ def init(address=None,
             redis_password=redis_password,
             object_id_seed=object_id_seed,
             temp_dir=temp_dir,
-            load_code_from_local=load_code_from_local)
+            load_code_from_local=load_code_from_local,
+            use_pickle=use_pickle)
         _global_node = ray.node.Node(
             ray_params, head=False, shutdown_at_exit=False, connect_only=True)
 
@@ -2045,7 +2060,7 @@ def register_custom_serializer(cls,
     assert isinstance(job_id, JobID)
 
     def register_class_for_serialization(worker_info):
-        if USE_NEW_SERIALIZER:
+        if worker_info["worker"].use_pickle:
             if pickle.FAST_CLOUDPICKLE_USED:
                 # construct a reducer
                 pickle.CloudPickler.dispatch[
