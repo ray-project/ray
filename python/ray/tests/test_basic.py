@@ -130,7 +130,7 @@ def test_fair_queueing(shutdown_only):
     assert len(ready) == 1000, len(ready)
 
 
-def test_complex_serialization(ray_start_regular):
+def complex_serialization(use_pickle):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
                         or type(obj2).__module__ == np.__name__)
@@ -340,6 +340,15 @@ def test_complex_serialization(ray_start_regular):
     assert ray.get(ray.put(s)).readline() == line
 
 
+def test_complex_serialization(ray_start_regular):
+    complex_serialization(use_pickle=False)
+
+
+def test_complex_serialization_with_pickle(shutdown_only):
+    ray.init(use_pickle=True)
+    complex_serialization(use_pickle=True)
+
+
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
@@ -410,7 +419,7 @@ def test_ray_recursive_objects(ray_start_regular):
     # Create a list of recursive objects.
     recursive_objects = [lst, a1, a2, a3, d1]
 
-    if ray.worker.USE_NEW_SERIALIZER:
+    if ray.worker.global_worker.use_pickle:
         # Serialize the recursive objects.
         for obj in recursive_objects:
             ray.put(obj)
