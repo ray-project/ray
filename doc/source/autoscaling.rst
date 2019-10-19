@@ -287,7 +287,7 @@ To use Amazon EFS, install some utilities and mount the EFS in ``setup_commands`
 
   You need to replace the ``{{FileSystemId}}`` to your own EFS ID before using the config. You may also need to set correct ``SecurityGroupIds`` for the instances in the config file.
 
-.. code-block:: bash
+.. code-block:: yaml
 
     setup_commands:
         - sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`;

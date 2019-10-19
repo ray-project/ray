@@ -1,7 +1,7 @@
 Training Language Model on Cloud with Fairseq and Ray Autoscaler
 ================================================================
 
-This document provides a walkthrough of using Ray Autoscaler with the `Fairseq library <https://github.com/pytorch/fairseq>`__ to train language models on AWS spot instances.
+This document provides a walkthrough of adapting the `Fairseq library <https://github.com/pytorch/fairseq>`__ to perform fault-tolerant distributed training on AWS.
 As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
 
 To run this example, you will need to install Ray on your local machine to use Ray Autoscaler.
@@ -11,11 +11,11 @@ You can view the `code for this example`_.
 .. _`code for this example`: https://github.com/ray-project/ray/tree/master/doc/examples/lm
 
 
-To use Ray Autoscaler on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on  `Automatic Cluster Setup page <autoscaling.html>`__. We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
+To use Ray Autoscaler on AWS, install boto (``pip install boto3``) and configure your AWS credentials in ``~/.aws/credentials`` as described on  `Automatic Cluster Setup page <../autoscaling.html>`__. We provide an `example config file <https://github.com/ray-project/ray/tree/master/doc/examples/lm/lm-cluster.yaml>`__ (``lm-cluster.yaml``).
 
-In this config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.
+In the example config file, we use an ``m5.xlarge`` on-demand instance as the head node, and use ``p3.2xlarge`` GPU spot instances as the worker nodes. We set the minimal number of workers to 1 and maximum workers to 2 in the config, which can be modified according to your own demand.
 
-We also mount `Amazon EFS <autoscaling.html#using-amazon-efs>`__ to store code, data and checkpoints.
+We also mount `Amazon EFS <../autoscaling.html#using-amazon-efs>`__ to store code, data and checkpoints.
 
 .. note::
 
@@ -41,46 +41,12 @@ Run the following command on your local machine to start the Ray cluster:
 Preprocessing Data
 ------------------
 
-Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. Following `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__, we run the following commands to preprocess the dataset:
-
-.. code-block:: bash
-
-  cd ~/efs
-
-  # download the dataset
-  wget https://s3.amazonaws.com/research.metamind.io/wikitext/wikitext-103-raw-v1.zip
-  unzip wikitext-103-raw-v1.zip
-
-  # encode it with the GPT-2 BPE
-  mkdir -p gpt2_bpe
-  wget -O gpt2_bpe/encoder.json https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/encoder.json
-  wget -O gpt2_bpe/vocab.bpe https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/vocab.bpe
-  wget https://raw.githubusercontent.com/pytorch/fairseq/master/examples/roberta/multiprocessing_bpe_encoder.py
-  for SPLIT in train valid test; do \
-      python multiprocessing_bpe_encoder.py \
-          --encoder-json gpt2_bpe/encoder.json \
-          --vocab-bpe gpt2_bpe/vocab.bpe \
-          --inputs wikitext-103-raw/wiki.${SPLIT}.raw \
-          --outputs wikitext-103-raw/wiki.${SPLIT}.bpe \
-          --keep-empty \
-          --workers 60; \
-  done
-
-  # preprocess/binarize the data using the GPT-2 fairseq dictionary
-  wget -O gpt2_bpe/dict.txt https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/dict.txt
-  fairseq-preprocess \
-      --only-source \
-      --srcdict gpt2_bpe/dict.txt \
-      --trainpref wikitext-103-raw/wiki.train.bpe \
-      --validpref wikitext-103-raw/wiki.valid.bpe \
-      --testpref wikitext-103-raw/wiki.test.bpe \
-      --destdir data-bin/wikitext-103 \
-      --workers 60
+Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. We can run ``ray_train.sh`` (`code <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.sh>`_) to do this, which adapts instructions from `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__.
 
 Training
 --------
 
-We provide ``ray_train.py`` (`link <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrypoint to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use of them by restarting and resizing.
+We provide ``ray_train.py`` (`code <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrypoint to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use of them by restarting and resizing.
 
 Two main components of ``ray_train.py`` are a ``RayDistributedActor`` class and a function ``run_fault_tolerant_loop()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and calls the ``main`` of Fairseq:
 
