@@ -28,20 +28,6 @@ inline int64_t current_time_ms() {
   return ms_since_epoch.count();
 }
 
-inline int64_t current_sys_time_ms() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
-
-inline int64_t current_sys_time_us() {
-  std::chrono::microseconds mu_since_epoch =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return mu_since_epoch.count();
-}
-
 inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   switch (error.value()) {
   case boost::system::errc::success:

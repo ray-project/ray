@@ -369,9 +369,9 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     // We haven't pushed this specific object to this specific object manager
     // yet (or if we have then the object must have been evicted and recreated
     // locally).
-    recent_pushes[client_id] = current_sys_time_ms();
+    recent_pushes[client_id] = absl::GetCurrentTimeNanos() / 1000000;
   } else {
-    int64_t current_time = current_sys_time_ms();
+    int64_t current_time = absl::GetCurrentTimeNanos() / 1000000;
     if (current_time - it->second <=
         RayConfig::instance().object_manager_repeated_push_delay_ms()) {
       // We pushed this object to the object manager recently, so don't do it
