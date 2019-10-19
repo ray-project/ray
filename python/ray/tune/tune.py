@@ -11,7 +11,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.trainable import Trainable
-from ray.tune.registry import _global_registry, TRAINABLE_CLASS
+import ray.tune.registry as registry
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
@@ -45,7 +45,7 @@ def _make_scheduler(args):
 
 
 def _check_default_resources_override(run_identifier):
-    trainable_cls = _global_registry.get(TRAINABLE_CLASS, run_identifier)
+    trainable_cls = registry.get_trainable_cls(run_identifier)
     return hasattr(
         trainable_cls,
         "default_resource_request") and (trainable_cls.default_resource_request
