@@ -10,6 +10,8 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.trainable import Trainable
+from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
@@ -40,6 +42,14 @@ def _make_scheduler(args):
     else:
         raise TuneError("Unknown scheduler: {}, should be one of {}".format(
             args.scheduler, _SCHEDULERS.keys()))
+
+
+def _check_default_resources_override(run_identifier):
+    trainable_cls = _global_registry.get(TRAINABLE_CLASS, run_identifier)
+    return hasattr(
+        trainable_cls,
+        "default_resource_request") and (trainable_cls.default_resource_request
+                                         != Trainable.default_resource_request)
 
 
 def run(run_or_experiment,
@@ -256,14 +266,16 @@ def run(run_or_experiment,
                       dict) and "gpu" in resources_per_trial:
             # "gpu" is manually set.
             pass
-        elif any(t.default_resources_set for t in runner.get_trials()):
+        elif _check_default_resources_override(run_identifier):
             # "default_resources" is manually overriden.
             pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
                            "To enable trials to use GPUs, set "
                            "tune.run(resources_per_trial={'gpu': 1}...) "
-                           "which allows Tune to expose 1 GPU to each trial.")
+                           "which allows Tune to expose 1 GPU to each trial. "
+                           "You can also set `default_resource_request` if "
+                           "using the Trainable API.")
 
     last_debug = 0
     while not runner.is_finished():
