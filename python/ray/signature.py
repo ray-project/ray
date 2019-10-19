@@ -27,12 +27,12 @@ being updated. Replacement is done in `_scrub_parameters` and
 
 Attributes:
     name (str): The name of the parameter as a string.
-    default (object): The default value for the parameter if specified.  If the
+    kind (int): Describes how argument values are bound to the parameter. See
+        funcsigs.Parameter and `_convert_to_parameter_kind`.
+    default (object): The default value for the parameter if specified. If the
         parameter has no default value, this attribute is not set.
     annotation: The annotation for the parameter if specified.  If the
         parameter has no annotation, this attribute is not set.
-    kind (int): Describes how argument values are bound to the parameter. See
-        funcsigs.Parameter and `_convert_to_parameter_kind`.
     partial_kwarg (bool): True if the parameter is mapped
         by 'functools.partial'.
 """
@@ -41,7 +41,7 @@ DUMMY_TYPE = "__RAY_DUMMY__"
 
 
 def get_signature(func):
-    """Get signature parameters
+    """Get signature parameters.
 
     Support Cython functions by grabbing relevant attributes from the Cython
     function and attaching to a no-op function. This is somewhat brittle, since
@@ -53,6 +53,10 @@ def get_signature(func):
 
     Args:
         func: The function whose signature should be checked.
+
+    Returns:
+        A function signature object, which includes the names of the keyword
+            arguments as well as their default values.
 
     Raises:
         TypeError: A type error if the signature is not supported
@@ -88,8 +92,7 @@ def extract_signature(func, ignore_first=False):
             be used when func is a method of a class.
 
     Returns:
-        A function signature object, which includes the names of the keyword
-            arguments as well as their default values.
+        List of RayParameter objects representing the function signature.
     """
     signature_parameters = list(get_signature(func).parameters.values())
 
@@ -114,6 +117,9 @@ def flatten_args(signature_parameters, args, kwargs):
     See `recover_args` for logic restoring the flat list back to args/kwargs.
 
     Args:
+        signature_parameters (list): The list of RayParameter objects
+            representing the function signature, obtained from
+            `extract_signature`.
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
 
@@ -148,14 +154,14 @@ def recover_args(flattened_args):
 
     Args:
         flattened_args: List of args and kwargs. This should be the output of
-            flatten_args.
+            `flatten_args`.
 
     Returns:
         args: The non-keyword arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
     """
     assert len(flattened_args) % 2 == 0, (
-        "Flattened arguments need to be even. See `flatten_args`.")
+        "Flattened arguments need to be even-numbered. See `flatten_args`.")
     args = []
     kwargs = {}
     for name_index in range(0, len(flattened_args), 2):
@@ -169,7 +175,7 @@ def recover_args(flattened_args):
 
 
 def _scrub_parameters(parameters):
-    """This returns a scrubbed list of RayParameters."""
+    """Returns a scrubbed list of RayParameters."""
     return [
         RayParameter(
             name=param.name,
