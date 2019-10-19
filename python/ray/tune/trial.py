@@ -137,6 +137,7 @@ class Trial(object):
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self._get_trainable_cls()
+        self.default_resources_set = False
         if trainable_cls and hasattr(trainable_cls,
                                      "default_resource_request"):
             default_resources = trainable_cls.default_resource_request(
@@ -149,6 +150,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
+                self.default_resources_set = True
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers

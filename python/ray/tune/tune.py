@@ -256,6 +256,9 @@ def run(run_or_experiment,
                       dict) and "gpu" in resources_per_trial:
             # "gpu" is manually set.
             pass
+        elif any(t.default_resources_set for t in runner.get_trials()):
+            # "default_resources" is manually overriden.
+            pass
         else:
             logger.warning("Tune detects GPUs, but no trials are using GPUs. "
                            "To enable trials to use GPUs, set "
