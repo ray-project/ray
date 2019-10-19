@@ -89,21 +89,21 @@ setup_commands:
     # below with a git checkout <your_sha> (and possibly a recompile).
     - echo 'export PATH="$HOME/anaconda3/envs/pytorch_p36/bin:$PATH"' >> ~/.bashrc;
         source ~/.bashrc;
-        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl;
+        pip install -U ray;
         pip install -U fairseq==0.8.0;
-    - sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`; 
-        sudo pkill -9 apt-get; 
-        sudo pkill -9 dpkg; 
-        sudo dpkg --configure -a; 
-        sudo apt-get -y install binutils; 
-        cd $HOME; 
-        git clone https://github.com/aws/efs-utils; 
-        cd $HOME/efs-utils; 
-        ./build-deb.sh; 
-        sudo apt-get -y install ./build/amazon-efs-utils*deb; 
-        cd $HOME; 
-        mkdir efs; 
-        sudo mount -t efs {{FileSystemId}}:/ efs; 
+    - sudo kill -9 `sudo lsof /var/lib/dpkg/lock-frontend | awk '{print $2}' | tail -n 1`;
+        sudo pkill -9 apt-get;
+        sudo pkill -9 dpkg;
+        sudo dpkg --configure -a;
+        sudo apt-get -y install binutils;
+        cd $HOME;
+        git clone https://github.com/aws/efs-utils;
+        cd $HOME/efs-utils;
+        ./build-deb.sh;
+        sudo apt-get -y install ./build/amazon-efs-utils*deb;
+        cd $HOME;
+        mkdir efs;
+        sudo mount -t efs {{FileSystemId}}:/ efs;
         sudo chmod 777 efs;
 
 # Custom commands that will be run on the head node after common setup.
@@ -116,15 +116,15 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; 
-        ray start --head --redis-port=6379 
-        --object-manager-port=8076 
+    - ulimit -n 65536;
+        ray start --head --redis-port=6379
+        --object-manager-port=8076
         --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; 
-        ray start 
-        --redis-address=$RAY_HEAD_IP:6379 
+    - ulimit -n 65536;
+        ray start
+        --redis-address=$RAY_HEAD_IP:6379
         --object-manager-port=8076

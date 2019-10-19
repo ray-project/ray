@@ -1,7 +1,8 @@
 Training Language Model on Cloud with Fairseq and Ray Autoscaler
 ================================================================
 
-This document provides a walkthrough of using Ray Autoscaler with the `Fairseq library <https://github.com/pytorch/fairseq>`__ to train language models on AWS spot instances. As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
+This document provides a walkthrough of using Ray Autoscaler with the `Fairseq library <https://github.com/pytorch/fairseq>`__ to train language models on AWS spot instances.
+As an example, we use the WikiText-103 dataset to pretrain the RoBERTa model following `this tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__. The pipeline and configurations in this document will work for other models supported by Fairseq, such as sequence-to-sequence machine translation models.
 
 To run this example, you will need to install Ray on your local machine to use Ray Autoscaler.
 
@@ -21,17 +22,17 @@ We also mount `Amazon EFS <autoscaling.html#using-amazon-efs>`__ to store code, 
   The ``{{SecurityGroupId}}`` and ``{{FileSystemId}}`` fields in the config file should be replaced by your own IDs.
 
 
-In ``setup_commands``, we use the PyTorch environment in the Deep Learning AMI, and install Ray and Fairseq with
+In ``setup_commands``, we use the PyTorch environment in the Deep Learning AMI, and install Ray and Fairseq:
 
-.. code-block:: bash
+.. code-block:: yaml
 
-  pip install ray pytorch;
-  pip install -U fairseq==0.8.0;
+    setup_commands:
+        - echo 'export PATH="$HOME/anaconda3/envs/pytorch_p36/bin:$PATH"' >> ~/.bashrc;
+            source ~/.bashrc;
+            pip install -U ray;
+            pip install -U fairseq==0.8.0;
 
-
-The following parts of config will also start Ray server on the head node.
-
-Running the following command on your local machine to start the Ray cluster:
+Run the following command on your local machine to start the Ray cluster:
 
 .. code-block:: bash
 
@@ -79,9 +80,9 @@ Once the cluster is started, you can then SSH into the head node using ``ray att
 Training
 --------
 
-We provide ``ray_train.py`` (`link <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrence to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use them by restarting. 
+We provide ``ray_train.py`` (`link <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.py>`__) as an entrypoint to the Fairseq library. Since we are training the model on spot instances, we provide fault-tolerance in ``ray_train.py`` by checkpointing and restarting when a node fails. The code will also check whether there are new resources available after checkpointing. If so, the program will make use of them by restarting and resizing.
 
-Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a function ``run_fault_tolerant_loop()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and call the ``main`` of Fairseq:
+Two main components of ``ray_train.py`` are a ``RayDistributedActor`` class and a function ``run_fault_tolerant_loop()``. The ``RayDistributedActor`` sets proper arguments for different ray actor processes, adds a checkpoint hook to enable the process to make use of new available GPUs, and calls the ``main`` of Fairseq:
 
 .. code-block:: python
 
@@ -101,17 +102,18 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
 
 
   class RayDistributedActor:
-      """
-      Ray distributed actor to perform distributed training.
-      """
+      """Actor to perform distributed training."""
+
       def run(self, url, world_rank, args):
-          """
-          Set different fields in args for different ray actor processes, add a
-          checkpoint hook, and call the main function of fairseq.
+          """Runs the fairseq training.
+
+          We set args for different ray actors for communication,
+          add a checkpoint hook, and call the main function of fairseq.
           """
 
           # Set the init_method and rank of the process for distributed training.
-          print("Ray worker at {url} rank {rank}".format(url=url, rank=world_rank))
+          print("Ray worker at {url} rank {rank}".format(
+              url=url, rank=world_rank))
           self.url = url
           self.world_rank = world_rank
           args.distributed_rank = world_rank
@@ -124,10 +126,13 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
           main(args, init_distributed=(args.distributed_world_size > 1))
 
       def add_checkpoint_hook(self, args):
-          """Add a hook to the original save_checkpoint function to check whether
-          or not there is new computational resources available. If so, raise
-          an exception to restart the training process and make use of the new
-          resources."""
+          """Add a hook to the original save_checkpoint function.
+
+          This checks if there are new computational resources available.
+          If so, raise exception to restart the training process and
+          make use of the new resources.
+          """
+
           if args.cpu:
               original_n_cpus = args.distributed_world_size
 
@@ -135,8 +140,9 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
                   _original_save_checkpoint(*args, **kwargs)
                   n_cpus = int(ray.cluster_resources()["CPU"])
                   if n_cpus > original_n_cpus:
-                      raise Exception("New CPUs find (original %d CPUs, now %d CPUs)"
-                                      % (original_n_cpus, n_cpus))
+                      raise Exception(
+                          "New CPUs find (original %d CPUs, now %d CPUs)" %
+                          (original_n_cpus, n_cpus))
           else:
               original_n_gpus = args.distributed_world_size
 
@@ -144,8 +150,10 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
                   _original_save_checkpoint(*args, **kwargs)
                   n_gpus = int(ray.cluster_resources().get("GPU", 0))
                   if n_gpus > original_n_gpus:
-                      raise Exception("New GPUs find (original %d GPUs, now %d GPUs)"
-                                      % (original_n_gpus, n_gpus))
+                      raise Exception(
+                          "New GPUs find (original %d GPUs, now %d GPUs)" %
+                          (original_n_gpus, n_gpus))
+
           fairseq.checkpoint_utils.save_checkpoint = _new_save_checkpoint
 
       def get_node_ip(self):
@@ -158,6 +166,7 @@ Two main componets of ``ray_train.py`` are a ``RayDistributedActor`` class and a
               s.bind(("", 0))
               s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
               return s.getsockname()[1]
+
 
 The function ``run_fault_tolerant_loop()`` provides fault-tolerance by catching failure and restart the computation:
 
@@ -196,8 +205,10 @@ The function ``run_fault_tolerant_loop()`` provides fault-tolerance by catching 
 
           # Start the remote processes, and check whether their are any process
           # fails. If so, restart all the processes.
-          unfinished = [worker.run.remote(address, i, args)
-                        for i, worker in enumerate(workers)]
+          unfinished = [
+              worker.run.remote(address, i, args)
+              for i, worker in enumerate(workers)
+          ]
           try:
               while len(unfinished) > 0:
                   finished, unfinished = ray.wait(unfinished)
@@ -214,7 +225,7 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
 .. code-block:: python
 
   def add_ray_args(parser):
-      """Add ray and fault-tolerance related parser arguments to the parser."""
+      """Add ray and fault-tolerance related arguments to the parser."""
       group = parser.add_argument_group('Ray related arguments')
       # fmt: off
       group.add_argument('--ray-address', default="auto", type=str,
@@ -230,6 +241,7 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
 
 .. code-block:: python
 
+
   def set_num_resources(args):
       """Get the number of resources and set the corresponding fields."""
       if args.cpu:
@@ -242,20 +254,20 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
               n_gpus = int(ray.cluster_resources().get("GPU", 0))
           args.distributed_world_size = n_gpus
 
+
 ``set_batch_size()`` keeps the effective batch size to be relatively the same given different number of GPUs:
 
 .. code-block:: python
 
   def set_batch_size(args):
-      """Set the total batch_size to a fixed number no matter how many GPUs we
-      will use."""
+      """Fixes the total batch_size to be agnostic to the GPU count."""
       if args.fix_batch_size is not None:
           args.update_freq = math.ceil(
-              args.fix_batch_size / (args.max_sentences *
-                                    args.distributed_world_size))
-          print("Training on %d GPUs, max_sentences=%d, update_freq=%d"
-                % (args.distributed_world_size, args.max_sentences,
-                  args.fix_batch_size))
+              args.fix_batch_size /
+              (args.max_sentences * args.distributed_world_size))
+          print("Training on %d GPUs, max_sentences=%d, update_freq=%d" %
+                (args.distributed_world_size, args.max_sentences,
+                 args.fix_batch_size))
 
 
 

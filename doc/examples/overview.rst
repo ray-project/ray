@@ -32,3 +32,7 @@ Examples Overview
 .. customgalleryitem::
    :tooltip: Implement a simple streaming application using Ray’s actors.
    :description: :doc:`/auto_examples/plot_streaming`
+
+.. customgalleryitem::
+   :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
+   :description: :doc:`/auto_examples/plot_example-lm`
