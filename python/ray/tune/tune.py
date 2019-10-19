@@ -5,13 +5,13 @@ from __future__ import print_function
 import logging
 import time
 
+import ray.tune.registry as registry
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.trainable import Trainable
-import ray.tune.registry as registry
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner

@@ -350,7 +350,7 @@ class Trial(object):
         return False
 
     def get_trainable_cls(self):
-        return registry.get_trainable(self.trainable_name)
+        return registry.get_trainable_cls(self.trainable_name)
 
     def set_verbose(self, verbose):
         self.verbose = verbose

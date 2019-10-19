@@ -29,7 +29,7 @@ def has_trainable(trainable_name):
 
 
 def get_trainable_cls(trainable_name):
-    validate_trainable(TRAINABLE_CLASS, trainable_name)
+    validate_trainable(trainable_name)
     return _global_registry.get(TRAINABLE_CLASS, trainable_name)
 
 
