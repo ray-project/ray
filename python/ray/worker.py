@@ -1122,14 +1122,14 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="type")
-        # Tell Ray to serialize _RayParameters as dictionaries. This is
+        # Tell Ray to serialize RayParameters as dictionaries. This is
         # used when passing around actor handles.
         register_custom_serializer(
-            ray.signature._RayParameter,
+            ray.signature.RayParameter,
             use_dict=True,
             local=True,
             job_id=job_id,
-            class_id="ray.signature._RayParameter")
+            class_id="ray.signature.RayParameter")
         # Tell Ray to serialize StringIO with pickle. We do this because
         # Ray's default __dict__ serialization is incorrect for this type
         # (the object's __dict__ is empty and therefore doesn't
