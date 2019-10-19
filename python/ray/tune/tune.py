@@ -273,8 +273,9 @@ def run(run_or_experiment,
                            "To enable trials to use GPUs, set "
                            "tune.run(resources_per_trial={'gpu': 1}...) "
                            "which allows Tune to expose 1 GPU to each trial. "
-                           "You can also set `default_resource_request` if "
-                           "using the Trainable API.")
+                           "You can also override "
+                           "`Trainable.default_resource_request` if using the "
+                           "Trainable API.")
 
     last_debug = 0
     while not runner.is_finished():
