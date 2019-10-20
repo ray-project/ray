@@ -3,7 +3,8 @@
 
 #include <mutex>
 
-#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -171,7 +172,7 @@ class CoreWorkerObjectInterface {
   bool use_memory_store_;
 
   /// Protects async put state.
-  std::mutex mu_;
+  absl::Mutex mu_;
 
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;

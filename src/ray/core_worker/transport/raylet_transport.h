@@ -4,6 +4,8 @@
 #include <list>
 #include <utility>
 
+#include "absl/synchronization/mutex.h"
+
 #include "absl/base/thread_annotations.h"
 #include "ray/common/task/task.h"
 #include "ray/core_worker/object_interface.h"
@@ -54,7 +56,7 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
  private:
   void ProcessAssignedTasks(rpc::SendReplyCallback send_reply_callback);
 
-  Status HandleAssignTask0(const rpc::AssignTaskRequest &request,
+  Status HandleAssignTask0(const flatbuffers::Vector<flatbuffers::Offset<ray::protocol::ResourceIdSetInfo> > *,
                            const TaskSpecification &task_spec);
 
   // Worker context.
@@ -71,7 +73,7 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   boost::asio::io_service &task_main_io_service_;
 
   /// Mutex to protect the assigned task queues below.
-  std::mutex mu_;
+  absl::Mutex mu_;
   /// List of tasks to execute next.
   std::list<TaskSpecification> assigned_tasks_ GUARDED_BY(mu_);
   /// Number of tasks assigned in total in the last assign call.
