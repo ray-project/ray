@@ -3,7 +3,6 @@
 #include <sys/wait.h>
 
 #include <algorithm>
-#include <thread>
 
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"

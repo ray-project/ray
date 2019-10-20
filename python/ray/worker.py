@@ -685,12 +685,6 @@ class Worker(object):
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
-
-        def exit(signum, frame):
-            shutdown()
-            sys.exit(0)
-
-        signal.signal(signal.SIGTERM, exit)
         self.core_worker.run_task_loop()
 
 
@@ -1154,7 +1148,7 @@ def shutdown(exiting_interpreter=False):
         # to make sure that log messages finish printing.
         time.sleep(0.5)
 
-    disconnect()
+    disconnect(exiting_interpreter)
 
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
@@ -1617,7 +1611,7 @@ def connect(node,
     worker.cached_functions_to_run = None
 
 
-def disconnect():
+def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""
     # Reset the list of cached remote functions and actors so that if more
     # remote functions or actors are defined and then connect is called again,
@@ -1645,10 +1639,12 @@ def disconnect():
     worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
 
-    if hasattr(worker, "raylet_client"):
-        del worker.raylet_client
-    if hasattr(worker, "core_worker"):
-        del worker.core_worker
+    if not exiting_interpreter:
+        if hasattr(worker, "raylet_client"):
+            del worker.raylet_client
+
+        if hasattr(worker, "core_worker"):
+            del worker.core_worker
 
 
 @contextmanager

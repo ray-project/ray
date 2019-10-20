@@ -1,5 +1,3 @@
-#include <boost/asio/signal_set.hpp>
-
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -63,14 +61,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
-
-  boost::asio::signal_set signals(io_service_, SIGINT, SIGTERM);
-  signals.async_wait(
-      [](const boost::system::error_code &error, int signal_number) -> void {
-        if (!error) {
-          exit(signal_number);
-        }
-      });
 
   // Initialize gcs client.
   gcs_client_ =
@@ -136,6 +126,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
+  std::cout << "IN DESTRUCTOR";
   io_service_.stop();
   io_thread_.join();
   if (task_execution_interface_) {
@@ -155,7 +146,16 @@ void CoreWorker::Disconnect() {
   }
 }
 
-void CoreWorker::StartIOService() { io_service_.run(); }
+void CoreWorker::StartIOService() {
+  // Block SIGINT and SIGTERM so they will be handled by the main thread.
+  sigset_t mask;
+  sigemptyset(&mask); 
+  sigaddset(&mask, SIGINT); 
+  sigaddset(&mask, SIGTERM); 
+  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
+  io_service_.run();
+}
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {

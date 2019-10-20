@@ -3,6 +3,8 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
+from cysignals.signals cimport sig_on, sig_off
+
 import numpy
 import time
 import logging
@@ -649,6 +651,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
+    sig_off()
     with gil:
         try:
             # The call to execute_task should never raise an exception. If it
@@ -671,6 +674,7 @@ cdef CRayStatus task_execution_handler(
             # address this.
             sys.exit(1)
 
+    sig_on()
     return CRayStatus.OK()
 
 cdef class CoreWorker:
@@ -695,6 +699,7 @@ cdef class CoreWorker:
             self.core_worker.get().Disconnect()
 
     def run_task_loop(self):
+        sig_on()
         self.core_worker.get().Execution().Run()
 
     def get_current_task_id(self):
@@ -719,13 +724,17 @@ cdef class CoreWorker:
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
+            CRayStatus status
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
-
+ 
         with nogil:
-            check_status(self.core_worker.get().Objects().Get(
-                c_object_ids, -1, &results))
+            sig_on()
+            status = self.core_worker.get().Objects().Get(
+                c_object_ids, -1, &results)
+            sig_off()
+            check_status(status)
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -825,6 +834,7 @@ cdef class CoreWorker:
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
              TaskID current_task_id):
         cdef:
+            CRayStatus status
             WaitResultPair result
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
@@ -832,8 +842,11 @@ cdef class CoreWorker:
 
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            check_status(self.core_worker.get().Objects().Wait(
-                wait_ids, num_returns, timeout_milliseconds, &results))
+            sig_on()
+            status = self.core_worker.get().Objects().Wait(
+                wait_ids, num_returns, timeout_milliseconds, &results)
+            sig_off()
+            check_status(status)
 
         assert len(results) == len(object_ids)
 
