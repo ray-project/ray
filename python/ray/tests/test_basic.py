@@ -793,7 +793,7 @@ def test_args_starkwargs(ray_start_regular):
     def starkwargs(a, b, **kwargs):
         return a, b, kwargs
 
-    class TestActor():
+    class TestActor(object):
         def starkwargs(self, a, b, **kwargs):
             return a, b, kwargs
 
@@ -828,7 +828,7 @@ def test_args_named_and_star(ray_start_regular):
     def hello(a, x="hello", **kwargs):
         return a, x, kwargs
 
-    class TestActor():
+    class TestActor(object):
         def hello(self, a, x="hello", **kwargs):
             return a, x, kwargs
 
@@ -869,7 +869,7 @@ def test_args_stars_after(ray_start_regular):
     def star_args_after(a="hello", b="heo", *args, **kwargs):
         return a, b, args, kwargs
 
-    class TestActor():
+    class TestActor(object):
         def star_args_after(self, a="hello", b="heo", *args, **kwargs):
             return a, b, args, kwargs
 
