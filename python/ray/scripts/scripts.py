@@ -225,6 +225,11 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
+@click.option(
+    "--use-pickle",
+    is_flag=True,
+    default=False,
+    help="Use pickle for serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port, memory,
@@ -232,7 +237,8 @@ def start(node_ip_address, redis_address, address, redis_port,
           head, include_webui, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config):
+          java_worker_options, load_code_from_local, use_pickle,
+          internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -273,6 +279,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         include_webui=include_webui,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
+        use_pickle=use_pickle,
         _internal_config=internal_config)
 
     if head:
@@ -637,7 +644,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help="Port to forward.")
+    "--port-forward",
+    required=False,
+    multiple=True,
+    type=int,
+    help="Port to forward. Use this multiple times to forward multiple ports.")
 @click.argument("script", required=True, type=str)
 @click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
@@ -665,7 +676,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
         command_parts += [args]
     cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
-                 cluster_name, port_forward)
+                 cluster_name, list(port_forward))
 
 
 @cli.command()
@@ -700,11 +711,15 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help="Port to forward.")
+    "--port-forward",
+    required=False,
+    multiple=True,
+    type=int,
+    help="Port to forward. Use this multiple times to forward multiple ports.")
 def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
              cluster_name, port_forward):
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+                 cluster_name, list(port_forward))
 
 
 @cli.command()
