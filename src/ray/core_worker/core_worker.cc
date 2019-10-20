@@ -126,7 +126,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
-  std::cout << "IN DESTRUCTOR";
   io_service_.stop();
   io_thread_.join();
   if (task_execution_interface_) {

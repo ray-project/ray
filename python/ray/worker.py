@@ -690,7 +690,7 @@ class Worker(object):
             shutdown(True)
             sys.exit(1)
 
-        signal.signal(sigterm_handler)
+        signal.signal(signal.SIGTERM, sigterm_handler)
         self.core_worker.run_task_loop()
 
 
