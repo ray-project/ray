@@ -106,7 +106,7 @@ class Cluster(object):
 
         return node
 
-    def remove_node(self, node, allow_graceful=False):
+    def remove_node(self, node, allow_graceful=True):
         """Kills all processes associated with worker node.
 
         Args:
