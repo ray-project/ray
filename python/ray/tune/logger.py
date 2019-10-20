@@ -166,6 +166,10 @@ class TF2Logger(Logger):
     """
 
     def _init(self):
+        global tf
+        if tf is None:
+            import tensorflow as tf
+            tf = tf.compat.v2  # setting this for TF2.0
         self._file_writer = None
         self._hp_logged = False
 
@@ -237,6 +241,10 @@ class TFLogger(Logger):
     """
 
     def _init(self):
+        global tf
+        if tf is None:
+            import tensorflow as tf
+            tf = tf.compat.v1  # setting this for regular TF logger
         logger.debug("Initializing TFLogger instead of TF2Logger.")
         self._file_writer = tf.summary.FileWriter(self.logdir)
 
