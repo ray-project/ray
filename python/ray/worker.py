@@ -327,21 +327,20 @@ class Worker(object):
                         memcopy_threads=self.memcopy_threads)
                 break
             except pyarrow.SerializationCallbackError as e:
+                cls_type = type(e.example_object)
                 try:
-                    _register_custom_serializer(
-                        type(e.example_object), use_dict=True)
+                    _register_custom_serializer(cls_type, use_dict=True)
                     warning_message = ("WARNING: Serializing objects of type "
                                        "{} by expanding them as dictionaries "
                                        "of their fields. This behavior may "
                                        "be incorrect in some cases.".format(
-                                           type(e.example_object)))
+                                           cls_type))
                     logger.debug(warning_message)
                 except (serialization.RayNotDictionarySerializable,
                         serialization.CloudPickleError,
                         pickle.pickle.PicklingError, Exception):
                     # We also handle generic exceptions here because
                     # cloudpickle can fail with many different types of errors.
-                    cls_type = type(e.example_object)
                     warning_message = (
                         "Falling back to serializing {} objects by using "
                         "pickle. Use `ray.register_custom_serializer({},...)` "
@@ -350,16 +349,16 @@ class Worker(object):
                     try:
                         _register_custom_serializer(cls_type, use_pickle=True)
                         logger.warning(warning_message)
-                    except serialization.CloudPickleError:
+                    except serialization.CloudPickleError, ValueError:
                         _register_custom_serializer(
-                            type(e.example_object),
+                            cls_type,
                             use_pickle=True,
                             local=True)
                         warning_message = ("WARNING: Pickling the class {} "
                                            "failed, so we are using pickle "
                                            "and only registering the class "
                                            "locally.".format(
-                                               type(e.example_object)))
+                                               cls_type))
                         logger.warning(warning_message)
 
     def put_object(self, object_id, value):
