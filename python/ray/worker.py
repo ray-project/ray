@@ -976,8 +976,13 @@ class Worker(object):
                             actor_id, required_resources, arguments,
                             return_ids, create_actor, is_direct_call):
         success = False
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            function_descriptor_list)
+        method_name = function_descriptor_list[2]
+        if method_name not in self.function_actor_manager._function_descriptors[job_id]:
+            function_descriptor = FunctionDescriptor.from_bytes_list(function_descriptor_list)
+            self.function_actor_manager._function_descriptors[job_id][method_name] = function_descriptor
+        else:
+            function_descriptor = self.function_actor_manager._function_descriptors[job_id][method_name]
+
         if is_direct_call:
             intercept_returns = []
         else:
@@ -995,8 +1000,12 @@ class Worker(object):
             )
         actor = self.actors[self.actor_id]
 
-        execution_info = self.function_actor_manager.get_execution_info(
-            job_id, function_descriptor)
+        if method_name not in self.function_actor_manager._execution_infos[job_id]:
+            execution_info = self.function_actor_manager.get_execution_info(
+                job_id, function_descriptor)
+            self.function_actor_manager._execution_infos[job_id][method_name] = execution_info
+        else:
+            execution_info = self.function_actor_manager._execution_infos[job_id][method_name]
 
         # Execute the task.
         function_name = execution_info.function_name
