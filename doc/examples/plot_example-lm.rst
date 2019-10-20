@@ -38,10 +38,18 @@ Run the following command on your local machine to start the Ray cluster:
 
   ray up lm-cluster.yaml
 
+``ray_train.sh`` also assumes that all of the ``lm/`` files are in ``$HOME/efs``.
+You can move these files manually, or use the following command to upload
+files from a local path:
+
+.. code-block::
+
+  ray rsync-up lm-cluster.yaml PATH/TO/LM '~/efs/lm'
+
 Preprocessing Data
 ------------------
 
-Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. We can run ``ray_train.sh`` (`code <https://github.com/ray-project/ray/tree/master/doc/examples/lm/ray_train.sh>`_) to do this, which adapts instructions from `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__.
+Once the cluster is started, you can then SSH into the head node using ``ray attach lm-cluster.yaml`` and download or preprocess the data on EFS for training. We can run ``preprocess.sh`` (`code <https://github.com/ray-project/ray/tree/master/doc/examples/lm/preprocess.sh>`_) to do this, which adapts instructions from `the RoBERTa tutorial <https://github.com/pytorch/fairseq/blob/master/examples/roberta/README.pretraining.md>`__.
 
 Training
 --------
@@ -191,17 +199,22 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
 .. code-block:: python
 
   def add_ray_args(parser):
-      """Add ray and fault-tolerance related arguments to the parser."""
-      group = parser.add_argument_group('Ray related arguments')
-      # fmt: off
-      group.add_argument('--ray-address', default="auto", type=str,
-                        help='address for ray initialization')
-      group.add_argument('--fix-batch-size', default=None, type=int,
-                        help='fix batch size (max_sentences * update_freq '
-                              '* n_GPUs) to be a fixed input value for different '
-                              'number of GPUs or CPUs')
-      # fmt: on
+      """Add ray and fault-tolerance related parser arguments to the parser."""
+      group = parser.add_argument_group("Ray related arguments")
+      group.add_argument(
+          "--ray-address",
+          default="auto",
+          type=str,
+          help="address for ray initialization")
+      group.add_argument(
+          "--fix-batch-size",
+          default=None,
+          type=int,
+          help="fix batch size (max_sentences * update_freq "
+          "* n_GPUs) to be a fixed input value for different "
+          "number of GPUs or CPUs")
       return group
+
 
 ``set_num_resources()`` sets the distributed world size to be the number of resources. Also if we want to use GPUs but the current number of GPUs is 0, the function will wait until there is GPU available:
 
@@ -219,6 +232,7 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
               time.sleep(10)
               n_gpus = int(ray.cluster_resources().get("GPU", 0))
           args.distributed_world_size = n_gpus
+
 
 
 ``set_batch_size()`` keeps the effective batch size to be relatively the same given different number of GPUs:
