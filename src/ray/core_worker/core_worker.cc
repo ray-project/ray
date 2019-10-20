@@ -130,6 +130,7 @@ CoreWorker::CoreWorker(
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
     worker_context_.SetCurrentTaskId(task_id);
+    SetCurrentTaskId(task_id);
   }
 
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
