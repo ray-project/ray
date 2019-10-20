@@ -512,9 +512,9 @@ class ActorHandle(object):
         args = signature.extend_args(function_signature, args, kwargs)
 
         if worker.mode == ray.LOCAL_MODE:
-                function = getattr(worker.actors[self._actor_id], method_name)
-                object_ids = worker.local_mode_manager.execute(
-                    function, method_name, args, num_return_vals)
+            function = getattr(worker.actors[self._actor_id], method_name)
+            object_ids = worker.local_mode_manager.execute(
+                function, method_name, args, num_return_vals)
         else:
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_id,
