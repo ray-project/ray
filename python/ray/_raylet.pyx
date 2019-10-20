@@ -728,7 +728,7 @@ cdef class CoreWorker:
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
- 
+
         with nogil:
             sig_on()
             status = self.core_worker.get().Objects().Get(

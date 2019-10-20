@@ -1,6 +1,6 @@
+#include "ray/core_worker/core_worker.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 
 namespace {
 
@@ -149,9 +149,9 @@ void CoreWorker::Disconnect() {
 void CoreWorker::StartIOService() {
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
-  sigemptyset(&mask); 
-  sigaddset(&mask, SIGINT); 
-  sigaddset(&mask, SIGTERM); 
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
   io_service_.run();

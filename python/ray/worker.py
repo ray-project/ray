@@ -685,6 +685,12 @@ class Worker(object):
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
+
+        def sigterm_handler(signum, frame):
+            shutdown(True)
+            sys.exit(1)
+
+        signal.signal(sigterm_handler)
         self.core_worker.run_task_loop()
 
 
