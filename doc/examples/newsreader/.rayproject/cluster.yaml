@@ -24,7 +24,7 @@ setup_commands:
   - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
   - sudo apt -y update
   - sudo apt -y install npm
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev5-cp36-cp36m-manylinux1_x86_64.whl
+  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
 
 # How Ray will authenticate with newly launched nodes.
 auth:

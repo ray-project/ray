@@ -9,6 +9,9 @@ This script will demonstrate how to use two important parts of the Ray API:
 using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for
 their results to be ready.
 
+.. image:: ../images/hyperparameter.png
+    :align: center
+
 .. important:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.

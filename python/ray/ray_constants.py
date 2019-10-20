@@ -54,7 +54,7 @@ PICKLE_OBJECT_WARNING_SIZE = 10**7
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 20000
+MAX_RESOURCE_QUANTITY = 40000
 
 # Each memory "resource" counts as this many bytes of memory.
 MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
