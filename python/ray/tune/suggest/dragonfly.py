@@ -83,10 +83,10 @@ class DragonflySearch(SuggestionAlgorithm):
             self._initial_points = points_to_evaluate
         self._max_concurrent = max_concurrent
         self._metric = metric
-        # Skopt internally minimizes, so "max" => -1
-        if mode == "max":
+        # Dragonfly internally maximizes, so "min" => -1
+        if mode == "min":
             self._metric_op = -1.
-        elif mode == "min":
+        elif mode == "max":
             self._metric_op = 1.
         self._opt = optimizer
         self._live_trial_mapping = {}
@@ -112,9 +112,9 @@ class DragonflySearch(SuggestionAlgorithm):
                           error=False,
                           early_terminated=False):
         """Passes result to Dragonfly unless early terminated or errored."""
-        skopt_trial_info = self._live_trial_mapping.pop(trial_id)
+        trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._skopt_opt.tell(skopt_trial_info,
+            self._opt.tell(trial_info,
                                  self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
