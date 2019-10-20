@@ -13,6 +13,7 @@ from ray.tune.suggest.suggestion import SuggestionAlgorithm
 
 logger = logging.getLogger(__name__)
 
+
 class DragonflySearch(SuggestionAlgorithm):
     """A wrapper around Dragonfly to provide trial suggestions.
 
@@ -41,8 +42,8 @@ class DragonflySearch(SuggestionAlgorithm):
     Example:
         >>> from dragonfly.opt.gp_bandit import EuclideanGPBandit
         >>> from dragonfly.exd.worker_manager import SyntheticWorkerManager
-        >>> from dragonfly.utils.euclidean_synthetic_functions import get_syn_func_caller
-        >>> func_caller = get_syn_func_caller('hartmann6', 
+        >>> from dragonfly.utils.euclidean_synthetic_functions import get_syn_func_caller # noqa: E501
+        >>> func_caller = get_syn_func_caller('hartmann6',
                 noise_type='gauss', noise_scale=0.1)
         >>> worker_manager = SyntheticWorkerManager(1, time_distro='const')
         >>> optimizer = EuclideanGPBandit(func_caller, worker_manager)
@@ -51,7 +52,7 @@ class DragonflySearch(SuggestionAlgorithm):
         >>>     metric="mean_loss",
         >>>     mode="min")
     """
-    
+
     def __init__(self,
                  optimizer,
                  max_concurrent=10,
@@ -110,7 +111,7 @@ class DragonflySearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to Dragonfly unless early terminated or errored."""
+        """Passes result to Dragonfly unless early terminated or errored."""
         skopt_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
             self._skopt_opt.tell(skopt_trial_info,
