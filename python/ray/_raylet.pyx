@@ -696,11 +696,11 @@ cdef class CoreWorker:
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
 
-            # with nogil:
-                # check_status(self.core_worker.get().SubmitActorTask(
-                #     c_actor_id,
-                #     ray_function,
-                #     args_vector, task_options, &return_ids))
+            with nogil:
+                check_status(self.core_worker.get().SubmitActorTask(
+                    c_actor_id,
+                    ray_function,
+                    args_vector, task_options, &return_ids))
 
             return VectorToObjectIDs(return_ids)
 
