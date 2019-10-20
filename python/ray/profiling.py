@@ -48,7 +48,4 @@ def profile(event_type, extra_data=None):
     Returns:
         An object that can profile a span of time via a "with" statement.
     """
-    worker = ray.worker.global_worker
-    if worker.mode == ray.worker.LOCAL_MODE:
-        return NULL_LOG_SPAN
-    return worker.core_worker.profile_event(event_type, extra_data)
+    return NULL_LOG_SPAN  # TODO
