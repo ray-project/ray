@@ -72,7 +72,7 @@ public class FunctionManager {
    * @param func The lambda.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(JobId jobId, RayFunc func) {
+  public synchronized RayFunction getFunction(JobId jobId, RayFunc func) {
     JavaFunctionDescriptor functionDescriptor = RAY_FUNC_CACHE.get().get(func.getClass());
     if (functionDescriptor == null) {
       SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(func);
@@ -92,7 +92,8 @@ public class FunctionManager {
    * @param functionDescriptor The function descriptor.
    * @return A RayFunction object.
    */
-  public RayFunction getFunction(JobId jobId, JavaFunctionDescriptor functionDescriptor) {
+  public synchronized RayFunction getFunction(JobId jobId,
+      JavaFunctionDescriptor functionDescriptor) {
     JobFunctionTable jobFunctionTable = jobFunctionTables.get(jobId);
     if (jobFunctionTable == null) {
       ClassLoader classLoader;

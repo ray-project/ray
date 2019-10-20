@@ -4,6 +4,7 @@ import org.ray.api.runtime.RayRuntime;
 import org.ray.api.runtime.RayRuntimeFactory;
 import org.ray.runtime.config.RayConfig;
 import org.ray.runtime.config.RunMode;
+import org.ray.runtime.functionmanager.FunctionManager;
 import org.ray.runtime.generated.Common.WorkerType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,14 +20,15 @@ public class DefaultRayRuntimeFactory implements RayRuntimeFactory {
   public RayRuntime createRayRuntime() {
     RayConfig rayConfig = RayConfig.create();
     try {
+      FunctionManager functionManager = new FunctionManager(rayConfig.jobResourcePath);
       RayRuntime runtime;
       if (rayConfig.runMode == RunMode.SINGLE_PROCESS) {
-        runtime = new RayDevRuntime(rayConfig);
+        runtime = new RayDevRuntime(rayConfig, functionManager);
       } else {
         if (rayConfig.workerMode == WorkerType.DRIVER) {
-          runtime = new RayNativeRuntime(rayConfig);
+          runtime = new RayNativeRuntime(rayConfig, functionManager);
         } else {
-          runtime = new RayMultiWorkerNativeRuntime(rayConfig);
+          runtime = new RayMultiWorkerNativeRuntime(rayConfig, functionManager);
         }
       }
       return runtime;

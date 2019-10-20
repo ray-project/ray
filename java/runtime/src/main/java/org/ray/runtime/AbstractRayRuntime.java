@@ -1,10 +1,12 @@
 package org.ray.runtime;
 
+import java.util.List;
+import java.util.concurrent.Callable;
+
 import com.google.common.base.Preconditions;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
-import java.util.List;
-import java.util.concurrent.Callable;
+
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
 import org.ray.api.RayPyActor;
@@ -52,9 +54,9 @@ public abstract class AbstractRayRuntime implements RayRuntime {
   protected TaskSubmitter taskSubmitter;
   protected WorkerContext workerContext;
 
-  public AbstractRayRuntime(RayConfig rayConfig) {
+  public AbstractRayRuntime(RayConfig rayConfig, FunctionManager functionManager) {
     this.rayConfig = rayConfig;
-    functionManager = new FunctionManager(rayConfig.jobResourcePath);
+    this.functionManager = functionManager;
     runtimeContext = new RuntimeContextImpl(this);
   }
 
