@@ -142,10 +142,12 @@ def add_ray_args(parser):
     group.add_argument(
         "--fix-batch-size",
         default=None,
-        type=int,
-        help="fix batch size (max_sentences * update_freq "
-        "* n_GPUs) to be a fixed input value for different "
-        "number of GPUs or CPUs")
+        metavar="B1,B2,...,B_N",
+        type=lambda uf: options.eval_str_list(uf, type=int),
+        help="fix the actual batch size (max_sentences * update_freq "
+             "* n_GPUs) to be the fixed input values by adjusting update_freq "
+             "accroding to actual n_GPUs; the batch size is fixed to B_i for "
+             "epoch i; all epochs >N are fixed to B_N")
     return group
 
 
@@ -165,12 +167,14 @@ def set_num_resources(args):
 def set_batch_size(args):
     """Fixes the total batch_size to be agnostic to the GPU count."""
     if args.fix_batch_size is not None:
-        args.update_freq = math.ceil(
-            args.fix_batch_size /
-            (args.max_sentences * args.distributed_world_size))
-        print("Training on %d GPUs, max_sentences=%d, update_freq=%d" %
+        args.update_freq = [
+            math.ceil(batch_size /
+                      (args.max_sentences * args.distributed_world_size))
+            for batch_size in args.fix_batch_size
+        ]
+        print("Training on %d GPUs, max_sentences=%d, update_freq=%s" %
               (args.distributed_world_size, args.max_sentences,
-               args.fix_batch_size))
+               repr(args.update_freq)))
 
 
 if __name__ == "__main__":

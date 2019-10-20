@@ -209,10 +209,12 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
       group.add_argument(
           "--fix-batch-size",
           default=None,
-          type=int,
-          help="fix batch size (max_sentences * update_freq "
-          "* n_GPUs) to be a fixed input value for different "
-          "number of GPUs or CPUs")
+          metavar="B1,B2,...,B_N",
+          type=lambda uf: options.eval_str_list(uf, type=int),
+          help="fix the actual batch size (max_sentences * update_freq "
+              "* n_GPUs) to be the fixed input values by adjusting update_freq "
+              "accroding to actual n_GPUs; the batch size is fixed to B_i for "
+              "epoch i; all epochs >N are fixed to B_N")
       return group
 
 
@@ -242,12 +244,14 @@ In ``ray_train.py``, we also define a set of helper functions. ``add_ray_args()`
   def set_batch_size(args):
       """Fixes the total batch_size to be agnostic to the GPU count."""
       if args.fix_batch_size is not None:
-          args.update_freq = math.ceil(
-              args.fix_batch_size /
-              (args.max_sentences * args.distributed_world_size))
-          print("Training on %d GPUs, max_sentences=%d, update_freq=%d" %
+          args.update_freq = [
+              math.ceil(batch_size /
+                        (args.max_sentences * args.distributed_world_size))
+              for batch_size in args.fix_batch_size
+          ]
+          print("Training on %d GPUs, max_sentences=%d, update_freq=%s" %
                 (args.distributed_world_size, args.max_sentences,
-                 args.fix_batch_size))
+                  repr(args.update_freq)))
 
 
 
@@ -255,7 +259,7 @@ To start training, run `following commands <https://github.com/ray-project/ray/t
 
 .. code-block:: bash
 
-  cd ~/efs
+  cd ~/efs/lm
 
   TOTAL_UPDATES=125000       # Total number of training steps
   WARMUP_UPDATES=10000       # Warmup the learning rate over this many updates
@@ -291,13 +295,13 @@ To let Ray automatically stop the cluster after the training finished, you can d
 
 .. code-block:: bash
 
-  ray exec --stop lm-cluster.yaml 'bash $HOME/efs/ray_train.sh'
+  ray exec --stop lm-cluster.yaml 'bash $HOME/efs/lm/ray_train.sh'
 
 or run the following command on the remote head node:
 
 .. code-block:: bash
 
-  ray exec --stop ~/ray_bootstrap_config.yaml 'bash $HOME/efs/ray_train.sh'
+  ray exec --stop ~/ray_bootstrap_config.yaml 'bash $HOME/efs/lm/ray_train.sh'
 
 To test the fault-tolerance, you can run the following command on your local machine to randomly kill one node:
 
