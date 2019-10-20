@@ -45,7 +45,7 @@ class DragonflySearch(SuggestionAlgorithm):
         >>> func_caller = get_syn_func_caller('hartmann6', 
                 noise_type='gauss', noise_scale=0.1)
         >>> worker_manager = SyntheticWorkerManager(1, time_distro='const')
-        >>> optimizer = EuclideanGPBandit(func_caller, worker_manager))
+        >>> optimizer = EuclideanGPBandit(func_caller, worker_manager)
         >>> algo = DragonflySearch(optimizer,
         >>>     max_concurrent=4,
         >>>     metric="mean_loss",
@@ -61,7 +61,7 @@ class DragonflySearch(SuggestionAlgorithm):
                  points_to_evaluate=None,
                  evaluated_rewards=None,
                  **kwargs):
-        assert sko is not None, """dragonfly must be installed!
+        assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonlfy with the command:
             `pip install dragonfly`."""
         assert type(max_concurrent) is int and max_concurrent > 0
