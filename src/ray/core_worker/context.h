@@ -39,19 +39,10 @@ class WorkerContext {
   int GetNextPutIndex();
 
  private:
-  /// Type of the worker.
   const WorkerType worker_type_;
-
-  /// ID for this worker.
   const WorkerID worker_id_;
-
-  /// Job ID for this worker.
   JobID current_job_id_;
-
-  /// ID of current actor.
   ActorID current_actor_id_;
-
-  /// Whether current actor accepts direct calls.
   bool current_actor_use_direct_call_;
 
  private:

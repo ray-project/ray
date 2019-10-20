@@ -346,22 +346,6 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
   return ret;
 }
 
-const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
-                                             int64_t num_forks) {
-  // Compute hashes.
-  SHA256_CTX ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(actor_handle_id.Data()),
-                actor_handle_id.Size());
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(&num_forks), sizeof(num_forks));
-
-  // Compute the final actor handle ID from the hash.
-  BYTE buff[DIGEST_SIZE];
-  sha256_final(&ctx, buff);
-  RAY_CHECK(DIGEST_SIZE >= ActorHandleID::Size());
-  return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
-}
-
 JobID JobID::FromInt(uint32_t value) {
   std::vector<uint8_t> data(JobID::Size(), 0);
   std::memcpy(data.data(), &value, JobID::Size());

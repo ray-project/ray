@@ -46,7 +46,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
     RAY_CHECK(local_java_task_executor);
     // convert RayFunction
     jobject ray_function_array_list =
-        NativeStringVectorToJavaStringList(env, ray_function.function_descriptor);
+        NativeStringVectorToJavaStringList(env, ray_function.GetFunctionDescriptor());
     // convert args
     // TODO (kfstorm): Avoid copying binary data from Java to C++
     jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
@@ -71,7 +71,8 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
   try {
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
-        native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"", executor_func);
+        native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"",
+        /*node_ip_address=*/"", executor_func);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;

@@ -14,7 +14,8 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import run_string_as_driver_nonblocking
+from ray.tests.utils import (run_string_as_driver_nonblocking,
+                             RayTestTimeoutException)
 
 
 # This test checks that when a worker dies in the middle of a get, the plasma
@@ -25,6 +26,7 @@ from ray.tests.utils import run_string_as_driver_nonblocking
 def test_dying_worker_get(ray_start_2_cpus):
     @ray.remote
     def sleep_forever():
+        ray.experimental.signal.send("ready")
         time.sleep(10**6)
 
     @ray.remote
@@ -32,7 +34,7 @@ def test_dying_worker_get(ray_start_2_cpus):
         return os.getpid()
 
     x_id = sleep_forever.remote()
-    time.sleep(0.01)  # Try to wait for the sleep task to get scheduled.
+    ray.experimental.signal.receive([x_id])  # Block until it is scheduled.
     # Get the PID of the other worker.
     worker_pid = ray.get(get_worker_pid.remote())
 
@@ -224,7 +226,8 @@ def test_worker_failed(ray_start_workers_separate_multinode):
         for pid in new_pids:
             pids.add(pid)
         if time.time() - start_time > 60:
-            raise Exception("Timed out while waiting to get worker PIDs.")
+            raise RayTestTimeoutException(
+                "Timed out while waiting to get worker PIDs.")
 
     @ray.remote
     def f(x):

@@ -13,6 +13,14 @@ Tuned Examples
 - `Atari benchmarks <https://github.com/ray-project/rl-experiments>`__:
    Collection of reasonably optimized Atari results.
 
+Blog Posts
+----------
+
+- `Scaling Multi-Agent Reinforcement Learning <http://bair.berkeley.edu/blog/2018/12/12/rllib>`__:
+   This blog post is a brief tutorial on multi-agent RL and its design in RLlib.
+- `Functional RL with Keras and TensorFlow Eager <https://medium.com/riselab/functional-rl-with-keras-and-tensorflow-eager-7973f81d6345>`__:
+   Exploration of a functional paradigm for implementing reinforcement learning (RL) algorithms.
+
 Training Workflows
 ------------------
 

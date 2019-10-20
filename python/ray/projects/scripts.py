@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import click
+import copy
 import jsonschema
 import logging
 import os
@@ -149,16 +150,21 @@ def load_project_or_throw():
 class SessionRunner(object):
     """Class for setting up a session and executing commands in it."""
 
-    def __init__(self):
+    def __init__(self, session_name=None):
         """Initialize session runner and try to parse the command arguments.
+
+        Args:
+            session_name (str): Name of the session.
 
         Raises:
             click.ClickException: This exception is raised if any error occurs.
         """
         self.project_definition = load_project_or_throw()
+        self.session_name = session_name
 
         # Check for features we don't support right now
-        project_environment = self.project_definition.config["environment"]
+        project_environment = self.project_definition.config.get(
+            "environment", {})
         need_docker = ("dockerfile" in project_environment
                        or "dockerimage" in project_environment)
         if need_docker:
@@ -174,7 +180,7 @@ class SessionRunner(object):
             no_restart=False,
             restart_only=False,
             yes=True,
-            override_cluster_name=None,
+            override_cluster_name=self.session_name,
         )
 
     def sync_files(self):
@@ -183,13 +189,14 @@ class SessionRunner(object):
             self.project_definition.cluster_yaml(),
             source=self.project_definition.root,
             target=self.project_definition.working_directory(),
-            override_cluster_name=None,
+            override_cluster_name=self.session_name,
             down=False,
         )
 
     def setup_environment(self):
         """Set up the environment of the session."""
-        project_environment = self.project_definition.config["environment"]
+        project_environment = self.project_definition.config.get(
+            "environment", {})
 
         if "requirements" in project_environment:
             requirements_txt = project_environment["requirements"]
@@ -203,7 +210,7 @@ class SessionRunner(object):
                 self.project_definition.cluster_yaml(),
                 source=requirements_txt,
                 target=remote_requirements_txt,
-                override_cluster_name=None,
+                override_cluster_name=self.session_name,
                 down=False,
             )
             self.execute_command(
@@ -213,32 +220,7 @@ class SessionRunner(object):
             for cmd in project_environment["shell"]:
                 self.execute_command(cmd)
 
-    def format_command(self, command, args, shell):
-        """Validate and format a session command.
-
-        Args:
-            command (str, optional): Command from the project definition's
-                commands section to run, if any.
-            args (list): Arguments for the command to run.
-            shell (bool): If true, command is a shell command that should be
-                run directly.
-
-        Returns:
-            The formatted shell command to run.
-
-        Raises:
-            click.ClickException: This exception is raised if any error occurs.
-        """
-        if shell:
-            return command
-        else:
-            try:
-                return self.project_definition.get_command_to_run(
-                    command=command, args=args)
-            except ValueError as e:
-                raise click.ClickException(e)
-
-    def execute_command(self, cmd):
+    def execute_command(self, cmd, config={}):
         """Execute a shell command in the session.
 
         Args:
@@ -252,34 +234,104 @@ class SessionRunner(object):
             cmd=cmd,
             docker=False,
             screen=False,
-            tmux=False,
+            tmux=config.get("tmux", False),
             stop=False,
             start=False,
-            override_cluster_name=None,
-            port_forward=None,
+            override_cluster_name=self.session_name,
+            port_forward=config.get("port_forward", None),
         )
 
 
+def format_command(command, parsed_args):
+    """Substitute arguments into command.
+
+    Args:
+        command (str): Shell comand with argument placeholders.
+        parsed_args (dict): Dictionary that maps from argument names
+            to their value.
+
+    Returns:
+        Shell command with parameters from parsed_args substituted.
+    """
+    for key, val in parsed_args.items():
+        command = command.replace("{{" + key + "}}", str(val))
+    return command
+
+
+def get_session_runs(name, command, parsed_args):
+    """Get a list of sessions to start.
+
+    Args:
+        command (str): Shell command with argument placeholders.
+        parsed_args (dict): Dictionary that maps from argument names
+            to their values.
+
+    Returns:
+        List of sessions to start, which are dictionaries with keys:
+            "name": Name of the session to start,
+            "command": Command to run after starting the session,
+            "num_steps": 4 if a command should be run, 3 if not.
+    """
+    if not command:
+        return [{"name": name, "command": None, "num_steps": 3}]
+
+    # Try to find a wildcard argument (i.e. one that has a list of values)
+    # and give an error if there is more than one (currently unsupported).
+    wildcard_arg = None
+    for key, val in parsed_args.items():
+        if isinstance(val, list):
+            if not wildcard_arg:
+                wildcard_arg = key
+            else:
+                raise click.ClickException(
+                    "More than one wildcard is not supported at the moment")
+
+    if not wildcard_arg:
+        session_run = {
+            "name": name,
+            "command": format_command(command, parsed_args),
+            "num_steps": 4
+        }
+        return [session_run]
+    else:
+        session_runs = []
+        for val in parsed_args[wildcard_arg]:
+            parsed_args = copy.deepcopy(parsed_args)
+            parsed_args[wildcard_arg] = val
+            session_run = {
+                "name": "{}-{}-{}".format(name, wildcard_arg, val),
+                "command": format_command(command, parsed_args),
+                "num_steps": 4
+            }
+            session_runs.append(session_run)
+        return session_runs
+
+
 @session_cli.command(help="Attach to an existing cluster")
-def attach():
+@click.option(
+    "--screen", is_flag=True, default=False, help="Run the command in screen.")
+@click.option("--tmux", help="Attach to tmux session", is_flag=True)
+def attach(screen, tmux):
     project_definition = load_project_or_throw()
     attach_cluster(
         project_definition.cluster_yaml(),
         start=False,
-        use_tmux=False,
+        use_screen=screen,
+        use_tmux=tmux,
         override_cluster_name=None,
         new=False,
     )
 
 
 @session_cli.command(help="Stop a session based on current project config")
-def stop():
+@click.option("--name", help="Name of the session to stop", default=None)
+def stop(name):
     project_definition = load_project_or_throw()
     teardown_cluster(
         project_definition.cluster_yaml(),
         yes=True,
         workers_only=False,
-        override_cluster_name=None)
+        override_cluster_name=name)
 
 
 @session_cli.command(
@@ -294,26 +346,41 @@ def stop():
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def session_start(command, args, shell):
-    runner = SessionRunner()
-    if shell or command:
-        # Get the actual command to run.
-        cmd = runner.format_command(command, args, shell)
-        num_steps = 4
-    else:
-        num_steps = 3
+@click.option("--name", help="A name to tag the session with.", default=None)
+def session_start(command, args, shell, name):
+    project_definition = load_project_or_throw()
 
-    logger.info("[1/{}] Creating cluster".format(num_steps))
-    runner.create_cluster()
-    logger.info("[2/{}] Syncing the project".format(num_steps))
-    runner.sync_files()
-    logger.info("[3/{}] Setting up environment".format(num_steps))
-    runner.setup_environment()
+    if not name:
+        name = project_definition.config["name"]
 
-    if shell or command:
-        # Run the actual command.
-        logger.info("[4/4] Running command")
-        runner.execute_command(cmd)
+    # Get the actual command to run. This also validates the command,
+    # which should be done before the cluster is started.
+    try:
+        command, parsed_args, config = project_definition.get_command_info(
+            command, args, shell, wildcards=True)
+    except ValueError as e:
+        raise click.ClickException(e)
+    session_runs = get_session_runs(name, command, parsed_args)
+
+    if len(session_runs) > 1 and not config.get("tmux", False):
+        logging.info("Using wildcards with tmux = False would not create "
+                     "sessions in parallel, so we are overriding it with "
+                     "tmux = True.")
+        config["tmux"] = True
+
+    for run in session_runs:
+        runner = SessionRunner(session_name=run["name"])
+        logger.info("[1/{}] Creating cluster".format(run["num_steps"]))
+        runner.create_cluster()
+        logger.info("[2/{}] Syncing the project".format(run["num_steps"]))
+        runner.sync_files()
+        logger.info("[3/{}] Setting up environment".format(run["num_steps"]))
+        runner.setup_environment()
+
+        if run["command"]:
+            # Run the actual command.
+            logger.info("[4/4] Running command")
+            runner.execute_command(run["command"], config)
 
 
 @session_cli.command(
@@ -328,7 +395,16 @@ def session_start(command, args, shell):
         "If set, run the command as a raw shell command instead of looking up "
         "the command in the project config"),
     is_flag=True)
-def session_execute(command, args, shell):
-    runner = SessionRunner()
-    cmd = runner.format_command(command, args, shell)
-    runner.execute_command(cmd)
+@click.option(
+    "--name", help="Name of the session to run this command on", default=None)
+def session_execute(command, args, shell, name):
+    project_definition = load_project_or_throw()
+    try:
+        command, parsed_args, config = project_definition.get_command_info(
+            command, args, shell, wildcards=False)
+    except ValueError as e:
+        raise click.ClickException(e)
+
+    runner = SessionRunner(session_name=name)
+    command = format_command(command, parsed_args)
+    runner.execute_command(command)

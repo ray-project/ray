@@ -7,7 +7,7 @@ import numpy
 import time
 import logging
 
-from libc.stdint cimport uint8_t, int32_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport (
     dynamic_pointer_cast,
@@ -27,10 +27,14 @@ from ray.includes.common cimport (
     CRayObject,
     CRayStatus,
     CGcsClientOptions,
+    CTaskArg,
+    CRayFunction,
     LocalMemoryBuffer,
+    move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
+    LocalMemoryBuffer,
     WORKER_TYPE_WORKER,
     WORKER_TYPE_DRIVER,
 )
@@ -46,15 +50,22 @@ from ray.includes.unique_ids cimport (
     CObjectID,
     CClientID,
 )
-from ray.includes.libcoreworker cimport CCoreWorker
+from ray.includes.libcoreworker cimport (
+    CActorCreationOptions,
+    CCoreWorker,
+    CTaskOptions,
+)
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
+import ray
+from ray import profiling
 from ray.exceptions import RayletError, ObjectStoreFullError
 from ray.utils import decode
 from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
+    PICKLE5_BUFFER_METADATA,
 )
 
 # pyarrow cannot be imported until after _raylet finishes initializing
@@ -72,6 +83,8 @@ include "includes/ray_config.pxi"
 include "includes/task.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/serialization.pxi"
+include "includes/libcoreworker.pxi"
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +107,13 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     else:
         raise RayletError(message)
+
+
+cdef VectorToObjectIDs(const c_vector[CObjectID] &object_ids):
+    result = []
+    for i in range(object_ids.size()):
+        result.append(ObjectID(object_ids[i].Binary()))
+    return result
 
 
 cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
@@ -233,15 +253,65 @@ cdef Language LANG_CPP = Language.from_native(LANGUAGE_CPP)
 cdef Language LANG_JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
-cdef unordered_map[c_string, double] resource_map_from_dict(resource_map):
+cdef int prepare_resources(
+        dict resource_dict,
+        unordered_map[c_string, double] *resource_map) except -1:
     cdef:
         unordered_map[c_string, double] out
         c_string resource_name
-    if not isinstance(resource_map, dict):
-        raise TypeError("resource_map must be a dictionary")
-    for key, value in resource_map.items():
-        out[key.encode("ascii")] = float(value)
+
+    if resource_dict is None:
+        raise ValueError("Must provide resource map.")
+
+    for key, value in resource_dict.items():
+        if not (isinstance(value, int) or isinstance(value, float)):
+            raise ValueError("Resource quantities may only be ints or floats.")
+        if value < 0:
+            raise ValueError("Resource quantities may not be negative.")
+        if value > 0:
+            if (value >= 1 and isinstance(value, float)
+                    and not value.is_integer()):
+                raise ValueError(
+                    "Resource quantities >1 must be whole numbers.")
+            resource_map[0][key.encode("ascii")] = float(value)
+    return 0
+
+
+cdef c_vector[c_string] string_vector_from_list(list string_list):
+    cdef:
+        c_vector[c_string] out
+    for s in string_list:
+        if not isinstance(s, bytes):
+            raise TypeError("string_list elements must be bytes")
+        out.push_back(s)
     return out
+
+
+cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
+    cdef:
+        c_string pickled_str
+        shared_ptr[CBuffer] arg_data
+        shared_ptr[CBuffer] arg_metadata
+
+    for arg in args:
+        if isinstance(arg, ObjectID):
+            args_vector.push_back(
+                CTaskArg.PassByReference((<ObjectID>arg).native()))
+        elif not ray._raylet.check_simple_value(arg):
+            args_vector.push_back(
+                CTaskArg.PassByReference((<ObjectID>ray.put(arg)).native()))
+        else:
+            pickled_str = pickle.dumps(
+                arg, protocol=pickle.HIGHEST_PROTOCOL)
+            # TODO(edoakes): This makes a copy that could be avoided.
+            arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(pickled_str.data()),
+                        pickled_str.size(),
+                        True))
+            args_vector.push_back(
+                CTaskArg.PassByValue(
+                    make_shared[CRayObject](arg_data, arg_metadata)))
 
 
 cdef class RayletClient:
@@ -256,13 +326,6 @@ cdef class RayletClient:
         # to a shared_ptr. This means the core worker *must* be
         # initialized before the raylet client.
         self.client = &core_worker.core_worker.get().GetRayletClient()
-
-    def submit_task(self, TaskSpec task_spec):
-        cdef:
-            CObjectID c_id
-
-        check_status(self.client.SubmitTask(
-            task_spec.task_spec.get()[0]))
 
     def get_task(self):
         cdef:
@@ -310,50 +373,6 @@ cdef class RayletClient:
                                            error_message.encode("ascii"),
                                            timestamp))
 
-    def push_profile_events(self, component_type, UniqueID component_id,
-                            node_ip_address, profile_data):
-        cdef:
-            GCSProfileTableData profile_info
-            GCSProfileEvent *profile_event
-            c_string event_type
-
-        if len(profile_data) == 0:
-            return  # Short circuit if there are no profile events.
-
-        profile_info.set_component_type(component_type.encode("ascii"))
-        profile_info.set_component_id(component_id.binary())
-        profile_info.set_node_ip_address(node_ip_address.encode("ascii"))
-
-        for py_profile_event in profile_data:
-            profile_event = profile_info.add_profile_events()
-            if not isinstance(py_profile_event, dict):
-                raise TypeError(
-                    "Incorrect type for a profile event. Expected dict "
-                    "instead of '%s'" % str(type(py_profile_event)))
-            # TODO(rkn): If the dictionary is formatted incorrectly, that
-            # could lead to errors. E.g., if any of the strings are empty,
-            # that will cause segfaults in the node manager.
-            for key_string, event_data in py_profile_event.items():
-                if key_string == "event_type":
-                    if len(event_data) == 0:
-                        raise ValueError(
-                            "'event_type' should not be a null string.")
-                    profile_event.set_event_type(event_data.encode("ascii"))
-                elif key_string == "start_time":
-                    profile_event.set_start_time(float(event_data))
-                elif key_string == "end_time":
-                    profile_event.set_end_time(float(event_data))
-                elif key_string == "extra_data":
-                    if len(event_data) == 0:
-                        raise ValueError(
-                            "'extra_data' should not be a null string.")
-                    profile_event.set_extra_data(event_data.encode("ascii"))
-                else:
-                    raise ValueError(
-                        "Unknown profile event key '%s'" % key_string)
-
-        check_status(self.client.PushProfileEvents(profile_info))
-
     def prepare_actor_checkpoint(self, ActorID actor_id):
         cdef:
             CActorCheckpointID checkpoint_id
@@ -389,16 +408,46 @@ cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
-                  JobID job_id, GcsClientOptions gcs_options, log_dir):
+                  JobID job_id, GcsClientOptions gcs_options, log_dir,
+                  node_ip_address):
+        assert pyarrow is not None, ("Expected pyarrow to be imported from "
+                                     "outside _raylet. See __init__.py for "
+                                     "details.")
+
         self.core_worker.reset(new CCoreWorker(
             WORKER_TYPE_DRIVER if is_driver else WORKER_TYPE_WORKER,
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
-            gcs_options.native()[0], log_dir.encode("utf-8"), NULL, False))
+            gcs_options.native()[0], log_dir.encode("utf-8"),
+            node_ip_address.encode("utf-8"), NULL, False))
 
-        assert pyarrow is not None, ("Expected pyarrow to be imported from "
-                                     "outside _raylet. See __init__.py for "
-                                     "details.")
+    def disconnect(self):
+        with nogil:
+            self.core_worker.get().Disconnect()
+
+    def set_current_task_id(self, TaskID task_id):
+        cdef:
+            CTaskID c_task_id = task_id.native()
+
+        with nogil:
+            self.core_worker.get().SetCurrentTaskId(c_task_id)
+
+    def set_actor_id(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            self.core_worker.get().SetActorId(c_actor_id)
+
+    def get_current_task_id(self):
+        return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
+
+    def set_current_job_id(self, JobID job_id):
+        cdef:
+            CJobID c_job_id = job_id.native()
+
+        with nogil:
+            self.core_worker.get().SetCurrentJobId(c_job_id)
 
     def get_objects(self, object_ids, TaskID current_task_id):
         cdef:
@@ -491,6 +540,36 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
+    def put_pickle5_buffers(self, ObjectID object_id, c_string inband,
+                            Pickle5Writer writer,
+                            int memcopy_threads):
+        cdef:
+            shared_ptr[CBuffer] data
+            c_string metadata_str = PICKLE5_BUFFER_METADATA
+            shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
+            CObjectID c_object_id = object_id.native()
+            size_t data_size
+
+        data_size = writer.get_total_bytes(inband)
+
+        with nogil:
+            check_status(self.core_worker.get().Objects().Create(
+                        metadata, data_size, c_object_id, &data))
+
+        # If data is nullptr, that means the ObjectID already existed,
+        # which we ignore.
+        # TODO(edoakes): this is hacky, we should return the error instead
+        # and deal with it here.
+        if not data:
+            return
+
+        writer.write_to(inband, data, memcopy_threads)
+        with nogil:
+            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+
     def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
              TaskID current_task_id):
         cdef:
@@ -524,20 +603,6 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
-    def set_current_task_id(self, TaskID task_id):
-        cdef:
-            CTaskID c_task_id = task_id.native()
-
-        with nogil:
-            self.core_worker.get().SetCurrentTaskId(c_task_id)
-
-    def set_current_job_id(self, JobID job_id):
-        cdef:
-            CJobID c_job_id = job_id.native()
-
-        with nogil:
-            self.core_worker.get().SetCurrentJobId(c_job_id)
-
     def set_object_store_client_options(self, c_string client_name,
                                         int64_t limit_bytes):
         with nogil:
@@ -553,6 +618,110 @@ cdef class CoreWorker:
 
         return message.decode("utf-8")
 
-    def disconnect(self):
-        with nogil:
-            self.core_worker.get().Disconnect()
+    def submit_task(self,
+                    function_descriptor,
+                    args,
+                    int num_return_vals,
+                    resources):
+        cdef:
+            unordered_map[c_string, double] c_resources
+            CTaskOptions task_options
+            CRayFunction ray_function
+            c_vector[CTaskArg] args_vector
+            c_vector[CObjectID] return_ids
+
+        with profiling.profile("submit_task"):
+            prepare_resources(resources, &c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
+
+            with nogil:
+                check_status(self.core_worker.get().SubmitTask(
+                    ray_function, args_vector, task_options, &return_ids))
+
+            return VectorToObjectIDs(return_ids)
+
+    def create_actor(self,
+                     function_descriptor,
+                     args,
+                     uint64_t max_reconstructions,
+                     resources,
+                     placement_resources):
+        cdef:
+            CRayFunction ray_function
+            c_vector[CTaskArg] args_vector
+            c_vector[c_string] dynamic_worker_options
+            unordered_map[c_string, double] c_resources
+            unordered_map[c_string, double] c_placement_resources
+            CActorID c_actor_id
+
+        with profiling.profile("submit_task"):
+            prepare_resources(resources, &c_resources)
+            prepare_resources(placement_resources, &c_placement_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
+
+            with nogil:
+                check_status(self.core_worker.get().CreateActor(
+                    ray_function, args_vector,
+                    CActorCreationOptions(
+                        max_reconstructions, False, c_resources,
+                        c_placement_resources, dynamic_worker_options),
+                    &c_actor_id))
+
+            return ActorID(c_actor_id.Binary())
+
+    def submit_actor_task(self,
+                          ActorID actor_id,
+                          function_descriptor,
+                          args,
+                          int num_return_vals,
+                          resources):
+
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            unordered_map[c_string, double] c_resources
+            CTaskOptions task_options
+            CRayFunction ray_function
+            c_vector[CTaskArg] args_vector
+            c_vector[CObjectID] return_ids
+
+        with profiling.profile("submit_task"):
+            prepare_resources(resources, &c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
+
+            with nogil:
+                check_status(self.core_worker.get().SubmitActorTask(
+                      c_actor_id,
+                      ray_function,
+                      args_vector, task_options, &return_ids))
+
+            return VectorToObjectIDs(return_ids)
+
+    def profile_event(self, event_type, dict extra_data):
+        cdef:
+            c_string c_event_type = event_type.encode("ascii")
+
+        return ProfileEvent.make(
+            self.core_worker.get().CreateProfileEvent(c_event_type),
+            extra_data)
+
+    def deserialize_and_register_actor_handle(self, const c_string &bytes):
+        c_actor_id = self.core_worker.get().DeserializeAndRegisterActorHandle(
+            bytes)
+        actor_id = ActorID(c_actor_id.Binary())
+        return actor_id
+
+    def serialize_actor_handle(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            c_string output
+        check_status(self.core_worker.get().SerializeActorHandle(
+            c_actor_id, &output))
+        return output

@@ -1,24 +1,33 @@
 from libc.stdint cimport int64_t
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
+    CActorID,
     CJobID,
     CTaskID,
     CObjectID,
 )
 from ray.includes.common cimport (
+    CActorCreationOptions,
     CBuffer,
-    CRayStatus,
+    CRayFunction,
     CRayObject,
+    CRayStatus,
+    CTaskArg,
+    CTaskOptions,
     CWorkerType,
     CLanguage,
     CGcsClientOptions,
 )
 from ray.includes.libraylet cimport CRayletClient
 
+
+cdef extern from "ray/core_worker/profiling.h" nogil:
+    cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
+        void SetExtraData(const c_string &extra_data)
 
 cdef extern from "ray/core_worker/object_interface.h" nogil:
     cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
@@ -44,19 +53,40 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &store_socket,
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
-                    const c_string log_dir, void* execution_callback,
+                    const c_string &log_dir, const c_string &node_ip_address,
+                    void* execution_callback,
                     c_bool use_memory_store_)
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        # CTaskSubmissionInterface &Tasks()
+
+        CRayStatus SubmitTask(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CTaskOptions &options, c_vector[CObjectID] *return_ids)
+        CRayStatus CreateActor(
+            const CRayFunction &function, const c_vector[CTaskArg] &args,
+            const CActorCreationOptions &options, CActorID *actor_id)
+        CRayStatus SubmitActorTask(
+            const CActorID &actor_id, const CRayFunction &function,
+            const c_vector[CTaskArg] &args, const CTaskOptions &options,
+            c_vector[CObjectID] *return_ids)
+
         # CTaskExecutionInterface &Execution()
+        unique_ptr[CProfileEvent] CreateProfileEvent(
+            const c_string &event_type)
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
         CRayletClient &GetRayletClient()
-        # TODO(edoakes): remove this once the Python core worker uses the task
+        # TODO(edoakes): remove these once the Python core worker uses the task
         # interfaces
         void SetCurrentJobId(const CJobID &job_id)
+        CTaskID GetCurrentTaskId()
         void SetCurrentTaskId(const CTaskID &task_id)
+        void SetActorId(const CActorID &actor_id)
+        const CActorID &GetActorId()
+        CTaskID GetCallerId()
+        CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
+        CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
+                                        *bytes)

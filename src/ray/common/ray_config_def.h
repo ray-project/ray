@@ -34,6 +34,12 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 
+/// Whether to enable fair queueing between task classes in raylet. When
+/// fair queueing is enabled, the raylet will try to balance the number
+/// of running tasks by class (i.e., function name). This prevents one
+/// type of task from starving other types (see issue #3664).
+RAY_CONFIG(bool, fair_queueing_enabled, true)
+
 /// The initial period for a task execution lease. The lease will expire this
 /// many milliseconds after the first acquisition of the lease. Nodes that
 /// require an object will not try to reconstruct the task until at least

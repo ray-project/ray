@@ -22,7 +22,8 @@ from ray.autoscaler.node_provider import get_node_provider, \
     get_default_config
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
                                  TAG_RAY_NODE_STATUS, TAG_RAY_NODE_TYPE,
-                                 TAG_RAY_NODE_NAME)
+                                 TAG_RAY_NODE_NAME, STATUS_UP_TO_DATE,
+                                 STATUS_UNINITIALIZED, NODE_TYPE_WORKER)
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
@@ -76,17 +77,28 @@ CLUSTER_CONFIG_SCHEMA = {
             "head_ip": (str, OPTIONAL),  # local cluster head node
             "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
             "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
+            "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
+
+            # k8s autoscaler permissions, if using k8s
+            "autoscaler_service_account": (dict, OPTIONAL),
+            "autoscaler_role": (dict, OPTIONAL),
+            "autoscaler_role_binding": (dict, OPTIONAL),
             "extra_config": (dict, OPTIONAL),  # provider-specific config
+
+            # Whether to try to reuse previously stopped nodes instead of
+            # launching nodes. This will also cause the autoscaler to stop
+            # nodes instead of terminating them. Only implemented for AWS.
+            "cache_stopped_nodes": (bool, OPTIONAL),
         },
         REQUIRED),
 
     # How Ray will authenticate with newly launched nodes.
     "auth": (
         {
-            "ssh_user": (str, REQUIRED),  # e.g. ubuntu
+            "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
             "ssh_private_key": (str, OPTIONAL),
         },
-        REQUIRED),
+        OPTIONAL),
 
     # Docker configuration. If this is specified, all setup and start commands
     # will be executed in the container.
@@ -310,7 +322,7 @@ class NodeLauncher(threading.Thread):
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config, count):
-        worker_filter = {TAG_RAY_NODE_TYPE: "worker"}
+        worker_filter = {TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER}
         before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
         launch_hash = hash_launch_conf(config["worker_nodes"], config["auth"])
         self.log("Launching {} nodes.".format(count))
@@ -318,8 +330,8 @@ class NodeLauncher(threading.Thread):
             config["worker_nodes"], {
                 TAG_RAY_NODE_NAME: "ray-{}-worker".format(
                     config["cluster_name"]),
-                TAG_RAY_NODE_TYPE: "worker",
-                TAG_RAY_NODE_STATUS: "uninitialized",
+                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER,
+                TAG_RAY_NODE_STATUS: STATUS_UNINITIALIZED,
                 TAG_RAY_LAUNCH_CONFIG: launch_hash,
             }, count)
         after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
@@ -342,7 +354,7 @@ class NodeLauncher(threading.Thread):
         logger.info(prefix + " {}".format(statement))
 
 
-class ConcurrentCounter():
+class ConcurrentCounter(object):
     def __init__(self):
         self._value = 0
         self._lock = threading.Lock()
@@ -541,15 +553,18 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
-        # Update nodes with out-of-date files
-        T = [
-            threading.Thread(
-                target=self.spawn_updater,
-                args=(node_id, commands),
-            ) for node_id, commands in (self.should_update(node_id)
-                                        for node_id in nodes)
-            if node_id is not None
-        ]
+        # Update nodes with out-of-date files.
+        # TODO(edoakes): Spawning these threads directly seems to cause
+        # problems. They should at a minimum be spawned as daemon threads.
+        # See https://github.com/ray-project/ray/pull/5903 for more info.
+        T = []
+        for node_id, commands, ray_start in (self.should_update(node_id)
+                                             for node_id in nodes):
+            if node_id is not None:
+                T.append(
+                    threading.Thread(
+                        target=self.spawn_updater,
+                        args=(node_id, commands, ray_start)))
         for t in T:
             t.start()
         for t in T:
@@ -648,7 +663,8 @@ class StandardAutoscaler(object):
             cluster_name=self.config["cluster_name"],
             file_mounts={},
             initialization_commands=[],
-            setup_commands=with_head_node_ip(
+            setup_commands=[],
+            ray_start_commands=with_head_node_ip(
                 self.config["worker_start_ray_commands"]),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
@@ -658,23 +674,26 @@ class StandardAutoscaler(object):
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return (None, None)
+            return None, None, None  # no update
 
-        if self.files_up_to_date(node_id):
-            return (None, None)
+        status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
+        if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
+            return None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = self.config["worker_start_ray_commands"]
+            init_commands = []
+            ray_commands = self.config["worker_start_ray_commands"]
         elif successful_updated and self.config.get("no_restart", False):
             init_commands = self.config["worker_setup_commands"]
+            ray_commands = []
         else:
-            init_commands = (self.config["worker_setup_commands"] +
-                             self.config["worker_start_ray_commands"])
+            init_commands = self.config["worker_setup_commands"]
+            ray_commands = self.config["worker_start_ray_commands"]
 
-        return (node_id, init_commands)
+        return (node_id, init_commands, ray_commands)
 
-    def spawn_updater(self, node_id, init_commands):
+    def spawn_updater(self, node_id, init_commands, ray_start_commands):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -685,6 +704,7 @@ class StandardAutoscaler(object):
             initialization_commands=with_head_node_ip(
                 self.config["initialization_commands"]),
             setup_commands=with_head_node_ip(init_commands),
+            ray_start_commands=with_head_node_ip(ray_start_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
@@ -709,7 +729,7 @@ class StandardAutoscaler(object):
 
     def workers(self):
         return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_TYPE: "worker"})
+            tag_filters={TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER})
 
     def log_info_string(self, nodes, target):
         logger.info("StandardAutoscaler: {}".format(
@@ -809,6 +829,7 @@ def fillout_defaults(config):
     defaults.update(config)
     merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
+    defaults["auth"] = defaults.get("auth", {})
     return defaults
 
 
