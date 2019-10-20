@@ -476,6 +476,12 @@ class ActorHandle(object):
         self._ray_class_name = class_name
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
+        self._ray_function_descriptor_lists = {
+            method_name: FunctionDescriptor(
+                self._ray_module_name, method_name,
+                self._ray_class_name).get_function_descriptor_list()
+            for method_name in self._ray_method_signatures.keys()
+        }
 
     def _actor_method_call(self,
                            method_name,
@@ -510,18 +516,15 @@ class ActorHandle(object):
             kwargs = {}
         args = signature.extend_args(function_signature, args, kwargs)
 
-        function_descriptor = FunctionDescriptor(
-            self._ray_module_name, method_name, self._ray_class_name)
-
         with profiling.profile("submit_task"):
             if worker.mode == ray.LOCAL_MODE:
                 function = getattr(worker.actors[self._actor_id], method_name)
                 object_ids = worker.local_mode_manager.execute(
-                    function, function_descriptor, args, num_return_vals)
+                    function, method_name, args, num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_actor_task(
                     self._ray_core_handle,
-                    function_descriptor.get_function_descriptor_list(), args,
+                    self._ray_function_descriptor_lists[method_name], args,
                     num_return_vals, {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
