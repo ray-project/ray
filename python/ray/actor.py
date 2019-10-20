@@ -512,12 +512,10 @@ class ActorHandle(object):
         args = signature.extend_args(function_signature, args, kwargs)
 
         if worker.mode == ray.LOCAL_MODE:
-            with profiling.profile("submit_task"):
                 function = getattr(worker.actors[self._actor_id], method_name)
                 object_ids = worker.local_mode_manager.execute(
                     function, method_name, args, num_return_vals)
         else:
-            # The profiling.profile("submit_task") is inside submit_actor_task.
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_id,
                 self._ray_function_descriptor_lists[method_name], args,

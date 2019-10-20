@@ -630,7 +630,7 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
-        with profiling.profile("submit_task"):
+        with self.profile_event("submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
@@ -688,25 +688,23 @@ cdef class CoreWorker:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
-            unique_ptr[CProfileEvent] profile_event
 
-        prepare_resources(resources, &c_resources)
-        task_options = CTaskOptions(num_return_vals, c_resources)
-        ray_function = CRayFunction(
-            LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
-        prepare_args(args, &args_vector)
+        with self.profile_event("submit_task"):
+            prepare_resources(resources, &c_resources)
+            task_options = CTaskOptions(num_return_vals, c_resources)
+            ray_function = CRayFunction(
+                LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
+            prepare_args(args, &args_vector)
 
-        profile_event = self.core_worker.get().CreateProfileEvent(b"submit_task")
+            # with nogil:
+                # check_status(self.core_worker.get().SubmitActorTask(
+                #     c_actor_id,
+                #     ray_function,
+                #     args_vector, task_options, &return_ids))
 
-        with nogil:
-           check_status(self.core_worker.get().SubmitActorTask(
-                 c_actor_id,
-                 ray_function,
-                 args_vector, task_options, &return_ids))
+            return VectorToObjectIDs(return_ids)
 
-        return VectorToObjectIDs(return_ids)
-
-    def profile_event(self, event_type, dict extra_data):
+    def profile_event(self, event_type, object extra_data=None):
         cdef:
             c_string c_event_type = event_type.encode("ascii")
 
