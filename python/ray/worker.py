@@ -349,7 +349,7 @@ class Worker(object):
                     try:
                         _register_custom_serializer(cls_type, use_pickle=True)
                         logger.warning(warning_message)
-                    except serialization.CloudPickleError, ValueError:
+                    except (serialization.CloudPickleError, ValueError):
                         _register_custom_serializer(
                             cls_type,
                             use_pickle=True,
