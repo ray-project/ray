@@ -160,6 +160,10 @@ class Worker(object):
         # postprocessor must take two arguments ("object_ids", and "values").
         self._post_get_hooks = []
 
+        self._cached = False
+        self._cached_value = None
+        self._cached_value_serialized = None
+
     @property
     def connected(self):
         return self.node is not None
@@ -323,12 +327,12 @@ class Worker(object):
                     assert intercept_returns is None, "not implemented"
                     # TODO(ekl) support async put of raw buffers
                 else:
-                    serialization_context = self.get_serialization_context(
-                        self.current_job_id)
                     if intercept_returns is not None:
                         intercept_returns.append(
-                            pyarrow.serialize(value, serialization_context))
+                            self._try_cached_serialize(value))
                     else:
+                        serialization_context = self.get_serialization_context(
+                            self.current_job_id)
                         self.core_worker.put_serialized_object(
                             pyarrow.serialize(value, serialization_context),
                             object_id,
@@ -1088,6 +1092,17 @@ class Worker(object):
             sys.exit(0)
 
         return intercept_returns
+
+    def _try_cached_serialize(self, value):
+        if self._cached_value == value and self._cached:
+            return self._cached_value_serialized
+        serialization_context = self.get_serialization_context(
+            self.current_job_id)
+        serialized_value = pyarrow.serialize(value, serialization_context)
+        self._cached = True
+        self._cached_value = value
+        self._cached_value_serialized = serialized_value
+        return serialized_value
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""

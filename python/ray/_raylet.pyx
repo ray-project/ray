@@ -419,6 +419,9 @@ cdef list deserialize_args(
     cdef:
         c_vector[shared_ptr[CRayObject]] by_reference_objects
 
+    if args.size() == 0:
+        return []
+
     with profiling.profile("task:deserialize_arguments"):
         results = []
         by_reference_ids = []
@@ -450,6 +453,11 @@ cdef list deserialize_args(
             results[by_reference_indices[i]] = result
 
     return results
+
+
+cdef object last_py_returns
+cdef c_vector[shared_ptr[CRayObject]] last_obj_returns
+
 
 cdef CRayStatus execute_task(
         CTaskType task_type,
@@ -515,7 +523,15 @@ cdef CRayStatus execute_task(
             )
 
             if is_direct_call:
-                to_ray_objects(py_returns, returns)  # TODO(ekl)
+                global last_py_returns
+                global last_obj_returns
+                if py_returns == last_py_returns:
+                    for ray_object in last_obj_returns:
+                        returns.push_back(ray_object)
+                else:
+                    to_ray_objects(py_returns, returns)
+                    last_py_returns = py_returns
+                    last_obj_returns = returns[0]
 
         # Reset the state fields so the next task can run.
         worker.task_context.current_task_id = TaskID.nil()
