@@ -1131,7 +1131,7 @@ def _initialize_serialization(job_id, worker=global_worker):
         # Ray's default __dict__ serialization is incorrect for this type
         # (the object's __dict__ is empty and therefore doesn't
         # contain the full state of the object).
-        register_custom_serializer(
+        _register_custom_serializer(
             io.StringIO,
             use_pickle=True,
             local=True,
