@@ -16,7 +16,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorClassID, profiling
+from ray import ActorID, ActorClassID
 
 logger = logging.getLogger(__name__)
 
