@@ -10,13 +10,12 @@ import uuid
 import time
 import tempfile
 import os
-import ray
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
-import ray.tune.registry
+from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
@@ -28,11 +27,6 @@ logger = logging.getLogger(__name__)
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-def has_trainable(trainable_name):
-    return ray.tune.registry._global_registry.contains(
-        ray.tune.registry.TRAINABLE_CLASS, trainable_name)
 
 
 class Checkpoint(object):
@@ -126,7 +120,7 @@ class Trial(object):
         in ray.tune.config_parser.
         """
 
-        Trial._registration_check(trainable_name)
+        validate_trainable(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
@@ -136,7 +130,7 @@ class Trial(object):
         #: Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
-        trainable_cls = self._get_trainable_cls()
+        trainable_cls = self.get_trainable_cls()
         if trainable_cls and hasattr(trainable_cls,
                                      "default_resource_request"):
             default_resources = trainable_cls.default_resource_request(
@@ -201,14 +195,6 @@ class Trial(object):
         ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
-
-    @classmethod
-    def _registration_check(cls, trainable_name):
-        if not has_trainable(trainable_name):
-            # Make sure rllib agents are registered
-            from ray import rllib  # noqa: F401
-            if not has_trainable(trainable_name):
-                raise TuneError("Unknown trainable: " + trainable_name)
 
     @classmethod
     def generate_id(cls):
@@ -363,9 +349,8 @@ class Trial(object):
             return True
         return False
 
-    def _get_trainable_cls(self):
-        return ray.tune.registry._global_registry.get(
-            ray.tune.registry.TRAINABLE_CLASS, self.trainable_name)
+    def get_trainable_cls(self):
+        return get_trainable_cls(self.trainable_name)
 
     def set_verbose(self, verbose):
         self.verbose = verbose
@@ -430,6 +415,6 @@ class Trial(object):
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
-        Trial._registration_check(self.trainable_name)
+        validate_trainable(self.trainable_name)
         if logger_started:
             self.init_logger()
