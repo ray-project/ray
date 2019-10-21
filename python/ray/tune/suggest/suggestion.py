@@ -135,17 +135,15 @@ class SuggestionAlgorithm(SearchAlgorithm):
     def save(self, checkpoint_dir):
         """Save search alg state to checkpoint_dir
         """
-        logger.info(
-            "Unable to save search alg {}: not implemented.".format(
-                self.__class__.__name__))
+        logger.info("Unable to save search alg {}: not implemented.".format(
+            self.__class__.__name__))
         raise NotImplementedError
 
     def restore(self, checkpoint_dir):
         """Restore search alg state from checkpoint_dir
         """
-        logger.info(
-            "Unable to restore search alg {}: not implemented.".format(
-                self.__class__.__name__))
+        logger.info("Unable to restore search alg {}: not implemented.".format(
+            self.__class__.__name__))
         raise NotImplementedError
 
 
