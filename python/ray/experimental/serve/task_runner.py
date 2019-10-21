@@ -85,9 +85,15 @@ class RayServeMixin:
         self._ray_serve_self_handle = my_handle
         self._ray_serve_setup_completed = True
 
-    def _ray_serve_main_loop(self):
+
+    def _ray_serve_fetch(self):
         assert self._ray_serve_setup_completed
 
+        self._ray_serve_router_handle.register_replicas.remote(
+            self._ray_serve_self_handle
+        )
+    
+    def _ray_serve_call(self, request):
         # Only retrieve the next task if we have completed previous task.
         if self._ray_serve_cached_work_token is None:
             work_token = ray.get(

@@ -23,11 +23,8 @@ class Query:
 
 
 class WorkIntent:
-    def __init__(self, work_object_id=None):
-        if work_object_id is None:
-            self.work_object_id = ray.ObjectID.from_random()
-        else:
-            self.work_object_id = work_object_id
+    def __init__(self, replica_handle):
+        self.replica_handle = replica_handle
 
 
 class CentralizedQueues:
@@ -78,6 +75,8 @@ class CentralizedQueues:
 
         # backend_name -> worker payload queue
         self.buffer_queues = defaultdict(deque)
+        # replica_actor_id -> replica_actor_handle
+        self.replica_handles = dict()
 
     def is_ready(self):
         return True
@@ -98,11 +97,10 @@ class CentralizedQueues:
         self.flush()
         return query.result_object_id.binary()
 
-    def dequeue_request(self, backend):
-        intention = WorkIntent()
+    def dequeue_request(self, backend, replica_handle):
+        intention = WorkIntent(replica_handle)
         self.workers[backend].append(intention)
         self.flush()
-        return intention.work_object_id.binary()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
