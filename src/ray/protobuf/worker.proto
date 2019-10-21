@@ -4,6 +4,10 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
+message ActiveObjectIDs {
+  repeated bytes object_ids = 1;
+}
+
 message AssignTaskRequest {
   // The task to be pushed.
   Task task = 1;

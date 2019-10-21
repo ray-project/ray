@@ -1,5 +1,6 @@
 #include <boost/asio/signal_set.hpp>
 
+#include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
@@ -53,7 +54,8 @@ CoreWorker::CoreWorker(
       raylet_socket_(raylet_socket),
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
-      io_work_(io_service_) {
+      io_work_(io_service_),
+      heartbeat_timer_(io_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -108,6 +110,14 @@ CoreWorker::CoreWorker(
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, rpc_server_port));
 
+  // Set timer to periodically send heartbeats containing active object IDs to the raylet.
+  // If the heartbeat timeout is < 0, the heartbeats are disabled.
+  if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
+    heartbeat_timer_.expires_from_now(boost::asio::chrono::milliseconds(
+        RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
+    heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+  }
+
   io_thread_ = std::thread(&CoreWorker::StartIOService, this);
 
   // Create an entry for the driver task in the task table. This task is
@@ -139,6 +149,46 @@ CoreWorker::CoreWorker(
           object_interface_->CreateStoreProvider(StoreProviderType::MEMORY)));
 }
 
+void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
+  io_service_.post([this, object_id]() -> void {
+    active_object_ids_.insert(object_id);
+    active_object_ids_updated_ = true;
+  });
+}
+
+void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
+  io_service_.post([this, object_id]() -> void {
+    if (active_object_ids_.erase(object_id)) {
+      active_object_ids_updated_ = true;
+    } else {
+      RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
+    }
+  });
+}
+
+void CoreWorker::ReportActiveObjectIDs() {
+  // Only send a heartbeat when the set of active object IDs has changed because the
+  // raylet only modifies the set of IDs when it receives a heartbeat.
+  if (active_object_ids_updated_) {
+    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+    if (active_object_ids_.size() >
+        RayConfig::instance().raylet_max_active_object_ids()) {
+      RAY_LOG(WARNING) << active_object_ids_.size()
+                       << "object IDs are currently in scope. "
+                       << "This may lead to required objects being garbage collected.";
+    }
+    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(active_object_ids_));
+  }
+
+  // Reset the timer from the previous expiration time to avoid drift.
+  heartbeat_timer_.expires_at(
+      heartbeat_timer_.expiry() +
+      boost::asio::chrono::milliseconds(
+          RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
+  heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
+  active_object_ids_updated_ = false;
+}
+
 CoreWorker::~CoreWorker() {
   io_service_.stop();
   io_thread_.join();
@@ -158,8 +208,6 @@ void CoreWorker::Disconnect() {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }
 }
-
-void CoreWorker::StartIOService() { io_service_.run(); }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
     const std::string &event_type) {

@@ -12,7 +12,7 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         int64_t handler_warning_timeout_ms() const
 
-        int64_t heartbeat_timeout_milliseconds() const
+        int64_t raylet_heartbeat_timeout_milliseconds() const
 
         int64_t debug_dump_period_milliseconds() const
 
