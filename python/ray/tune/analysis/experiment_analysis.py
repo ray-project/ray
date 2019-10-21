@@ -183,70 +183,81 @@ class ExperimentAnalysis(Analysis):
         super(ExperimentAnalysis, self).__init__(
             os.path.dirname(experiment_checkpoint_path))
 
-    def get_best_trial(self, metric, mode="max", scope="all"):
+    def get_best_trial(self, metric, mode="max-all"):
         """Retrieve the best trial object.
 
         Args:
             metric (str): Key for trial info to order on.
-            mode (str): One of [min, max].
-            scope (str): One of [all, last].
+            mode (str): One of [min-all, max-all, min-last, max-last].
+                min-all finds trial with min score across entire experiment
+                max-all finds trial with max score across entire experiment
+                min-last finds trial with min score only comparing last result
+                max-last finds trial with max score only comparing last result
         """
-        if mode not in ["max", "min"]:
+        if mode not in ["max-all", "min-all", "max-last", "min-last"]:
             logger.warning(
                 "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for mode {} not in [\"max\", \"min\"]".format(
-                    metric, mode))
-            return None
-        if scope not in ["all", "last"]:
-            logger.warning(
-                "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for scope {} not in [\"all\", \"last\"]".format(
-                    metric, scope))
+                "metric {} for mode {} not in [\"max-all\", \"min-all\", "
+                "\"max-last\", \"min-last\"]".format(metric, mode))
             return None
         best_trial = None
         best_metric_score = None
         for trial in self.trials:
             if metric not in trial.metric_analysis.keys():
                 continue
-            if scope == "all":
-                metric_score = trial.metric_analysis[metric][mode]
+
+            if mode == "max-all":
+                metric_score = trial.metric_analysis[metric]["max"]
+            elif mode == "min-all":
+                metric_score = trial.metric_analysis[metric]["min"]
             else:
                 metric_score = trial.metric_analysis[metric]["last"]
+
             if not best_metric_score:
                 best_metric_score = metric_score
                 best_trial = trial
                 continue
-            if mode == "max" and (best_metric_score < metric_score):
+
+            if (mode == "max-all" or
+                    mode == "max-last") and (best_metric_score < metric_score):
                 best_metric_score = metric_score
                 best_trial = trial
-            elif mode == "min" and (best_metric_score > metric_score):
+            elif (mode == "min-all" or
+                  mode == "min-last") and (best_metric_score > metric_score):
                 best_metric_score = metric_score
                 best_trial = trial
+
         return best_trial
 
-    def get_best_config(self, metric, mode="max", scope="all"):
+    def get_best_config(self, metric, mode="max-all"):
         """Retrieve the best config corresponding to the trial.
 
         Args:
             metric (str): Key for trial info to order on.
-            mode (str): One of [min, max].
-            scope (str): One of [all, last].
+            mode (str): One of [min-all, max-all, min-last, max-last].
+                min-all finds config with min score across entire experiment
+                max-all finds config with max score across entire experiment
+                min-last finds config with min score only comparing last result
+                max-last finds config with max score only comparing last result
         """
-        best_trial = self.get_best_trial(metric, mode, scope)
+        best_trial = self.get_best_trial(metric, mode)
         if best_trial:
             return best_trial.config
         else:
             return None
 
-    def get_best_logdir(self, metric, mode="max", scope="all"):
+    def get_best_logdir(self, metric, mode="max-all"):
         """Retrieve the logdir corresponding to the best trial.
 
         Args:
             metric (str): Key for trial info to order on.
-            mode (str): One of [min, max].
-            scope (str): One of [all, last].
+            mode (str): One of [min-all, max-all, min-last, max-last].
+                min-all finds logdir with min score across entire experiment
+                max-all finds logdir with max score across entire experiment
+                min-last finds logdir with min score only comparing last result
+                max-last finds logdir with max score only comparing last result
         """
-        best_trial = self.get_best_trial(metric, mode, scope)
+        best_trial = self.get_best_trial(metric, mode)
         if best_trial:
             return best_trial.logdir
         else:
