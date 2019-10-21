@@ -156,7 +156,7 @@ class Trial(object):
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
 
-        # stores in memory max/min/latest result for each metric by trial
+        # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
 
         self.history = []
@@ -330,12 +330,19 @@ class Trial(object):
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
         for metric, value in result.items():
-            if metric not in self.metric_analysis.keys():
-                self.metric_analysis[metric] = {"max": value, "min": value, "latest": value}
-            else:
-                self.metric_analysis[metric]["max"] = max(value, self.metric_analysis[metric]["max"])
-                self.metric_analysis[metric]["min"] = min(value, self.metric_analysis[metric]["min"])
-                self.metric_analysis[metric]["latest"] = value
+            if (value is not None) and (type(value) is not dict):
+                if metric not in self.metric_analysis.keys():
+                    self.metric_analysis[metric] = {
+                        "max": value,
+                        "min": value,
+                        "last": value
+                    }
+                else:
+                    self.metric_analysis[metric]["max"] = max(
+                        value, self.metric_analysis[metric]["max"])
+                    self.metric_analysis[metric]["min"] = min(
+                        value, self.metric_analysis[metric]["min"])
+                    self.metric_analysis[metric]["last"] = value
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.

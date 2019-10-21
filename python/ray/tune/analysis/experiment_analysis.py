@@ -183,18 +183,38 @@ class ExperimentAnalysis(Analysis):
         super(ExperimentAnalysis, self).__init__(
             os.path.dirname(experiment_checkpoint_path))
 
-    def get_best_trial(self, metric, mode="max"):
-        if (mode not in ["max", "min", "latest"]):
-            logger.warning("ExperimentAnalysis: attempting to get best trial for metric {} for mode {} not in [\"max\", \"min\", \"latest\"]".format(metric, mode))
+    def get_best_trial(self, metric, mode="max", scope="all"):
+        """Retrieve the best trial object.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+            scope (str): One of [all, last].
+        """
+        if mode not in ["max", "min"]:
+            logger.warning(
+                "ExperimentAnalysis: attempting to get best trial for "
+                "metric {} for mode {} not in [\"max\", \"min\"]".format(
+                    metric, mode))
+            return None
+        if scope not in ["all", "last"]:
+            logger.warning(
+                "ExperimentAnalysis: attempting to get best trial for "
+                "metric {} for scope {} not in [\"all\", \"last\"]".format(
+                    metric, scope))
             return None
         best_trial = None
         best_metric_score = None
         for trial in self.trials:
             if metric not in trial.metric_analysis.keys():
                 continue
-            metric_score = trial.metric_analysis[metric][mode]
+            if scope == "all":
+                metric_score = trial.metric_analysis[metric][mode]
+            else:
+                metric_score = trial.metric_analysis[metric]["last"]
             if not best_metric_score:
                 best_metric_score = metric_score
+                best_trial = trial
                 continue
             if mode == "max" and (best_metric_score < metric_score):
                 best_metric_score = metric_score
@@ -202,35 +222,31 @@ class ExperimentAnalysis(Analysis):
             elif mode == "min" and (best_metric_score > metric_score):
                 best_metric_score = metric_score
                 best_trial = trial
-            elif mode == "latest":
-                # TODO(hgodse)
-                pass
         return best_trial
 
-    def get_best_config(self, metric, mode="max"):
+    def get_best_config(self, metric, mode="max", scope="all"):
         """Retrieve the best config corresponding to the trial.
 
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-
+            scope (str): One of [all, last].
         """
-        best_trial = self.get_best_trial(metric, mode)
+        best_trial = self.get_best_trial(metric, mode, scope)
         if best_trial:
             return best_trial.config
         else:
             return None
-        # super(ExperimentAnalysis, self).get_best_config(metric, mode)
 
-    def get_best_logdir(self, metric, mode="max"):
+    def get_best_logdir(self, metric, mode="max", scope="all"):
         """Retrieve the logdir corresponding to the best trial.
 
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-
+            scope (str): One of [all, last].
         """
-        best_trial = self.get_best_trial(metric, mode)
+        best_trial = self.get_best_trial(metric, mode, scope)
         if best_trial:
             return best_trial.logdir
         else:
