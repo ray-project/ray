@@ -535,11 +535,12 @@ cdef execute_task(
                 worker_name,
                 ray_constants.from_memory_units(
                     dereference(c_resources.find(b"memory")).second))
-        if  c_resources.find(b"object_store_memory") != c_resources.end():
+        if c_resources.find(b"object_store_memory") != c_resources.end():
             worker._set_object_store_client_options(
                 worker_name,
                 int(ray_constants.from_memory_units(
-                        dereference(c_resources.find(b"object_store_memory")).second)))
+                        dereference(
+                            c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments):
             return execution_info.function(actor, *arguments)
