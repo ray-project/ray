@@ -75,9 +75,9 @@ class RemoteFunction(object):
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
 
-        ray.signature.check_signature_supported(self._function)
         self._function_signature = ray.signature.extract_signature(
             self._function)
+
         self._last_export_session_and_job = None
         # Override task.remote's signature and docstring
         @wraps(function)
@@ -140,17 +140,17 @@ class RemoteFunction(object):
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
-            args = ray.signature.extend_args(self._function_signature, args,
-                                             kwargs)
+            list_args = ray.signature.flatten_args(self._function_signature,
+                                                   args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
                 object_ids = worker.local_mode_manager.execute(
-                    self._function, self._function_descriptor, args,
+                    self._function, self._function_descriptor, args, kwargs,
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._function_descriptor.get_function_descriptor_list(),
-                    args, num_return_vals, resources)
+                    list_args, num_return_vals, resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

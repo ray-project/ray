@@ -30,7 +30,7 @@ def _parse_client_table(redis_client):
     Returns:
         A list of information about the nodes in the cluster.
     """
-    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
+    NIL_CLIENT_ID = ray.ClientID.nil().binary()
     message = redis_client.execute_command(
         "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("CLIENT"), "",
         NIL_CLIENT_ID)

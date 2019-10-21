@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
   }
 
   node_manager_config.heartbeat_period_ms =
-      RayConfig::instance().heartbeat_timeout_milliseconds();
+      RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
   node_manager_config.fair_queueing_enabled =

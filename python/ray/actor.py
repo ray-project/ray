@@ -193,7 +193,6 @@ class ActorClassMetadata(object):
             # supported. We don't raise an exception because if the actor
             # inherits from a class that has a method whose signature we
             # don't support, there may not be much the user can do about it.
-            signature.check_signature_supported(method, warn=True)
             self.method_signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not ray.utils.is_class_method(method))
             # Set the default number of return values for this method.
@@ -277,7 +276,6 @@ class ActorClass(object):
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
-
         # Construct the base object.
         self = DerivedActorClass.__new__(DerivedActorClass)
 
@@ -397,10 +395,9 @@ class ActorClass(object):
             if actor_method_cpu == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
-
             function_signature = meta.method_signatures[function_name]
-            creation_args = signature.extend_args(function_signature, args,
-                                                  kwargs)
+            creation_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
             actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
@@ -499,25 +496,24 @@ class ActorHandle(object):
         worker.check_connected()
 
         function_signature = self._ray_method_signatures[method_name]
-        if args is None:
-            args = []
-        if kwargs is None:
-            kwargs = {}
-        args = signature.extend_args(function_signature, args, kwargs)
+        args = args or []
+        kwargs = kwargs or {}
 
+        list_args = signature.flatten_args(function_signature, args, kwargs)
         function_descriptor = FunctionDescriptor(
             self._ray_module_name, method_name, self._ray_class_name)
-
         with profiling.profile("submit_task"):
             if worker.mode == ray.LOCAL_MODE:
                 function = getattr(worker.actors[self._actor_id], method_name)
                 object_ids = worker.local_mode_manager.execute(
-                    function, function_descriptor, args, num_return_vals)
+                    function, function_descriptor, args, kwargs,
+                    num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_actor_task(
                     self._ray_actor_id,
-                    function_descriptor.get_function_descriptor_list(), args,
-                    num_return_vals, {"CPU": self._ray_actor_method_cpus})
+                    function_descriptor.get_function_descriptor_list(),
+                    list_args, num_return_vals,
+                    {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]

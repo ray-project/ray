@@ -22,6 +22,7 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
 )
 
+import ray
 from ray.utils import decode
 
 
@@ -128,12 +129,31 @@ cdef class UniqueID(BaseID):
 
 
 cdef class ObjectID(BaseID):
-    cdef CObjectID data
-    cdef object buffer_ref
+    cdef:
+        CObjectID data
+        object buffer_ref
+        # Flag indicating whether or not this object ID was added to the set
+        # of active IDs in the core worker so we know whether we should clean
+        # it up.
+        c_bool in_core_worker
 
     def __init__(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
+
+        worker = ray.worker.global_worker
+        # TODO(edoakes): there are dummy object IDs being created in
+        # includes/task.pxi before the core worker is initialized.
+        if hasattr(worker, "core_worker"):
+            worker.core_worker.add_active_object_id(self)
+            self.in_core_worker = True
+        else:
+            self.in_core_worker = False
+
+    def __dealloc__(self):
+        worker = ray.worker.global_worker
+        if self.in_core_worker and hasattr(worker, "core_worker"):
+            worker.core_worker.remove_active_object_id(self)
 
     cdef CObjectID native(self):
         return <CObjectID>self.data

@@ -408,7 +408,7 @@ cdef class RayletClient:
     def is_worker(self):
         return self.client.IsWorker()
 
-cdef list deserialize_args(
+cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &arg_reference_ids):
     cdef:
@@ -447,7 +447,7 @@ cdef list deserialize_args(
         if isinstance(arg, RayError):
             raise arg
 
-    return args
+    return ray.signature.recover_args(args)
 
 cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
     assert worker.current_task_id.is_nil()
@@ -551,8 +551,8 @@ cdef execute_task(
                         dereference(
                             c_resources.find(b"object_store_memory")).second)))
 
-        def function_executor(*arguments):
-            return execution_info.function(actor, *arguments)
+        def function_executor(*arguments, **kwarguments):
+            return execution_info.function(actor, *arguments, **kwarguments)
 
     return_ids = VectorToObjectIDs(c_return_ids)
     with profiling.profile("task", extra_data=extra_data):
@@ -564,13 +564,13 @@ cdef execute_task(
                 worker.memory_monitor.raise_if_low_memory()
 
             with profiling.profile("task:deserialize_arguments"):
-                args = deserialize_args(c_args, c_arg_reference_ids)
+                args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
 
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
                 with profiling.profile("task:execute"):
                     task_exception = True
-                    outputs = function_executor(*args)
+                    outputs = function_executor(*args, **kwargs)
                     task_exception = False
                     if len(return_ids) == 1:
                         outputs = (outputs,)
@@ -1005,3 +1005,15 @@ cdef class CoreWorker:
         check_status(self.core_worker.get().SerializeActorHandle(
             c_actor_id, &output))
         return output
+
+    def add_active_object_id(self, ObjectID object_id):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+        with nogil:
+            self.core_worker.get().AddActiveObjectID(c_object_id)
+
+    def remove_active_object_id(self, ObjectID object_id):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+        with nogil:
+            self.core_worker.get().RemoveActiveObjectID(c_object_id)
