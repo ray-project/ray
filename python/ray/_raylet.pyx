@@ -13,7 +13,6 @@ import sys
 
 from libc.stdint cimport uint8_t, int32_t, int64_t, uint64_t
 from libcpp cimport bool as c_bool
-from libcpp.cast cimport const_cast
 from libcpp.memory cimport (
     dynamic_pointer_cast,
     make_shared,
@@ -310,20 +309,6 @@ cdef int prepare_resources(
     return 0
 
 
-# Required because the Cython parser rejects 'unordered_map[c_string, double]*'
-# as a template parameter.
-ctypedef unordered_map[c_string, double]* ResourceMapPtr
-
-cdef dict resource_map_to_dict(const unordered_map[c_string, double] &map):
-    result = {}
-    # This const_cast is required because Cython doesn't properly support
-    # const_iterators.
-    for key, value in dereference(const_cast[ResourceMapPtr](&map)):
-        result[key.decode("ascii")] = value
-
-    return result
-
-
 cdef c_vector[c_string] string_vector_from_list(list string_list):
     cdef:
         c_vector[c_string] out
@@ -545,19 +530,16 @@ cdef execute_task(
         title = "ray_{}:{}()".format(class_name, function_name)
         next_title = "ray_{}".format(class_name)
         worker_name = "ray_{}_{}".format(class_name, os.getpid())
-        required_resources = resource_map_to_dict(c_resources)
-        if "memory" in required_resources:
+        if c_resources.find(b"memory") != c_resources.end():
             worker.memory_monitor.set_heap_limit(
                 worker_name,
                 ray_constants.from_memory_units(
-                    required_resources["memory"]))
-        if "object_store_memory" in required_resources:
+                    dereference(c_resources.find(b"memory")).second))
+        if  c_resources.find(b"object_store_memory") != c_resources.end():
             worker._set_object_store_client_options(
                 worker_name,
-                int(
-                    ray_constants.from_memory_units(
-                        required_resources[
-                            "object_store_memory"])))
+                int(ray_constants.from_memory_units(
+                        dereference(c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments):
             return execution_info.function(actor, *arguments)
