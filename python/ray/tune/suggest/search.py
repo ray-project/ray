@@ -70,7 +70,11 @@ class SearchAlgorithm(object):
         raise NotImplementedError
 
     def save(self, checkpoint_dir):
+        """Save search alg state to checkpoint_dir
+        """
         raise NotImplementedError
 
     def restore(self, checkpoint_dir):
+        """Restore search alg state from checkpoint_dir
+        """
         raise NotImplementedError

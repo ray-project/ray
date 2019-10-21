@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import itertools
 import copy
+import logging
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
@@ -12,6 +13,8 @@ from ray.tune.experiment import convert_to_experiment_list
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.variant_generator import format_vars, resolve_nested_dict
+
+logger = logging.getLogger(__name__)
 
 
 class SuggestionAlgorithm(SearchAlgorithm):
@@ -127,6 +130,22 @@ class SuggestionAlgorithm(SearchAlgorithm):
             >>> parameters_2 = suggester._suggest()
             >>> parameters_2 is not None
         """
+        raise NotImplementedError
+
+    def save(self, checkpoint_dir):
+        """Save search alg state to checkpoint_dir
+        """
+        logger.info(
+            "Unable to save search alg {}: not implemented.".format(
+                self.__class__.__name__))
+        raise NotImplementedError
+
+    def restore(self, checkpoint_dir):
+        """Restore search alg state from checkpoint_dir
+        """
+        logger.info(
+            "Unable to restore search alg {}: not implemented.".format(
+                self.__class__.__name__))
         raise NotImplementedError
 
 
