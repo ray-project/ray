@@ -71,7 +71,12 @@ import ray
 import ray.experimental.signal as ray_signal
 import ray.ray_constants as ray_constants
 from ray import profiling
-from ray.exceptions import RayletError, RayTaskError, ObjectStoreFullError
+from ray.exceptions import (
+    RayError,
+    RayletError,
+    RayTaskError,
+    ObjectStoreFullError
+)
 from ray.function_manager import FunctionDescriptor
 from ray.utils import decode
 from ray.ray_constants import (
@@ -404,41 +409,45 @@ cdef class RayletClient:
         return self.client.IsWorker()
 
 cdef list deserialize_args(
-        const c_vector[shared_ptr[CRayObject]] &args,
+        const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &arg_reference_ids):
     cdef:
         c_vector[shared_ptr[CRayObject]] by_reference_objects
 
-    results = []
+    args = []
     by_reference_ids = []
     by_reference_indices = []
-    for i in range(args.size()):
+    for i in range(c_args.size()):
         # Passed by value.
         if arg_reference_ids[i].IsNil():
-            data = Buffer.make(args[i].get().GetData())
-            if (args[i].get().HasMetadata()
+            data = Buffer.make(c_args[i].get().GetData())
+            if (c_args[i].get().HasMetadata()
                 and Buffer.make(
-                    args[i].get().GetMetadata()).to_pybytes()
+                    c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
-                results.append(data)
+                args.append(data)
             else:
-                results.append(pickle.loads(data.to_pybytes()))
+                args.append(pickle.loads(data.to_pybytes()))
         # Passed by reference.
         else:
             by_reference_ids.append(
                 ObjectID(arg_reference_ids[i].Binary()))
             by_reference_indices.append(i)
-            by_reference_objects.push_back(args[i])
-            results.append(None)
+            by_reference_objects.push_back(c_args[i])
+            args.append(None)
 
     data_metadata_pairs = RayObjectsToDataMetadataPairs(
         by_reference_objects)
-    for i, result in enumerate(
+    for i, arg in enumerate(
         ray.worker.global_worker.deserialize_objects(
             data_metadata_pairs, by_reference_ids)):
-        results[by_reference_indices[i]] = result
+        args[by_reference_indices[i]] = arg
 
-    return results
+    for arg in args:
+        if isinstance(arg, RayError):
+            raise arg
+
+    return args
 
 cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
     assert worker.current_task_id.is_nil()
