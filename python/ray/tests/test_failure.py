@@ -292,7 +292,7 @@ def test_incorrect_method_calls(ray_start_regular):
 def test_worker_raising_exception(ray_start_regular):
     @ray.remote
     def f():
-        ray.worker.global_worker._get_next_task_from_raylet = None
+        ray.worker.global_worker.function_actor_manager = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
@@ -619,11 +619,16 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         return 1
 
     @ray.remote
+    def h():
+        time.sleep(1)
+        ray.get(f.remote())
+
+    @ray.remote
     def g():
         # Sleep so that the f tasks all get submitted to the scheduler after
         # the g tasks.
         time.sleep(1)
-        ray.get(f.remote())
+        ray.get(h.remote())
 
     [g.remote() for _ in range(num_cpus * 4)]
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)

@@ -692,7 +692,8 @@ cdef class CoreWorker:
 
     def run_task_loop(self):
         sig_on()
-        self.core_worker.get().Execution().Run()
+        with nogil:
+            self.core_worker.get().Execution().Run()
 
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
