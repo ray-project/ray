@@ -29,6 +29,7 @@ import pickle
 import pytest
 
 import ray
+from ray import signature
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
@@ -781,6 +782,121 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
+def test_args_starkwargs(ray_start_regular):
+    def starkwargs(a, b, **kwargs):
+        return a, b, kwargs
+
+    class TestActor(object):
+        def starkwargs(self, a, b, **kwargs):
+            return a, b, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
+        with pytest.raises(TypeError):
+            remote_fn.remote(3)
+
+    remote_test_function = ray.remote(test_function)
+
+    remote_starkwargs = ray.remote(starkwargs)
+    test_function(starkwargs, remote_starkwargs)
+    ray.get(remote_test_function.remote(starkwargs, remote_starkwargs))
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.starkwargs
+    local_actor = TestActor()
+    local_method = local_actor.starkwargs
+    test_function(local_method, actor_method)
+    ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
+def test_args_named_and_star(ray_start_regular):
+    def hello(a, x="hello", **kwargs):
+        return a, x, kwargs
+
+    class TestActor(object):
+        def hello(self, a, x="hello", **kwargs):
+            return a, x, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn(1, x=2, y=3) == ray.get(remote_fn.remote(1, x=2, y=3))
+        assert fn(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
+        assert fn(1, y=3) == ray.get(remote_fn.remote(1, y=3))
+
+        assert fn(1, ) == ray.get(remote_fn.remote(1, ))
+        assert fn(1) == ray.get(remote_fn.remote(1))
+
+        with pytest.raises(TypeError):
+            remote_fn.remote(1, 2, x=3)
+
+    remote_test_function = ray.remote(test_function)
+
+    remote_hello = ray.remote(hello)
+    test_function(hello, remote_hello)
+    ray.get(remote_test_function.remote(hello, remote_hello))
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.hello
+    local_actor = TestActor()
+    local_method = local_actor.hello
+    test_function(local_method, actor_method)
+    ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
+def test_args_stars_after(ray_start_regular):
+    def star_args_after(a="hello", b="heo", *args, **kwargs):
+        return a, b, args, kwargs
+
+    class TestActor(object):
+        def star_args_after(self, a="hello", b="heo", *args, **kwargs):
+            return a, b, args, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn("hi", "hello", 2) == ray.get(
+            remote_fn.remote("hi", "hello", 2))
+        assert fn(
+            "hi", "hello", 2, hi="hi") == ray.get(
+                remote_fn.remote("hi", "hello", 2, hi="hi"))
+        assert fn(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
+
+    remote_test_function = ray.remote(test_function)
+
+    remote_star_args_after = ray.remote(star_args_after)
+    test_function(star_args_after, remote_star_args_after)
+    ray.get(
+        remote_test_function.remote(star_args_after, remote_star_args_after))
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.star_args_after
+    local_actor = TestActor()
+    local_method = local_actor.star_args_after
+    test_function(local_method, actor_method)
+    ray.get(remote_test_function.remote(local_method, actor_method))
+
+
 def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct1(*a):
@@ -790,24 +906,12 @@ def test_variable_number_of_args(shutdown_only):
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
 
-    try:
-
-        @ray.remote
-        def kwargs_throw_exception(**c):
-            return ()
-
-        kwargs_exception_thrown = False
-    except Exception:
-        kwargs_exception_thrown = True
-
     ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
     x = varargs_fct2.remote(0, 1, 2)
     assert ray.get(x) == "1 2"
-
-    assert kwargs_exception_thrown
 
     @ray.remote
     def f1(*args):
@@ -2688,7 +2792,10 @@ def test_global_state_api(shutdown_only):
 
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_actor_id_hex
-    assert task_spec["Args"] == [1, "hi", x_id]
+    assert task_spec["Args"] == [
+        signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "hi",
+        signature.DUMMY_TYPE, x_id
+    ]
     assert task_spec["JobID"] == job_id.hex()
     assert task_spec["ReturnObjectIDs"] == [result_id]
 
