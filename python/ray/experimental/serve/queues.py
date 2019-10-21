@@ -42,7 +42,7 @@ class CentralizedQueues:
             "service-name", request_args, request_kwargs, request_context)
         # nothing happens, request is queued.
         # returns result ObjectID, which will contains the final result
-        >>> queue.dequeue_request('backend-1')
+        >>> queue.dequeue_request('backend-1', worker_handle)
         # nothing happens, work intention is queued.
         # return work ObjectID, which will contains the future request payload
         >>> queue.link('service-name', 'backend-1')
@@ -75,6 +75,7 @@ class CentralizedQueues:
 
         # backend_name -> worker payload queue
         self.buffer_queues = defaultdict(deque)
+
         # replica_actor_id -> replica_actor_handle
         self.replica_handles = dict()
 
@@ -101,6 +102,17 @@ class CentralizedQueues:
         intention = WorkIntent(replica_handle)
         self.workers[backend].append(intention)
         self.flush()
+
+    def remove_replica(self, backend, replica_handle):
+        # NOTE: this function scale by O(#replicas for the backend)
+        new_queue = deque()
+        target_id = replica_handle._actor_id
+
+        for work_intent in self.workers[backend]:
+            if work_intent.replica_handle._actor_id != target_id:
+                new_queue.append(work_intent)
+
+        self.workers[backend] = new_queue
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
@@ -157,8 +169,7 @@ class CentralizedQueues:
                         buffer_queue.popleft(),
                         work_queue.popleft(),
                     )
-                    ray.worker.global_worker.put_object(
-                        request, work.work_object_id)
+                    work.replica_handle._ray_serve_call.remote(request)
 
 
 @ray.remote

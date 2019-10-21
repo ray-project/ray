@@ -50,7 +50,7 @@ class RayServeMixin:
     _ray_serve_self_handle = None
     _ray_serve_router_handle = None
     _ray_serve_setup_completed = False
-    _ray_serve_dequeue_requestr_name = None
+    _ray_serve_dequeue_requester_name = None
 
     # Work token can be unfullfilled from last iteration.
     # This cache will be used to determine whether or not we should
@@ -66,7 +66,7 @@ class RayServeMixin:
         latency_lst = self._serve_metric_latency_list[:]
         self._serve_metric_latency_list = []
 
-        my_name = self._ray_serve_dequeue_requestr_name
+        my_name = self._ray_serve_dequeue_requester_name
 
         return {
             "{}_error_counter".format(my_name): {
@@ -80,38 +80,20 @@ class RayServeMixin:
         }
 
     def _ray_serve_setup(self, my_name, router_handle, my_handle):
-        self._ray_serve_dequeue_requestr_name = my_name
+        self._ray_serve_dequeue_requester_name = my_name
         self._ray_serve_router_handle = router_handle
         self._ray_serve_self_handle = my_handle
         self._ray_serve_setup_completed = True
 
-
     def _ray_serve_fetch(self):
         assert self._ray_serve_setup_completed
 
-        self._ray_serve_router_handle.register_replicas.remote(
-            self._ray_serve_self_handle
-        )
-    
-    def _ray_serve_call(self, request):
-        # Only retrieve the next task if we have completed previous task.
-        if self._ray_serve_cached_work_token is None:
-            work_token = ray.get(
-                self._ray_serve_router_handle.dequeue_request.remote(
-                    self._ray_serve_dequeue_requestr_name))
-        else:
-            work_token = self._ray_serve_cached_work_token
+        self._ray_serve_router_handle.dequeue_request.remote(
+            self._ray_serve_dequeue_requester_name,
+            self._ray_serve_self_handle)
 
-        work_token_id = ray.ObjectID(work_token)
-        ready, not_ready = ray.wait(
-            [work_token_id], num_returns=1, timeout=0.5)
-        if len(ready) == 1:
-            work_item = ray.get(work_token_id)
-            self._ray_serve_cached_work_token = None
-        else:
-            self._ray_serve_cached_work_token = work_token
-            self._ray_serve_self_handle._ray_serve_main_loop.remote()
-            return
+    def _ray_serve_call(self, request):
+        work_item = request
 
         if work_item.request_context == TaskContext.Web:
             serve_context.web = True
@@ -138,11 +120,39 @@ class RayServeMixin:
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
 
         serve_context.web = False
-        # The worker finished one unit of work.
-        # It will now tail recursively schedule the main_loop again.
 
-        # TODO(simon): remove tail recursion, ask router to callback instead
-        self._ray_serve_self_handle._ray_serve_main_loop.remote()
+        self._ray_serve_fetch()
+
+    def _ray_serve_prepare_shutdown(self):
+        """Signal to router that this replica no longer intend to work
+
+        Note: This method is expected to called accompanying some waiting
+            period. For example
+            >>> ray.get(task_runner._ray_serve_prepare_shutdown.remote())
+            >>> time.sleep(0.5)
+            >>> del task_runner
+
+            Because this function is not race-free. Consider the following,
+                t+0: TaskRunner._ray_serve_prepare_shutdown called, immediately
+                    followed by __ray_termiante__.
+                t+0: Queue._flush() is running, queued a task for current
+                    TaskRunner
+                t+1: Queue.remove_replica is called, by this function.
+                t+1: The task queued for current TaskRunner will never be
+                    executed because the actor died at t+0.
+
+            Therefore, this cleanup method just act as a safety net.
+        """
+        if self._ray_serve_setup_completed:
+            future = self._ray_serve_router_handle.remove_replica.remote(
+                self._ray_serve_dequeue_requester_name,
+                self._ray_serve_self_handle)
+
+            # block so we make sure this task runner is taken off queue
+            ray.get(future)
+
+    def __del__(self):
+        self._ray_serve_prepare_shutdown()
 
 
 class TaskRunnerBackend(TaskRunner, RayServeMixin):

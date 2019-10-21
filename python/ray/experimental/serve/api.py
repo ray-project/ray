@@ -1,5 +1,6 @@
 import inspect
 from functools import wraps
+import time
 
 import numpy as np
 
@@ -164,7 +165,7 @@ def _start_replica(backend_tag):
     ray.get(
         runner_handle._ray_serve_setup.remote(
             backend_tag, global_state.init_or_get_router(), runner_handle))
-    runner_handle._ray_serve_main_loop.remote()
+    runner_handle._ray_serve_fetch.remote()
 
     # Register the worker in config tables as well as metric monitor
     global_state.backend_table.add_replica(backend_tag, replica_tag)
@@ -181,10 +182,24 @@ def _remove_replica(backend_tag):
     replica_tag = global_state.backend_table.remove_replica(backend_tag)
     [replica_handle] = ray.get(
         global_state.actor_nursery_handle.get_handle.remote(replica_tag))
+        replica_handle._ray_serve_prepare_shutdown.remote()
+
+    # sleep to avoid race condition. This gap is capped by
+    # O(#total_replicas * actor_task_submission_latency)
+    # which 100ms is a reasonable estimate. For explaination about the
+    # race condition, see docstring of TaskRunner._ray_serve_prepare_shutdown
+    time.sleep(0.1)
+
+    # explicitly terminate that actor
+    del replica_handle
+    
     global_state.init_or_get_metric_monitor().remove_target.remote(
         replica_handle)
     ray.get(
         global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
+
+
+
 
 
 @_ensure_connected
