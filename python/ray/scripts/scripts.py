@@ -163,6 +163,14 @@ def cli(logging_level, logging_format):
     default=False,
     help="provide this argument if the UI should be started")
 @click.option(
+    "--webui-host",
+    required=False,
+    type=click.Choice(["127.0.0.1", "0.0.0.0"]),
+    default="127.0.0.1",
+    help="The host to bind the web UI server to. Can either be 127.0.0.1 "
+    "(localhost) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is set to 127.0.0.1 to prevent access from external machines.")
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -234,7 +242,7 @@ def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_webui, block, plasma_directory, huge_pages,
+          head, include_webui, webui_host, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
           java_worker_options, load_code_from_local, use_pickle,
@@ -277,6 +285,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         temp_dir=temp_dir,
         include_java=include_java,
         include_webui=include_webui,
+        webui_host=webui_host,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,

@@ -465,6 +465,7 @@ class Node(object):
         """Start the dashboard."""
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._webui_url, process_info = ray.services.start_dashboard(
+            self._ray_params.webui_host,
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,

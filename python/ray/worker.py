@@ -1160,6 +1160,7 @@ def init(address=None,
          plasma_directory=None,
          huge_pages=False,
          include_webui=False,
+         webui_host="127.0.0.1",
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -1239,6 +1240,10 @@ def init(address=None,
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster.
+        webui_host: The host to bind the web UI server to. Can either be
+            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to 127.0.0.1 to prevent access from
+            external machines.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
             Otherwise, the users may want to configure it by their own.
@@ -1321,6 +1326,7 @@ def init(address=None,
             plasma_directory=plasma_directory,
             huge_pages=huge_pages,
             include_webui=include_webui,
+            webui_host=webui_host,
             memory=memory,
             object_store_memory=object_store_memory,
             redis_max_memory=redis_max_memory,
