@@ -40,8 +40,10 @@ def test_split_traffic(serve_instance):
     q = CentralizedQueues()
 
     q.set_traffic("svc", {"backend-1": 0.5, "backend-2": 0.5})
-    q.enqueue_request("svc", 1, "kwargs", None)
-    q.enqueue_request("svc", 1, "kwargs", None)
+    # assume 50% split, the probability of all 20 requests goes to a
+    # single queue is 0.5^20 ~ 1-6
+    for _ in range(20):
+        q.enqueue_request("svc", 1, "kwargs", None)
     work_object_id_1 = q.dequeue_request("backend-1")
     work_object_id_2 = q.dequeue_request("backend-2")
 
