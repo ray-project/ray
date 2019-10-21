@@ -9,6 +9,7 @@
 #include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/sample.h"
 
 namespace {
 
@@ -300,7 +301,7 @@ void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().heartbeat_timeout_milliseconds()) {
+                     RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
     RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
   }
   last_heartbeat_at_ms_ = now_ms;
@@ -326,6 +327,25 @@ void NodeManager::Heartbeat() {
   for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
     heartbeat_data->add_resource_load_label(resource_pair.first);
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
+  }
+
+  size_t max_size = RayConfig::instance().raylet_max_active_object_ids();
+  std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
+  if (active_object_ids.size() <= max_size) {
+    for (const auto &object_id : active_object_ids) {
+      heartbeat_data->add_active_object_id(object_id.Binary());
+    }
+  } else {
+    // If there are more than the configured maximum number of object IDs to send per
+    // heartbeat, sample from them randomly.
+    // TODO(edoakes): we might want to improve the sampling technique here, for example
+    // preferring object IDs with the earliest last-refreshed timestamp.
+    std::vector<ObjectID> downsampled;
+    random_sample(active_object_ids.begin(), active_object_ids.end(), max_size,
+                  &downsampled);
+    for (const auto &object_id : downsampled) {
+      heartbeat_data->add_active_object_id(object_id.Binary());
+    }
   }
 
   ray::Status status = heartbeat_table.Add(
@@ -655,7 +675,13 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
   // Update load information provided by each heartbeat.
+  // TODO(edoakes): this isn't currently used, but will be used to refresh the LRU
+  // cache in the object store.
+  std::unordered_set<ObjectID> active_object_ids;
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
+    for (int i = 0; i < heartbeat_data.active_object_id_size(); i++) {
+      active_object_ids.insert(ObjectID::FromBinary(heartbeat_data.active_object_id(i)));
+    }
     const ClientID &client_id = ClientID::FromBinary(heartbeat_data.client_id());
     if (client_id == local_client_id) {
       // Skip heartbeats from self.
@@ -663,6 +689,7 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     }
     HeartbeatAdded(client_id, heartbeat_data);
   }
+  RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
@@ -905,6 +932,9 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
+  } break;
+  case protocol::MessageType::ReportActiveObjectIDs: {
+    ProcessReportActiveObjectIDs(client, message_data);
   } break;
 
   default:
@@ -1307,6 +1337,19 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
   RAY_LOG(DEBUG) << "Actor " << actor_id << " was resumed from checkpoint "
                  << checkpoint_id;
   checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
+}
+
+void NodeManager::ProcessReportActiveObjectIDs(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+    RAY_CHECK(worker);
+  }
+
+  auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
+  worker->SetActiveObjectIds(
+      unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,

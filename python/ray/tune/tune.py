@@ -10,7 +10,9 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
@@ -40,6 +42,13 @@ def _make_scheduler(args):
     else:
         raise TuneError("Unknown scheduler: {}, should be one of {}".format(
             args.scheduler, _SCHEDULERS.keys()))
+
+
+def _check_default_resources_override(run_identifier):
+    trainable_cls = get_trainable_cls(run_identifier)
+    return hasattr(trainable_cls, "default_resource_request") and (
+        trainable_cls.default_resource_request.__code__ !=
+        Trainable.default_resource_request.__code__)
 
 
 def run(run_or_experiment,
@@ -249,6 +258,24 @@ def run(run_or_experiment,
         reporter = JupyterNotebookReporter(overwrite=verbose < 2)
     else:
         reporter = CLIReporter()
+
+    # User Warning for GPUs
+    if trial_executor.has_gpus():
+        if isinstance(resources_per_trial,
+                      dict) and "gpu" in resources_per_trial:
+            # "gpu" is manually set.
+            pass
+        elif _check_default_resources_override(run_identifier):
+            # "default_resources" is manually overriden.
+            pass
+        else:
+            logger.warning("Tune detects GPUs, but no trials are using GPUs. "
+                           "To enable trials to use GPUs, set "
+                           "tune.run(resources_per_trial={'gpu': 1}...) "
+                           "which allows Tune to expose 1 GPU to each trial. "
+                           "You can also override "
+                           "`Trainable.default_resource_request` if using the "
+                           "Trainable API.")
 
     last_debug = 0
     while not runner.is_finished():

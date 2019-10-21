@@ -176,6 +176,11 @@ class RayletClient {
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
+  /// Notifies the raylet of the object IDs currently in use on this worker.
+  /// \param object_ids The set of object IDs currently in use.
+  /// \return ray::Status
+  ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
+
   Language GetLanguage() const { return language_; }
 
   WorkerID GetWorkerID() const { return worker_id_; }
