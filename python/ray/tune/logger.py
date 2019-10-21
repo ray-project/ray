@@ -148,6 +148,11 @@ def tf2_compat_logger(config, logdir, trial=None):
         use_tf2_api = (distutils.version.LooseVersion(tf.__version__) >=
                        distutils.version.LooseVersion("1.15.0"))
         if use_tf2_api:
+            # This is temporarily for RLlib because it disables v2 behavior...
+            from tensorflow.python import tf2
+            if not tf2.enabled():
+                tf = tf.compat.v1
+                return TFLogger(config, logdir, trial)
             tf = tf.compat.v2  # setting this for TF2.0
             return TF2Logger(config, logdir, trial)
         else:
