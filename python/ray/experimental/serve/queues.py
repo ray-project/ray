@@ -76,9 +76,6 @@ class CentralizedQueues:
         # backend_name -> worker payload queue
         self.buffer_queues = defaultdict(deque)
 
-        # replica_actor_id -> replica_actor_handle
-        self.replica_handles = dict()
-
     def is_ready(self):
         return True
 
