@@ -677,7 +677,7 @@ class Worker(object):
                 else:
                     arguments[object_indices[i]] = value
 
-        return arguments
+        return ray.signature.recover_args(arguments)
 
     def _store_outputs_in_object_store(self, object_ids, outputs):
         """Store the outputs of a remote function in the local object store.
@@ -744,7 +744,7 @@ class Worker(object):
 
         function_descriptor = FunctionDescriptor.from_bytes_list(
             task.function_descriptor_list())
-        args = task.arguments()
+        serialized_args = task.arguments()
         return_object_ids = task.returns()
         if task.is_actor_task() or task.is_actor_creation_task():
             dummy_return_id = return_object_ids.pop()
@@ -757,8 +757,9 @@ class Worker(object):
                 self.reraise_actor_init_error()
                 self.memory_monitor.raise_if_low_memory()
             with profiling.profile("task:deserialize_arguments"):
-                arguments = self._get_arguments_for_execution(
-                    function_name, args)
+                function_args, function_kwargs = (
+                    self._get_arguments_for_execution(function_name,
+                                                      serialized_args))
         except Exception as e:
             self._handle_process_task_failure(
                 function_descriptor, return_object_ids, e,
@@ -770,7 +771,8 @@ class Worker(object):
             self._current_task = task
             with profiling.profile("task:execute"):
                 if task.is_normal_task():
-                    outputs = function_executor(*arguments)
+                    outputs = function_executor(*function_args,
+                                                **function_kwargs)
                 else:
                     if task.is_actor_task():
                         key = task.actor_id()
@@ -790,8 +792,9 @@ class Worker(object):
                                 ray_constants.from_memory_units(
                                     task.required_resources()[
                                         "object_store_memory"])))
-                    outputs = function_executor(dummy_return_id,
-                                                self.actors[key], *arguments)
+                    outputs = function_executor(
+                        dummy_return_id, self.actors[key], *function_args,
+                        **function_kwargs)
         except Exception as e:
             # Determine whether the exception occured during a task, not an
             # actor method.
@@ -1115,14 +1118,14 @@ def _initialize_serialization(job_id, worker=global_worker):
             local=True,
             job_id=job_id,
             class_id="type")
-        # Tell Ray to serialize FunctionSignatures as dictionaries. This is
+        # Tell Ray to serialize RayParameters as dictionaries. This is
         # used when passing around actor handles.
         _register_custom_serializer(
-            ray.signature.FunctionSignature,
+            ray.signature.RayParameter,
             use_dict=True,
             local=True,
             job_id=job_id,
-            class_id="ray.signature.FunctionSignature")
+            class_id="ray.signature.RayParameter")
         # Tell Ray to serialize StringIO with pickle. We do this because
         # Ray's default __dict__ serialization is incorrect for this type
         # (the object's __dict__ is empty and therefore doesn't
