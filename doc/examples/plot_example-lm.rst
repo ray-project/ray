@@ -42,7 +42,7 @@ Run the following command on your local machine to start the Ray cluster:
 You can move these files manually, or use the following command to upload
 files from a local path:
 
-.. code-block::
+.. code-block:: bash
 
   ray rsync-up lm-cluster.yaml PATH/TO/LM '~/efs/lm'
 
