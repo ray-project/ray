@@ -265,7 +265,7 @@ def run(run_or_experiment,
                       dict) and "gpu" in resources_per_trial:
             # "gpu" is manually set.
             pass
-        elif _check_default_resources_override(run_identifier):
+        elif _check_default_resources_override(experiment.run_identifier):
             # "default_resources" is manually overriden.
             pass
         else:
