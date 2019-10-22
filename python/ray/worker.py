@@ -1190,6 +1190,13 @@ def shutdown(exiting_interpreter=False):
 
 atexit.register(shutdown, True)
 
+
+def sigterm_handler(signum, frame):
+    sys.exit(signal.SIGTERM)
+
+
+signal.signal(signal.SIGTERM, sigterm_handler)
+
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
 normal_excepthook = sys.excepthook

@@ -24,8 +24,8 @@ class CoreWorkerObjectInterface {
   ///            in addition to the plasma store.
   CoreWorkerObjectInterface(WorkerContext &worker_context,
                             std::unique_ptr<RayletClient> &raylet_client,
-                            const std::string &store_socket,
-                            bool use_memory_store = true);
+                            const std::string &store_socket, bool use_memory_store = true,
+                            std::function<Status()> check_signals = nullptr);
 
   /// Set options for this client's interactions with the object store.
   ///
@@ -74,11 +74,9 @@ class CoreWorkerObjectInterface {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
-  /// \param[out] got_exception True if one of the objects was an exception.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results,
-             bool *got_exception = nullptr);
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Return whether or not the object store contains the given object.
   ///
@@ -161,6 +159,8 @@ class CoreWorkerObjectInterface {
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
       store_providers_;
+
+  std::function<Status()> check_signals_;
 
   friend class CoreWorkerTaskInterface;
 

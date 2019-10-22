@@ -31,6 +31,9 @@ class CoreWorker {
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
+  /// \parma[in] check_signals Language worker function to check for signals and handle
+  ///            them. If the function returns anything but StatusOK, any long-running
+  ///            operations in the core worker will short circuit and return that status.
   /// \param[in] use_memory_store Whether or not to use the in-memory object store
   ///            in addition to the plasma store.
   ///
@@ -44,6 +47,7 @@ class CoreWorker {
              const std::string &log_dir, const std::string &node_ip_address,
              const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
                  &task_execution_callback,
+             std::function<Status()> check_signals = nullptr,
              bool use_memory_store = true);
 
   ~CoreWorker();

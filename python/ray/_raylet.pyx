@@ -129,6 +129,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
 
     if status.IsObjectStoreFull():
         raise ObjectStoreFullError(message)
+    elif status.IsInterrupted():
+        raise KeyboardInterrupt()
     else:
         raise RayletError(message)
 
@@ -673,6 +675,14 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
+cdef CRayStatus check_signals() nogil:
+    with gil:
+        try:
+            PyErr_CheckSignals()
+        except KeyboardInterrupt:
+            return CRayStatus.Interrupted(b"")
+    return CRayStatus.OK()
+
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
@@ -688,7 +698,8 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), task_execution_handler, False))
+            node_ip_address.encode("utf-8"), task_execution_handler,
+            check_signals, False))
 
     def disconnect(self):
         with nogil:
@@ -721,36 +732,13 @@ cdef class CoreWorker:
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):
         cdef:
-            CRayStatus status
-            shared_ptr[CRayObject] c_result
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
-            c_bool got_exception
-            int64_t remaining_timeout
-            int64_t count
-            int64_t num_objects = len(object_ids)
 
         with nogil:
-            if timeout_ms < 0:
-                remaining_timeout = INT64_MAX
-            else:
-                remaining_timeout = timeout_ms
-            while timeout_ms < 0 or remaining_timeout >= 0:
-                check_status(self.core_worker.get().Objects().Get(
-                    c_object_ids, min(100, remaining_timeout),
-                    &results, &got_exception))
-
-                count = 0
-                for c_result in results:
-                    if c_result:
-                        count += 1
-                if count == num_objects or got_exception:
-                    break
-
-                remaining_timeout -= 100
-                with gil:
-                    PyErr_CheckSignals()
+            check_status(self.core_worker.get().Objects().Get(
+                c_object_ids, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -850,36 +838,15 @@ cdef class CoreWorker:
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
         cdef:
-            CRayStatus status
             WaitResultPair result
             c_vector[CObjectID] wait_ids
-            c_bool c_result
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
-            int64_t remaining_timeout
-            int64_t curr_timeout
-            int64_t count
 
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            if timeout_ms < 0:
-                remaining_timeout = INT64_MAX
-            else:
-                remaining_timeout = timeout_ms
-            while timeout_ms < 0 or remaining_timeout >= 0:
-                check_status(self.core_worker.get().Objects().Wait(
-                    wait_ids, num_returns,
-                    min(100, remaining_timeout), &results))
-
-                count = 0
-                for c_result in results:
-                    count += c_result
-                if count >= num_returns:
-                    break
-
-                remaining_timeout -= 100
-                with gil:
-                    PyErr_CheckSignals()
+            check_status(self.core_worker.get().Objects().Wait(
+                wait_ids, num_returns, timeout_ms, &results))
 
         assert len(results) == len(object_ids)
 

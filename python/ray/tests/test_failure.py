@@ -717,7 +717,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.RayletError):
+    with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(ray.ObjectID.from_random())
     thread.join()
 

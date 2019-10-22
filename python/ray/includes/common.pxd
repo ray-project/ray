@@ -47,31 +47,34 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus OK()
 
         @staticmethod
-        CRayStatus OutOfMemory()
+        CRayStatus OutOfMemory(const c_string &msg)
 
         @staticmethod
-        CRayStatus KeyError()
+        CRayStatus KeyError(const c_string &msg)
 
         @staticmethod
-        CRayStatus Invalid()
+        CRayStatus Invalid(const c_string &msg)
 
         @staticmethod
-        CRayStatus IOError()
+        CRayStatus IOError(const c_string &msg)
 
         @staticmethod
-        CRayStatus TypeError()
+        CRayStatus TypeError(const c_string &msg)
 
         @staticmethod
-        CRayStatus UnknownError()
+        CRayStatus UnknownError(const c_string &msg)
 
         @staticmethod
         CRayStatus NotImplemented(const c_string &msg)
 
         @staticmethod
-        CRayStatus RedisError()
+        CRayStatus ObjectStoreFull(const c_string &msg)
 
         @staticmethod
-        CRayStatus ObjectStoreFull()
+        CRayStatus RedisError(const c_string &msg)
+
+        @staticmethod
+        CRayStatus Interrupted(const c_string &msg)
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -81,8 +84,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTypeError()
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
-        c_bool IsRedisError()
         c_bool IsObjectStoreFull()
+        c_bool IsRedisError()
+        c_bool IsInterrupted()
 
         c_string ToString()
         c_string CodeAsString()

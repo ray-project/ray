@@ -37,12 +37,14 @@ void CoreWorkerObjectInterface::GroupObjectIdsByStoreProvider(
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    const std::string &store_socket, bool use_memory_store)
+    const std::string &store_socket, bool use_memory_store,
+    std::function<Status()> check_signals)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket),
       use_memory_store_(use_memory_store),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
+  check_signals_ = check_signals;
   AddStoreProvider(StoreProviderType::PLASMA);
   AddStoreProvider(StoreProviderType::MEMORY);
 }
@@ -83,8 +85,7 @@ Status CoreWorkerObjectInterface::Seal(const ObjectID &object_id) {
 
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
-                                      std::vector<std::shared_ptr<RayObject>> *results,
-                                      bool *got_exception) {
+                                      std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(ids.size(), nullptr);
 
   // Divide the object ids by store provider type. For each store provider,
@@ -96,7 +97,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto remaining_timeout_ms = timeout_ms;
-  bool provider_got_exception = false;
+  bool got_exception = false;
 
   // Re-order the list so that we always get from plasma store provider first,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
@@ -120,8 +121,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
         entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
-        &result_map, &provider_got_exception));
-    if (provider_got_exception) {
+        &result_map, &got_exception));
+    if (got_exception) {
       break;
     }
     if (remaining_timeout_ms > 0) {
@@ -139,10 +140,6 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     if (result_map.find(ids[i]) != result_map.end()) {
       (*results)[i] = result_map[ids[i]];
     }
-  }
-
-  if (got_exception) {
-    *got_exception = provider_got_exception;
   }
 
   return Status::OK();
@@ -274,7 +271,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
   switch (type) {
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
+        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_, check_signals_));
   case StoreProviderType::MEMORY:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerMemoryStoreProvider(memory_store_));
