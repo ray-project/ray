@@ -78,13 +78,6 @@ def ray_deps_setup():
         remote = "https://github.com/cython/cython",
     )
 
-    new_git_repository(
-        name = "cysignals",
-        build_file = "@//bazel:BUILD.cysignals",
-        commit = "2886287e2c20fa1e04bd8ace3449949ea01ce86b",
-        remote = "https://github.com/sagemath/cysignals",
-    )
-
     http_archive(
         name = "io_opencensus_cpp",
         strip_prefix = "opencensus-cpp-3aa11f20dd610cb8d2f7c62e58d1e69196aadf11",

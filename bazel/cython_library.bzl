@@ -8,7 +8,7 @@
 # been written at cython/cython and tensorflow/tensorflow. We branch from
 # Tensorflow's version as it is more actively maintained and works for gRPC
 # Python's needs.
-def pyx_library(name, deps=[], py_deps=[], srcs=[], includes=[], **kwargs):
+def pyx_library(name, deps=[], py_deps=[], srcs=[], **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
     First runs Cython to create .cpp files for each input .pyx or .py + .pxd
     pair. Then builds a shared object for each, passing "deps" to each cc_binary
@@ -37,11 +37,6 @@ def pyx_library(name, deps=[], py_deps=[], srcs=[], includes=[], **kwargs):
         if src.endswith("__init__.py"):
             pxd_srcs.append(src)
 
-    cmd = "PYTHONHASHSEED=0 $${PYTHON_BIN_PATH} $(location @cython//:cython_binary) "
-    for include in includes:
-      cmd += "--include-dir=$$(dirname $(location {})) ".format(include)
-    cmd += "--cplus $(SRCS) --output-file $(OUTS)"
-
     # Invoke cython to produce the shared object libraries.
     for filename in pyx_srcs:
         native.genrule(
@@ -50,8 +45,9 @@ def pyx_library(name, deps=[], py_deps=[], srcs=[], includes=[], **kwargs):
             outs=[filename.split(".")[0] + ".cpp"],
             # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
             # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
-            cmd=cmd,
-            tools=["@cython//:cython_binary"] + pxd_srcs + includes,
+            cmd=
+            "PYTHONHASHSEED=0 $${PYTHON_BIN_PATH} $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+            tools=["@cython//:cython_binary"] + pxd_srcs,
         )
 
     shared_objects = []

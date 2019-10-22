@@ -710,8 +710,6 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    nonexistent_id = ray.ObjectID.from_random()
-
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
@@ -719,8 +717,8 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(nonexistent_id)
+    with pytest.raises(ray.exceptions.RayletError):
+        ray.get(ray.ObjectID.from_random())
     thread.join()
 
 

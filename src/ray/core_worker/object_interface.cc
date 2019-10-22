@@ -83,7 +83,8 @@ Status CoreWorkerObjectInterface::Seal(const ObjectID &object_id) {
 
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
-                                      std::vector<std::shared_ptr<RayObject>> *results) {
+                                      std::vector<std::shared_ptr<RayObject>> *results,
+                                      bool *got_exception) {
   (*results).resize(ids.size(), nullptr);
 
   // Divide the object ids by store provider type. For each store provider,
@@ -95,7 +96,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto remaining_timeout_ms = timeout_ms;
-  bool got_exception = false;
+  bool provider_got_exception = false;
 
   // Re-order the list so that we always get from plasma store provider first,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
@@ -119,8 +120,8 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
         entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
-        &result_map, &got_exception));
-    if (got_exception) {
+        &result_map, &provider_got_exception));
+    if (provider_got_exception) {
       break;
     }
     if (remaining_timeout_ms > 0) {
@@ -138,6 +139,10 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     if (result_map.find(ids[i]) != result_map.end()) {
       (*results)[i] = result_map[ids[i]];
     }
+  }
+
+  if (got_exception) {
+    *got_exception = provider_got_exception;
   }
 
   return Status::OK();

@@ -3,7 +3,7 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-from cysignals.signals cimport sig_on, sig_off
+from cpython.exc cimport PyErr_CheckSignals
 
 import numpy
 import time
@@ -11,7 +11,13 @@ import logging
 import os
 import sys
 
-from libc.stdint cimport uint8_t, int32_t, int64_t, uint64_t
+from libc.stdint cimport (
+    int32_t,
+    int64_t,
+    INT64_MAX,
+    uint64_t,
+    uint8_t,
+)
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport (
     dynamic_pointer_cast,
@@ -643,7 +649,6 @@ cdef CRayStatus task_execution_handler(
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
-    sig_off()
     with gil:
         try:
             # The call to execute_task should never raise an exception. If it
@@ -666,7 +671,6 @@ cdef CRayStatus task_execution_handler(
             # address this.
             sys.exit(1)
 
-    sig_on()
     return CRayStatus.OK()
 
 cdef class CoreWorker:
@@ -691,7 +695,6 @@ cdef class CoreWorker:
             self.core_worker.get().Disconnect()
 
     def run_task_loop(self):
-        sig_on()
         with nogil:
             self.core_worker.get().Execution().Run()
 
@@ -715,19 +718,39 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
 
-    def get_objects(self, object_ids, TaskID current_task_id):
+    def get_objects(self, object_ids, TaskID current_task_id,
+                    int64_t timeout_ms=-1):
         cdef:
             CRayStatus status
+            shared_ptr[CRayObject] c_result
             c_vector[shared_ptr[CRayObject]] results
             CTaskID c_task_id = current_task_id.native()
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
+            c_bool got_exception
+            int64_t remaining_timeout
+            int64_t count
+            int64_t num_objects = len(object_ids)
 
         with nogil:
-            sig_on()
-            status = self.core_worker.get().Objects().Get(
-                c_object_ids, -1, &results)
-            sig_off()
-            check_status(status)
+            if timeout_ms < 0:
+                remaining_timeout = INT64_MAX
+            else:
+                remaining_timeout = timeout_ms
+            while timeout_ms < 0 or remaining_timeout >= 0:
+                check_status(self.core_worker.get().Objects().Get(
+                    c_object_ids, min(100, remaining_timeout),
+                    &results, &got_exception))
+
+                count = 0
+                for c_result in results:
+                    if c_result:
+                        count += 1
+                if count == num_objects or got_exception:
+                    break
+
+                remaining_timeout -= 100
+                with gil:
+                    PyErr_CheckSignals()
 
         return RayObjectsToDataMetadataPairs(results)
 
@@ -824,22 +847,39 @@ cdef class CoreWorker:
         with nogil:
             check_status(self.core_worker.get().Objects().Seal(c_object_id))
 
-    def wait(self, object_ids, int num_returns, int64_t timeout_milliseconds,
+    def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
         cdef:
             CRayStatus status
             WaitResultPair result
             c_vector[CObjectID] wait_ids
+            c_bool c_result
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
+            int64_t remaining_timeout
+            int64_t curr_timeout
+            int64_t count
 
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            sig_on()
-            status = self.core_worker.get().Objects().Wait(
-                wait_ids, num_returns, timeout_milliseconds, &results)
-            sig_off()
-            check_status(status)
+            if timeout_ms < 0:
+                remaining_timeout = INT64_MAX
+            else:
+                remaining_timeout = timeout_ms
+            while timeout_ms < 0 or remaining_timeout >= 0:
+                check_status(self.core_worker.get().Objects().Wait(
+                    wait_ids, num_returns,
+                    min(100, remaining_timeout), &results))
+
+                count = 0
+                for c_result in results:
+                    count += c_result
+                if count >= num_returns:
+                    break
+
+                remaining_timeout -= 100
+                with gil:
+                    PyErr_CheckSignals()
 
         assert len(results) == len(object_ids)
 

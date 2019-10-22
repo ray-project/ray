@@ -74,9 +74,11 @@ class CoreWorkerObjectInterface {
   /// \param[in] ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
+  /// \param[out] got_exception True if one of the objects was an exception.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> *results,
+             bool *got_exception = nullptr);
 
   /// Return whether or not the object store contains the given object.
   ///
