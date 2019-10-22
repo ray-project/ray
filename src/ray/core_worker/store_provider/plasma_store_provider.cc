@@ -231,19 +231,13 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
       should_break = true;
     }
     if (check_signals_) {
-      Status status = check_signals_();
-      if (!status.ok()) {
-        // TODO(edoakes): in this case which status should we return?
-        RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
-        return status;
-      }
+      RAY_RETURN_NOT_OK(check_signals_());
     }
   }
 
   for (const auto &entry : result_pair.first) {
     ready->insert(entry);
   }
-  RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
   return Status::OK();
 }
 
