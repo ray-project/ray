@@ -211,12 +211,12 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::unordered_set<ObjectID> *ready) {
-  WaitResultPair result_pair;
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
 
   bool should_break = false;
   int64_t remaining_timeout = timeout_ms;
   while (!should_break) {
+    WaitResultPair result_pair;
     int64_t call_timeout = RayConfig::instance().get_timeout_milliseconds();
     if (remaining_timeout >= 0) {
       call_timeout = std::min(remaining_timeout, call_timeout);
@@ -230,6 +230,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
     }
+    for (const auto &entry : result_pair.first) {
+      ready->insert(entry);
+    }
     if (check_signals_) {
       Status status = check_signals_();
       if (!status.ok()) {
@@ -238,10 +241,6 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
         return status;
       }
     }
-  }
-
-  for (const auto &entry : result_pair.first) {
-    ready->insert(entry);
   }
   RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
   return Status::OK();
