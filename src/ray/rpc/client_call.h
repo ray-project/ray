@@ -182,8 +182,11 @@ class ClientCallManager {
     void *got_tag;
     bool ok = false;
     grpc::CompletionQueue::NextStatus st;
-    auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(500);
+    auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(100);
     // Keep reading events from the `CompletionQueue` until it's shutdown.
+    // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
+    // synchronous cq_.Next blocks indefinitely in the case that the process
+    // received a SIGTERM.
     while (true) {
       st = cq_.AsyncNext(&got_tag, &ok, deadline);
       if (st == grpc::CompletionQueue::SHUTDOWN) {
@@ -203,7 +206,7 @@ class ClientCallManager {
         }
       }
 
-      deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(100);
+      deadline = std::chrono::system_clock::now() + std::chrono::seconds(100);
     }
   }
 
