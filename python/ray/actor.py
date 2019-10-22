@@ -513,9 +513,8 @@ class ActorHandle(object):
         else:
             object_ids = worker.core_worker.submit_actor_task(
                 self._ray_actor_id,
-                self._ray_function_descriptor_lists[method_name],
-                list_args, num_return_vals,
-                {"CPU": self._ray_actor_method_cpus})
+                self._ray_function_descriptor_lists[method_name], list_args,
+                num_return_vals, {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
