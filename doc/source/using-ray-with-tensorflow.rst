@@ -15,7 +15,7 @@ Common Issues: Pickling
 
 One common issue with TensorFlow2.0 is a pickling error like the following:
 
-.. code-block::
+.. code-block:: none
 
     File "/home/***/venv/lib/python3.6/site-packages/ray/actor.py", line 322, in remote
       return self._remote(args=args, kwargs=kwargs)
@@ -41,7 +41,7 @@ One common issue with TensorFlow2.0 is a pickling error like the following:
 
 To resolve this, you should move all instances of ``import tensorflow`` into the Ray actor or function, as follows:
 
-.. code-block::
+.. code-block:: python
 
     def create_model():
         import tensorflow as tf
