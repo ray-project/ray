@@ -129,14 +129,14 @@ class ClientCallManager {
     polling_thread_ =
         std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
     // TODO(edoakes): this shouldn't need to be a daemon (see comment in destructor).
-    polling_thread_.detach();
+    // polling_thread_.detach();
   }
 
   ~ClientCallManager() {
     cq_.Shutdown();
     // TODO(edoakes): we shouldn't need to detach the polling_thread_, but for some reason
     // this join blocks forever (even though there don't seem to be tags to consume).
-    // polling_thread_.join();
+    polling_thread_.join();
   }
 
   /// Create a new `ClientCall` and send request.
@@ -181,19 +181,29 @@ class ClientCallManager {
   void PollEventsFromCompletionQueue() {
     void *got_tag;
     bool ok = false;
+    grpc::CompletionQueue::NextStatus st;
+    auto deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(500);
     // Keep reading events from the `CompletionQueue` until it's shutdown.
-    while (cq_.Next(&got_tag, &ok)) {
-      auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-      if (ok && !main_service_.stopped()) {
-        // Post the callback to the main event loop.
-        main_service_.post([tag]() {
-          tag->GetCall()->OnReplyReceived();
-          // The call is finished, and we can delete this tag now.
-          delete tag;
-        });
-      } else {
-        delete tag;
+    while (true) {
+      st = cq_.AsyncNext(&got_tag, &ok, deadline);
+      if (st == grpc::CompletionQueue::SHUTDOWN) {
+        break;
       }
+      if (st != grpc::CompletionQueue::TIMEOUT) {
+        auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
+        if (ok && !main_service_.stopped()) {
+          // Post the callback to the main event loop.
+          main_service_.post([tag]() {
+            tag->GetCall()->OnReplyReceived();
+            // The call is finished, and we can delete this tag now.
+            delete tag;
+          });
+        } else {
+          delete tag;
+        }
+      }
+
+      deadline = std::chrono::system_clock::now() + std::chrono::milliseconds(100);
     }
   }
 
