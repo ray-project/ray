@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import logging
 import time
+import six
 
 from ray.tune.error import TuneError
 from ray.tune.experiment import convert_to_experiment_list, Experiment
@@ -45,6 +46,9 @@ def _make_scheduler(args):
 
 
 def _check_default_resources_override(run_identifier):
+    if not isinstance(run_identifier, six.string_types):
+        # If obscure dtype, assume it is overriden.
+        return True
     trainable_cls = get_trainable_cls(run_identifier)
     return hasattr(trainable_cls, "default_resource_request") and (
         trainable_cls.default_resource_request.__code__ !=
@@ -265,7 +269,7 @@ def run(run_or_experiment,
                       dict) and "gpu" in resources_per_trial:
             # "gpu" is manually set.
             pass
-        elif _check_default_resources_override(run_identifier):
+        elif _check_default_resources_override(experiment.run_identifier):
             # "default_resources" is manually overriden.
             pass
         else:

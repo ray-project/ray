@@ -102,9 +102,9 @@ class Experiment(object):
                     "criteria must take exactly 2 parameters.".format(stop))
 
         config = config or {}
-        run_identifier = Experiment._register_if_needed(run)
+        self._run_identifier = Experiment._register_if_needed(run)
         spec = {
-            "run": run_identifier,
+            "run": self._run_identifier,
             "stop": stop,
             "config": config,
             "resources_per_trial": resources_per_trial,
@@ -125,7 +125,7 @@ class Experiment(object):
             if restore else None
         }
 
-        self.name = name or run_identifier
+        self.name = name or self._run_identifier
         self.spec = spec
 
     @classmethod
@@ -201,6 +201,11 @@ class Experiment(object):
     def remote_checkpoint_dir(self):
         if self.spec["upload_dir"]:
             return os.path.join(self.spec["upload_dir"], self.name)
+
+    @property
+    def run_identifier(self):
+        """Returns a string representing the trainable identifier."""
+        return self._run_identifier
 
 
 def convert_to_experiment_list(experiments):
