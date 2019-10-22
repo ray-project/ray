@@ -727,7 +727,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 def test_connect_with_disconnected_node(shutdown_only):
     config = json.dumps({
         "num_heartbeats_timeout": 50,
-        "heartbeat_timeout_milliseconds": 10,
+        "raylet_heartbeat_timeout_milliseconds": 10,
     })
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _internal_config=config)
