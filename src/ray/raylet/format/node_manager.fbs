@@ -74,8 +74,10 @@ enum MessageType:int {
   NotifyActorResumedFromCheckpoint,
   // A node manager requests to connect to another node manager.
   ConnectClient,
-  // Set dynamic custom resource
+  // Set dynamic custom resource.
   SetResourceRequest,
+  // Update the active set of object IDs in use on this worker.
+  ReportActiveObjectIDs,
 }
 
 table TaskExecutionSpecification {
@@ -238,11 +240,16 @@ table ConnectClient {
   client_id: string;
 }
 
-table SetResourceRequest{
-  // Name of the resource to be set
+table SetResourceRequest {
+  // Name of the resource to be set.
   resource_name: string;
-  // Capacity of the resource to be set
+  // Capacity of the resource to be set.
   capacity: double;
-  // Client ID where this resource will be set
+  // Client ID where this resource will be set.
   client_id: string;
+}
+
+table ReportActiveObjectIDs {
+  // Object IDs that are active in the worker.
+  object_ids: [string];
 }

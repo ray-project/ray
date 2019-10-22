@@ -14,7 +14,7 @@ RUN apt-get install -y zlib1g-dev
 RUN conda remove -y --force wrapt
 RUN pip install gym[atari]==0.10.11 opencv-python-headless tensorflow lz4 keras pytest-timeout smart_open torch torchvision
 RUN pip install --upgrade bayesian-optimization
-RUN pip install --upgrade git+git://github.com/hyperopt/hyperopt.git
+RUN pip install --upgrade hyperopt==0.1.2
 RUN pip install ConfigSpace==0.4.10
 RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost
 RUN pip install -U mlflow

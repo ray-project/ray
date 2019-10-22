@@ -93,7 +93,7 @@ class RayTrialExecutor(TrialExecutor):
                 memory=trial.resources.memory,
                 object_store_memory=trial.resources.object_store_memory,
                 resources=trial.resources.custom_resources)(
-                    trial._get_trainable_cls())
+                    trial.get_trainable_cls())
 
         trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
@@ -496,6 +496,7 @@ class RayTrialExecutor(TrialExecutor):
                     self._committed_resources.get_res_total(name),
                     self._avail_resources.get_res_total(name), name)
                 for name in self._avail_resources.custom_resources
+                if not name.startswith(ray.resource_spec.NODE_ID_PREFIX)
             ])
             if customs:
                 status += " ({})".format(customs)
@@ -620,6 +621,11 @@ class RayTrialExecutor(TrialExecutor):
             return ray.get(
                 trial.runner.export_model.remote(trial.export_formats))
         return {}
+
+    def has_gpus(self):
+        if self._resources_initialized:
+            self._update_avail_resources()
+            return self._avail_resources.gpu > 0
 
 
 def _to_gb(n_bytes):
