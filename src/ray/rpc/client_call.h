@@ -128,14 +128,10 @@ class ClientCallManager {
     // Start the polling thread.
     polling_thread_ =
         std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
-    // TODO(edoakes): this shouldn't need to be a daemon (see comment in destructor).
-    // polling_thread_.detach();
   }
 
   ~ClientCallManager() {
     cq_.Shutdown();
-    // TODO(edoakes): we shouldn't need to detach the polling_thread_, but for some reason
-    // this join blocks forever (even though there don't seem to be tags to consume).
     polling_thread_.join();
   }
 
