@@ -8,7 +8,6 @@ from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorHandleID,
     CJobID,
     CWorkerID,
     CObjectID,
@@ -184,7 +183,6 @@ cdef extern from "ray/core_worker/common.h" nogil:
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
-cdef extern from "ray/core_worker/task_interface.h" nogil:
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
         CTaskOptions(int num_returns,
@@ -197,22 +195,6 @@ cdef extern from "ray/core_worker/task_interface.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options)
-
-    cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(
-            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-            const CJobID &job_id, const CObjectID &initial_cursor,
-            const CLanguage actor_language, c_bool is_direct_call,
-            const c_vector[c_string] &actor_creation_task_function_descriptor)
-        CActorHandle(CActorHandle &other, c_bool in_band)
-        CActorHandle(
-            const c_string &serialized, const CTaskID &current_task_id)
-
-        CActorID GetActorID() const
-        CActorHandleID GetActorHandleID() const
-        unique_ptr[CActorHandle] Fork()
-        unique_ptr[CActorHandle] ForkForSerialization()
-        void Serialize(c_string *output)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

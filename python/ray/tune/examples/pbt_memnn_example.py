@@ -14,11 +14,15 @@ from tensorflow.keras.layers import LSTM
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow.keras.utils import get_file
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-from ray.tune import Trainable
+
+from filelock import FileLock
+import os
 import argparse
 import tarfile
 import numpy as np
 import re
+
+from ray.tune import Trainable
 
 
 def tokenize(sent):
@@ -211,7 +215,8 @@ class MemNNModel(Trainable):
         return model
 
     def _setup(self, config):
-        self.train_stories, self.test_stories = read_data()
+        with FileLock(os.path.expanduser("~/.tune.lock")):
+            self.train_stories, self.test_stories = read_data()
         model = self.build_model()
         rmsprop = RMSprop(
             lr=self.config.get("lr", 1e-3), rho=self.config.get("rho", 0.9))

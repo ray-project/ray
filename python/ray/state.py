@@ -30,7 +30,7 @@ def _parse_client_table(redis_client):
     Returns:
         A list of information about the nodes in the cluster.
     """
-    NIL_CLIENT_ID = ray.ObjectID.nil().binary()
+    NIL_CLIENT_ID = ray.ClientID.nil().binary()
     message = redis_client.execute_command(
         "RAY.TABLE_LOOKUP", gcs_utils.TablePrefix.Value("CLIENT"), "",
         NIL_CLIENT_ID)
@@ -1081,6 +1081,38 @@ def nodes():
         Information about the Ray clients in the cluster.
     """
     return state.client_table()
+
+
+def current_node_id():
+    """Return the node id of the current node.
+
+    For example, "node:172.10.5.34". This can be used as a custom resource,
+    e.g., {node_id: 1} to reserve the whole node, or {node_id: 0.001} to
+    just force placement on the node.
+
+    Returns:
+        Id of the current node.
+    """
+    return ray.resource_spec.NODE_ID_PREFIX + ray.services.get_node_ip_address(
+    )
+
+
+def node_ids():
+    """Get a list of the node ids in the cluster.
+
+    For example, ["node:172.10.5.34", "node:172.42.3.77"]. These can be used
+    as custom resources, e.g., {node_id: 1} to reserve the whole node, or
+    {node_id: 0.001} to just force placement on the node.
+
+    Returns:
+        List of the node resource ids.
+    """
+    node_ids = []
+    for node in nodes():
+        for k, v in node["Resources"].items():
+            if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
+                node_ids.append(k)
+    return node_ids
 
 
 def tasks(task_id=None):

@@ -176,7 +176,7 @@ script:
   # ray tune tests
   - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/tune/tests/test_dependency.py; fi
   # `cluster_tests.py` runs on Jenkins, not Travis.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_tune_restore.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_logger.py --ignore=python/ray/tune/tests/test_tune_restore.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
@@ -185,7 +185,8 @@ script:
   # ray tests
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests --ignore=python/ray/tests/perf_integration_tests; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_args_test.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests --ignore=python/ray/tests/perf_integration_tests --ignore=python/ray/tests/py3_args_test.py; fi
 
 deploy:
   - provider: s3
