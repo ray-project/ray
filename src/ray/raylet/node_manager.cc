@@ -1235,7 +1235,8 @@ void NodeManager::ProcessWaitRequestMessage(
 
   ray::Status status = object_manager_.Wait(
       object_ids, wait_ms, num_required_objects, wait_local,
-      [this, client](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+      [this, client_blocked, client, current_task_id](std::vector<ObjectID> found,
+                                                      std::vector<ObjectID> remaining) {
         // Write the data.
         flatbuffers::FlatBufferBuilder fbb;
         flatbuffers::Offset<protocol::WaitReply> wait_reply = protocol::CreateWaitReply(
@@ -1245,7 +1246,12 @@ void NodeManager::ProcessWaitRequestMessage(
         auto status =
             client->WriteMessage(static_cast<int64_t>(protocol::MessageType::WaitReply),
                                  fbb.GetSize(), fbb.GetBufferPointer());
-        if (!status.ok()) {
+        if (status.ok()) {
+          // The client is unblocked now because the wait call has returned.
+          if (client_blocked) {
+            HandleTaskUnblocked(client, current_task_id);
+          }
+        } else {
           // We failed to write to the client, so disconnect the client.
           RAY_LOG(WARNING)
               << "Failed to send WaitReply to client, so disconnecting client";
