@@ -204,6 +204,7 @@ class Experiment(object):
 
     @property
     def run_identifier(self):
+        """Returns a string representing the trainable identifier."""
         return self._run_identifier
 
 
