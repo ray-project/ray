@@ -177,18 +177,17 @@ class ClientCallManager {
   void PollEventsFromCompletionQueue() {
     void *got_tag;
     bool ok = false;
-    grpc::CompletionQueue::NextStatus st;
-    auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(100);
+    auto deadline = gpr_inf_future(GPR_CLOCK_REALTIME);
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
     // synchronous cq_.Next blocks indefinitely in the case that the process
     // received a SIGTERM.
     while (true) {
-      st = cq_.AsyncNext(&got_tag, &ok, deadline);
-      if (st == grpc::CompletionQueue::SHUTDOWN) {
+      auto status = cq_.AsyncNext(&got_tag, &ok, deadline);
+      if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       }
-      if (st != grpc::CompletionQueue::TIMEOUT) {
+      if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         if (ok && !main_service_.stopped()) {
           // Post the callback to the main event loop.
@@ -201,8 +200,6 @@ class ClientCallManager {
           delete tag;
         }
       }
-
-      deadline = std::chrono::system_clock::now() + std::chrono::seconds(100);
     }
   }
 

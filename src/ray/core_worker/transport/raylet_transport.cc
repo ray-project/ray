@@ -30,6 +30,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   }
 
   // Set the resource IDs for this task.
+  // TODO: convert the resource map to protobuf and change this.
   ResourceMappingType resource_ids;
   auto resource_infos =
       flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
