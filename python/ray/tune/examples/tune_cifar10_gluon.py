@@ -206,20 +206,18 @@ if __name__ == "__main__":
         name=args.expname,
         verbose=2,
         scheduler=sched,
-        **{
-            "stop": {
-                "mean_accuracy": 0.98,
-                "training_iteration": 1 if args.smoke_test else args.epochs
-            },
-            "resources_per_trial": {
-                "cpu": int(args.num_workers),
-                "gpu": int(args.num_gpus)
-            },
-            "num_samples": 1 if args.smoke_test else args.num_samples,
-            "config": {
-                "lr": tune.sample_from(
-                    lambda spec: np.power(10.0, np.random.uniform(-4, -1))),
-                "momentum": tune.sample_from(
-                    lambda spec: np.random.uniform(0.85, 0.95)),
-            }
+        stop={
+            "mean_accuracy": 0.98,
+            "training_iteration": 1 if args.smoke_test else args.epochs
+        },
+        resources_per_trial={
+            "cpu": int(args.num_workers),
+            "gpu": int(args.num_gpus)
+        },
+        num_samples=1 if args.smoke_test else args.num_samples,
+        config={
+            "lr": tune.sample_from(
+                lambda spec: np.power(10.0, np.random.uniform(-4, -1))),
+            "momentum": tune.sample_from(
+                lambda spec: np.random.uniform(0.85, 0.95)),
         })

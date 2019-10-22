@@ -68,11 +68,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CActorID Of(CJobID job_id, CTaskID parent_task_id,
                     int64_t parent_task_counter)
 
-    cdef cppclass CActorHandleID "ray::ActorHandleID"(CUniqueID):
-
-        @staticmethod
-        CActorHandleID FromBinary(const c_string &binary)
-
     cdef cppclass CClientID "ray::ClientID"(CUniqueID):
 
         @staticmethod

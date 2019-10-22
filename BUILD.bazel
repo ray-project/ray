@@ -240,16 +240,6 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "common_test",
-    srcs = glob(["src/ray/common/**/*_test.cc"]),
-    copts = COPTS,
-    deps = [
-        ":ray_common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_binary(
     name = "raylet",
     srcs = ["src/ray/raylet/main.cc"],
@@ -492,6 +482,16 @@ cc_test(
 )
 
 cc_test(
+    name = "sample_test",
+    srcs = ["src/ray/util/sample_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "task_dependency_manager_test",
     srcs = ["src/ray/raylet/task_dependency_manager_test.cc"],
     copts = COPTS,
@@ -595,6 +595,7 @@ cc_library(
     deps = [
         ":sha256",
         "@com_github_google_glog//:glog",
+        "@com_google_absl//absl/random",
         "@plasma//:plasma_client",
     ],
 )

@@ -763,7 +763,7 @@ class FunctionActorManager(object):
                 worker's internal state to record the executed method.
         """
 
-        def actor_method_executor(dummy_return_id, actor, *args):
+        def actor_method_executor(dummy_return_id, actor, *args, **kwargs):
             # Update the actor's task counter to reflect the task we're about
             # to execute.
             self._worker.actor_task_counter += 1
@@ -771,9 +771,9 @@ class FunctionActorManager(object):
             # Execute the assigned method and save a checkpoint if necessary.
             try:
                 if is_class_method(method):
-                    method_returns = method(*args)
+                    method_returns = method(*args, **kwargs)
                 else:
-                    method_returns = method(actor, *args)
+                    method_returns = method(actor, *args, **kwargs)
             except Exception as e:
                 # Save the checkpoint before allowing the method exception
                 # to be thrown, but don't save the checkpoint for actor

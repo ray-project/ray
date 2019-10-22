@@ -88,7 +88,7 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     git_repository(
         name = "com_google_absl",
-        commit = "5b65c4af5107176555b23a638e5947686410ac1f",
+        commit = "aa844899c937bde5d2b24f276b59997e5b668bde",
         remote = "https://github.com/abseil/abseil-cpp.git",
     )
 

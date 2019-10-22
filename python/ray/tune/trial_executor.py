@@ -142,11 +142,11 @@ class TrialExecutor(object):
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "get_running_trials() method")
 
-    def on_step_begin(self):
+    def on_step_begin(self, trial_runner):
         """A hook called before running one step of the trial event loop."""
         pass
 
-    def on_step_end(self):
+    def on_step_end(self, trial_runner):
         """A hook called after running one step of the trial event loop."""
         pass
 
@@ -226,3 +226,7 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "export_trial_if_needed() method")
+
+    def has_gpus(self):
+        """Returns True if GPUs are detected on the cluster."""
+        return None

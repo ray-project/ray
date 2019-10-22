@@ -9,6 +9,9 @@ This script will demonstrate how to use two important parts of the Ray API:
 using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for
 their results to be ready.
 
+.. image:: ../images/hyperparameter.png
+    :align: center
+
 .. important:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.
@@ -70,6 +73,7 @@ def get_data_loaders(batch_size):
         shuffle=True)
     return train_loader, test_loader
 
+
 #######################################################################
 # Setup: Defining the Neural Network
 # ----------------------------------
@@ -130,6 +134,7 @@ def test(model, test_loader, device=torch.device("cpu")):
 
     return correct / total
 
+
 #######################################################################
 # Evaluating the Hyperparameters
 # -------------------------------
@@ -140,6 +145,7 @@ def test(model, test_loader, device=torch.device("cpu")):
 # hyperparameters.
 #
 # The ``@ray.remote`` decorator defines a remote process.
+
 
 @ray.remote
 def evaluate_hyperparameters(config):
@@ -152,13 +158,13 @@ def evaluate_hyperparameters(config):
     train(model, optimizer, train_loader)
     return test(model, test_loader)
 
+
 #######################################################################
 # Synchronous Evaluation of Randomly Generated Hyperparameters
 # ------------------------------------------------------------
 #
 # We will create multiple sets of random hyperparameters for our neural
 # network that will be evaluated in parallel.
-
 
 # Keep track of the best hyperparameters and the best accuracy.
 best_hyperparameters = None

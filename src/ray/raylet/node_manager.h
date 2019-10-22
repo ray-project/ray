@@ -52,6 +52,8 @@ struct NodeManagerConfig {
   uint64_t heartbeat_period_ms;
   /// The time between debug dumps in milliseconds, or -1 to disable.
   uint64_t debug_dump_period_ms;
+  /// Whether to enable fair queueing between task classes in raylet.
+  bool fair_queueing_enabled;
   /// the maximum lineage size.
   uint64_t max_lineage_size;
   /// The store socket name.
@@ -241,13 +243,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                        const TaskSpecification &task_spec,
                                        bool resumed_from_checkpoint, int port);
-  /// Extend actor frontier after an actor task or actor creation task executes.
-  ///
-  /// \param dummy_object Dummy object corresponding to the task.
-  /// \param actor_id The relevant actor ID.
-  /// \param actor_handle_id The relevant actor handle ID.
-  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
-                           const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
@@ -304,7 +299,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param tasks_with_resources Mapping from resource shapes to tasks with
   /// that resource shape.
   void DispatchTasks(
-      const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources);
+      const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class);
 
   /// Handle a task that is blocked. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
@@ -451,6 +446,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param message_data A pointer to the message data.
   void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
 
+  /// Process client message of ReportActiveObjectIDs.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  void ProcessReportActiveObjectIDs(const std::shared_ptr<LocalClientConnection> &client,
+                                    const uint8_t *message_data);
+
   /// Update actor frontier when a task finishes.
   /// If the task is an actor creation task and the actor was resumed from a checkpoint,
   /// restore the frontier from the checkpoint. Otherwise, just extend actor frontier.
@@ -512,6 +514,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::chrono::milliseconds heartbeat_period_;
   /// The period between debug state dumps.
   int64_t debug_dump_period_;
+  /// Whether to enable fair queueing between task classes in raylet.
+  bool fair_queueing_enabled_;
   /// Whether we have printed out a resource deadlock warning.
   bool resource_deadlock_warned_ = false;
   /// The path to the ray temp dir.

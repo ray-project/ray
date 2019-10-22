@@ -10,9 +10,12 @@ from ray.tune.experiment import convert_to_experiment_list, Experiment
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
+from ray.tune.trainable import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.registry import get_trainable_cls
 from ray.tune.syncer import wait_for_sync
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.progress_reporter import CLIReporter, JupyterNotebookReporter
 from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
                                  FIFOScheduler, MedianStoppingRule)
 from ray.tune.web_server import TuneServer
@@ -26,6 +29,12 @@ _SCHEDULERS = {
     "AsyncHyperBand": AsyncHyperBandScheduler,
 }
 
+try:
+    class_name = get_ipython().__class__.__name__
+    IS_NOTEBOOK = True if "Terminal" not in class_name else False
+except NameError:
+    IS_NOTEBOOK = False
+
 
 def _make_scheduler(args):
     if args.scheduler in _SCHEDULERS:
@@ -33,6 +42,13 @@ def _make_scheduler(args):
     else:
         raise TuneError("Unknown scheduler: {}, should be one of {}".format(
             args.scheduler, _SCHEDULERS.keys()))
+
+
+def _check_default_resources_override(run_identifier):
+    trainable_cls = get_trainable_cls(run_identifier)
+    return hasattr(trainable_cls, "default_resource_request") and (
+        trainable_cls.default_resource_request.__code__ !=
+        Trainable.default_resource_request.__code__)
 
 
 def run(run_or_experiment,
@@ -181,13 +197,13 @@ def run(run_or_experiment,
         >>> tune.run(mytrainable, num_samples=5, reuse_actors=True)
 
         >>> tune.run(
-                "PG",
-                num_samples=5,
-                config={
-                    "env": "CartPole-v0",
-                    "lr": tune.sample_from(lambda _: np.random.rand())
-                }
-            )
+        >>>     "PG",
+        >>>     num_samples=5,
+        >>>     config={
+        >>>         "env": "CartPole-v0",
+        >>>         "lr": tune.sample_from(lambda _: np.random.rand())
+        >>>     }
+        >>> )
     """
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
@@ -238,15 +254,35 @@ def run(run_or_experiment,
 
     runner.add_experiment(experiment)
 
-    if verbose:
-        print(runner.debug_string(max_debug=99999))
+    if IS_NOTEBOOK:
+        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+    else:
+        reporter = CLIReporter()
+
+    # User Warning for GPUs
+    if trial_executor.has_gpus():
+        if isinstance(resources_per_trial,
+                      dict) and "gpu" in resources_per_trial:
+            # "gpu" is manually set.
+            pass
+        elif _check_default_resources_override(run_identifier):
+            # "default_resources" is manually overriden.
+            pass
+        else:
+            logger.warning("Tune detects GPUs, but no trials are using GPUs. "
+                           "To enable trials to use GPUs, set "
+                           "tune.run(resources_per_trial={'gpu': 1}...) "
+                           "which allows Tune to expose 1 GPU to each trial. "
+                           "You can also override "
+                           "`Trainable.default_resource_request` if using the "
+                           "Trainable API.")
 
     last_debug = 0
     while not runner.is_finished():
         runner.step()
         if time.time() - last_debug > DEBUG_PRINT_INTERVAL:
             if verbose:
-                print(runner.debug_string())
+                reporter.report(runner)
             last_debug = time.time()
 
     try:
@@ -255,7 +291,7 @@ def run(run_or_experiment,
         logger.exception("Trial Runner checkpointing failed.")
 
     if verbose:
-        print(runner.debug_string(max_debug=99999))
+        reporter.report(runner)
 
     wait_for_sync()
 

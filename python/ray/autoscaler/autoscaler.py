@@ -354,7 +354,7 @@ class NodeLauncher(threading.Thread):
         logger.info(prefix + " {}".format(statement))
 
 
-class ConcurrentCounter():
+class ConcurrentCounter(object):
     def __init__(self):
         self._value = 0
         self._lock = threading.Lock()
@@ -553,11 +553,22 @@ class StandardAutoscaler(object):
             nodes = self.workers()
             self.log_info_string(nodes, target_workers)
 
-        # Update nodes with out-of-date files
+        # Update nodes with out-of-date files.
+        # TODO(edoakes): Spawning these threads directly seems to cause
+        # problems. They should at a minimum be spawned as daemon threads.
+        # See https://github.com/ray-project/ray/pull/5903 for more info.
+        T = []
         for node_id, commands, ray_start in (self.should_update(node_id)
                                              for node_id in nodes):
             if node_id is not None:
-                self.spawn_updater(node_id, commands, ray_start)
+                T.append(
+                    threading.Thread(
+                        target=self.spawn_updater,
+                        args=(node_id, commands, ray_start)))
+        for t in T:
+            t.start()
+        for t in T:
+            t.join()
 
         # Attempt to recover unhealthy nodes
         for node_id in nodes:

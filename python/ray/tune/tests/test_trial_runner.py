@@ -21,10 +21,10 @@ from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
-                             HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
-                             TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
-                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
+    EPISODES_TOTAL, TRAINING_ITERATION, TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
+    TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
 from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
@@ -117,6 +117,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             HOSTNAME,
             NODE_IP,
             TRIAL_ID,
+            EXPERIMENT_TAG,
             PID,
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
@@ -268,9 +269,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
         self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
         self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
-
-        # Infeasible even with queueing enabled (no gpus)
-        self.assertRaises(TuneError, lambda: f(1, 1, True))
 
         # Too large resource request
         self.assertRaises(TuneError, lambda: f(100, 100, False))
@@ -1244,7 +1242,7 @@ class VariantGeneratorTest(unittest.TestCase):
         }, "tune-pong")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
-        self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
+        self.assertTrue("PPO_Pong-v0" in str(trials[0]))
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
@@ -2083,12 +2081,12 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
 
-        def on_step_begin(self):
+        def on_step_begin(self, trialrunner):
             self._update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             setattr(self, "pre_step", cnt + 1)
 
-        def on_step_end(self):
+        def on_step_end(self, trialrunner):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             setattr(self, "post_step", 1 + cnt)
 

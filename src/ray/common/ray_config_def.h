@@ -20,8 +20,8 @@ RAY_CONFIG(int64_t, ray_cookie, 0x5241590000000000)
 /// warning is logged that the handler is taking too long.
 RAY_CONFIG(int64_t, handler_warning_timeout_ms, 100)
 
-/// The duration between heartbeats. These are sent by the raylet.
-RAY_CONFIG(int64_t, heartbeat_timeout_milliseconds, 100)
+/// The duration between heartbeats sent by the raylets.
+RAY_CONFIG(int64_t, raylet_heartbeat_timeout_milliseconds, 100)
 /// If a component has not sent a heartbeat in the last num_heartbeats_timeout
 /// heartbeat intervals, the raylet monitor process will report
 /// it as dead to the db_client table.
@@ -34,11 +34,21 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 
+/// Whether to enable fair queueing between task classes in raylet. When
+/// fair queueing is enabled, the raylet will try to balance the number
+/// of running tasks by class (i.e., function name). This prevents one
+/// type of task from starving other types (see issue #3664).
+RAY_CONFIG(bool, fair_queueing_enabled, true)
+
 /// The initial period for a task execution lease. The lease will expire this
 /// many milliseconds after the first acquisition of the lease. Nodes that
 /// require an object will not try to reconstruct the task until at least
 /// this many milliseconds.
 RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
+
+/// The duration between heartbeats sent from the workers to the raylet.
+/// If set to a negative value, the heartbeats will not be sent.
+RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 500)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
@@ -78,6 +88,9 @@ RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000)
 /// The maximum number of objects to include in a single fetch request in the
 /// regular raylet fetch timeout handler.
 RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000)
+
+/// The maximum number of active object IDs to report in a heartbeat.
+RAY_CONFIG(size_t, raylet_max_active_object_ids, 1000)
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.

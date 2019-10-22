@@ -79,14 +79,14 @@ class RayServeMixin:
             },
         }
 
-    def _ray_serve_setup(self, my_name, _ray_serve_router_handle):
+    def _ray_serve_setup(self, my_name, router_handle, my_handle):
         self._ray_serve_dequeue_requestr_name = my_name
-        self._ray_serve_router_handle = _ray_serve_router_handle
+        self._ray_serve_router_handle = router_handle
+        self._ray_serve_self_handle = my_handle
         self._ray_serve_setup_completed = True
 
-    def _ray_serve_main_loop(self, my_handle):
+    def _ray_serve_main_loop(self):
         assert self._ray_serve_setup_completed
-        self._ray_serve_self_handle = my_handle
 
         # Only retrieve the next task if we have completed previous task.
         if self._ray_serve_cached_work_token is None:
@@ -104,7 +104,7 @@ class RayServeMixin:
             self._ray_serve_cached_work_token = None
         else:
             self._ray_serve_cached_work_token = work_token
-            self._ray_serve_self_handle._ray_serve_main_loop.remote(my_handle)
+            self._ray_serve_self_handle._ray_serve_main_loop.remote()
             return
 
         if work_item.request_context == TaskContext.Web:
@@ -136,7 +136,7 @@ class RayServeMixin:
         # It will now tail recursively schedule the main_loop again.
 
         # TODO(simon): remove tail recursion, ask router to callback instead
-        self._ray_serve_self_handle._ray_serve_main_loop.remote(my_handle)
+        self._ray_serve_self_handle._ray_serve_main_loop.remote()
 
 
 class TaskRunnerBackend(TaskRunner, RayServeMixin):

@@ -1,5 +1,6 @@
 #include "ray/raylet/node_manager.h"
 
+#include <cctype>
 #include <fstream>
 
 #include "ray/common/status.h"
@@ -8,6 +9,7 @@
 #include "ray/common/id.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
+#include "ray/util/sample.h"
 
 namespace {
 
@@ -22,12 +24,12 @@ namespace {
 int64_t GetExpectedTaskCounter(
     const std::unordered_map<ray::ActorID, ray::raylet::ActorRegistration>
         &actor_registry,
-    const ray::ActorID &actor_id, const ray::ActorHandleID &actor_handle_id) {
+    const ray::ActorID &actor_id, const ray::TaskID &actor_caller_id) {
   auto actor_entry = actor_registry.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry.end());
   const auto &frontier = actor_entry->second.GetFrontier();
   int64_t expected_task_counter = 0;
-  auto frontier_entry = frontier.find(actor_handle_id);
+  auto frontier_entry = frontier.find(actor_caller_id);
   if (frontier_entry != frontier.end()) {
     expected_task_counter = frontier_entry->second.task_counter;
   }
@@ -78,6 +80,7 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       heartbeat_timer_(io_service),
       heartbeat_period_(std::chrono::milliseconds(config.heartbeat_period_ms)),
       debug_dump_period_(config.debug_dump_period_ms),
+      fair_queueing_enabled_(config.fair_queueing_enabled),
       temp_dir_(config.temp_dir),
       object_manager_profile_timer_(io_service),
       initial_config_(config),
@@ -298,7 +301,7 @@ void NodeManager::Heartbeat() {
   uint64_t now_ms = current_time_ms();
   uint64_t interval = now_ms - last_heartbeat_at_ms_;
   if (interval > RayConfig::instance().num_heartbeats_warning() *
-                     RayConfig::instance().heartbeat_timeout_milliseconds()) {
+                     RayConfig::instance().raylet_heartbeat_timeout_milliseconds()) {
     RAY_LOG(WARNING) << "Last heartbeat was sent " << interval << " ms ago ";
   }
   last_heartbeat_at_ms_ = now_ms;
@@ -324,6 +327,25 @@ void NodeManager::Heartbeat() {
   for (const auto &resource_pair : local_resources.GetLoadResources().GetResourceMap()) {
     heartbeat_data->add_resource_load_label(resource_pair.first);
     heartbeat_data->add_resource_load_capacity(resource_pair.second);
+  }
+
+  size_t max_size = RayConfig::instance().raylet_max_active_object_ids();
+  std::unordered_set<ObjectID> active_object_ids = worker_pool_.GetActiveObjectIDs();
+  if (active_object_ids.size() <= max_size) {
+    for (const auto &object_id : active_object_ids) {
+      heartbeat_data->add_active_object_id(object_id.Binary());
+    }
+  } else {
+    // If there are more than the configured maximum number of object IDs to send per
+    // heartbeat, sample from them randomly.
+    // TODO(edoakes): we might want to improve the sampling technique here, for example
+    // preferring object IDs with the earliest last-refreshed timestamp.
+    std::vector<ObjectID> downsampled;
+    random_sample(active_object_ids.begin(), active_object_ids.end(), max_size,
+                  &downsampled);
+    for (const auto &object_id : downsampled) {
+      heartbeat_data->add_active_object_id(object_id.Binary());
+    }
   }
 
   ray::Status status = heartbeat_table.Add(
@@ -408,7 +430,8 @@ void NodeManager::WarnResourceDeadlock() {
         << " pending actors on this node. "
         << "This is likely due to all cluster resources being claimed by actors. "
         << "To resolve the issue, consider creating fewer actors or increase the "
-        << "resources available to this Ray cluster.";
+        << "resources available to this Ray cluster. You can ignore this message "
+        << "if this Ray cluster is expected to auto-scale.";
     RAY_CHECK_OK(gcs_client_->error_table().PushErrorToDriver(
         exemplar.GetTaskSpecification().JobId(), "resource_deadlock", error_message.str(),
         current_time_ms()));
@@ -652,7 +675,13 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
 void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_batch) {
   const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
   // Update load information provided by each heartbeat.
+  // TODO(edoakes): this isn't currently used, but will be used to refresh the LRU
+  // cache in the object store.
+  std::unordered_set<ObjectID> active_object_ids;
   for (const auto &heartbeat_data : heartbeat_batch.batch()) {
+    for (int i = 0; i < heartbeat_data.active_object_id_size(); i++) {
+      active_object_ids.insert(ObjectID::FromBinary(heartbeat_data.active_object_id(i)));
+    }
     const ClientID &client_id = ClientID::FromBinary(heartbeat_data.client_id());
     if (client_id == local_client_id) {
       // Skip heartbeats from self.
@@ -660,6 +689,7 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     }
     HeartbeatAdded(client_id, heartbeat_data);
   }
+  RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
@@ -755,24 +785,46 @@ void NodeManager::ProcessNewClient(LocalClientConnection &client) {
   client.ProcessMessages();
 }
 
-// A helper function to create a mapping from resource shapes to
-// tasks with that resource shape from a given list of tasks.
-std::unordered_map<ResourceSet, ordered_set<TaskID>> MakeTasksWithResources(
+// A helper function to create a mapping from task scheduling class to
+// tasks with that class from a given list of tasks.
+std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
     const std::vector<Task> &tasks) {
-  std::unordered_map<ResourceSet, ordered_set<TaskID>> result;
+  std::unordered_map<SchedulingClass, ordered_set<TaskID>> result;
   for (const auto &task : tasks) {
     auto spec = task.GetTaskSpecification();
-    result[spec.GetRequiredResources()].push_back(spec.TaskId());
+    result[spec.GetSchedulingClass()].push_back(spec.TaskId());
   }
   return result;
 }
 
 void NodeManager::DispatchTasks(
-    const std::unordered_map<ResourceSet, ordered_set<TaskID>> &tasks_with_resources) {
+    const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class) {
   std::unordered_set<TaskID> removed_task_ids;
-  for (const auto &it : tasks_with_resources) {
-    const auto &task_resources = it.first;
-    for (const auto &task_id : it.second) {
+
+  // Dispatch tasks in priority order by class. This avoids starvation problems where
+  // one class of tasks become stuck behind others in the queue, causing Ray to start
+  // many workers. See #3644 for a more detailed description of this issue.
+  std::vector<const std::pair<const SchedulingClass, ordered_set<TaskID>> *> fair_order;
+  for (auto &it : tasks_by_class) {
+    fair_order.emplace_back(&it);
+  }
+  // Prioritize classes that have fewer currently running tasks. Note that we only
+  // sort once per round of task dispatch, which is less fair then it could be, but
+  // is simpler and faster.
+  if (fair_queueing_enabled_) {
+    std::sort(
+        std::begin(fair_order), std::end(fair_order),
+        [this](const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *a,
+               const std::pair<const SchedulingClass, ordered_set<ray::TaskID>> *b) {
+          return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
+        });
+  }
+  // Approximate fair round robin between classes.
+  for (const auto &it : fair_order) {
+    const auto &task_resources =
+        TaskSpecification::GetSchedulingClassDescriptor(it->first).first;
+    // FIFO order within each class.
+    for (const auto &task_id : it->second) {
       const auto &task = local_queues_.GetTaskOfState(task_id, TaskState::READY);
       if (!local_available_resources_.Contains(task_resources)) {
         // All the tasks in it.second have the same resource shape, so
@@ -881,6 +933,9 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
+  case protocol::MessageType::ReportActiveObjectIDs: {
+    ProcessReportActiveObjectIDs(client, message_data);
+  } break;
 
   default:
     RAY_LOG(FATAL) << "Received unexpected message type " << message_type;
@@ -985,7 +1040,7 @@ void NodeManager::HandleWorkerAvailable(
   cluster_resource_map_[local_client_id].SetLoadResources(
       local_queues_.GetResourceLoad());
   // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasksWithResources());
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -1090,7 +1145,7 @@ void NodeManager::ProcessDisconnectClientMessage(
                    << "job_id: " << worker->GetAssignedJobId();
 
     // Since some resources may have been released, we can try to dispatch more tasks.
-    DispatchTasks(local_queues_.GetReadyTasksWithResources());
+    DispatchTasks(local_queues_.GetReadyTasksByClass());
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();
@@ -1282,6 +1337,19 @@ void NodeManager::ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message
   RAY_LOG(DEBUG) << "Actor " << actor_id << " was resumed from checkpoint "
                  << checkpoint_id;
   checkpoint_id_to_restore_.emplace(actor_id, checkpoint_id);
+}
+
+void NodeManager::ProcessReportActiveObjectIDs(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  if (!worker) {
+    worker = worker_pool_.GetRegisteredDriver(client);
+    RAY_CHECK(worker);
+  }
+
+  auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
+  worker->SetActiveObjectIds(
+      unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -1580,8 +1648,8 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
         auto node_manager_id = actor_entry->second.GetNodeManagerId();
         if (node_manager_id == gcs_client_->client_table().GetLocalClientId()) {
           // The actor is local.
-          int64_t expected_task_counter = GetExpectedTaskCounter(
-              actor_registry_, spec.ActorId(), spec.ActorHandleId());
+          int64_t expected_task_counter =
+              GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
           if (static_cast<int64_t>(spec.ActorCounter()) < expected_task_counter) {
             // A task that has already been executed before has been found. The
             // task will be treated as failed if at least one of the task's
@@ -1684,7 +1752,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       worker->MarkBlocked();
 
       // Try dispatching tasks since we may have released some resources.
-      DispatchTasks(local_queues_.GetReadyTasksWithResources());
+      DispatchTasks(local_queues_.GetReadyTasksByClass());
     }
   } else {
     // The client is a driver. Drivers do not hold resources, so we simply mark
@@ -1782,7 +1850,7 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   // (See design_docs/task_states.rst for the state transition diagram.)
   if (args_ready) {
     local_queues_.QueueTasks({task}, TaskState::READY);
-    DispatchTasks(MakeTasksWithResources({task}));
+    DispatchTasks(MakeTasksByClass({task}));
   } else {
     local_queues_.QueueTasks({task}, TaskState::WAITING);
   }
@@ -1800,7 +1868,7 @@ bool NodeManager::AssignTask(const Task &task) {
     // An actor task should only be ready to be assigned if it matches the
     // expected task counter.
     int64_t expected_task_counter =
-        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.ActorHandleId());
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
     RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
         << "Expected actor counter: " << expected_task_counter << ", task "
         << spec.TaskId() << " has: " << spec.ActorCounter();
@@ -1881,8 +1949,8 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       task_resources.ToResourceSet());
   worker.ResetTaskResourceIds();
 
-  if (task.GetTaskSpecification().IsActorCreationTask() ||
-      task.GetTaskSpecification().IsActorTask()) {
+  const auto &spec = task.GetTaskSpecification();
+  if (spec.IsActorCreationTask() || spec.IsActorTask()) {
     // If this was an actor or actor creation task, handle the actor's new
     // state.
     FinishAssignedActorTask(worker, task);
@@ -1898,8 +1966,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::Nil());
   // Unset the worker's assigned job Id if this is not an actor.
-  if (!task.GetTaskSpecification().IsActorCreationTask() &&
-      !task.GetTaskSpecification().IsActorTask()) {
+  if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
     worker.AssignJobId(JobID::Nil());
   }
 }
@@ -1961,18 +2028,18 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
 
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorID actor_id;
-  ActorHandleID actor_handle_id;
+  TaskID caller_id;
   const TaskSpecification task_spec = task.GetTaskSpecification();
   bool resumed_from_checkpoint = false;
   if (task_spec.IsActorCreationTask()) {
     actor_id = task_spec.ActorCreationId();
-    actor_handle_id = ActorHandleID::Nil();
+    caller_id = TaskID::Nil();
     if (checkpoint_id_to_restore_.count(actor_id) > 0) {
       resumed_from_checkpoint = true;
     }
   } else {
     actor_id = task_spec.ActorId();
-    actor_handle_id = task_spec.ActorHandleId();
+    caller_id = task_spec.CallerId();
   }
 
   if (task_spec.IsActorCreationTask()) {
@@ -1980,7 +2047,6 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     worker.AssignActorId(actor_id);
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
-    RAY_CHECK(actor_handle_id.IsNil());
     int port = worker.Port();
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
         JobID::Nil(), parent_task_id,
@@ -2028,34 +2094,26 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                                           resumed_from_checkpoint, port);
         }));
   } else {
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, actor_handle_id);
+    auto actor_entry = actor_registry_.find(actor_id);
+    RAY_CHECK(actor_entry != actor_registry_.end());
+    // Extend the actor's frontier to include the executed task.
+    const ObjectID object_to_release =
+        actor_entry->second.ExtendFrontier(caller_id, task_spec.ActorDummyObject());
+    if (!object_to_release.IsNil()) {
+      // If there were no new actor handles created, then no other actor task
+      // will depend on this execution dependency, so it safe to release.
+      HandleObjectMissing(object_to_release);
+    }
+    // Mark the dummy object as locally available to indicate that the actor's
+    // state has changed and the next method can run. This is not added to the
+    // object table, so the update will be invisible to both the local object
+    // manager and the other nodes.
+    // NOTE(swang): The dummy objects must be marked as local whenever
+    // ExtendFrontier is called, and vice versa, so that we can clean up the
+    // dummy objects properly in case the actor fails and needs to be
+    // reconstructed.
+    HandleObjectLocal(task_spec.ActorDummyObject());
   }
-}
-
-void NodeManager::ExtendActorFrontier(const ObjectID &dummy_object,
-                                      const ActorID &actor_id,
-                                      const ActorHandleID &actor_handle_id) {
-  auto actor_entry = actor_registry_.find(actor_id);
-  RAY_CHECK(actor_entry != actor_registry_.end());
-  // Extend the actor's frontier to include the executed task.
-  const ObjectID object_to_release =
-      actor_entry->second.ExtendFrontier(actor_handle_id, dummy_object);
-  if (!object_to_release.IsNil()) {
-    // If there were no new actor handles created, then no other actor task
-    // will depend on this execution dependency, so it safe to release.
-    HandleObjectMissing(object_to_release);
-  }
-  // Mark the dummy object as locally available to indicate that the actor's
-  // state has changed and the next method can run. This is not added to the
-  // object table, so the update will be invisible to both the local object
-  // manager and the other nodes.
-  // NOTE(swang): The dummy objects must be marked as local whenever
-  // ExtendFrontier is called, and vice versa, so that we can clean up the
-  // dummy objects properly in case the actor fails and needs to be
-  // reconstructed.
-  HandleObjectLocal(dummy_object);
 }
 
 void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
@@ -2117,9 +2175,10 @@ void NodeManager::FinishAssignedActorCreationTask(const ActorID &parent_actor_id
     }
   }
   if (!resumed_from_checkpoint) {
-    // The actor was not resumed from a checkpoint. We extend the actor's
-    // frontier as usual since there is no frontier to restore.
-    ExtendActorFrontier(task_spec.ActorDummyObject(), actor_id, ActorHandleID::Nil());
+    // The actor was not resumed from a checkpoint. Store the
+    // initial dummy object. All future handles to the actor will
+    // depend on this object.
+    HandleObjectLocal(task_spec.ActorDummyObject());
   }
 }
 
@@ -2227,7 +2286,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
     local_queues_.QueueTasks(ready_tasks, TaskState::READY);
-    DispatchTasks(MakeTasksWithResources(ready_tasks));
+    DispatchTasks(MakeTasksByClass(ready_tasks));
   }
 }
 
@@ -2426,28 +2485,10 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     // We successfully assigned the task to the worker.
     worker.AssignTaskId(spec.TaskId());
     worker.AssignJobId(spec.JobId());
-    // Actor tasks require extra accounting to track the actor's state.
-    if (spec.IsActorTask()) {
-      auto actor_entry = actor_registry_.find(spec.ActorId());
-      RAY_CHECK(actor_entry != actor_registry_.end());
-      // Process any new actor handles that were created since the
-      // previous task on this handle was executed. The first task
-      // submitted on a new actor handle will depend on the dummy object
-      // returned by the previous task, so the dependency will not be
-      // released until this first task is submitted.
-      for (auto &new_handle_id : spec.NewActorHandles()) {
-        const auto prev_actor_task_id = spec.PreviousActorTaskDummyObjectId();
-        RAY_CHECK(!prev_actor_task_id.IsNil());
-        // Add the new handle and give it a reference to the finished task's
-        // execution dependency.
-        actor_entry->second.AddHandle(new_handle_id, prev_actor_task_id);
-      }
-
-      // TODO(swang): For actors with multiple actor handles, to
-      // guarantee that tasks are replayed in the same order after a
-      // failure, we must update the task's execution dependency to be
-      // the actor's current execution dependency.
-    }
+    // TODO(swang): For actors with multiple actor handles, to
+    // guarantee that tasks are replayed in the same order after a
+    // failure, we must update the task's execution dependency to be
+    // the actor's current execution dependency.
 
     // Mark the task as running.
     // (See design_docs/task_states.rst for the state transition diagram.)
@@ -2464,7 +2505,7 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     // assigned to a worker once one becomes available.
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::READY);
-    DispatchTasks(MakeTasksWithResources({assigned_task}));
+    DispatchTasks(MakeTasksByClass({assigned_task}));
   }
 }
 
