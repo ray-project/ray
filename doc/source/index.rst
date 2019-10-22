@@ -259,13 +259,14 @@ Getting Involved
    :caption: Examples
 
    auto_examples/overview.rst
-   auto_examples/plot_lbfgs.rst
-   auto_examples/plot_newsreader.rst
-   auto_examples/plot_hyperparameter.rst
-   auto_examples/plot_pong_example.rst
-   auto_examples/plot_streaming.rst
    auto_examples/plot_parameter_server.rst
    auto_examples/plot_example-a3c.rst
+   auto_examples/plot_hyperparameter.rst
+   auto_examples/plot_pong_example.rst
+   auto_examples/plot_lbfgs.rst
+   auto_examples/plot_newsreader.rst
+   auto_examples/plot_streaming.rst
+   auto_examples/plot_example-lm.rst
    using-ray-with-tensorflow.rst
    using-ray-with-pytorch.rst
 

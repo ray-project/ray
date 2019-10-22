@@ -51,57 +51,28 @@ class Dashboard(object):
     """
 
     def __init__(self,
+                 host,
+                 port,
                  redis_address,
-                 http_port,
-                 token,
                  temp_dir,
                  redis_password=None):
         """Initialize the dashboard object."""
-        self.ip = ray.services.get_node_ip_address()
-        self.port = http_port
-        self.token = token
+        self.host = host
+        self.port = port
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
         self.temp_dir = temp_dir
+
         self.node_stats = NodeStats(redis_address, redis_password)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
         # using the React dev server. Specifically, when this option is set, we
-        # disable the token-based authentication mechanism and allow
-        # cross-origin requests to be made.
+        # allow cross-origin requests to be made.
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
-        self.app = aiohttp.web.Application(
-            middlewares=[] if self.is_dev else [self.auth_middleware])
+        self.app = aiohttp.web.Application()
         self.setup_routes()
-
-    @aiohttp.web.middleware
-    async def auth_middleware(self, req, handler):
-        def valid_token(req):
-            # If the cookie token is correct, accept that.
-            try:
-                if req.cookies["token"] == self.token:
-                    return True
-            except KeyError:
-                pass
-
-            # If the query token is correct, accept that.
-            try:
-                if req.query["token"] == self.token:
-                    return True
-            except KeyError:
-                pass
-
-            # Reject.
-            logger.warning("Dashboard: rejected an invalid token")
-            return False
-
-        # Check that the token is present, either in query or as cookie.
-        if not valid_token(req):
-            return aiohttp.web.Response(status=401, text="401 Unauthorized")
-
-        resp = await handler(req)
-        resp.cookies["token"] = self.token
-        return resp
 
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
@@ -197,7 +168,7 @@ class Dashboard(object):
         self.app.router.add_get("/{_}", get_forbidden)
 
     def log_dashboard_url(self):
-        url = "http://{}:{}?token={}".format(self.ip, self.port, self.token)
+        url = ray.services.get_webui_url_from_redis(self.redis_client)
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
@@ -205,7 +176,7 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.node_stats.start()
-        aiohttp.web.run_app(self.app, host="0.0.0.0", port=self.port)
+        aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 
 class NodeStats(threading.Thread):
@@ -383,15 +354,16 @@ if __name__ == "__main__":
         description=("Parse Redis server for the "
                      "dashboard to connect to."))
     parser.add_argument(
-        "--http-port",
+        "--host",
+        required=True,
+        type=str,
+        choices=["127.0.0.1", "0.0.0.0"],
+        help="The host to use for the HTTP server.")
+    parser.add_argument(
+        "--port",
         required=True,
         type=int,
         help="The port to use for the HTTP server.")
-    parser.add_argument(
-        "--token",
-        required=True,
-        type=str,
-        help="The token to use for the HTTP server.")
     parser.add_argument(
         "--redis-address",
         required=True,
@@ -427,9 +399,9 @@ if __name__ == "__main__":
 
     try:
         dashboard = Dashboard(
+            args.host,
+            args.port,
             args.redis_address,
-            args.http_port,
-            args.token,
             args.temp_dir,
             redis_password=args.redis_password,
         )

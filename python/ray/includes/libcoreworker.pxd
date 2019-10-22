@@ -90,3 +90,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
+        void AddActiveObjectID(const CObjectID &object_id)
+        void RemoveActiveObjectID(const CObjectID &object_id)

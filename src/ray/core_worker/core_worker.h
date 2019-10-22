@@ -158,6 +158,14 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
+  // Add this object ID to the set of active object IDs that is sent to the raylet
+  // in the heartbeat messsage.
+  void AddActiveObjectID(const ObjectID &object_id);
+
+  // Remove this object ID from the set of active object IDs that is sent to the raylet
+  // in the heartbeat messsage.
+  void RemoveActiveObjectID(const ObjectID &object_id);
+
  private:
   /// Give this worker a handle to an actor.
   ///
@@ -179,7 +187,9 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  void StartIOService();
+  void StartIOService() { io_service_.run(); }
+
+  void ReportActiveObjectIDs();
 
   const WorkerType worker_type_;
   const Language language_;
@@ -197,6 +207,9 @@ class CoreWorker {
   boost::asio::io_service io_service_;
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
+  /// Timer used to periodically send heartbeat containing active object IDs to the
+  /// raylet.
+  boost::asio::steady_timer heartbeat_timer_;
 
   std::thread io_thread_;
   std::shared_ptr<worker::Profiler> profiler_;
@@ -206,7 +219,14 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
 
   /// Map from actor ID to a handle to that actor.
-  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+  std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;
+
+  /// Set of object IDs that are in scope in the language worker.
+  std::unordered_set<ObjectID> active_object_ids_;
+
+  /// Indicates whether or not the active_object_ids map has changed since the
+  /// last time it was sent to the raylet.
+  bool active_object_ids_updated_ = false;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;

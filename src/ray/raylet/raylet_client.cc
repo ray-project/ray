@@ -390,3 +390,13 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
 }
+
+ray::Status RayletClient::ReportActiveObjectIDs(
+    const std::unordered_set<ObjectID> &object_ids) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
+  fbb.Finish(message);
+
+  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
+}
