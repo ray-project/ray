@@ -82,6 +82,9 @@ matrix:
       install:
         - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
 
+        # The following line makes the absl random number generation library
+        # compile on gcc 4.8, see also https://github.com/ray-project/ray/pull/5975.
+        - export CC_OPT_FLAGS="-maes"
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
