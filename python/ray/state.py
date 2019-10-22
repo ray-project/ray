@@ -507,7 +507,7 @@ class GlobalState(object):
             for profile_event_message in profile_table_message.profile_events:
                 try:
                     extra_data = json.loads(profile_event_message.extra_data)
-                except json.JSONDecodeError:
+                except ValueError:
                     extra_data = {}
                 profile_event = {
                     "event_type": profile_event_message.event_type,
