@@ -14,6 +14,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "absl/time/clock.h"
 #include "plasma/client.h"
 
 #include "ray/common/id.h"

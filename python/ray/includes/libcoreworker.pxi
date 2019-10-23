@@ -9,10 +9,10 @@ cdef class ProfileEvent:
     """Cython wrapper class of C++ `ray::worker::ProfileEvent`."""
     cdef:
         unique_ptr[CProfileEvent] inner
-        dict extra_data
+        object extra_data
 
     @staticmethod
-    cdef make(unique_ptr[CProfileEvent] event, dict extra_data):
+    cdef make(unique_ptr[CProfileEvent] event, object extra_data):
         cdef ProfileEvent self = ProfileEvent.__new__(ProfileEvent)
         self.inner = move(event)
         self.extra_data = extra_data
@@ -25,7 +25,7 @@ cdef class ProfileEvent:
         pass
 
     def __exit__(self, type, value, tb):
-        extra_data = {}
+        extra_data = None
         if type is not None:
             extra_data = {
                 "type": str(type),
@@ -35,7 +35,7 @@ cdef class ProfileEvent:
         elif self.extra_data is not None:
             extra_data = self.extra_data
 
-        self.inner.get().SetExtraData(json.dumps(extra_data).encode("ascii"))
+        self.inner.get().SetExtraData(json.dumps(extra_data).encode("ascii") if extra_data else b"{}")
 
         # Deleting the CProfileEvent will add it to a queue to be pushed to
         # the driver.
