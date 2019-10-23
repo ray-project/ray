@@ -895,7 +895,7 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
-        with profiling.profile("submit_task"):
+        with self.profile_event("submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
@@ -954,7 +954,7 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
-        with profiling.profile("submit_task"):
+        with self.profile_event("submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
@@ -991,7 +991,7 @@ cdef class CoreWorker:
 
         return resources_dict
 
-    def profile_event(self, event_type, dict extra_data):
+    def profile_event(self, event_type, object extra_data=None):
         cdef:
             c_string c_event_type = event_type.encode("ascii")
 
