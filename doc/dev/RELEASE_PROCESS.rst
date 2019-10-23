@@ -153,6 +153,7 @@ This document describes the process for creating new releases.
 
     .. code-block:: bash
 
+      # Must be run from inside the Ray repository.
       python get_contributors.py --help
       python get_contributors.py \
         --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
