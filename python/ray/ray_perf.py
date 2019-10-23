@@ -16,6 +16,15 @@ class Actor(object):
 
 
 @ray.remote
+class Client(object):
+    def __init__(self, server):
+        self.server = server
+
+    def small_value_batch(self, n):
+        ray.get([self.server.small_value.remote() for _ in range(n)])
+
+
+@ray.remote
 def small_value():
     return 0
 
@@ -131,6 +140,31 @@ def main():
         ray.get([work.remote(a) for _ in range(m)])
 
     timeit("multi core actor calls async", actor_multi2, m * n)
+
+    a = Actor._remote(is_direct_call=True)
+
+    def actor_sync_direct():
+        ray.get(a.small_value.remote())
+
+    timeit("single core direct actor calls sync", actor_sync_direct)
+
+    a = Actor._remote(is_direct_call=True)
+
+    def actor_async_direct():
+        ray.get([a.small_value.remote() for _ in range(1000)])
+
+    timeit("single core direct actor calls async", actor_async_direct, 1000)
+
+    n = 5000
+    n_cpu = multiprocessing.cpu_count() // 2
+    actors = [Actor._remote(is_direct_call=True) for _ in range(n_cpu)]
+    clients = [Client.remote(a) for a in actors]
+
+    def actor_multi2_direct():
+        ray.get([c.small_value_batch.remote(n) for c in clients])
+
+    timeit("multi core direct actor calls async", actor_multi2_direct,
+           n * len(clients))
 
 
 if __name__ == "__main__":

@@ -1200,6 +1200,7 @@ def test_direct_actor_enabled(ray_start_regular):
     assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
     assert ray.get(obj_id) == 2
 
+
 def test_direct_actor_errors(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1243,12 +1244,10 @@ def test_direct_actor_recursive(ray_start_regular):
     b = Actor._remote(args=[a], is_direct_call=False)
     c = Actor._remote(args=[b], is_direct_call=True)
 
-    result = ray.get(
-        [c.f.remote(i) for i in range(100)])
+    result = ray.get([c.f.remote(i) for i in range(100)])
     assert result == [x * 2 for x in range(100)]
 
-    result, _ = ray.wait(
-        [c.f.remote(i) for i in range(100)], num_returns=100)
+    result, _ = ray.wait([c.f.remote(i) for i in range(100)], num_returns=100)
     result = ray.get(result)
     assert result == [x * 2 for x in range(100)]
 
