@@ -484,12 +484,7 @@ cdef _store_task_outputs(
         c_vector[shared_ptr[CRayObject]] *returns):
 
     if is_direct_call:
-        if outputs == last_outputs:
-            for ray_object in last_obj_returns:
-                returns.push_back(ray_object)
-            return  # the output was cached
-        else:
-            intercept_returns = []
+        intercept_returns = []
     else:
         intercept_returns = None
 
@@ -511,15 +506,7 @@ cdef _store_task_outputs(
     if intercept_returns is not None:
         assert len(return_ids) == len(intercept_returns), \
             (return_ids, intercept_returns)
-        global last_outputs
-        global last_obj_returns
         to_ray_objects(intercept_returns, returns)
-        last_outputs = intercept_returns
-        last_obj_returns = returns[0]
-
-
-cdef object last_outputs
-cdef c_vector[shared_ptr[CRayObject]] last_obj_returns
 
 
 cdef execute_task(
