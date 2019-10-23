@@ -287,15 +287,15 @@ class Worker(object):
                            object_id,
                            value,
                            depth=100,
-                           put_async=False,
-                           intercept_returns=None):
+                           return_buffer=None):
         """Store an object and attempt to register its class if needed.
 
         Args:
             object_id: The ID of the object to store.
             value: The value to put in the object store.
             depth: The maximum number of classes to recursively register.
-            put_async: Whether to allow the put to be fulfilled async.
+            return_buffer: If specified, append returns to this list instead
+                of storing directly in the object store.
 
         Raises:
             Exception: An exception is raised if the attempt to store the
@@ -318,20 +318,18 @@ class Worker(object):
                     # that this object can also be read by Java.
                     self.core_worker.put_raw_buffer(
                         value, object_id, memcopy_threads=self.memcopy_threads)
-                    assert not put_async, "not implemented yet"
-                    assert not intercept_returns, "not implemented yet"
+                    assert not return_buffer, "not implemented yet"
                 else:
                     serialization_context = self.get_serialization_context(
                         self.current_job_id)
                     value = pyarrow.serialize(value, serialization_context)
-                    if intercept_returns is not None:
-                        intercept_returns.append(value)
+                    if return_buffer is not None:
+                        return_buffer.append(value)
                     else:
                         self.core_worker.put_serialized_object(
                             value,
                             object_id,
-                            memcopy_threads=self.memcopy_threads,
-                            put_async=put_async)
+                            memcopy_threads=self.memcopy_threads)
                 break
             except pyarrow.SerializationCallbackError as e:
                 cls_type = type(e.example_object)
@@ -365,11 +363,7 @@ class Worker(object):
                                            "locally.".format(cls_type))
                         logger.warning(warning_message)
 
-    def put_object(self,
-                   object_id,
-                   value,
-                   put_async=False,
-                   intercept_returns=None):
+    def put_object(self, object_id, value, return_buffer=None):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -383,9 +377,8 @@ class Worker(object):
             object_id (object_id.ObjectID): The object ID of the value to be
                 put.
             value: The value to put in the object store.
-            put_async: Whether to allow the put to be asynchronously
-                fulfilled. It is guaranteed when a batch of tasks completes
-                that all async puts will be flushed to the object store.
+            return_buffer: If specified, append returns to this list instead
+                of storing directly in the object store.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
@@ -406,15 +399,11 @@ class Worker(object):
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
                 if self.use_pickle:
-                    assert intercept_returns is None, "not implemented"
-                    self.store_with_plasma(
-                        object_id, value, put_async=put_async)
+                    assert return_buffer is None, "not implemented"
+                    self.store_with_plasma(object_id, value)
                 else:
                     self._try_store_and_register(
-                        object_id,
-                        value,
-                        put_async=put_async,
-                        intercept_returns=intercept_returns)
+                        object_id, value, return_buffer=return_buffer)
                 break
             except ObjectStoreFullError as e:
                 if attempt:
@@ -471,25 +460,19 @@ class Worker(object):
             logger.info("The object with ID {} already exists "
                         "in the object store.".format(object_id))
 
-    def _try_store_and_register(self,
-                                object_id,
-                                value,
-                                put_async=False,
-                                intercept_returns=None):
+    def _try_store_and_register(self, object_id, value, return_buffer=None):
         """Wraps `store_and_register` with cases for existence and pickling.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
                 put.
             value: The value to put in the object store.
-            put_async: Whether to allow the put to be fulfilled async.
+            return_buffer: If specified, append returns to this list instead
+                of storing directly in the object store.
         """
         try:
             self.store_and_register(
-                object_id,
-                value,
-                put_async=put_async,
-                intercept_returns=intercept_returns)
+                object_id, value, return_buffer=return_buffer)
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
@@ -501,7 +484,7 @@ class Worker(object):
                                    type(value)))
             logger.warning(warning_message)
             self.store_and_register(
-                object_id, value, intercept_returns=intercept_returns)
+                object_id, value, return_buffer=return_buffer)
 
     def deserialize_objects(self,
                             data_metadata_pairs,

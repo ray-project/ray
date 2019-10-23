@@ -484,9 +484,9 @@ cdef _store_task_outputs(
         c_vector[shared_ptr[CRayObject]] *returns):
 
     if is_direct_call:
-        intercept_returns = []
+        return_buffer = []
     else:
-        intercept_returns = None
+        return_buffer = None
 
     for i in range(len(return_ids)):
         return_id, output = return_ids[i], outputs[i]
@@ -501,12 +501,12 @@ cdef _store_task_outputs(
                     "ObjectID does not exist in the local object store.")
         else:
             worker.put_object(
-                return_id, output, intercept_returns=intercept_returns)
+                return_id, output, return_buffer=return_buffer)
 
-    if intercept_returns is not None:
-        assert len(return_ids) == len(intercept_returns), \
-            (return_ids, intercept_returns)
-        to_ray_objects(intercept_returns, returns)
+    if return_buffer is not None:
+        assert len(return_ids) == len(return_buffer), \
+            (return_ids, return_buffer)
+        to_ray_objects(return_buffer, returns)
 
 
 cdef execute_task(
