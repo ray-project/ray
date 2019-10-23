@@ -8,7 +8,7 @@
 namespace ray {
 
 // Group object ids according the the corresponding store providers.
-void GroupObjectIdsByStoreProvider(
+void CoreWorkerObjectInterface::GroupObjectIdsByStoreProvider(
     const std::vector<ObjectID> &object_ids,
     EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> *results) {
   // There are two cases:
@@ -25,7 +25,7 @@ void GroupObjectIdsByStoreProvider(
     //   and are only used locally.
     // Thus we need to check whether this object is a task return object in additional
     // to whether it's from direct actor call before we can choose memory store provider.
-    if (object_id.IsReturnObject() &&
+    if (use_memory_store_ && object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
             static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR)) {
       type = StoreProviderType::MEMORY;
@@ -37,13 +37,22 @@ void GroupObjectIdsByStoreProvider(
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    const std::string &store_socket)
+    const std::string &store_socket, bool use_memory_store,
+    std::function<Status()> check_signals)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket),
+      use_memory_store_(use_memory_store),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
+  check_signals_ = check_signals;
   AddStoreProvider(StoreProviderType::PLASMA);
   AddStoreProvider(StoreProviderType::MEMORY);
+}
+
+Status CoreWorkerObjectInterface::SetClientOptions(std::string name,
+                                                   int64_t limit_bytes) {
+  // Currently only the Plasma store supports client options.
+  return store_providers_[StoreProviderType::PLASMA]->SetClientOptions(name, limit_bytes);
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
@@ -62,6 +71,18 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
   return store_providers_[StoreProviderType::PLASMA]->Put(object, object_id);
 }
 
+Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,
+                                         const size_t data_size,
+                                         const ObjectID &object_id,
+                                         std::shared_ptr<Buffer> *data) {
+  return store_providers_[StoreProviderType::PLASMA]->Create(metadata, data_size,
+                                                             object_id, data);
+}
+
+Status CoreWorkerObjectInterface::Seal(const ObjectID &object_id) {
+  return store_providers_[StoreProviderType::PLASMA]->Seal(object_id);
+}
+
 Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
                                       int64_t timeout_ms,
                                       std::vector<std::shared_ptr<RayObject>> *results) {
@@ -76,6 +97,7 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
 
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto remaining_timeout_ms = timeout_ms;
+  bool got_exception = false;
 
   // Re-order the list so that we always get from plasma store provider first,
   // since it uses a loop of `FetchOrReconstruct` and plasma `Get`, it's not
@@ -99,7 +121,10 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
     auto start_time = current_time_ms();
     RAY_RETURN_NOT_OK(store_providers_[entry.first]->Get(
         entry.second, remaining_timeout_ms, worker_context_.GetCurrentTaskID(),
-        &result_map));
+        &result_map, &got_exception));
+    if (got_exception) {
+      break;
+    }
     if (remaining_timeout_ms > 0) {
       int64_t duration = current_time_ms() - start_time;
       remaining_timeout_ms =
@@ -118,6 +143,11 @@ Status CoreWorkerObjectInterface::Get(const std::vector<ObjectID> &ids,
   }
 
   return Status::OK();
+}
+
+Status CoreWorkerObjectInterface::Contains(const ObjectID &object_id, bool *has_object) {
+  // Currently only the Plasma store supports Contains().
+  return store_providers_[StoreProviderType::PLASMA]->Contains(object_id, has_object);
 }
 
 Status CoreWorkerObjectInterface::Wait(const std::vector<ObjectID> &ids, int num_objects,
@@ -227,6 +257,11 @@ Status CoreWorkerObjectInterface::Delete(const std::vector<ObjectID> &object_ids
   return Status::OK();
 }
 
+std::string CoreWorkerObjectInterface::MemoryUsageString() {
+  // Currently only the Plasma store returns a debug string.
+  return store_providers_[StoreProviderType::PLASMA]->MemoryUsageString();
+}
+
 void CoreWorkerObjectInterface::AddStoreProvider(StoreProviderType type) {
   store_providers_.emplace(type, CreateStoreProvider(type));
 }
@@ -236,7 +271,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
   switch (type) {
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
+        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_, check_signals_));
   case StoreProviderType::MEMORY:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerMemoryStoreProvider(memory_store_));

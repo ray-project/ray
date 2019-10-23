@@ -61,9 +61,12 @@ class Node(object):
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        if shutdown_at_exit and connect_only:
-            raise ValueError("'shutdown_at_exit' and 'connect_only' cannot "
-                             "be both true.")
+        if shutdown_at_exit:
+            if connect_only:
+                raise ValueError("'shutdown_at_exit' and 'connect_only' "
+                                 "cannot both be true.")
+            self._register_shutdown_hooks()
+
         self.head = head
         self.all_processes = {}
 
@@ -152,9 +155,50 @@ class Node(object):
         if not connect_only:
             self.start_ray_processes()
 
-        if shutdown_at_exit:
-            atexit.register(lambda: self.kill_all_processes(
-                check_alive=False, allow_graceful=True))
+    def _register_shutdown_hooks(self):
+        # Make ourselves a process group session leader to ensure we can clean
+        # up child processes later without killing a process that started us.
+        try:
+            os.setpgrp()
+        except OSError as e:
+            logger.warning("setpgrp failed, processes may not be "
+                           "cleaned up properly: {}.".format(e))
+
+        # Clean up child process by first going through the normal
+        # kill_all_processes procedure (which should clean them all up
+        # under normal circumstances), then sending a SIGTERM to our
+        # process group to take care of any children that may have been
+        # spawned but not yet added to the list.
+        def clean_up_children(sigterm_handler):
+            self.kill_all_processes(check_alive=False, allow_graceful=True)
+            signal.signal(signal.SIGTERM, sigterm_handler)
+            try:
+                # SIGTERM our process group as a last resort in case there
+                # were processes that we spawned but didn't add to the list
+                # (could happen if interrupted just after spawning them).
+                # We could send SIGKILL here to be sure, but we're also
+                # sending it to ourselves.
+                os.killpg(0, signal.SIGTERM)
+            except OSError as e:
+                print("killpg failed, processes may not have "
+                      "been cleaned up properly: {}.".format(e))
+
+        # Register the a handler to be called during the normal python
+        # shutdown process. We pass an empty lambda to clean_up_children
+        # because after cleaning up the child processes, it should do
+        # nothing and return so that the shutdown process can continue.
+        def atexit_handler():
+            return clean_up_children(lambda *args, **kwargs: None)
+
+        atexit.register(atexit_handler)
+
+        # Register the a handler to be called if we get a SIGTERM.
+        # In this case, we want to exit with an error code (1) after
+        # cleaning up child processes.
+        def sigterm_handler():
+            return clean_up_children(lambda *args, **kwargs: sys.exit(1))
+
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
     def _init_temp(self, redis_client):
         # Create an dictionary to store temp file index.
@@ -221,6 +265,10 @@ class Node(object):
         return self._ray_params.load_code_from_local
 
     @property
+    def use_pickle(self):
+        return self._ray_params.use_pickle
+
+    @property
     def object_id_seed(self):
         """Get the seed for deterministic generation of object IDs"""
         return self._ray_params.object_id_seed
@@ -229,6 +277,12 @@ class Node(object):
     def plasma_store_socket_name(self):
         """Get the node's plasma store socket name."""
         return self._plasma_store_socket_name
+
+    @property
+    def unique_id(self):
+        """Get a unique identifier for this node."""
+        return "{}:{}".format(self.node_ip_address,
+                              self._plasma_store_socket_name)
 
     @property
     def webui_url(self):
@@ -411,6 +465,7 @@ class Node(object):
         """Start the dashboard."""
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._webui_url, process_info = ray.services.start_dashboard(
+            self._ray_params.webui_host,
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,
@@ -470,7 +525,7 @@ class Node(object):
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-        )
+            use_pickle=self._ray_params.use_pickle)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

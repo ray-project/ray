@@ -3,7 +3,6 @@
 #include <sys/wait.h>
 
 #include <algorithm>
-#include <thread>
 
 #include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
@@ -423,6 +422,21 @@ bool WorkerPool::HasPendingWorkerForTask(const Language &language,
   auto &state = GetStateForLanguage(language);
   auto it = state.tasks_to_dedicated_workers.find(task_id);
   return it != state.tasks_to_dedicated_workers.end();
+}
+
+std::unordered_set<ObjectID> WorkerPool::GetActiveObjectIDs() const {
+  std::unordered_set<ObjectID> active_object_ids;
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      active_object_ids.insert(worker->GetActiveObjectIds().begin(),
+                               worker->GetActiveObjectIds().end());
+    }
+    for (const auto &driver : entry.second.registered_drivers) {
+      active_object_ids.insert(driver->GetActiveObjectIds().begin(),
+                               driver->GetActiveObjectIds().end());
+    }
+  }
+  return active_object_ids;
 }
 
 std::string WorkerPool::DebugString() const {

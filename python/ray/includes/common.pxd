@@ -1,16 +1,37 @@
-from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
+from libcpp.memory cimport shared_ptr, unique_ptr
+from libcpp.string cimport string as c_string
 
-from libc.stdint cimport int64_t
+from libc.stdint cimport uint8_t, uint64_t, int64_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
+    CActorID,
     CJobID,
     CWorkerID,
     CObjectID,
     CTaskID,
 )
+
+
+cdef extern from * namespace "polyfill":
+    """
+    namespace polyfill {
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T& t) {
+        return std::move(t);
+    }
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T&& t) {
+        return std::move(t);
+    }
+
+    }  // namespace polyfill
+    """
+    cdef T move[T](T)
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
@@ -26,28 +47,34 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus OK()
 
         @staticmethod
-        CRayStatus OutOfMemory()
+        CRayStatus OutOfMemory(const c_string &msg)
 
         @staticmethod
-        CRayStatus KeyError()
+        CRayStatus KeyError(const c_string &msg)
 
         @staticmethod
-        CRayStatus Invalid()
+        CRayStatus Invalid(const c_string &msg)
 
         @staticmethod
-        CRayStatus IOError()
+        CRayStatus IOError(const c_string &msg)
 
         @staticmethod
-        CRayStatus TypeError()
+        CRayStatus TypeError(const c_string &msg)
 
         @staticmethod
-        CRayStatus UnknownError()
+        CRayStatus UnknownError(const c_string &msg)
 
         @staticmethod
-        CRayStatus NotImplemented()
+        CRayStatus NotImplemented(const c_string &msg)
 
         @staticmethod
-        CRayStatus RedisError()
+        CRayStatus ObjectStoreFull(const c_string &msg)
+
+        @staticmethod
+        CRayStatus RedisError(const c_string &msg)
+
+        @staticmethod
+        CRayStatus Interrupted(const c_string &msg)
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -57,7 +84,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTypeError()
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
+        c_bool IsObjectStoreFull()
         c_bool IsRedisError()
+        c_bool IsInterrupted()
 
         c_string ToString()
         c_string CodeAsString()
@@ -67,6 +96,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
+    cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
 
 cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
@@ -90,19 +120,31 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass CLanguage "Language":
         pass
+    cdef cppclass CWorkerType "ray::WorkerType":
+        pass
+    cdef cppclass CTaskType "ray::TaskType":
+        pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
 # representation.
-cdef extern from "ray/protobuf/common.pb.h" namespace "Language" nogil:
+cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef CLanguage LANGUAGE_PYTHON "Language::PYTHON"
     cdef CLanguage LANGUAGE_CPP "Language::CPP"
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
+cdef extern from "ray/protobuf/common.pb.h" nogil:
+    cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
+    cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
 
-cdef extern from "ray/common/task/scheduling_resources.h" \
-        namespace "ray" nogil:
-    cdef cppclass ResourceSet "ResourceSet":
+cdef extern from "ray/protobuf/common.pb.h" nogil:
+    cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
+    cdef CTaskType TASK_TYPE_ACTOR_CREATION_TASK "ray::TaskType::ACTOR_CREATION_TASK"  # noqa: E501
+    cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
+
+
+cdef extern from "ray/common/task/scheduling_resources.h" nogil:
+    cdef cppclass ResourceSet "ray::ResourceSet":
         ResourceSet()
         ResourceSet(const unordered_map[c_string, double] &resource_map)
         ResourceSet(const c_vector[c_string] &resource_labels,
@@ -111,7 +153,8 @@ cdef extern from "ray/common/task/scheduling_resources.h" \
         c_bool IsEqual(const ResourceSet &other) const
         c_bool IsSubset(const ResourceSet &other) const
         c_bool IsSuperset(const ResourceSet &other) const
-        c_bool AddOrUpdateResource(const c_string &resource_name, double capacity)
+        c_bool AddOrUpdateResource(const c_string &resource_name,
+                                   double capacity)
         c_bool RemoveResource(const c_string &resource_name)
         void AddResources(const ResourceSet &other)
         c_bool SubtractResourcesStrict(const ResourceSet &other)
@@ -120,3 +163,53 @@ cdef extern from "ray/common/task/scheduling_resources.h" \
         c_bool IsEmpty() const
         const unordered_map[c_string, double] &GetResourceMap() const
         const c_string ToString() const
+
+cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
+    cdef cppclass CBuffer "ray::Buffer":
+        uint8_t *Data() const
+        size_t Size() const
+
+    cdef cppclass LocalMemoryBuffer(CBuffer):
+        LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
+
+cdef extern from "ray/common/ray_object.h" nogil:
+    cdef cppclass CRayObject "ray::RayObject":
+        c_bool HasData() const
+        c_bool HasMetadata() const
+        const size_t DataSize() const
+        const shared_ptr[CBuffer] &GetData()
+        const shared_ptr[CBuffer] &GetMetadata() const
+
+cdef extern from "ray/core_worker/common.h" nogil:
+    cdef cppclass CRayFunction "ray::RayFunction":
+        CRayFunction()
+        CRayFunction(CLanguage language,
+                     const c_vector[c_string] function_descriptor)
+        CLanguage GetLanguage()
+        c_vector[c_string] GetFunctionDescriptor()
+
+    cdef cppclass CTaskArg "ray::TaskArg":
+        @staticmethod
+        CTaskArg PassByReference(const CObjectID &object_id)
+
+        @staticmethod
+        CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
+
+    cdef cppclass CTaskOptions "ray::TaskOptions":
+        CTaskOptions()
+        CTaskOptions(int num_returns,
+                     unordered_map[c_string, double] &resources)
+
+    cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
+        CActorCreationOptions()
+        CActorCreationOptions(
+            uint64_t max_reconstructions, c_bool is_direct_call,
+            const unordered_map[c_string, double] &resources,
+            const unordered_map[c_string, double] &placement_resources,
+            const c_vector[c_string] &dynamic_worker_options)
+
+cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
+    cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
+        CGcsClientOptions(const c_string &ip, int port,
+                          const c_string &password,
+                          c_bool is_test_client)

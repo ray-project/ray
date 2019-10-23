@@ -11,7 +11,6 @@ import os
 from ray.includes.unique_ids cimport (
     CActorCheckpointID,
     CActorClassID,
-    CActorHandleID,
     CActorID,
     CClientID,
     CConfigID,
@@ -23,6 +22,7 @@ from ray.includes.unique_ids cimport (
     CWorkerID,
 )
 
+import ray
 from ray.utils import decode
 
 
@@ -129,12 +129,31 @@ cdef class UniqueID(BaseID):
 
 
 cdef class ObjectID(BaseID):
-    cdef CObjectID data
-    cdef object buffer_ref
+    cdef:
+        CObjectID data
+        object buffer_ref
+        # Flag indicating whether or not this object ID was added to the set
+        # of active IDs in the core worker so we know whether we should clean
+        # it up.
+        c_bool in_core_worker
 
     def __init__(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
+
+        worker = ray.worker.global_worker
+        # TODO(edoakes): there are dummy object IDs being created in
+        # includes/task.pxi before the core worker is initialized.
+        if hasattr(worker, "core_worker"):
+            worker.core_worker.add_active_object_id(self)
+            self.in_core_worker = True
+        else:
+            self.in_core_worker = False
+
+    def __dealloc__(self):
+        worker = ray.worker.global_worker
+        if self.in_core_worker and hasattr(worker, "core_worker"):
+            worker.core_worker.remove_active_object_id(self)
 
     cdef CObjectID native(self):
         return <CObjectID>self.data
@@ -211,30 +230,35 @@ cdef class TaskID(BaseID):
 
     @classmethod
     def for_driver_task(cls, job_id):
-        return cls(CTaskID.ForDriverTask(CJobID.FromBinary(job_id.binary())).Binary())
+        return cls(CTaskID.ForDriverTask(
+            CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def for_actor_creation_task(cls, actor_id):
         assert isinstance(actor_id, ActorID)
-        return cls(CTaskID.ForActorCreationTask(CActorID.FromBinary(actor_id.binary())).Binary())
+        return cls(CTaskID.ForActorCreationTask(
+            CActorID.FromBinary(actor_id.binary())).Binary())
 
     @classmethod
-    def for_actor_task(cls, job_id, parent_task_id, parent_task_counter, actor_id):
+    def for_actor_task(cls, job_id, parent_task_id,
+                       parent_task_counter, actor_id):
         assert isinstance(job_id, JobID)
         assert isinstance(parent_task_id, TaskID)
         assert isinstance(actor_id, ActorID)
-        return cls(CTaskID.ForActorTask(CJobID.FromBinary(job_id.binary()),
-                                        CTaskID.FromBinary(parent_task_id.binary()),
-                                        parent_task_counter,
-                                        CActorID.FromBinary(actor_id.binary())).Binary())
+        return cls(CTaskID.ForActorTask(
+            CJobID.FromBinary(job_id.binary()),
+            CTaskID.FromBinary(parent_task_id.binary()),
+            parent_task_counter,
+            CActorID.FromBinary(actor_id.binary())).Binary())
 
     @classmethod
     def for_normal_task(cls, job_id, parent_task_id, parent_task_counter):
         assert isinstance(job_id, JobID)
         assert isinstance(parent_task_id, TaskID)
-        return cls(CTaskID.ForNormalTask(CJobID.FromBinary(job_id.binary()),
-                                         CTaskID.FromBinary(parent_task_id.binary()),
-                                         parent_task_counter).Binary())
+        return cls(CTaskID.ForNormalTask(
+            CJobID.FromBinary(job_id.binary()),
+            CTaskID.FromBinary(parent_task_id.binary()),
+            parent_task_counter).Binary())
 
 cdef class ClientID(UniqueID):
 
@@ -315,6 +339,10 @@ cdef class ActorID(BaseID):
         return cls(CActorID.Nil().Binary())
 
     @classmethod
+    def from_random(cls):
+        return cls(os.urandom(CActorID.Size()))
+
+    @classmethod
     def size(cls):
         return CActorID.Size()
 
@@ -332,16 +360,6 @@ cdef class ActorID(BaseID):
 
     cdef size_t hash(self):
         return self.data.Hash()
-
-
-cdef class ActorHandleID(UniqueID):
-
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorHandleID.FromBinary(<c_string>id)
-
-    cdef CActorHandleID native(self):
-        return <CActorHandleID>self.data
 
 
 cdef class ActorCheckpointID(UniqueID):
@@ -376,7 +394,6 @@ cdef class ActorClassID(UniqueID):
 _ID_TYPES = [
     ActorCheckpointID,
     ActorClassID,
-    ActorHandleID,
     ActorID,
     ClientID,
     JobID,

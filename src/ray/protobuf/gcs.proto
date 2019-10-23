@@ -198,6 +198,8 @@ message HeartbeatTableData {
   // Aggregate outstanding resource load on this node manager.
   repeated string resource_load_label = 6;
   repeated double resource_load_capacity = 7;
+  // Object IDs that are in use by workers on this node manager's node.
+  repeated bytes active_object_id = 8;
 }
 
 message HeartbeatBatchTableData {

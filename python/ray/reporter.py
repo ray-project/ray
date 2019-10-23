@@ -9,16 +9,16 @@ import os
 import traceback
 import time
 import datetime
-from socket import AddressFamily
 
 try:
     import psutil
-except ModuleNotFoundError:
+except ImportError:
     print("The reporter requires psutil to run.")
     import sys
     sys.exit(1)
 
 import ray.ray_constants as ray_constants
+import ray.services
 import ray.utils
 
 # Logger for this module. It should be configured at the entry point
@@ -48,23 +48,8 @@ def jsonify_asdict(o):
     return json.dumps(recursive_asdict(o))
 
 
-def running_worker(s):
-    if "ray_worker" not in s:
-        return False
-
-    if s == "ray_worker":
-        return False
-
-    return True
-
-
-def determine_ip_address():
-    """Return the first IP address for an ethernet interface on the system."""
-    addrs = [
-        x.address for k, v in psutil.net_if_addrs().items() if k[0] == "e"
-        for x in v if x.family == AddressFamily.AF_INET
-    ]
-    return addrs[0]
+def is_worker(cmdline):
+    return cmdline and cmdline[0].startswith("ray_")
 
 
 def to_posix_time(dt):
@@ -83,7 +68,7 @@ class Reporter(object):
     def __init__(self, redis_address, redis_password=None):
         """Initialize the reporter object."""
         self.cpu_counts = (psutil.cpu_count(), psutil.cpu_count(logical=False))
-        self.ip_addr = determine_ip_address()
+        self.ip = ray.services.get_node_ip_address()
         self.hostname = os.uname().nodename
 
         _ = psutil.cpu_percent()  # For initialization
@@ -127,8 +112,10 @@ class Reporter(object):
     def get_workers():
         return [
             x.as_dict(attrs=[
-                "pid", "create_time", "cpu_times", "name", "memory_full_info"
-            ]) for x in psutil.process_iter() if running_worker(x.name())
+                "pid", "create_time", "cpu_percent", "cpu_times", "name",
+                "cmdline", "memory_info", "memory_full_info"
+            ]) for x in psutil.process_iter(attrs=["cmdline"])
+            if is_worker(x.info["cmdline"])
         ]
 
     def get_load_avg(self):
@@ -149,7 +136,7 @@ class Reporter(object):
         return {
             "now": now,
             "hostname": self.hostname,
-            "ip": self.ip_addr,
+            "ip": self.ip,
             "cpu": self.get_cpu_percent(),
             "cpus": self.cpu_counts,
             "mem": self.get_mem_usage(),

@@ -6,9 +6,6 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.7.1-blue.svg
-    :target: https://pypi.org/project/ray/
-
 |
 
 
@@ -48,7 +45,7 @@ To use Ray's actor model:
     ray.init()
 
     @ray.remote
-    class Counter():
+    class Counter(object):
         def __init__(self):
             self.n = 0
 
@@ -87,7 +84,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray torch torchvision filelock
+    $ pip install ray[tune] torch torchvision filelock
 
 
 This example runs a parallel grid search to train a Convolutional Neural Network using PyTorch.
@@ -204,8 +201,14 @@ Getting Involved
 - `StackOverflow`_: For questions about how to use Ray.
 - `GitHub Issues`_: For reporting bugs and feature requests.
 - `Pull Requests`_: For submitting code contributions.
+- `Meetup Group`_: Join our meetup group.
+- `Community Slack`_: Join our Slack workspace.
+- `Twitter`_: Follow updates on Twitter.
 
 .. _`ray-dev@googlegroups.com`: https://groups.google.com/forum/#!forum/ray-dev
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Pull Requests`: https://github.com/ray-project/ray/pulls
+.. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
+.. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+.. _`Twitter`: https://twitter.com/raydistributed

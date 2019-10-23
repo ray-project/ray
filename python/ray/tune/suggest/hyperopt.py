@@ -209,11 +209,11 @@ class HyperOptSearch(SuggestionAlgorithm):
 
     def save(self, checkpoint_dir):
         trials_object = (self._hpopt_trials, self.rstate.get_state())
-        with open(checkpoint_dir, "wb") as output:
-            pickle.dump(trials_object, output)
+        with open(checkpoint_dir, "wb") as outputFile:
+            pickle.dump(trials_object, outputFile)
 
     def restore(self, checkpoint_dir):
-        with open(checkpoint_dir, "rb") as input:
-            trials_object = pickle.load(input)
+        with open(checkpoint_dir, "rb") as inputFile:
+            trials_object = pickle.load(inputFile)
         self._hpopt_trials = trials_object[0]
         self.rstate.set_state(trials_object[1])

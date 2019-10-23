@@ -29,7 +29,8 @@ class LocalModeManager(object):
     def __init__(self):
         """Initialize a LocalModeManager."""
 
-    def execute(self, function, function_descriptor, args, num_return_vals):
+    def execute(self, function, function_descriptor, args, kwargs,
+                num_return_vals):
         """Synchronously executes a "remote" function or actor method.
 
         Stores results directly in the generated and returned
@@ -42,6 +43,7 @@ class LocalModeManager(object):
             function_descriptor: Metadata about the function.
             args: Arguments to the function. These will not be modified by
                 the function execution.
+            kwargs: Keyword arguments to the function.
             num_return_vals: Number of expected return values specified in the
                 function's decorator.
 
@@ -52,16 +54,16 @@ class LocalModeManager(object):
             LocalModeObjectID.from_random() for _ in range(num_return_vals)
         ]
         try:
-            results = function(*copy.deepcopy(args))
+            results = function(*copy.deepcopy(args), **copy.deepcopy(kwargs))
             if num_return_vals == 1:
                 object_ids[0].value = results
             else:
                 for object_id, result in zip(object_ids, results):
                     object_id.value = result
-        except Exception:
+        except Exception as e:
             function_name = function_descriptor.function_name
             backtrace = format_error_message(traceback.format_exc())
-            task_error = RayTaskError(function_name, backtrace)
+            task_error = RayTaskError(function_name, backtrace, e.__class__)
             for object_id in object_ids:
                 object_id.value = task_error
 
@@ -83,7 +85,7 @@ class LocalModeManager(object):
         object_id.value = value
         return object_id
 
-    def get_object(self, object_ids):
+    def get_objects(self, object_ids):
         """Fetch objects from the emulated object store.
 
         Accepts only LocalModeObjectIDs and reads values directly from them.

@@ -14,7 +14,7 @@ public class BaseTest {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTest.class);
 
-  private List<File> filesToDelete;
+  private List<File> filesToDelete = ImmutableList.of();
 
   @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
