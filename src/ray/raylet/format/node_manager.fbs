@@ -115,12 +115,16 @@ table ResourceIdSetInfo {
 table DisconnectClient {
 }
 
+table ResourceIdSetInfos {
+  resource_infos: [ResourceIdSetInfo];
+}
+
 // This message is sent from the raylet to a worker.
 table GetTaskReply {
   // A string of bytes representing the task specification.
   task_spec: string;
   // A list of the resources reserved for this worker.
-  fractional_resource_ids: [ResourceIdSetInfo];
+  fractional_resource_ids: ResourceIdSetInfos;
 }
 
 // This struct is used to register a new worker with the raylet.

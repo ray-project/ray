@@ -238,9 +238,10 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
   // Set the resource IDs for this task.
   resource_ids_.clear();
-  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
+  for (size_t i = 0;
+       i < reply_message->fractional_resource_ids()->resource_infos()->size(); ++i) {
     auto const &fractional_resource_ids =
-        reply_message->fractional_resource_ids()->Get(i);
+        reply_message->fractional_resource_ids()->resource_infos()->Get(i);
     auto &acquired_resources =
         resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
 

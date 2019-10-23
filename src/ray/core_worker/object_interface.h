@@ -24,8 +24,8 @@ class CoreWorkerObjectInterface {
   ///            in addition to the plasma store.
   CoreWorkerObjectInterface(WorkerContext &worker_context,
                             std::unique_ptr<RayletClient> &raylet_client,
-                            const std::string &store_socket,
-                            bool use_memory_store = true);
+                            const std::string &store_socket, bool use_memory_store = true,
+                            std::function<Status()> check_signals = nullptr);
 
   /// Set options for this client's interactions with the object store.
   ///
@@ -159,6 +159,8 @@ class CoreWorkerObjectInterface {
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
       store_providers_;
+
+  std::function<Status()> check_signals_;
 
   friend class CoreWorkerTaskInterface;
 

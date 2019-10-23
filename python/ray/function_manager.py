@@ -763,7 +763,7 @@ class FunctionActorManager(object):
                 worker's internal state to record the executed method.
         """
 
-        def actor_method_executor(dummy_return_id, actor, *args, **kwargs):
+        def actor_method_executor(actor, *args, **kwargs):
             # Update the actor's task counter to reflect the task we're about
             # to execute.
             self._worker.actor_task_counter += 1

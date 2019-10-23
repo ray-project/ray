@@ -37,12 +37,14 @@ void CoreWorkerObjectInterface::GroupObjectIdsByStoreProvider(
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    const std::string &store_socket, bool use_memory_store)
+    const std::string &store_socket, bool use_memory_store,
+    std::function<Status()> check_signals)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket),
       use_memory_store_(use_memory_store),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
+  check_signals_ = check_signals;
   AddStoreProvider(StoreProviderType::PLASMA);
   AddStoreProvider(StoreProviderType::MEMORY);
 }
@@ -269,7 +271,7 @@ std::unique_ptr<CoreWorkerStoreProvider> CoreWorkerObjectInterface::CreateStoreP
   switch (type) {
   case StoreProviderType::PLASMA:
     return std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_));
+        new CoreWorkerPlasmaStoreProvider(store_socket_, raylet_client_, check_signals_));
   case StoreProviderType::MEMORY:
     return std::unique_ptr<CoreWorkerStoreProvider>(
         new CoreWorkerMemoryStoreProvider(memory_store_));

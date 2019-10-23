@@ -243,12 +243,15 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         // Decrease to account for the dummy object id.
         num_returns--;
 
+        // TODO(edoakes): resource IDs are currently kept track of in the raylet,
+        // need to come up with a solution for this.
+        ResourceMappingType resource_ids;
         std::vector<std::shared_ptr<RayObject>> results;
-        auto status = task_handler_(task_spec, &results);
+        auto status = task_handler_(task_spec, resource_ids, &results);
         RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
         for (size_t i = 0; i < results.size(); i++) {
-          auto return_object = (*reply).add_return_objects();
+          auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
