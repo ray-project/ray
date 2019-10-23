@@ -59,6 +59,9 @@ cdef extern from "ray/core_worker/object_interface.h" nogil:
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, CObjectID *object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size, const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id)

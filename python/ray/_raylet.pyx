@@ -75,6 +75,7 @@ from ray.includes.ray_config cimport RayConfig
 
 import ray
 import ray.experimental.signal as ray_signal
+import ray.memory_monitor as memory_monitor
 import ray.ray_constants as ray_constants
 from ray import profiling
 from ray.exceptions import (
@@ -457,6 +458,8 @@ cdef deserialize_args(
 
     return ray.signature.recover_args(args)
 
+# TODO(edoakes): do these checks in core worker!!
+"""
 cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
     assert worker.current_task_id.is_nil()
     assert worker.task_context.task_index == 0
@@ -470,12 +473,12 @@ cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
         # Set the driver ID of the current running task. This is
         # needed so that if the task throws an exception, we propagate
         # the error message to the correct driver.
-        worker.current_job_id = job_id
     else:
         # If this worker is an actor, current_job_id wasn't reset.
         # Check that current task's driver ID equals the previous
         # one.
         assert worker.current_job_id == job_id
+"""
 
 
 cdef _store_task_outputs(worker, return_ids, outputs):
@@ -491,7 +494,7 @@ cdef _store_task_outputs(worker, return_ids, outputs):
                     "from a remote function, but the corresponding "
                     "ObjectID does not exist in the local object store.")
         else:
-            worker.put_object(return_id, output)
+            worker.put_object(output, object_id=return_id)
 
 
 cdef execute_task(
@@ -510,10 +513,7 @@ cdef execute_task(
     actor_id = ActorID(c_actor_id.Binary())
     job_id = JobID(c_job_id.Binary())
     task_id = worker.core_worker.get_current_task_id()
-
-    # Check that the worker is in the expected state to execute the task.
-    _check_worker_state(worker, task_type, job_id)
-    worker.task_context.current_task_id = task_id
+    worker.current_job_id = job_id
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -553,7 +553,7 @@ cdef execute_task(
                 ray_constants.from_memory_units(
                     dereference(c_resources.find(b"memory")).second))
         if c_resources.find(b"object_store_memory") != c_resources.end():
-            worker._set_object_store_client_options(
+            worker.core_worker.set_object_store_client_options(
                 worker_name,
                 int(ray_constants.from_memory_units(
                         dereference(
@@ -611,10 +611,7 @@ cdef execute_task(
             ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
     # Reset the state fields so the next task can run.
-    worker.task_context.current_task_id = TaskID.nil()
     worker.core_worker.set_current_task_id(TaskID.nil())
-    worker.task_context.task_index = 0
-    worker.task_context.put_index = 1
 
     # Don't need to reset `current_job_id` if the worker is an
     # actor. Because the following tasks should all have the
@@ -753,87 +750,108 @@ cdef class CoreWorker:
 
         return has_object
 
-    def put_serialized_object(self, serialized_object, ObjectID object_id,
-                              int memcopy_threads=6):
-        cdef:
-            shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata
-            CObjectID c_object_id = object_id.native()
-            size_t data_size
-
-        data_size = serialized_object.total_bytes
-
-        with nogil:
-            check_status(self.core_worker.get().Objects().Create(
-                        metadata, data_size, c_object_id, &data))
+    cdef _create_put_buffer(self, shared_ptr[CBuffer] &metadata,
+                            size_t data_size, ObjectID object_id,
+                            CObjectID *c_object_id, shared_ptr[CBuffer] *data):
+        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
+        for attempt in reversed(
+                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
+            try:
+                if object_id is None:
+                    with nogil:
+                        check_status(self.core_worker.get().Objects().Create(
+                                    metadata, data_size, c_object_id, data))
+                else:
+                    c_object_id[0] = object_id.native()
+                    with nogil:
+                        check_status(self.core_worker.get().Objects().Create(
+                                    metadata, data_size, c_object_id[0], data))
+                break
+            except ObjectStoreFullError as e:
+                if attempt:
+                    logger.warning("Waiting {} seconds for space to free up "
+                                   "in the object store.".format(delay))
+                    time.sleep(delay)
+                    delay *= 2
+                else:
+                    self.dump_object_store_memory_usage()
+                    raise e
 
         # If data is nullptr, that means the ObjectID already existed,
         # which we ignore.
         # TODO(edoakes): this is hacky, we should return the error instead
         # and deal with it here.
-        if not data:
-            return
+        return not data
 
-        stream = pyarrow.FixedSizeBufferWriter(
-            pyarrow.py_buffer(Buffer.make(data)))
-        stream.set_memcopy_threads(memcopy_threads)
-        serialized_object.write_to(stream)
+    def put_serialized_object(self, serialized_object, ObjectID object_id=None,
+                              int memcopy_threads=6):
+        cdef:
+            CObjectID c_object_id
+            shared_ptr[CBuffer] data
+            shared_ptr[CBuffer] metadata
 
-        with nogil:
-            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+        object_already_exists = self._create_put_buffer(
+            metadata, serialized_object.total_bytes,
+            object_id, &c_object_id, &data)
+        if not object_already_exists:
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            stream.set_memcopy_threads(memcopy_threads)
+            serialized_object.write_to(stream)
 
-    def put_raw_buffer(self, c_string value, ObjectID object_id,
+            with nogil:
+                check_status(
+                    self.core_worker.get().Objects().Seal(c_object_id))
+
+        return ObjectID(c_object_id.Binary())
+
+    def put_raw_buffer(self, c_string value, ObjectID object_id=None,
                        int memcopy_threads=6):
         cdef:
             c_string metadata_str = RAW_BUFFER_METADATA
-            CObjectID c_object_id = object_id.native()
+            CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
                 CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
                         <uint8_t*>(metadata_str.data()), metadata_str.size()))
 
-        with nogil:
-            check_status(self.core_worker.get().Objects().Create(
-                metadata, value.size(), c_object_id, &data))
+        object_already_exists = self._create_put_buffer(
+            metadata, value.size(), object_id, &c_object_id, &data)
+        if not object_already_exists:
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            stream.set_memcopy_threads(memcopy_threads)
+            stream.write(pyarrow.py_buffer(value))
 
-        stream = pyarrow.FixedSizeBufferWriter(
-            pyarrow.py_buffer(Buffer.make(data)))
-        stream.set_memcopy_threads(memcopy_threads)
-        stream.write(pyarrow.py_buffer(value))
+            with nogil:
+                check_status(
+                    self.core_worker.get().Objects().Seal(c_object_id))
 
-        with nogil:
-            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+        return ObjectID(c_object_id.Binary())
 
-    def put_pickle5_buffers(self, ObjectID object_id, c_string inband,
-                            Pickle5Writer writer,
-                            int memcopy_threads):
+    def put_pickle5_buffers(self, c_string inband,
+                            Pickle5Writer writer, ObjectID object_id=None,
+                            int memcopy_threads=6):
         cdef:
-            shared_ptr[CBuffer] data
+            CObjectID c_object_id
             c_string metadata_str = PICKLE5_BUFFER_METADATA
+            shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
                 CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
                         <uint8_t*>(metadata_str.data()), metadata_str.size()))
-            CObjectID c_object_id = object_id.native()
-            size_t data_size
 
-        data_size = writer.get_total_bytes(inband)
+        object_already_exists = self._create_put_buffer(
+            metadata, writer.get_total_bytes(inband),
+            object_id, &c_object_id, &data)
+        if not object_already_exists:
+            writer.write_to(inband, data, memcopy_threads)
+            with nogil:
+                check_status(
+                    self.core_worker.get().Objects().Seal(c_object_id))
 
-        with nogil:
-            check_status(self.core_worker.get().Objects().Create(
-                        metadata, data_size, c_object_id, &data))
-
-        # If data is nullptr, that means the ObjectID already existed,
-        # which we ignore.
-        # TODO(edoakes): this is hacky, we should return the error instead
-        # and deal with it here.
-        if not data:
-            return
-
-        writer.write_to(inband, data, memcopy_threads)
-        with nogil:
-            check_status(self.core_worker.get().Objects().Seal(c_object_id))
+        return ObjectID(c_object_id.Binary())
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
              TaskID current_task_id):
@@ -857,7 +875,7 @@ cdef class CoreWorker:
             else:
                 not_ready.append(object_id)
 
-        return (ready, not_ready)
+        return ready, not_ready
 
     def free_objects(self, object_ids, c_bool local_only,
                      c_bool delete_creating_tasks):
@@ -868,20 +886,27 @@ cdef class CoreWorker:
             check_status(self.core_worker.get().Objects().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
-    def set_object_store_client_options(self, c_string client_name,
+    def set_object_store_client_options(self, client_name,
                                         int64_t limit_bytes):
-        with nogil:
+        try:
+            logger.debug("Setting plasma memory limit to {} for {}".format(
+                limit_bytes, client_name))
             check_status(self.core_worker.get().Objects().SetClientOptions(
-                client_name, limit_bytes))
+                client_name.encode("ascii"), limit_bytes))
+        except RayError as e:
+            self.dump_object_store_memory_usage()
+            raise memory_monitor.RayOutOfMemoryError(
+                "Failed to set object_store_memory={} for {}. The "
+                "plasma store may have insufficient memory remaining "
+                "to satisfy this limit (30% of object store memory is "
+                "permanently reserved for shared usage). The current "
+                "object store memory status is:\n\n{}".format(
+                    limit_bytes, client_name, e))
 
-    def object_store_memory_usage_string(self):
-        cdef:
-            c_string message
-
-        with nogil:
-            message = self.core_worker.get().Objects().MemoryUsageString()
-
-        return message.decode("utf-8")
+    def dump_object_store_memory_usage(self):
+        message = self.core_worker.get().Objects().MemoryUsageString()
+        logger.warning("Local object store memory usage:\n{}\n".format(
+            message.decode("utf-8")))
 
     def submit_task(self,
                     function_descriptor,
