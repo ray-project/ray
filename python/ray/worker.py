@@ -1169,7 +1169,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         use_pickle=False,
+         use_pickle=True,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
