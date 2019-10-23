@@ -7,18 +7,24 @@
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, const TaskExecutor &executor)
-    : worker_context_(worker_context),
+    CoreWorker &core_worker, WorkerContext &worker_context,
+    std::unique_ptr<RayletClient> &raylet_client,
+    CoreWorkerObjectInterface &object_interface,
+    const std::shared_ptr<worker::Profiler> profiler,
+    const TaskExecutionCallback &task_execution_callback)
+    : core_worker_(core_worker),
+      worker_context_(worker_context),
       object_interface_(object_interface),
-      execution_callback_(executor),
+      profiler_(profiler),
+      task_execution_callback_(task_execution_callback),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*main_service_) {
-  RAY_CHECK(execution_callback_ != nullptr);
+  RAY_CHECK(task_execution_callback_ != nullptr);
 
-  auto func = std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
-                        std::placeholders::_1, std::placeholders::_2);
+  auto func =
+      std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
+                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
@@ -35,33 +41,54 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
-    const TaskSpecification &task_spec,
+    const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
     std::vector<std::shared_ptr<RayObject>> *results) {
+  idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
+  resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
+  core_worker_.SetCurrentTaskId(task_spec.TaskId());
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
-  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args));
+  std::vector<ObjectID> arg_reference_ids;
+  RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
-  auto num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-    RAY_CHECK(num_returns > 0);
-    // Decrease to account for the dummy object id.
-    num_returns--;
+  std::vector<ObjectID> return_ids;
+  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
+    return_ids.push_back(task_spec.ReturnId(i));
   }
 
-  auto status = execution_callback_(func, args, num_returns, results);
+  Status status;
+  ActorID actor_id = ActorID::Nil();
+  TaskType task_type = TaskType::NORMAL_TASK;
+  if (task_spec.IsActorCreationTask()) {
+    RAY_CHECK(return_ids.size() > 0);
+    return_ids.pop_back();
+    actor_id = task_spec.ActorCreationId();
+    task_type = TaskType::ACTOR_CREATION_TASK;
+    core_worker_.SetActorId(actor_id);
+  } else if (task_spec.IsActorTask()) {
+    RAY_CHECK(return_ids.size() > 0);
+    return_ids.pop_back();
+    actor_id = task_spec.ActorId();
+    task_type = TaskType::ACTOR_TASK;
+  }
+  status = task_execution_callback_(task_type, func, task_spec.JobId(), actor_id,
+                                    task_spec.GetRequiredResources().GetResourceMap(),
+                                    args, arg_reference_ids, return_ids, results);
+
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
+  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   return status;
 }
 
 void CoreWorkerTaskExecutionInterface::Run() {
-  // Run main IO service.
+  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   main_service_->run();
 }
 
@@ -70,13 +97,16 @@ void CoreWorkerTaskExecutionInterface::Stop() {
   std::shared_ptr<boost::asio::io_service> main_service = main_service_;
   // Delay the execution of io_service::stop() to avoid deadlock if
   // CoreWorkerTaskExecutionInterface::Stop is called inside a task.
+  idle_profile_event_.reset();
   main_service_->post([main_service]() { main_service->stop(); });
 }
 
 Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
-    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args) {
+    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args,
+    std::vector<ObjectID> *arg_reference_ids) {
   auto num_args = task.NumArgs();
-  (*args).resize(num_args);
+  args->resize(num_args);
+  arg_reference_ids->resize(num_args);
 
   std::vector<ObjectID> object_ids_to_fetch;
   std::vector<int> indices;
@@ -88,6 +118,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
       RAY_CHECK(count == 1);
       object_ids_to_fetch.push_back(task.ArgId(i, 0));
       indices.push_back(i);
+      arg_reference_ids->at(i) = task.ArgId(i, 0);
     } else {
       // pass by value.
       std::shared_ptr<LocalMemoryBuffer> data = nullptr;
@@ -100,7 +131,8 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      (*args)[i] = std::make_shared<RayObject>(data, metadata);
+      args->at(i) = std::make_shared<RayObject>(data, metadata);
+      arg_reference_ids->at(i) = ObjectID::Nil();
     }
   }
 
@@ -108,7 +140,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
-      (*args)[indices[i]] = results[i];
+      args->at(indices[i]) = results[i];
     }
   }
 
