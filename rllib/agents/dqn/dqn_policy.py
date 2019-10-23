@@ -140,9 +140,6 @@ class ComputeTDErrorMixin(object):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            if not self.loss_initialized():
-                return tf.zeros_like(rew_t)
-
             # Do forward pass on loss to update td error attribute
             build_q_losses(
                 self, self.model, None, {
@@ -471,10 +468,13 @@ def _postprocess_dqn(policy, batch):
 
     # Prioritize on the worker side
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
-        td_errors = policy.compute_td_error(
-            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
-            batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-            batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
+        if not policy.loss_initialized():
+            td_errors = tf.zeros_like(batch[SampleBatch.REWARDS])
+        else:
+            td_errors = policy.compute_td_error(
+                batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+                batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+                batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
             np.abs(td_errors) + policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
