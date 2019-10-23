@@ -223,12 +223,23 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
+  // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
-  std::shared_ptr<worker::Profiler> profiler_;
-  std::unique_ptr<RayletClient> raylet_client_;
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Client to the GCS shared by core worker interfaces.
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
+
+  // Client to the raylet shared by core worker interfaces.
+  std::unique_ptr<RayletClient> raylet_client_;
+
+  // Interface to submit tasks directly to other actors.
+  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Interface for storing and retrieving shared objects.
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+
+  // Profiler including a background thread that pushes profiling events to the GCS.
+  std::shared_ptr<worker::Profiler> profiler_;
 
   /// Map from actor ID to a handle to that actor.
   std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;

@@ -187,6 +187,7 @@ CoreWorker::~CoreWorker() {
 }
 
 void CoreWorker::Disconnect() {
+  io_service_.stop();
   if (gcs_client_) {
     gcs_client_->Disconnect();
   }
