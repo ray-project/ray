@@ -595,7 +595,7 @@ cc_library(
     deps = [
         ":sha256",
         "@com_github_google_glog//:glog",
-        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
     ],
 )
