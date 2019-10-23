@@ -483,6 +483,8 @@ cdef _store_task_outputs(
         c_bool is_direct_call,
         c_vector[shared_ptr[CRayObject]] *returns):
 
+    # Direct actor call returns are not placed in the object store directly,
+    # but returned to the core worker.
     if is_direct_call:
         return_buffer = []
     else:
@@ -503,10 +505,10 @@ cdef _store_task_outputs(
             worker.put_object(
                 return_id, output, return_buffer=return_buffer)
 
-    if return_buffer is not None:
+    if is_direct_call:
         assert len(return_ids) == len(return_buffer), \
             (return_ids, return_buffer)
-        to_ray_objects(return_buffer, returns)
+        push_objects_into_return_vector(return_buffer, returns)
 
 
 cdef execute_task(
@@ -705,7 +707,7 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
-cdef void to_ray_objects(
+cdef void push_objects_into_return_vector(
         py_objects,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
