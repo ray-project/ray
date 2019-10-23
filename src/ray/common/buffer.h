@@ -47,11 +47,16 @@ class LocalMemoryBuffer : public Buffer {
   /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,
-  /// otherwise the buffer only points to the given address.
+  ///                  otherwise the buffer only points to the given address.
+  ///                  If the data is nullptr, the data is assumed to be zeros.
   LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false)
       : has_data_copy_(copy_data) {
     if (copy_data) {
-      buffer_.insert(buffer_.end(), data, data + size);
+      if (data == nullptr) {
+        buffer_.resize(size);
+      } else {
+        buffer_.insert(buffer_.end(), data, data + size);
+      }
       data_ = buffer_.data();
       size_ = buffer_.size();
     } else {

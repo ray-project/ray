@@ -148,6 +148,8 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         c_bool is_put()
 
+        c_bool IsDirectActorType()
+
         int64_t ObjectIndex() const
 
         CTaskID TaskId() const

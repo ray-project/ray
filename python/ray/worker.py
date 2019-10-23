@@ -283,13 +283,19 @@ class Worker(object):
         """
         self.mode = mode
 
-    def store_and_register(self, object_id, value, depth=100):
+    def store_and_register(self,
+                           object_id,
+                           value,
+                           depth=100,
+                           put_async=False,
+                           intercept_returns=None):
         """Store an object and attempt to register its class if needed.
 
         Args:
             object_id: The ID of the object to store.
             value: The value to put in the object store.
             depth: The maximum number of classes to recursively register.
+            put_async: Whether to allow the put to be fulfilled async.
 
         Raises:
             Exception: An exception is raised if the attempt to store the
@@ -312,13 +318,20 @@ class Worker(object):
                     # that this object can also be read by Java.
                     self.core_worker.put_raw_buffer(
                         value, object_id, memcopy_threads=self.memcopy_threads)
+                    assert not put_async, "not implemented yet"
+                    assert not intercept_returns, "not implemented yet"
                 else:
                     serialization_context = self.get_serialization_context(
                         self.current_job_id)
-                    self.core_worker.put_serialized_object(
-                        pyarrow.serialize(value, serialization_context),
-                        object_id,
-                        memcopy_threads=self.memcopy_threads)
+                    value = pyarrow.serialize(value, serialization_context)
+                    if intercept_returns is not None:
+                        intercept_returns.append(value)
+                    else:
+                        self.core_worker.put_serialized_object(
+                            value,
+                            object_id,
+                            memcopy_threads=self.memcopy_threads,
+                            put_async=put_async)
                 break
             except pyarrow.SerializationCallbackError as e:
                 cls_type = type(e.example_object)
@@ -352,7 +365,11 @@ class Worker(object):
                                            "locally.".format(cls_type))
                         logger.warning(warning_message)
 
-    def put_object(self, object_id, value):
+    def put_object(self,
+                   object_id,
+                   value,
+                   put_async=False,
+                   intercept_returns=None):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -366,6 +383,9 @@ class Worker(object):
             object_id (object_id.ObjectID): The object ID of the value to be
                 put.
             value: The value to put in the object store.
+            put_async: Whether to allow the put to be asynchronously
+                fulfilled. It is guaranteed when a batch of tasks completes
+                that all async puts will be flushed to the object store.
 
         Raises:
             ray.exceptions.ObjectStoreFullError: This is raised if the attempt
@@ -386,9 +406,15 @@ class Worker(object):
                 range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
             try:
                 if self.use_pickle:
-                    self.store_with_plasma(object_id, value)
+                    assert intercept_returns is None, "not implemented"
+                    self.store_with_plasma(
+                        object_id, value, put_async=put_async)
                 else:
-                    self._try_store_and_register(object_id, value)
+                    self._try_store_and_register(
+                        object_id,
+                        value,
+                        put_async=put_async,
+                        intercept_returns=intercept_returns)
                 break
             except ObjectStoreFullError as e:
                 if attempt:
@@ -445,16 +471,25 @@ class Worker(object):
             logger.info("The object with ID {} already exists "
                         "in the object store.".format(object_id))
 
-    def _try_store_and_register(self, object_id, value):
+    def _try_store_and_register(self,
+                                object_id,
+                                value,
+                                put_async=False,
+                                intercept_returns=None):
         """Wraps `store_and_register` with cases for existence and pickling.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
                 put.
             value: The value to put in the object store.
+            put_async: Whether to allow the put to be fulfilled async.
         """
         try:
-            self.store_and_register(object_id, value)
+            self.store_and_register(
+                object_id,
+                value,
+                put_async=put_async,
+                intercept_returns=intercept_returns)
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
@@ -465,7 +500,8 @@ class Worker(object):
                                "falling back to cloudpickle.".format(
                                    type(value)))
             logger.warning(warning_message)
-            self.store_and_register(object_id, value)
+            self.store_and_register(
+                object_id, value, intercept_returns=intercept_returns)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -803,11 +839,22 @@ def _initialize_serialization(job_id, worker=global_worker):
     serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
+    def id_serializer(obj):
+        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
+            raise NotImplementedError(
+                "Objects produced by direct actor calls cannot be "
+                "passed to other tasks as arguments.")
+        return pickle.dumps(obj)
+
+    def id_deserializer(serialized_obj):
+        return pickle.loads(serialized_obj)
+
     for id_type in ray._raylet._ID_TYPES:
         serialization_context.register_type(
             id_type,
             "{}.{}".format(id_type.__module__, id_type.__name__),
-            pickle=True)
+            custom_serializer=id_serializer,
+            custom_deserializer=id_deserializer)
 
     def actor_handle_serializer(obj):
         return obj._serialization_helper(True)

@@ -81,8 +81,6 @@ class TaskArg {
 
 enum class StoreProviderType { PLASMA, MEMORY };
 
-enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
-
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}

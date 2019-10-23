@@ -1,6 +1,10 @@
 #ifndef RAY_CORE_WORKER_OBJECT_INTERFACE_H
 #define RAY_CORE_WORKER_OBJECT_INTERFACE_H
 
+#include <mutex>
+
+#include "absl/synchronization/mutex.h"
+
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -16,6 +20,7 @@ class CoreWorkerStoreProvider;
 class CoreWorkerMemoryStore;
 
 /// The interface that contains all `CoreWorker` methods related to the object store.
+/// This class is thread-safe.
 class CoreWorkerObjectInterface {
  public:
   /// \param[in] worker_context WorkerContext of the parent CoreWorker.

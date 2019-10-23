@@ -32,12 +32,13 @@ class CoreWorkerTaskExecutionInterface {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
+      const std::vector<ObjectID> &return_ids, const bool is_direct_call,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(CoreWorker &core_worker, WorkerContext &worker_context,
                                    std::unique_ptr<RayletClient> &raylet_client,
                                    CoreWorkerObjectInterface &object_interface,
+                                   boost::asio::io_service &io_service,
                                    const std::shared_ptr<worker::Profiler> profiler,
                                    const TaskExecutionCallback &task_execution_callback);
 
@@ -105,6 +106,10 @@ class CoreWorkerTaskExecutionInterface {
 
   /// The RPC server.
   rpc::GrpcServer worker_server_;
+
+  /// Event loop to handle RPC events but not for running tasks. This allows
+  /// RPC calls such as StealTasks() to run concurrently with task execution.
+  boost::asio::io_service &rpc_io_service_;
 
   /// Event loop where tasks are processed.
   std::shared_ptr<boost::asio::io_service> main_service_;

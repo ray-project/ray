@@ -9,7 +9,7 @@ namespace ray {
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     CoreWorker &core_worker, WorkerContext &worker_context,
     std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface,
+    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
     const std::shared_ptr<worker::Profiler> profiler,
     const TaskExecutionCallback &task_execution_callback)
     : core_worker_(core_worker),
@@ -18,6 +18,7 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       profiler_(profiler),
       task_execution_callback_(task_execution_callback),
       worker_server_("Worker", 0 /* let grpc choose port */),
+      rpc_io_service_(io_service),
       main_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*main_service_) {
   RAY_CHECK(task_execution_callback_ != nullptr);
@@ -28,13 +29,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          worker_context_, raylet_client, object_interface_, *main_service_,
-          worker_server_, func)));
-  task_receivers_.emplace(
-      TaskTransportType::DIRECT_ACTOR,
-      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                                *main_service_, worker_server_, func)));
+          worker_context_, raylet_client, object_interface_, rpc_io_service_,
+          *main_service_, worker_server_, func)));
+  task_receivers_.emplace(TaskTransportType::DIRECT_ACTOR,
+                          std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+                              new CoreWorkerDirectActorTaskReceiver(
+                                  worker_context_, object_interface_, rpc_io_service_,
+                                  *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -78,7 +79,8 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   }
   status = task_execution_callback_(task_type, func, task_spec.JobId(), actor_id,
                                     task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, results);
+                                    args, arg_reference_ids, return_ids,
+                                    worker_context_.CurrentActorUseDirectCall(), results);
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.
