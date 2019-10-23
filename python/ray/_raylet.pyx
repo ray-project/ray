@@ -179,13 +179,6 @@ cdef c_vector[CObjectID] ObjectIDsToVector(object_ids):
     return result
 
 
-def compute_put_id(TaskID task_id, int64_t put_index):
-    if put_index < 1 or put_index > <int64_t>CObjectID.MaxObjectIndex():
-        raise ValueError("The range of 'put_index' should be [1, %d]"
-                         % CObjectID.MaxObjectIndex())
-    return ObjectID(CObjectID.ForPut(task_id.native(), put_index, 0).Binary())
-
-
 def compute_task_id(ObjectID object_id):
     return TaskID(object_id.native().TaskId().Binary())
 
