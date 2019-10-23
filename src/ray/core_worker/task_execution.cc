@@ -80,6 +80,8 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, results);
 
+  worker_context_.ResetCurrentTask(task_spec);
+
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.

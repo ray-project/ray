@@ -458,28 +458,6 @@ cdef deserialize_args(
 
     return ray.signature.recover_args(args)
 
-# TODO(edoakes): do these checks in core worker!!
-"""
-cdef _check_worker_state(worker, CTaskType task_type, JobID job_id):
-    assert worker.current_task_id.is_nil()
-    assert worker.task_context.task_index == 0
-    assert worker.task_context.put_index == 1
-
-    # If this worker is not an actor, check that `current_job_id`
-    # was reset when the worker finished the previous task.
-    if <int>task_type in [<int>TASK_TYPE_NORMAL_TASK,
-                          <int>TASK_TYPE_ACTOR_CREATION_TASK]:
-        assert worker.current_job_id.is_nil()
-        # Set the driver ID of the current running task. This is
-        # needed so that if the task throws an exception, we propagate
-        # the error message to the correct driver.
-    else:
-        # If this worker is an actor, current_job_id wasn't reset.
-        # Check that current task's driver ID equals the previous
-        # one.
-        assert worker.current_job_id == job_id
-"""
-
 
 cdef _store_task_outputs(worker, return_ids, outputs):
     for i in range(len(return_ids)):
@@ -513,7 +491,6 @@ cdef execute_task(
     actor_id = ActorID(c_actor_id.Binary())
     job_id = JobID(c_job_id.Binary())
     task_id = worker.core_worker.get_current_task_id()
-    worker.current_job_id = job_id
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -610,16 +587,10 @@ cdef execute_task(
             # Send signal with the error.
             ray_signal.send(ray_signal.ErrorSignal(str(failure_object)))
 
-    # Reset the state fields so the next task can run.
-    worker.core_worker.set_current_task_id(TaskID.nil())
-
     # Don't need to reset `current_job_id` if the worker is an
     # actor. Because the following tasks should all have the
     # same driver id.
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        worker.current_job_id = JobID.nil()
-        worker.core_worker.set_current_job_id(JobID.nil())
-
         # Reset signal counters so that the next task can get
         # all past signals.
         ray_signal.reset()

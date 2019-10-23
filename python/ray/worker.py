@@ -140,9 +140,6 @@ class Worker(object):
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
         self.function_actor_manager = FunctionActorManager(self)
-        # Identity of the job that this worker is processing.
-        # It is a JobID.
-        self.current_job_id = JobID.nil()
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
@@ -171,6 +168,12 @@ class Worker(object):
     def use_pickle(self):
         self.check_connected()
         return self.node.use_pickle
+
+    @property
+    def current_job_id(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_current_job_id()
+        return JobID.nil()
 
     @property
     def current_task_id(self):
@@ -1371,7 +1374,6 @@ def connect(node,
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
-    worker.current_job_id = job_id
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
@@ -1470,7 +1472,7 @@ def connect(node,
         (mode == SCRIPT_MODE),
         node.plasma_store_socket_name,
         node.raylet_socket_name,
-        worker.current_job_id,
+        job_id,
         gcs_options,
         node.get_logs_dir_path(),
         node.node_ip_address,
@@ -1578,9 +1580,6 @@ def disconnect(exiting_interpreter=False):
     worker.serialization_context_map.clear()
 
     if not exiting_interpreter:
-        if hasattr(worker, "raylet_client"):
-            del worker.raylet_client
-
         if hasattr(worker, "core_worker"):
             del worker.core_worker
 

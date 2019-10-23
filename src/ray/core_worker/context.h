@@ -28,6 +28,8 @@ class WorkerContext {
 
   void SetCurrentTask(const TaskSpecification &task_spec);
 
+  void ResetCurrentTask(const TaskSpecification &task_spec);
+
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const;
