@@ -2090,6 +2090,10 @@ def _register_custom_serializer(cls,
         "Exactly one of use_pickle, use_dict, or serializer/deserializer must "
         "be specified.")
 
+    if worker.use_pickle and serializer is None:
+        # In this case it should do nothing.
+        return
+
     if use_dict:
         # Raise an exception if cls cannot be serialized efficiently by Ray.
         serialization.check_serializable(cls)

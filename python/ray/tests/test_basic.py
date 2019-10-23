@@ -507,7 +507,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-def test_custom_serializers(ray_start_regular):
+def custom_serializers():
     class Foo(object):
         def __init__(self):
             self.x = 3
@@ -535,6 +535,30 @@ def test_custom_serializers(ray_start_regular):
         return Bar()
 
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
+
+
+def test_custom_serializers(ray_start_regular):
+    custom_serializers()
+
+
+def test_custom_serializers_with_pickle(shutdown_only):
+    ray.init(use_pickle=True)
+    custom_serializers()
+
+    class Foo(object):
+        def __init__(self):
+            self.x = 4
+
+    # Test the pickle serialization backend without serializer.
+    # NOTE: 'use_pickle' here is different from 'use_pickle' in
+    # ray.init
+    ray.register_custom_serializer(Foo, use_pickle=True)
+
+    @ray.remote
+    def f():
+        return Foo()
+
+    assert type(ray.get(f.remote())) == Foo
 
 
 def test_serialization_final_fallback(ray_start_regular):
