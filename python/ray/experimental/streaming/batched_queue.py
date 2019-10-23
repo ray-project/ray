@@ -141,8 +141,8 @@ class BatchedQueue(object):
             if not self.write_buffer:
                 return
             batch_id = self._batch_id(self.write_batch_offset)
-            ray.worker.global_worker.put_object(
-                ray.ObjectID(batch_id), self.write_buffer)
+            ray.worker.global_worker.put_object(self.write_buffer,
+                                                ray.ObjectID(batch_id))
             logger.debug("[writer] Flush batch {} offset {} size {}".format(
                 self.write_batch_offset, self.write_item_offset,
                 len(self.write_buffer)))
