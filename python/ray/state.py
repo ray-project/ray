@@ -505,6 +505,10 @@ class GlobalState(object):
             node_ip_address = profile_table_message.node_ip_address
 
             for profile_event_message in profile_table_message.profile_events:
+                try:
+                    extra_data = json.loads(profile_event_message.extra_data)
+                except ValueError:
+                    extra_data = {}
                 profile_event = {
                     "event_type": profile_event_message.event_type,
                     "component_id": component_id,
@@ -512,7 +516,7 @@ class GlobalState(object):
                     "component_type": component_type,
                     "start_time": profile_event_message.start_time,
                     "end_time": profile_event_message.end_time,
-                    "extra_data": json.loads(profile_event_message.extra_data),
+                    "extra_data": extra_data
                 }
 
                 profile_events.append(profile_event)

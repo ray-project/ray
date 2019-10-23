@@ -30,7 +30,10 @@ class CoreWorker {
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
-  /// \param[in] execution_callback Language worker callback to execute tasks.
+  /// \param[in] task_execution_callback Language worker callback to execute tasks.
+  /// \parma[in] check_signals Language worker function to check for signals and handle
+  ///            them. If the function returns anything but StatusOK, any long-running
+  ///            operations in the core worker will short circuit and return that status.
   /// \param[in] use_memory_store Whether or not to use the in-memory object store
   ///            in addition to the plasma store.
   ///
@@ -42,7 +45,9 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
+             const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
+                 &task_execution_callback,
+             std::function<Status()> check_signals = nullptr,
              bool use_memory_store = true);
 
   ~CoreWorker();
@@ -73,13 +78,20 @@ class CoreWorker {
     return *task_execution_interface_;
   }
 
+  // Get the resource IDs available to this worker (as assigned by the raylet).
+  const ResourceMappingType GetResourceIDs() const;
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
+  void SetCurrentTaskId(const TaskID &task_id);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentTaskId(const TaskID &task_id);
+  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
+
+  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
+  void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
 
   void SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
@@ -187,7 +199,7 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  void StartIOService() { io_service_.run(); }
+  void StartIOService();
 
   void ReportActiveObjectIDs();
 
@@ -211,12 +223,23 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
+  // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
-  std::shared_ptr<worker::Profiler> profiler_;
-  std::unique_ptr<RayletClient> raylet_client_;
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Client to the GCS shared by core worker interfaces.
   std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
+
+  // Client to the raylet shared by core worker interfaces.
+  std::unique_ptr<RayletClient> raylet_client_;
+
+  // Interface to submit tasks directly to other actors.
+  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Interface for storing and retrieving shared objects.
   std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+
+  // Profiler including a background thread that pushes profiling events to the GCS.
+  std::shared_ptr<worker::Profiler> profiler_;
 
   /// Map from actor ID to a handle to that actor.
   std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;

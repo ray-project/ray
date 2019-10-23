@@ -1,5 +1,6 @@
 
 #include "ray/core_worker/transport/raylet_transport.h"
+#include "ray/common/common_protocol.h"
 #include "ray/common/task/task.h"
 
 namespace ray {
@@ -28,8 +29,34 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     return;
   }
 
+  // Set the resource IDs for this task.
+  // TODO: convert the resource map to protobuf and change this.
+  ResourceMappingType resource_ids;
+  auto resource_infos =
+      flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
+          ->resource_infos();
+  for (size_t i = 0; i < resource_infos->size(); ++i) {
+    auto const &fractional_resource_ids = resource_infos->Get(i);
+    auto &acquired_resources =
+        resource_ids[string_from_flatbuf(*fractional_resource_ids->resource_name())];
+
+    size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
+    size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
+    RAY_CHECK(num_resource_ids == num_resource_fractions);
+    RAY_CHECK(num_resource_ids > 0);
+    for (size_t j = 0; j < num_resource_ids; ++j) {
+      int64_t resource_id = fractional_resource_ids->resource_ids()->Get(j);
+      double resource_fraction = fractional_resource_ids->resource_fractions()->Get(j);
+      if (num_resource_ids > 1) {
+        int64_t whole_fraction = resource_fraction;
+        RAY_CHECK(whole_fraction == resource_fraction);
+      }
+      acquired_resources.push_back(std::make_pair(resource_id, resource_fraction));
+    }
+  }
+
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = task_handler_(task_spec, &results);
+  auto status = task_handler_(task_spec, resource_ids, &results);
 
   auto num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
@@ -40,20 +67,22 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId()
                  << " finished execution. num_returns: " << num_returns;
-  RAY_CHECK(results.size() == num_returns);
-  for (size_t i = 0; i < num_returns; i++) {
-    ObjectID id = ObjectID::ForTaskReturn(
-        task_spec.TaskId(), /*index=*/i + 1,
-        /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
-    Status status = object_interface_.Put(*results[i], id);
-    if (!status.ok()) {
-      // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
-      // `ObjectInterface::Put`, we treat other error types as fatal here.
-      RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
-                     << " in store: " << status.message();
-    } else {
-      RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
-                     << " in store.";
+  if (results.size() != 0) {
+    RAY_CHECK(results.size() == num_returns);
+    for (size_t i = 0; i < num_returns; i++) {
+      ObjectID id = ObjectID::ForTaskReturn(
+          task_spec.TaskId(), /*index=*/i + 1,
+          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
+      Status status = object_interface_.Put(*results[i], id);
+      if (!status.ok()) {
+        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
+        // `ObjectInterface::Put`, we treat other error types as fatal here.
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
+                       << " in store: " << status.message();
+      } else {
+        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
+                       << " in store.";
+      }
     }
   }
 

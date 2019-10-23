@@ -1,9 +1,7 @@
-#include <boost/asio/signal_set.hpp>
-
+#include "ray/core_worker/core_worker.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/core_worker.h"
 
 namespace {
 
@@ -42,13 +40,13 @@ void BuildCommonTaskSpec(
 
 namespace ray {
 
-CoreWorker::CoreWorker(
-    const WorkerType worker_type, const Language language,
-    const std::string &store_socket, const std::string &raylet_socket,
-    const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
-    const std::string &log_dir, const std::string &node_ip_address,
-    const CoreWorkerTaskExecutionInterface::TaskExecutor &execution_callback,
-    bool use_memory_store)
+CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
+                       const std::string &store_socket, const std::string &raylet_socket,
+                       const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
+                       const std::string &log_dir, const std::string &node_ip_address,
+                       const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
+                           &task_execution_callback,
+                       std::function<Status()> check_signals, bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
@@ -66,14 +64,6 @@ CoreWorker::CoreWorker(
     RayLog::InstallFailureSignalHandler();
   }
 
-  boost::asio::signal_set signals(io_service_, SIGINT, SIGTERM);
-  signals.async_wait(
-      [](const boost::system::error_code &error, int signal_number) -> void {
-        if (!error) {
-          exit(signal_number);
-        }
-      });
-
   // Initialize gcs client.
   gcs_client_ =
       std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
@@ -83,21 +73,18 @@ CoreWorker::CoreWorker(
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
 
-  object_interface_ =
-      std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
-          worker_context_, raylet_client_, store_socket, use_memory_store));
+  object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
+      new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket,
+                                    use_memory_store, check_signals));
 
   // Initialize task execution.
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
-    // TODO(edoakes): Remove this check once Python core worker migration is complete.
-    if (language != Language::PYTHON || execution_callback != nullptr) {
-      RAY_CHECK(execution_callback != nullptr);
-      task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-          new CoreWorkerTaskExecutionInterface(worker_context_, raylet_client_,
-                                               *object_interface_, execution_callback));
-      rpc_server_port = task_execution_interface_->worker_server_.GetPort();
-    }
+    task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
+        new CoreWorkerTaskExecutionInterface(*this, worker_context_, raylet_client_,
+                                             *object_interface_, profiler_,
+                                             task_execution_callback));
+    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
 
   // Initialize raylet client.
@@ -139,7 +126,6 @@ CoreWorker::CoreWorker(
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
-    worker_context_.SetCurrentTaskId(task_id);
     SetCurrentTaskId(task_id);
   }
 
@@ -201,12 +187,24 @@ CoreWorker::~CoreWorker() {
 }
 
 void CoreWorker::Disconnect() {
+  io_service_.stop();
   if (gcs_client_) {
     gcs_client_->Disconnect();
   }
   if (raylet_client_) {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }
+}
+
+void CoreWorker::StartIOService() {
+  // Block SIGINT and SIGTERM so they will be handled by the main thread.
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
+  io_service_.run();
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
@@ -388,6 +386,14 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
     actor_handle->Serialize(output);
   }
   return status;
+}
+
+const ResourceMappingType CoreWorker::GetResourceIDs() const {
+  if (worker_type_ == WorkerType::DRIVER) {
+    ResourceMappingType empty;
+    return empty;
+  }
+  return task_execution_interface_->GetResourceIDs();
 }
 
 }  // namespace ray

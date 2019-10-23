@@ -47,4 +47,3 @@ def test_raylet_gdb(ray_gdb_start):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
         assert pgrep_command.communicate()[0]
-        subprocess.call(["pkill", "-f", "gdb.*{}".format(process_name)])

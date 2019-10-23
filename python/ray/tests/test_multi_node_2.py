@@ -52,7 +52,7 @@ def test_internal_config(ray_start_cluster_head):
     worker = cluster.add_node()
     cluster.wait_for_nodes()
 
-    cluster.remove_node(worker)
+    cluster.remove_node(worker, allow_graceful=False)
     time.sleep(1)
     assert ray.cluster_resources()["CPU"] == 2
 
