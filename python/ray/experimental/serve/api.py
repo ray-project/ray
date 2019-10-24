@@ -1,4 +1,5 @@
 import inspect
+from functools import wraps
 
 import numpy as np
 
@@ -11,7 +12,7 @@ from ray.experimental.serve.kv_store_service import SQLiteKVStore
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
 from ray.experimental.serve.utils import (block_until_http_ready,
                                           get_random_letters)
-
+from ray.experimental.serve.exceptions import RayServeException
 global_state = None
 
 
@@ -20,6 +21,17 @@ def _get_global_state():
     will always reference the original None object
     """
     return global_state
+
+
+def _ensure_connected(f):
+    @wraps(f)
+    def check(*args, **kwargs):
+        if _get_global_state() is None:
+            raise RayServeException("Please run serve.init to initialize or "
+                                    "connect to existing ray serve cluster.")
+        return f(*args, **kwargs)
+
+    return check
 
 
 def init(kv_store_connector=None,
@@ -71,6 +83,8 @@ def init(kv_store_connector=None,
         pass
 
     # Serve has not been initialized, perform init sequence
+    # Todo, move the db to session_dir
+    #    ray.worker._global_node.address_info["session_dir"]
     def kv_store_connector(namespace):
         return SQLiteKVStore(namespace, db_path=kv_store_path)
 
@@ -86,6 +100,7 @@ def init(kv_store_connector=None,
         block_until_http_ready("http://{}:{}".format(http_host, http_port))
 
 
+@_ensure_connected
 def create_endpoint(endpoint_name, route, blocking=True):
     """Create a service endpoint given route_expression.
 
@@ -100,6 +115,7 @@ def create_endpoint(endpoint_name, route, blocking=True):
     global_state.route_table.register_service(route, endpoint_name)
 
 
+@_ensure_connected
 def create_backend(func_or_class, backend_tag, *actor_init_args):
     """Create a backend using func_or_class and assign backend_tag.
 
@@ -171,6 +187,7 @@ def _remove_replica(backend_tag):
         global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
 
 
+@_ensure_connected
 def scale(backend_tag, num_replicas):
     """Set the number of replicas for backend_tag.
 
@@ -194,6 +211,7 @@ def scale(backend_tag, num_replicas):
             _remove_replica(backend_tag)
 
 
+@_ensure_connected
 def link(endpoint_name, backend_tag):
     """Associate a service endpoint with backend tag.
 
@@ -209,6 +227,7 @@ def link(endpoint_name, backend_tag):
     split(endpoint_name, {backend_tag: 1.0})
 
 
+@_ensure_connected
 def split(endpoint_name, traffic_policy_dictionary):
     """Associate a service endpoint with traffic policy.
 
@@ -244,6 +263,7 @@ def split(endpoint_name, traffic_policy_dictionary):
         endpoint_name, traffic_policy_dictionary)
 
 
+@_ensure_connected
 def get_handle(endpoint_name):
     """Retrieve RayServeHandle for service endpoint to invoke it from Python.
 
@@ -261,6 +281,7 @@ def get_handle(endpoint_name):
     return RayServeHandle(global_state.init_or_get_router(), endpoint_name)
 
 
+@_ensure_connected
 def stat(percentiles=[50, 90, 95],
          agg_windows_seconds=[10, 60, 300, 600, 3600]):
     """Retrieve metric statistics about ray serve system.

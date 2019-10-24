@@ -81,7 +81,6 @@ class GlobalState:
         self.actor_nursery_handle = actor_nursery_handle
 
         # Connect to all the table
-
         bootstrap_config = ray.get(
             self.actor_nursery_handle.get_bootstrap_state_dict.remote())
         kv_store_connector = bootstrap_config[BOOTSTRAP_KV_STORE_CONN_KEY]
@@ -90,11 +89,6 @@ class GlobalState:
         self.policy_table = TrafficPolicyTable(kv_store_connector)
 
         self.refresh_actor_handle_cache()
-
-    def __del__(self):
-        print("Global state destoryed")
-        import traceback
-        traceback.print_stack()
 
     def refresh_actor_handle_cache(self):
         self.actor_handle_cache = ray.get(

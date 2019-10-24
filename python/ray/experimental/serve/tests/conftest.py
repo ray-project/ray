@@ -1,4 +1,5 @@
 import os
+import tempfile
 
 import pytest
 
@@ -8,10 +9,10 @@ from ray.experimental import serve
 
 @pytest.fixture(scope="session")
 def serve_instance():
-    if os.path.exists("/tmp/ray_serve.db"):
-        os.remove("/tmp/ray_serve.db")
-    serve.init(blocking=True)
+    _, new_db_path = tempfile.mkstemp(suffix=".test.db")
+    serve.init(kv_store_path=new_db_path, blocking=True)
     yield
+    os.remove(new_db_path)
 
 
 @pytest.fixture(scope="session")

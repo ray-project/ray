@@ -131,7 +131,7 @@ class RayInternalKVStore(NamespacedKVStore):
 
 
 class SQLiteKVStore(NamespacedKVStore):
-    def __init__(self, namespace, db_path="/tmp/ray_serve.db"):
+    def __init__(self, namespace, db_path):
         self.namespace = namespace
         self.conn = sqlite3.connect(db_path)
 
@@ -211,7 +211,7 @@ class RoutingTable:
 class BackendTable:
     def __init__(self, kv_connector):
         self.backend_table = kv_connector("backend_creator")
-        self.replica_table = kv_connector("replica_tables")
+        self.replica_table = kv_connector("replica_table")
 
     def register_backend(self, backend_tag: str, backend_creator):
         backend_creator_serialized = pickle.dumps(backend_creator)
