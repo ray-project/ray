@@ -140,6 +140,7 @@ cdef class ObjectID(BaseID):
     def __init__(self, id):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
+        self.in_core_worker = False
 
         worker = ray.worker.global_worker
         # TODO(edoakes): there are dummy object IDs being created in
@@ -147,13 +148,19 @@ cdef class ObjectID(BaseID):
         if hasattr(worker, "core_worker"):
             worker.core_worker.add_active_object_id(self)
             self.in_core_worker = True
-        else:
-            self.in_core_worker = False
 
     def __dealloc__(self):
-        worker = ray.worker.global_worker
-        if self.in_core_worker and hasattr(worker, "core_worker"):
-            worker.core_worker.remove_active_object_id(self)
+        if self.in_core_worker:
+            try:
+                worker = ray.worker.global_worker
+                worker.core_worker.remove_active_object_id(self)
+            except Exception as e:
+                # There is a strange error in rllib that causes the above to
+                # fail. Somehow the global 'ray' variable corresponding to the
+                # imported package is None when this gets called. Unfortunately
+                # this is hard to debug because . In any case, there's not much
+                # we can do besides ignore it (re-importing ray won't help).
+                pass
 
     cdef CObjectID native(self):
         return <CObjectID>self.data
