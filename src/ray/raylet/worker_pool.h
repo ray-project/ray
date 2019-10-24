@@ -37,13 +37,13 @@ class WorkerPool {
   /// process should create and register the specified number of workers, and add them to
   /// the pool.
   ///
-  /// \param num_workers The number of workers to start, per language.
+  /// \param num_initial_workers The number of initial workers to start, per language.
   /// \param maximum_startup_concurrency The maximum number of worker processes
   /// that can be started in parallel (typically this should be set to the number of CPU
   /// resources on the machine).
   /// \param worker_commands The commands used to start the worker process, grouped by
   /// language.
-  WorkerPool(boost::asio::io_service &io_service, int num_workers,
+  WorkerPool(boost::asio::io_service &io_service, EnumUnorderedMap<Language, int> num_initial_workers,
              int maximum_startup_concurrency, std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands);
 
@@ -214,11 +214,10 @@ class WorkerPool {
   std::unordered_map<Language, State, std::hash<int>> states_by_lang_;
 
  private:
-  /// Force-start at least num_workers workers for this language. Used for internal and
-  /// test purpose only.
+  /// Force-start at least num_workers workers.
   ///
-  /// \param num_workers The number of workers to start, per language.
-  void Start(int num_workers);
+  /// \param num_initial_workers The map of number initial workers.
+  void Start(EnumUnorderedMap<Language, int> num_initial_workers);
 
   /// A helper function that returns the reference of the pool state
   /// for a given language.

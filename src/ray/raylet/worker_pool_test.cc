@@ -27,7 +27,7 @@ class WorkerPoolMock : public WorkerPool {
 
   explicit WorkerPoolMock(boost::asio::io_service &io_service,
                           const WorkerCommandMap &worker_commands)
-      : WorkerPool(io_service, 0, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
+      : WorkerPool(io_service, {{ray::Language::JAVA, 0}, {ray::Language::PYTHON, 0}}, MAXIMUM_STARTUP_CONCURRENCY, nullptr, worker_commands),
         last_worker_process_() {
     for (auto &entry : states_by_lang_) {
       entry.second.num_workers_per_process = NUM_WORKERS_PER_PROCESS;
@@ -227,7 +227,7 @@ TEST_F(WorkerPoolTest, StartupWorkerProcessCount) {
 }
 
 TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
-  worker_pool_.Start(1);
+  worker_pool_.Start({{ray::Language::JAVA, 1}, {ray::Language::PYTHON, 1}});
   // Here we try to start only 1 worker for each worker language. But since each worker
   // process contains exactly NUM_WORKERS_PER_PROCESS (3) workers here, it's expected to
   // see 3 workers for each worker language, instead of 1.

@@ -44,8 +44,8 @@ struct NodeManagerConfig {
   /// The port to use for listening to incoming connections. If this is 0 then
   /// the node manager will choose its own port.
   int node_manager_port;
-  /// The initial number of workers to create.
-  int num_initial_workers;
+  /// The initial number of workers to create, per language.
+  EnumUnorderedMap<Language, int> num_initial_workers;
   /// The maximum number of workers that can be started concurrently by a
   /// worker pool.
   int maximum_startup_concurrency;

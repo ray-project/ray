@@ -46,7 +46,7 @@ namespace raylet {
 
 /// A constructor that initializes a worker pool with num_workers workers for
 /// each language.
-WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
+WorkerPool::WorkerPool(boost::asio::io_service &io_service, EnumUnorderedMap<Language, int> num_initial_workers,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands)
@@ -75,19 +75,20 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
         << " must be positive.";
     state.multiple_for_warning =
         std::max(state.num_workers_per_process,
-                 std::max(num_workers, maximum_startup_concurrency));
+                 std::max(num_initial_workers[entry.first], maximum_startup_concurrency));
     // Set worker command for this language.
     state.worker_command = entry.second;
     RAY_CHECK(!state.worker_command.empty()) << "Worker command must not be empty.";
   }
-  Start(num_workers);
+  Start(num_initial_workers);
 }
 
-void WorkerPool::Start(int num_workers) {
+void WorkerPool::Start(EnumUnorderedMap<Language, int> num_initial_workers) {
   for (auto &entry : states_by_lang_) {
     auto &state = entry.second;
-    int num_worker_processes = static_cast<int>(
-        std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
+    int num_worker_processes =
+        static_cast<int>(std::ceil(static_cast<double>(num_initial_workers[entry.first]) /
+                                   state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
       StartWorkerProcess(entry.first, /*is_initial_worker=*/true);
     }
