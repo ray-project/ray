@@ -4,7 +4,7 @@ load("@com_github_jupp0r_prometheus_cpp//:repositories.bzl", "prometheus_cpp_rep
 load("@com_github_ray_project_ray//bazel:python_configure.bzl", "python_configure")
 load("@com_github_checkstyle_java//:repo.bzl", "checkstyle_deps")
 load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
-load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_extra_deps")
+load("@com_github_grpc_grpc//bazel:grpc_extra_deps.bzl", "grpc_extra_deps")
 load("@build_stack_rules_proto//java:deps.bzl", "java_proto_compile")
 load("@build_stack_rules_proto//python:deps.bzl", "python_proto_compile")
 
