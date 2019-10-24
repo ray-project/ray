@@ -10,8 +10,8 @@ This document describes the process for creating new releases.
    ``git push upstream releases/<release-version>``.
 
 2. **Update the release branch version:** Push a commit that increments the Python
-   package version in python/ray/__init__.py. You can push this directly to the
-   release branch.
+   package version in python/ray/__init__.py and src/ray/raylet/main.cc. You can
+   push this directly to the release branch.
 
 3. **Update the master branch version:** Create a pull request to
    increment the version of the master branch, see `this PR`_.
@@ -45,16 +45,17 @@ This document describes the process for creating new releases.
    This will use the autoscaler to start a bunch of machines and run some tests.
    **Caution!**: By default, the stress tests will require expensive GPU instances.
 
-   You'll also want to kick off the long-running tests:
+   You'll also want to kick off the long-running tests by following the instructions
+   in:
 
    .. code-block:: bash
 
-       ray/ci/long_running_tests/start_workloads.sh
+       ray/ci/long_running_tests/README.rst
 
-   You can use the `check_workloads.sh` script to verify the workloads are running.
-   Let them run for at least 24 hours, and check them again. They should all still
-   be running (printing new iterations), and their CPU load should be stable when
-   you view them in the AWS monitoring console (not increasing over time).
+   Following the instructions to check the status of the workloads to verify that they
+   are running. Let them run for at least 24 hours, and check them again. They should
+   all still be running (printing new iterations), and their CPU load should be stable
+   when you view them in the AWS monitoring console (not increasing over time).
 
 5. **Resolve release-blockers:** If a release blocking issue arises, there are
    two ways the issue can be resolved: 1) Fix the issue on the master branch and
@@ -82,8 +83,8 @@ This document describes the process for creating new releases.
        pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/releases/$RAY_VERSION/$RAY_HASH/ray-$RAY_VERSION-cp37-cp37m-macosx_10_6_intel.whl
 
 7. **Upload to PyPI Test:** Upload the wheels to the PyPI test site using
-   ``twine`` (ask Robert to add you as a maintainer to the PyPI project). You'll
-   need to run a command like
+   ``twine`` (ask Robert to add you as a maintainer to the PyPI project on both the
+   real and test PyPI). You'll need to run a command like
 
    .. code-block:: bash
 
@@ -94,9 +95,14 @@ This document describes the process for creating new releases.
    ``pip``, and that you've created both PyPI accounts.
 
    Test that you can install the wheels with pip from the PyPI test repository
-   with
+   with:
 
    .. code-block:: bash
+
+     # First install ray normally because installing from test.pypi.org won't
+     # be able to install some of the other dependencies.
+     pip install ray
+     pip uninstall ray
 
      pip install --index-url https://test.pypi.org/simple/ ray
 
@@ -142,19 +148,20 @@ This document describes the process for creating new releases.
 
     At the end of the release note, you can add a list of contributors that help
     creating this release. Use the ``doc/dev/get_contributors.py`` to generate this
-    list. You will need to create a GitHub token for this task. Example usage:
+    list. You will need to create a GitHub personal access token first if you don't
+    have one (github.com -> settings -> developer settings -> personal access tokens).
 
     .. code-block:: bash
 
+      # Must be run from inside the Ray repository.
       python get_contributors.py --help
       python get_contributors.py \
         --access-token=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-        --ray-path=$HOME/ray/ray \
         --prev-branch="ray-0.7.1" \
         --curr-branch="ray-0.7.2"
 
-    Run `ray microbenchmark` to get the latest microbenchmark numbers, and
-    update their numbers in `profiling.rst`.
+    Run `ray microbenchmark` on an `m4.16xl` instance running `Ubuntu 18.04` with `Python 3.7` to get the
+    latest microbenchmark numbers and update them in `profiling.rst`.
 
     .. code-block:: bash
 
