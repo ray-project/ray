@@ -468,13 +468,10 @@ def _postprocess_dqn(policy, batch):
 
     # Prioritize on the worker side
     if batch.count > 0 and policy.config["worker_side_prioritization"]:
-        if not policy.loss_initialized():
-            td_errors = np.zeros_like(batch[SampleBatch.REWARDS])
-        else:
-            td_errors = policy.compute_td_error(
-                batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
-                batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
-                batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
+        td_errors = policy.compute_td_error(
+            batch[SampleBatch.CUR_OBS], batch[SampleBatch.ACTIONS],
+            batch[SampleBatch.REWARDS], batch[SampleBatch.NEXT_OBS],
+            batch[SampleBatch.DONES], batch[PRIO_WEIGHTS])
         new_priorities = (
             np.abs(td_errors) + policy.config["prioritized_replay_eps"])
         batch.data[PRIO_WEIGHTS] = new_priorities
