@@ -11,7 +11,6 @@ import inspect
 import io
 import json
 import logging
-import numpy as np
 import os
 import redis
 import signal
