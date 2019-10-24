@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import argparse
 from ray import tune
-import torch.nn as nn
 import torch.utils.data
 import torchvision
 import torchvision.transforms as transforms
@@ -146,8 +145,6 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
-
-    import ray
 
     ray.init(address=args.ray_redis_address, log_to_driver=False)
 

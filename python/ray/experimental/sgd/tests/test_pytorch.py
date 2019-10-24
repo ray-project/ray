@@ -6,6 +6,7 @@ import os
 import pytest
 import tempfile
 import torch
+import torch.nn as nn
 import torch.distributed as dist
 
 from ray import tune

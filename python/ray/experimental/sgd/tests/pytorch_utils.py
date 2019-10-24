@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.utils.data
 import torchvision
 import torchvision.transforms as transforms
-import torchvision.models as models
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -68,7 +67,10 @@ def cifar_creator(config):
             download=True,
             transform=transform_train)
     valset = torchvision.datasets.CIFAR10(
-        root=config["data_dir"], train=False, download=False, transform=transform_test)
+        root=config["data_dir"],
+        train=False,
+        download=False,
+        transform=transform_test)
     return trainset, valset
 
 

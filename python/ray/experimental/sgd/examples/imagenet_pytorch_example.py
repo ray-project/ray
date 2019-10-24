@@ -4,18 +4,14 @@ from __future__ import print_function
 
 import os
 import logging
-import math
 import torch
 import torch.nn as nn
 import argparse
 import time
-from ray import tune
-from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer, PyTorchTrainable
-from ray.experimental.sgd.models.resnet import ResNet18
+from ray.experimental.sgd.pytorch.pytorch_trainer import PyTorchTrainer
 
 import ray
-from ray.autoscaler import autoscaler
-from ray.experimental.sgd.tests.pytorch_utils import optimizer_creator, cifar_creator, imagenet_creator
+from ray.experimental.sgd.tests.pytorch_utils import optimizer_creator, imagenet_creator
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -50,7 +46,7 @@ def train(model, train_iterator, criterion, optimizer):
         optimizer.zero_grad()
     stats = {
         "train_loss": train_loss / total_num,
-        'train_acc': correct / total_num
+        "train_acc": correct / total_num
     }
     return stats
 
@@ -76,16 +72,16 @@ def train_example(use_gpu=False):
     t = time.time()
     trainer = create_trainer(40)
     t = time.time() - t
-    print('startup:', t)
-    print('40 WORKERS')
+    print("startup:", t)
+    print("40 WORKERS")
 
     for i in range(20):
         t = time.time()
-        stats = trainer.train()
+        trainer.train()
         t = time.time() - t
-        print('training:', t)
+        print("training:", t)
 
-    logger.info('finish training')
+    logger.info("finish training")
 
 
 if __name__ == "__main__":
@@ -104,8 +100,6 @@ if __name__ == "__main__":
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
-
-    import ray
 
     ray.init(redis_address=args.redis_address)
     train_example(use_gpu=args.use_gpu)
