@@ -15,8 +15,16 @@ message ForwardTaskRequest {
 message ForwardTaskReply {
 }
 
+message NodeStatsRequest {
+}
+
+message NodeStatsReply {
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
+  // Get the current node stats.
+  rpc GetNodeStats(NodeStatsRequest) returns (NodeStatsReply);
 }

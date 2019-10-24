@@ -2550,6 +2550,13 @@ std::string NodeManager::DebugString() const {
   return result.str();
 }
 
+void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
+                                         rpc::NodeStatsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(WARNING) << "HELLO";
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::RecordMetrics() const {
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
     return;
