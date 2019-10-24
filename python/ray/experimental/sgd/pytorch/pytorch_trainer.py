@@ -96,7 +96,8 @@ class PyTorchTrainer(object):
                     config=self.config,
                     batch_size=batch_size)
             ]
-            self.apply_all_workers(initialization_hook)
+            if initialization_hook:
+                self.apply_all_workers(initialization_hook)
             # Get setup tasks in order to throw errors on failure
             ray.get(self.workers[0].setup.remote())
         else:
@@ -128,7 +129,8 @@ class PyTorchTrainer(object):
                     batch_size=batch_size_per_replica)
                 for i in range(num_replicas)
             ]
-            self.apply_all_workers(initialization_hook)
+            if initialization_hook:
+                self.apply_all_workers(initialization_hook)
 
             # Compute URL for initializing distributed PyTorch
             ip = ray.get(self.workers[0].get_node_ip.remote())
