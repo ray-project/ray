@@ -160,6 +160,7 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<ray::raylet::Raylet> server(new ray::raylet::Raylet(
       main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
       redis_password, node_manager_config, object_manager_config, gcs_client));
+  server->Start();
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
@@ -167,8 +168,7 @@ int main(int argc, char *argv[]) {
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
-    RAY_CHECK_OK(gcs_client->client_table().Disconnect());
-    server.reset();
+    server->Stop();
     gcs_client->Disconnect();
     main_service.stop();
     RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";

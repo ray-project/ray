@@ -7,6 +7,7 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/node_state_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -87,6 +88,13 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
     return *actor_accessor_;
   }
 
+  /// Get NodeStateAccessor for reading or writing or subscribing to
+  /// nodes. This function is thread safe.
+  NodeStateAccessor &Nodes() {
+    RAY_CHECK(node_accessor_ != nullptr);
+    return *node_accessor_;
+  }
+
  protected:
   /// Constructor of GcsClientInterface.
   ///
@@ -99,6 +107,8 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   bool is_connected_{false};
 
   std::unique_ptr<ActorStateAccessor> actor_accessor_;
+
+  std::unique_ptr<NodeStateAccessor> node_accessor_;
 };
 
 }  // namespace gcs

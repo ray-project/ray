@@ -853,19 +853,17 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
       RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data)>;
   using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
-              RedisGcsClient *client, const ClientID &node_id)
+              RedisGcsClient *client)
       : Log(contexts, client),
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
         client_log_key_(),
         disconnected_(false),
-        //        node_id_(node_id),
-        local_node_info_() {
+        local_node_info_(),
+        client_added_callback_(nullptr),
+        client_removed_callback_(nullptr) {
     pubsub_channel_ = TablePubsub::CLIENT_PUBSUB;
     prefix_ = TablePrefix::CLIENT;
-
-    // Set the local node's ID.
-    local_node_info_.set_node_id(node_id.Binary());
   };
 
   /// Connect as a client to the GCS. This registers us in the client table
@@ -886,8 +884,10 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// reused for a new client.
   ///
   /// \param dead_node_id The ID of the client to mark as dead.
+  /// \param done Callback that is called once the node has been marked to
+  /// disconnected.
   /// \return Status
-  ray::Status MarkDisconnected(const ClientID &dead_node_id);
+  ray::Status MarkDisconnected(const ClientID &dead_node_id, const WriteCallback &done);
 
   /// Register a callback to call when a new client is added.
   ///

@@ -51,8 +51,8 @@ class Monitor {
   /// For each Raylet that we receive a heartbeat from, the number of ticks
   /// that may pass before the Raylet will be declared dead.
   std::unordered_map<ClientID, int64_t> heartbeats_;
-  /// The Raylets that have been marked as dead in the client table.
-  std::unordered_set<ClientID> dead_clients_;
+  /// The Raylets that have been marked as dead in gcs.
+  std::unordered_set<ClientID> dead_nodes_;
   /// A buffer containing heartbeats received from node managers in the last tick.
   std::unordered_map<ClientID, HeartbeatTableData> heartbeat_buffer_;
 };

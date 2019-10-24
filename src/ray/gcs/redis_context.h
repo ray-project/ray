@@ -236,8 +236,8 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
 
 template <typename ID>
 std::unique_ptr<CallbackReply> RedisContext::RunSync(
-  const std::string &command, const ID &id, const void *data, size_t length,
-  const TablePrefix prefix, const TablePubsub pubsub_channel, int log_length) {
+    const std::string &command, const ID &id, const void *data, size_t length,
+    const TablePrefix prefix, const TablePubsub pubsub_channel, int log_length) {
   RAY_CHECK(context_);
   void *redis_reply = nullptr;
   if (length > 0) {

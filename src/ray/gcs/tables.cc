@@ -538,6 +538,7 @@ Status JobTable::AppendJobData(const JobID &job_id, bool is_dead, int64_t timest
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
+  RAY_CHECK(client_added_callback_ == nullptr);
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : node_cache_) {
@@ -548,6 +549,7 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
 }
 
 void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callback) {
+  RAY_CHECK(client_removed_callback_ == nullptr);
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : node_cache_) {
@@ -670,7 +672,7 @@ Status ClientTable::Connect(const GcsNodeInfo &local_node_info) {
   };
   // Subscribe to the client table.
   RAY_CHECK_OK(
-    Subscribe(JobID::Nil(), node_id_, notification_callback, subscription_callback));
+      Subscribe(JobID::Nil(), node_id_, notification_callback, subscription_callback));
 
   return Status::OK();
 }
@@ -691,11 +693,12 @@ Status ClientTable::Disconnect() {
   return Status::OK();
 }
 
-ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id) {
+ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id,
+                                          const WriteCallback &done) {
   auto node_info = std::make_shared<GcsNodeInfo>();
   node_info->set_node_id(dead_node_id.Binary());
   node_info->set_state(GcsNodeInfo::DEAD);
-  return Append(JobID::Nil(), client_log_key_, node_info, nullptr);
+  return Append(JobID::Nil(), client_log_key_, node_info, done);
 }
 
 void ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo &node_info) const {
