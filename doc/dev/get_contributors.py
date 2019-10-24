@@ -16,8 +16,6 @@ Create them at https://github.com/settings/tokens/new
 """,
 )
 @click.option(
-    "--ray-path", required=True, help="File system path to the ray directory")
-@click.option(
     "--prev-branch",
     required=True,
     help="Previous version branch like ray-0.7.1")
@@ -25,10 +23,9 @@ Create them at https://github.com/settings/tokens/new
     "--curr-branch",
     required=True,
     help="Current version branch like ray-0.7.2")
-def run(access_token, ray_path, prev_branch, curr_branch):
+def run(access_token, prev_branch, curr_branch):
     # Generate command
     cmd = []
-    cmd.append(f"cd {ray_path}")
     cmd.append(f'git log {prev_branch}..{curr_branch} --pretty=format:"%s" '
                ' | grep -Eo "#(\d+)"')
     joined = " && ".join(cmd)
