@@ -102,12 +102,10 @@ def ray_deps_setup():
         urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
     )
 
-    http_archive(
+    git_repository(
         name = "com_github_grpc_grpc",
-        urls = [
-            "https://github.com/grpc/grpc/archive/2de2e8dd8921e1f7d043e01faf7fe8a291fbb072.tar.gz",
-        ],
-        strip_prefix = "grpc-2de2e8dd8921e1f7d043e01faf7fe8a291fbb072",
+        commit = "93e8830070e9afcbaa992c75817009ee3f4b63a0",
+        remote = "https://github.com/grpc/grpc.git",
     )
 
     http_archive(
