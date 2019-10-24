@@ -4,7 +4,6 @@ from abc import ABC
 
 import cloudpickle as pickle
 
-import ray
 import ray.experimental.internal_kv as ray_kv
 from ray.experimental.serve.utils import logger
 
@@ -137,19 +136,24 @@ class SQLiteKVStore(NamespacedKVStore):
         self.conn = sqlite3.connect(db_path)
 
         cursor = self.conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS {} (key TEXT UNIQUE, value TEXT)".format(self.namespace))
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS {} (key TEXT UNIQUE, value TEXT)".
+            format(self.namespace))
         self.conn.commit()
 
     def put(self, key, value):
         cursor = self.conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO {} (key, value) VALUES (?,?)".format(self.namespace), 
-            (key, value))
+        cursor.execute(
+            "INSERT OR REPLACE INTO {} (key, value) VALUES (?,?)".format(
+                self.namespace), (key, value))
         self.conn.commit()
-    
+
     def get(self, key, default=None):
         cursor = self.conn.cursor()
-        result = list(cursor.execute("SELECT value FROM {} WHERE key = (?)".format(self.namespace), 
-            (key,)))
+        result = list(
+            cursor.execute(
+                "SELECT value FROM {} WHERE key = (?)".format(self.namespace),
+                (key, )))
         if len(result) == 0:
             return default
         else:
@@ -159,10 +163,11 @@ class SQLiteKVStore(NamespacedKVStore):
 
     def as_dict(self):
         cursor = self.conn.cursor()
-        result = list(cursor.execute("SELECT key, value FROM {}".format(self.namespace)))
+        result = list(
+            cursor.execute("SELECT key, value FROM {}".format(self.namespace)))
         return dict(result)
 
-        
+
 # Tables
 class RoutingTable:
     def __init__(self, kv_connector):
@@ -207,11 +212,11 @@ class BackendTable:
     def __init__(self, kv_connector):
         self.backend_table = kv_connector("backend_creator")
         self.replica_table = kv_connector("replica_tables")
-    
+
     def register_backend(self, backend_tag: str, backend_creator):
         backend_creator_serialized = pickle.dumps(backend_creator)
         self.backend_table.put(backend_tag, backend_creator_serialized)
-    
+
     def get_backend_creator(self, backend_tag):
         return pickle.loads(self.backend_table.get(backend_tag))
 
@@ -225,21 +230,23 @@ class BackendTable:
         replica_tags = self.list_replicas(backend_tag)
         replica_tags.append(new_replica_tag)
         self.replica_table.put(backend_tag, json.dumps(replica_tags))
-    
+
     def remove_replica(self, backend_tag):
         replica_tags = self.list_replicas(backend_tag)
         removed_replica = replica_tags.pop()
         self.replica_table.put(backend_tag, json.dumps(replica_tags))
         return removed_replica
 
+
 class TrafficPolicyTable:
     def __init__(self, kv_connector):
         self.traffic_policy_table = kv_connector("traffic_policy")
-    
-    def register_traffic_policy(self, service_name, policy_dict):
-        self.traffic_policy_table.put(service_name,
-        json.dumps(policy_dict))
-    
-    def list_traffic_policy(self):
-        return {service: json.loads(policy) for service, policy in self.traffic_policy_table.as_dict()}
 
+    def register_traffic_policy(self, service_name, policy_dict):
+        self.traffic_policy_table.put(service_name, json.dumps(policy_dict))
+
+    def list_traffic_policy(self):
+        return {
+            service: json.loads(policy)
+            for service, policy in self.traffic_policy_table.as_dict()
+        }

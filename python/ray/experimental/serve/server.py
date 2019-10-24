@@ -5,9 +5,9 @@ import uvicorn
 
 import ray
 from ray.experimental.async_api import _async_init, as_future
-from ray.experimental.serve.utils import BytesEncoder
 from ray.experimental.serve.constants import HTTP_ROUTER_CHECKER_INTERVAL_S
 from ray.experimental.serve.context import TaskContext
+from ray.experimental.serve.utils import BytesEncoder
 
 
 class JSONResponse:
@@ -70,7 +70,8 @@ class HTTPProxy:
             if self.route_checker_should_shutdown:
                 return
 
-            self.route_table_cache = self.serve_global_state.route_table.list_service()
+            self.route_table_cache = (
+                self.serve_global_state.route_table.list_service())
 
             await asyncio.sleep(interval)
 
@@ -113,7 +114,7 @@ class HTTPProxy:
             await JSONResponse(self.route_table_cache)(scope, receive, send)
             return
 
-        #TODO(simon): Use werkzeug route mapper to support variable path
+        # TODO(simon): Use werkzeug route mapper to support variable path
         if current_path not in self.route_table_cache:
             error_message = ("Path {} not found. "
                              "Please ping http://.../ for routing table"
@@ -128,7 +129,8 @@ class HTTPProxy:
         http_body_bytes = await self.receive_http_body(scope, receive, send)
 
         result_object_id_bytes = await as_future(
-            self.serve_global_state.init_or_get_router().enqueue_request.remote(
+            self.serve_global_state.init_or_get_router()
+            .enqueue_request.remote(
                 service=endpoint_name,
                 request_args=(scope, http_body_bytes),
                 request_kwargs=dict(),

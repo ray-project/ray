@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 import ray
@@ -6,6 +8,8 @@ from ray.experimental import serve
 
 @pytest.fixture(scope="session")
 def serve_instance():
+    if os.path.exists("/tmp/ray_serve.db"):
+        os.remove("/tmp/ray_serve.db")
     serve.init(blocking=True)
     yield
 

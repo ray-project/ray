@@ -1,29 +1,36 @@
 import inspect
 
 import numpy as np
-import cloudpickle as pickle
 
 import ray
+from ray.experimental.serve.constants import (
+    DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT, SERVE_NURSERY_NAME)
+from ray.experimental.serve.global_state import (GlobalState,
+                                                 start_initial_state)
 from ray.experimental.serve.kv_store_service import SQLiteKVStore
 from ray.experimental.serve.task_runner import RayServeMixin, TaskRunnerActor
-from ray.experimental.serve.utils import pformat_color_json, logger, block_until_http_ready, get_random_letters
-from ray.experimental.serve.global_state import GlobalState, start_initial_state
-from ray.experimental.serve.constants import SERVE_NURSERY_NAME, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.experimental.serve.utils import (block_until_http_ready,
+                                          get_random_letters)
 
 global_state = None
 
 
-def init(
-    kv_store_connector=None,
-    kv_store_path="/tmp/ray_serve.db",
-    blocking=False, 
-    http_host=DEFAULT_HTTP_HOST,
-    http_port=DEFAULT_HTTP_PORT,
-    object_store_memory=int(1e8), 
-    gc_window_seconds=3600
-    ):
-    """Initialize a serve cluster. 
-    
+def _get_global_state():
+    """Used for internal purpose. Because just import serve.global_state
+    will always reference the original None object
+    """
+    return global_state
+
+
+def init(kv_store_connector=None,
+         kv_store_path="/tmp/ray_serve.db",
+         blocking=False,
+         http_host=DEFAULT_HTTP_HOST,
+         http_port=DEFAULT_HTTP_PORT,
+         ray_init_kwargs={"object_store_memory": int(1e8)},
+         gc_window_seconds=3600):
+    """Initialize a serve cluster.
+
     If serve cluster has already initialized, this function will just return.
 
     Calling `ray.init` before `serve.init` is optional. When there is not a ray
@@ -31,13 +38,13 @@ def init(
     requirement.
 
     Args:
-        kv_store_connector (callable): Function of the form (namespace) => TableObject.
-            We will use a SQLite connector that stores to /tmp by default. 
-        kv_store_path (str, path): Path to the SQLite table. 
+        kv_store_connector (callable): Function of (namespace) => TableObject.
+            We will use a SQLite connector that stores to /tmp by default.
+        kv_store_path (str, path): Path to the SQLite table.
         blocking (bool): If true, the function will wait for the HTTP server to
             be healthy, and other components to be ready before returns.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
-        http_port (int): Port for HTTP server. Default to 8000.  
+        http_port (int): Port for HTTP server. Default to 8000.
         object_store_memory (int): Allocated shared memory size in bytes. The
             default is 100MiB. The default is kept low for latency stability
             reason.
@@ -47,25 +54,33 @@ def init(
     """
     global global_state
 
-    if not ray.is_initialized():
-        ray.init(object_store_memory=object_store_memory)
+    # Noop if global_state is no longer None
+    if global_state is not None:
+        return
 
-    # Check if serve has already initialized, if so, just return
+    # Initialize ray if needed.
+    if not ray.is_initialized():
+        ray.init(**ray_init_kwargs)
+
+    # Try to get serve nursery if there exists
     try:
         ray.experimental.get_actor(SERVE_NURSERY_NAME)
         global_state = GlobalState()
-        return 
+        return
     except ValueError:
         pass
-        
-    # Serve has not been initialized
-    kv_store_connector = lambda namespace: SQLiteKVStore(namespace, db_path=kv_store_path)
+
+    # Serve has not been initialized, perform init sequence
+    def kv_store_connector(namespace):
+        return SQLiteKVStore(namespace, db_path=kv_store_path)
+
     nursery = start_initial_state(kv_store_connector)
-    
+
     global_state = GlobalState(nursery)
     global_state.init_or_get_http_server(host=http_host, port=http_port)
     global_state.init_or_get_router()
-    global_state.init_or_get_metric_monitor(gc_window_seconds=gc_window_seconds)
+    global_state.init_or_get_metric_monitor(
+        gc_window_seconds=gc_window_seconds)
 
     if blocking:
         block_until_http_ready("http://{}:{}".format(http_host, http_port))
@@ -126,12 +141,13 @@ def _start_replica(backend_tag):
 
     # Create the runner in the nursery
     [runner_handle] = ray.get(
-        global_state.actor_nursery_handle.start_actor_with_creator.remote(creator, replica_tag)
-    )
-    
+        global_state.actor_nursery_handle.start_actor_with_creator.remote(
+            creator, replica_tag))
+
     # Setup the worker
-    ray.get(runner_handle._ray_serve_setup.remote(
-        backend_tag, global_state.init_or_get_router(), runner_handle))
+    ray.get(
+        runner_handle._ray_serve_setup.remote(
+            backend_tag, global_state.init_or_get_router(), runner_handle))
     runner_handle._ray_serve_main_loop.remote()
 
     # Register the worker in config tables as well as metric monitor
@@ -147,10 +163,12 @@ def _remove_replica(backend_tag):
             backend_tag))
 
     replica_tag = global_state.backend_table.remove_replica(backend_tag)
-    replica_handle = ray.get(global_state.actor_nursery_handle.get_handle.remote(replica_tag))
+    [replica_handle] = ray.get(
+        global_state.actor_nursery_handle.get_handle.remote(replica_tag))
     global_state.init_or_get_metric_monitor().remove_target.remote(
         replica_handle)
-    ray.get(global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
+    ray.get(
+        global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
 
 
 def scale(backend_tag, num_replicas):
@@ -220,8 +238,10 @@ def split(endpoint_name, traffic_policy_dictionary):
         atol=0.02), "weights must sum to 1, currently it sums to {}".format(
             prob)
 
-    global_state.policy_table.register_traffic_policy(endpoint_name, traffic_policy_dictionary)
-    global_state.init_or_get_router().set_traffic.remote(endpoint_name, traffic_policy_dictionary)
+    global_state.policy_table.register_traffic_policy(
+        endpoint_name, traffic_policy_dictionary)
+    global_state.init_or_get_router().set_traffic.remote(
+        endpoint_name, traffic_policy_dictionary)
 
 
 def get_handle(endpoint_name):
@@ -252,6 +272,5 @@ def stat(percentiles=[50, 90, 95],
             The longest aggregation window must be shorter or equal to the
             gc_window_seconds.
     """
-    return ray.get(
-        global_state.init_or_get_metric_monitor().collect.remote(
-            percentiles, agg_windows_seconds))
+    return ray.get(global_state.init_or_get_metric_monitor().collect.remote(
+        percentiles, agg_windows_seconds))

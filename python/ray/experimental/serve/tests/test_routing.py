@@ -1,9 +1,8 @@
-import tempfile
 import os
+import tempfile
 
-from ray.experimental.serve.kv_store_service import (InMemoryKVStore,
-                                                     RayInternalKVStore,
-                                                     SQLiteKVStore)
+from ray.experimental.serve.kv_store_service import (
+    InMemoryKVStore, RayInternalKVStore, SQLiteKVStore)
 
 
 def test_default_in_memory_kv():
@@ -33,7 +32,7 @@ def test_ray_interal_kv(ray_instance):
 
 def test_sqlite_kv():
     _, path = tempfile.mkstemp()
-    
+
     # Test get
     kv = SQLiteKVStore("routing_table", db_path=path)
     kv.put("/api", "api-endpoint")
@@ -51,5 +50,5 @@ def test_sqlite_kv():
     # Test override
     kv.put("/api", "api-new")
     assert kv.get("/api") == "api-new"
-    
+
     os.remove(path)

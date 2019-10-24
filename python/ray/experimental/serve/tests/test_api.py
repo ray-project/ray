@@ -2,14 +2,14 @@ import time
 
 import requests
 
-import ray
 from ray.experimental import serve
 
+
 def test_e2e(serve_instance):
-    serve.init() # so we have access to global state
+    serve.init()  # so we have access to global state
     serve.create_endpoint("endpoint", "/api", blocking=True)
-    result = serve.global_state.route_table.list_service()
-    assert result == {"/api": "endpoint"}
+    result = serve.api._get_global_state().route_table.list_service()
+    assert result["/api"] == "endpoint"
 
     retry_count = 5
     timeout_sleep = 0.5
@@ -24,12 +24,15 @@ def test_e2e(serve_instance):
             retry_count -= 1
             if retry_count == 0:
                 assert False, "Route table hasn't been updated after 3 tries."
+    print("Route table passed")
 
     def function(flask_request):
         return "OK"
 
     serve.create_backend(function, "echo:v1")
+    print("Backend created")
     serve.link("endpoint", "echo:v1")
+    print("Linked")
 
     resp = requests.get("http://127.0.0.1:8000/api").json()["result"]
     assert resp == "OK"

@@ -2,6 +2,7 @@ import ray
 from ray.experimental import serve
 from ray.experimental.serve.context import TaskContext
 from ray.experimental.serve.exceptions import RayServeException
+from ray.experimental.seve.constants import DEFAULT_HTTP_ADDRESS
 
 
 class RayServeHandle:
@@ -55,7 +56,7 @@ class RayServeHandle:
             return None
 
     def get_http_endpoint(self):
-        return serve.global_state.http_address
+        return DEFAULT_HTTP_ADDRESS
 
     def __repr__(self):
         return """

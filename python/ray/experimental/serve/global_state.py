@@ -1,49 +1,24 @@
-import time
-from collections import defaultdict, deque, namedtuple
-
-import requests
-
 import ray
-import ray.experimental.signal as signal
-from ray.experimental.serve.kv_store_service import (SQLiteKVStore, 
-                RoutingTable, BackendTable, TrafficPolicyTable)
-from ray.experimental.serve.queues import CentralizedQueuesActor
-from ray.experimental.serve.utils import logger
-from ray.experimental.serve.server import HTTPActor
-from ray.experimental.serve.constants import (SERVE_NURSERY_NAME, BOOTSTRAP_KV_STORE_CONN_KEY,
-                    DEFAULT_HTTP_ADDRESS, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
+from ray.experimental.serve.constants import (
+    BOOTSTRAP_KV_STORE_CONN_KEY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
+    SERVE_NURSERY_NAME)
+from ray.experimental.serve.kv_store_service import (
+    BackendTable, RoutingTable, TrafficPolicyTable)
 from ray.experimental.serve.metric import (MetricMonitor,
                                            start_metric_monitor_loop)
+from ray.experimental.serve.queues import CentralizedQueuesActor
+from ray.experimental.serve.server import HTTPActor
 
 
 def start_initial_state(kv_store_connector):
-    # Start the nursery and block until actor nursery has
-    # done initialization
-    actor_nursery_initializer = start_actor_nursery_loop.remote()
-    signals = signal.receive([actor_nursery_initializer])
-    nursery_handle = signals[0][1]
+    nursery_handle = ActorNursery.remote()
+    ray.experimental.register_actor(SERVE_NURSERY_NAME, nursery_handle)
+
     ray.get(
         nursery_handle.store_bootstrap_state.remote(
-            BOOTSTRAP_KV_STORE_CONN_KEY,kv_store_connector))
+            BOOTSTRAP_KV_STORE_CONN_KEY, kv_store_connector))
     return nursery_handle
 
-
-@ray.remote(num_cpus=0)
-def start_actor_nursery_loop():
-    """Start and hold the handle to actor nursery
-    
-    So it doesn't go out of scope
-    """
-    handle = ActorNursery.remote()
-    ray.experimental.register_actor(SERVE_NURSERY_NAME, handle)
-    signal.send(handle)
-    while True:
-        time.sleep(3600)
-
-class ServeActorInfoSignal(signal.Signal):
-    def __init__(self, tag, actor_handle):
-        self.tag = tag
-        self.actor_handle = actor_handle
 
 @ray.remote
 class ActorNursery:
@@ -52,7 +27,7 @@ class ActorNursery:
     Note:
         This actor is necessary because ray will destory actors when the
         original actor handle goes out of scope (when driver exit). Therefore
-        we need to initialize and store actor handles in a seperate actor. 
+        we need to initialize and store actor handles in a seperate actor.
     """
 
     def __init__(self):
@@ -66,7 +41,7 @@ class ActorNursery:
         handle = actor_cls.remote(*init_args)
         self.actor_handles[handle] = tag
         return [handle]
-    
+
     def start_actor_with_creator(self, creator, tag):
         handle = creator()
         self.actor_handles[handle] = tag
@@ -76,24 +51,24 @@ class ActorNursery:
         return {tag: handle for handle, tag in self.actor_handles.items()}
 
     def get_handle(self, actor_tag):
-        return self.get_all_handles()[actor_tag]
-    
+        return [self.get_all_handles()[actor_tag]]
+
     def remove_handle(self, actor_tag):
-        handle = self.get_handle(actor_tag)
+        [handle] = self.get_handle(actor_tag)
         self.actor_handles.pop(handle)
         del handle
 
     def store_bootstrap_state(self, key, value):
         self.bootstrap_state[key] = value
-    
+
     def get_bootstrap_state_dict(self):
         return self.bootstrap_state
 
 
 class GlobalState:
     """Encapsulate all global state in the serving system.
-    
-    The information is fetch lazily from 
+
+    The information is fetch lazily from
         1. A collection of namespaced key value stores
         2. A actor supervisor service
     """
@@ -101,14 +76,14 @@ class GlobalState:
     def __init__(self, actor_nursery_handle=None):
         # Get actor nursery handle
         if actor_nursery_handle is None:
-            actor_nursery_handle = ray.experimental.get_actor(SERVE_NURSERY_NAME)
+            actor_nursery_handle = ray.experimental.get_actor(
+                SERVE_NURSERY_NAME)
         self.actor_nursery_handle = actor_nursery_handle
 
         # Connect to all the table
-        
+
         bootstrap_config = ray.get(
-            self.actor_nursery_handle.get_bootstrap_state_dict.remote()
-        )
+            self.actor_nursery_handle.get_bootstrap_state_dict.remote())
         kv_store_connector = bootstrap_config[BOOTSTRAP_KV_STORE_CONN_KEY]
         self.route_table = RoutingTable(kv_store_connector)
         self.backend_table = BackendTable(kv_store_connector)
@@ -116,56 +91,31 @@ class GlobalState:
 
         self.refresh_actor_handle_cache()
 
-        # #: actor handle to KV store actor
-        # self.kv_store_actor_handle = None
-        # #: actor handle to HTTP server
-        # self.http_actor_handle = None
-        # #: actor handle the router actor
-        # self.router_actor_handle = None
-
-        # #: Set[str] list of backend names, used for deduplication
-        # self.registered_backends = set()
-        # #: Set[str] list of service endpoint names, used for deduplication
-        # self.registered_endpoints = set()
-
-        # #: Mapping of endpoints -> a stack of traffic policy
-        # self.policy_action_history = defaultdict(deque)
-
-        # #: Backend creaters. Mapping backend_tag -> callable creator
-        # self.backend_creators = dict()
-        # #: Number of replicas per backend.
-        # #  Mapping backend_tag -> deque(actor_handles)
-        # self.backend_replicas = defaultdict(deque)
-
-        # #: HTTP address. Currently it's hard coded to localhost with port 8000
-        # #  In future iteration, HTTP server will be started on every node and
-        # #  use random/available port in a pre-defined port range. TODO(simon)
-        # self.http_address = ""
-
-        # #: Metric monitor handle
-        # self.metric_monitor_handle = None
+    def __del__(self):
+        print("Global state destoryed")
+        import traceback
+        traceback.print_stack()
 
     def refresh_actor_handle_cache(self):
-        self.actor_handle_cache = ray.get(self.actor_nursery_handle.get_all_handles.remote())
+        self.actor_handle_cache = ray.get(
+            self.actor_nursery_handle.get_all_handles.remote())
 
-    def init_or_get_http_server(self, host=DEFAULT_HTTP_HOST, port=DEFAULT_HTTP_PORT):
+    def init_or_get_http_server(self,
+                                host=DEFAULT_HTTP_HOST,
+                                port=DEFAULT_HTTP_PORT):
         if "http_server" not in self.actor_handle_cache:
-            [handle] = ray.get(self.actor_nursery_handle.start_actor.remote(
-                HTTPActor, 
-                init_args=(),
-                tag="http_server"
-            ))
+            [handle] = ray.get(
+                self.actor_nursery_handle.start_actor.remote(
+                    HTTPActor, init_args=(), tag="http_server"))
             handle.run.remote(host=host, port=port)
             self.refresh_actor_handle_cache()
         return self.actor_handle_cache["http_server"]
 
     def init_or_get_router(self):
         if "queue_actor" not in self.actor_handle_cache:
-            [handle] = ray.get(self.actor_nursery_handle.start_actor.remote(
-                CentralizedQueuesActor, 
-                init_args=(),
-                tag="queue_actor"
-            ))
+            [handle] = ray.get(
+                self.actor_nursery_handle.start_actor.remote(
+                    CentralizedQueuesActor, init_args=(), tag="queue_actor"))
             handle.register_self_handle.remote(handle)
             self.refresh_actor_handle_cache()
 
@@ -173,17 +123,18 @@ class GlobalState:
 
     def init_or_get_metric_monitor(self, gc_window_seconds=3600):
         if "metric_monitor" not in self.actor_handle_cache:
-            [handle] = ray.get(self.actor_nursery_handle.start_actor.remote(
-                MetricMonitor,
-                init_args=(gc_window_seconds,),
-                tag="metric_monitor"
-            ))
+            [handle] = ray.get(
+                self.actor_nursery_handle.start_actor.remote(
+                    MetricMonitor,
+                    init_args=(gc_window_seconds, ),
+                    tag="metric_monitor"))
 
             start_metric_monitor_loop.remote(handle)
 
             if "queue_actor" in self.actor_handle_cache:
-                handle.add_target.remote(self.actor_handle_cache["queue_actor"])
-            
+                handle.add_target.remote(
+                    self.actor_handle_cache["queue_actor"])
+
             self.refresh_actor_handle_cache()
 
         return self.actor_handle_cache["metric_monitor"]

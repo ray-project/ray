@@ -2,11 +2,13 @@
 Full example of ray.serve module
 """
 
+import time
+
+import requests
+
 import ray
 import ray.experimental.serve as serve
 from ray.experimental.serve.utils import pformat_color_json
-import requests
-import time
 
 # initialize ray serve system.
 # blocking=True will wait for HTTP server to be ready to serve request.

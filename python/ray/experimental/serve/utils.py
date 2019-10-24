@@ -1,8 +1,8 @@
-import random
 import json
 import logging
-import time
+import random
 import string
+import time
 
 import requests
 from pygments import formatters, highlight, lexers
@@ -43,6 +43,7 @@ def pformat_color_json(d):
 
     return colorful_json
 
+
 def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
     http_is_ready = False
     retries = num_retries
@@ -58,12 +59,12 @@ def block_until_http_ready(http_endpoint, num_retries=5, backoff_time_s=1):
         # Exponential backoff
         time.sleep(backoff_time_s)
         backoff_time_s *= 2
-        
+
         retries -= 1
         if retries == 0:
             raise Exception(
-                "HTTP server not ready after {} retries.".format(
-                    num_retries))
+                "HTTP server not ready after {} retries.".format(num_retries))
+
 
 def get_random_letters(length=6):
     return "".join(random.choices(string.ascii_letters, k=length))
