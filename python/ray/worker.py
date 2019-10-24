@@ -1576,7 +1576,8 @@ def connect(node,
     # Put something in the plasma store so that subsequent plasma store
     # accesses will be faster. Currently the first access is always slow, and
     # we don't want the user to experience this.
-    temporary_object_id = ray.ObjectID(np.random.bytes(20))
+    temporary_object_id = ray.ObjectID.from_random()
+    assert not temporary_object_id.is_direct_actor_type()
     worker.put_object(temporary_object_id, 1)
     ray.internal.free([temporary_object_id])
 
