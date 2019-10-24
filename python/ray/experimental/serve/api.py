@@ -57,7 +57,7 @@ def init(kv_store_connector=None,
             be healthy, and other components to be ready before returns.
         http_host (str): Host for HTTP server. Default to "0.0.0.0".
         http_port (int): Port for HTTP server. Default to 8000.
-        ray_init_kwargs (int): Argument passed to ray.init, if there is no ray
+        ray_init_kwargs (dict): Argument passed to ray.init, if there is no ray
             connection. Default to {"object_store_memory": int(1e8)} for
             performance stability reason
         gc_window_seconds(int): How long will we keep the metric data in
