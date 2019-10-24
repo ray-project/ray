@@ -43,10 +43,7 @@ def model_creator(config):
 
 def optimizer_creator(model, config):
     """Returns criterion, optimizer"""
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
-    return criterion, optimizer
-
+    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
 def data_creator(config):
     """Returns training set, validation set"""
@@ -58,6 +55,7 @@ def tune_example(num_replicas=1, use_gpu=False):
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
+        "loss_creator": tune.function(nn.MSELoss)
         "num_replicas": num_replicas,
         "use_gpu": use_gpu,
         "batch_size": 512,

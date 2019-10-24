@@ -55,6 +55,7 @@ def train_example(num_replicas=1, use_gpu=False):
         model_creator,
         data_creator,
         optimizer_creator,
+        nn.MSELoss,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         batch_size=512,
