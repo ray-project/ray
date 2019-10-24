@@ -675,7 +675,6 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
-
 cdef CRayStatus check_signals() nogil:
     with gil:
         try:

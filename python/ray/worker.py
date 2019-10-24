@@ -199,8 +199,6 @@ class Worker(object):
                 # random task ID so that the backend can differentiate
                 # between different threads.
                 self._task_context.current_task_id = TaskID.for_fake_task()
-                import traceback
-                traceback.print_stack()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
