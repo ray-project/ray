@@ -51,6 +51,36 @@ And vary the number of return values for tasks (and actor methods too):
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
 
+Dynamic Custom Resources
+------------------------
+
+Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
+load balancing, gang scheduling, and priority-based scheduling.
+
+
+.. code-block:: python
+
+    ray.init()
+    res_name = "test_res"
+    res_capacity = 1.0
+
+    @ray.remote
+    def set_res(resource_name, resource_capacity):
+        ray.experimental.set_resource(resource_name, resource_capacity)
+
+    ray.get(set_res.remote(res_name, res_capacity))
+
+    available_res = ray.available_resources()
+    cluster_res = ray.cluster_resources()
+
+    assert available_res[res_name] == res_capacity
+    assert cluster_res[res_name] == res_capacity
+
+
+.. autofunction:: ray.experimental.set_resource
+    :noindex:
+
+
 
 Nested Remote Functions
 -----------------------
