@@ -21,6 +21,9 @@ struct WorkerThreadContext {
   void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
 
   void SetCurrentTask(const TaskSpecification &task_spec) {
+    RAY_CHECK(current_task_id_.IsNil());
+    RAY_CHECK(task_index_ == 0);
+    RAY_CHECK(put_index_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
   }
