@@ -80,6 +80,7 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, results);
 
+  core_worker_.SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
 
   // TODO(zhijunfu):
