@@ -12,16 +12,22 @@ Wrap your training with this:
 .. code-block:: python
 
     ray.init(args.address)
+
     trainer1 = PyTorchTrainer(
         model_creator,
-        data_creator,
+        cifar_creator,
         optimizer_creator,
-        num_replicas=<NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
+        nn.CrossEntropyLoss,
+        num_replicas=NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
         use_gpu=True,
         batch_size=512,
-        backend="gloo")
+        backend="nccl")
 
-    trainer1.train()
+    stats = trainer1.train()
+    print(stats)
+    trainer1.shutdown()
+    print("success!")
+
 
 
 Then, start a Ray cluster `via autoscaler <autoscaling.html>`_ or `manually <using-ray-on-a-cluster.html>`_.

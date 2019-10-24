@@ -23,6 +23,7 @@ def test_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=nn.MSELoss,
         num_replicas=num_replicas)
     train_loss1 = trainer.train()["train_loss"]
     validation_loss1 = trainer.validate()["validation_loss"]
@@ -76,6 +77,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=nn.MSELoss,
         num_replicas=num_replicas)
     trainer1.train()
 
@@ -90,6 +92,7 @@ def test_save_and_restore(ray_start_2_cpus, num_replicas):  # noqa: F811
         model_creator,
         data_creator,
         optimizer_creator,
+        loss_creator=nn.MSELoss,
         num_replicas=num_replicas)
     trainer2.restore(filename)
 

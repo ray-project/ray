@@ -14,42 +14,15 @@ logger = logging.getLogger(__name__)
 class DistributedPyTorchRunner(PyTorchRunner):
     """Manages a distributed PyTorch model replica."""
 
-    def __init__(self,
-                 model_creator,
-                 data_creator,
-                 optimizer_creator,
-                 loss_creator,
-                 train_function=None,
-                 validation_function=None,
-                 config=None,
-                 batch_size=16,
-                 backend="gloo"):
+    def __init__(self, *args, backend="gloo", **kwargs):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
-            data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
-            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                see pytorch_trainer.py.
-            loss_creator (dict -> loss):
-                see pytorch_trainer.py.
-            train_function: (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion, optimizer -> train loss/accuracy):
-                see pytorch_trainer.py
-            validation_function (torch.nn.Module, torch.utils.data.DataLoader, loss function/criterion -> validation loss/accuracy):
-                see pytorch_trainer.py
-            config (dict): see pytorch_trainer.py.
-            batch_size (int): batch size used by one replica for an update.
-            backend (string):  see pytorch_trainer.py.
+            args: Arguments for the PyTorchRunner.
+            kwargs: Keyword arguments for the PyTorchRunner.
+            backend (string): backend used by distributed PyTorch.
         """
-        super(DistributedPyTorchRunner, self).__init__(
-            model_creator,
-            data_creator,
-            optimizer_creator,
-            loss_creator,
-            train_function=train_function,
-            validation_function=validation_function,
-            config=config,
-            batch_size=batch_size)
+        super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
