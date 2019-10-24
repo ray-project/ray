@@ -155,6 +155,10 @@ class Worker(object):
         # postprocessor must take two arguments ("object_ids", and "values").
         self._post_get_hooks = []
 
+        self._cached = False
+        self._cached_value = None
+        self._cached_value_serialized = None
+
     @property
     def connected(self):
         return self.node is not None
