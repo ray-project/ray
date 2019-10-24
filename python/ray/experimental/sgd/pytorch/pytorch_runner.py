@@ -46,6 +46,8 @@ class PyTorchRunner(object):
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.config = {} if config is None else config
+        if "dataloader_workers" not in self.config:
+            self.config["dataloader_workers"] = 8
         self.train_function = train_function or pytorch_utils.train
         self.validation_function = validation_function or pytorch_utils.validate
         self.batch_size = batch_size
@@ -80,14 +82,14 @@ class PyTorchRunner(object):
             self.training_set,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=8,
+            num_workers=self.config["dataloader_workers"],
             pin_memory=True)
 
         self.validation_loader = torch.utils.data.DataLoader(
             self.validation_set,
             batch_size=self.batch_size,
             shuffle=True,
-            num_workers=2,
+            num_workers=self.config["dataloader_workers"],
             pin_memory=False)
 
     def get_node_ip(self):

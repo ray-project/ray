@@ -59,11 +59,13 @@ def train_example(use_gpu=False):
     import torchvision.models as models
 
     def create_trainer(num_replicas):
+        config = {"data_dir": "~/data/imagenet"}
         return PyTorchTrainer(
             model_creator=models.resnet18,
             data_creator=imagenet_creator,
             optimizer_creator=optimizer_creator,
             loss_creator=nn.CrossEntropyLoss,
+            config=config,
             initialization_hook=initialization_hook,
             train_function=train,
             num_replicas=num_replicas,

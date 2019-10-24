@@ -63,18 +63,18 @@ def cifar_creator(config):
     from filelock import FileLock
     with FileLock(os.path.expanduser("~/data.lock")):
         trainset = torchvision.datasets.CIFAR10(
-            root="~/data",
+            root=config["data_dir"],
             train=True,
             download=True,
             transform=transform_train)
     valset = torchvision.datasets.CIFAR10(
-        root="~/data", train=False, download=False, transform=transform_test)
+        root=config["data_dir"], train=False, download=False, transform=transform_test)
     return trainset, valset
 
 
 def imagenet_creator(config):
     trainset = torchvision.datasets.ImageNet(
-        root="/data/imagenet",
+        root=config["data_dir"],
         transform=transforms.Compose([
             transforms.RandomResizedCrop(224),
             transforms.RandomHorizontalFlip(),
@@ -85,7 +85,7 @@ def imagenet_creator(config):
         split="train")
     trainset = torch.utils.data.Subset(trainset, range(500 * 256))
     valset = torchvision.datasets.ImageNet(
-        root="/data/imagenet",
+        root=config["data_dir"],
         transform=transforms.Compose([
             transforms.Resize(256),
             transforms.CenterCrop(224),

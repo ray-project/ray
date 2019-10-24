@@ -103,7 +103,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.training_set,
             batch_size=self.batch_size,
             shuffle=(self.train_sampler is None),
-            num_workers=8,
+            num_workers=self.config["dataloader_workers"],
             pin_memory=True,
             sampler=self.train_sampler)
 
@@ -114,7 +114,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.validation_set,
             batch_size=self.batch_size,
             shuffle=(self.validation_sampler is None),
-            num_workers=2,
+            num_workers=self.config["dataloader_workers"],
             pin_memory=False,
             sampler=self.validation_sampler)
 
