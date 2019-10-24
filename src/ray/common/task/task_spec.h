@@ -107,6 +107,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
+  /// Return the list of object IDs referenced in arguments.
+  ///
+  /// \return The list of object IDs.
+  std::vector<ObjectID> ComputeDependencies() const;
+
   bool IsDriverTask() const;
 
   Language GetLanguage() const;

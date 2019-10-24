@@ -45,6 +45,7 @@ class Node(object):
     def __init__(self,
                  ray_params,
                  head=False,
+                 single_node=False,
                  shutdown_at_exit=True,
                  connect_only=False):
         """Start a node.
@@ -55,6 +56,9 @@ class Node(object):
             head (bool): True if this is the head node, which means it will
                 start additional processes like the Redis servers, monitor
                 processes, and web UI.
+            single_node (bool): If True, enables additional single-node
+                optimizations. This must not be set if multiple nodes will
+                join this head
             shutdown_at_exit (bool): If true, a handler will be registered to
                 shutdown the processes started here when the Python interpreter
                 exits.
@@ -67,7 +71,13 @@ class Node(object):
                                  "cannot both be true.")
             self._register_shutdown_hooks()
 
+        if single_node:
+            if not head:
+                raise ValueError(
+                    "Single node cannot be enabled if not the head node.")
+
         self.head = head
+        self.single_node = single_node
         self.all_processes = {}
 
         # Try to get node IP address with the parameters.
@@ -525,7 +535,9 @@ class Node(object):
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-            use_pickle=self._ray_params.use_pickle)
+            use_pickle=self._ray_params.use_pickle,
+            single_node=self.single_node,
+        )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

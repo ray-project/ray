@@ -49,6 +49,10 @@ void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; 
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
+bool Worker::HasAssignedTask() const { return !assigned_task_id_.IsNil(); }
+
+Task &Worker::GetAssignedTask() { return assigned_task_; }
+
 bool Worker::AddBlockedTaskId(const TaskID &task_id) {
   auto inserted = blocked_task_ids_.insert(task_id);
   return inserted.second;
@@ -126,15 +130,26 @@ bool Worker::UsePush() const { return rpc_client_ != nullptr; }
 void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
   const TaskSpecification &spec = task.GetTaskSpecification();
+  assigned_task_ = task;
   if (rpc_client_ != nullptr) {
     // Use push mode.
     RAY_CHECK(port_ > 0);
     rpc::AssignTaskRequest request;
-    request.mutable_task()->mutable_task_spec()->CopyFrom(
-        task.GetTaskSpecification().GetMessage());
-    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
-        task.GetTaskExecutionSpec().GetMessage());
     request.set_resource_ids(resource_id_set.Serialize());
+
+    if (task.IsVectorTask()) {
+      for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+        auto task_msg = request.add_tasks();
+        task_msg->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+        task_msg->mutable_task_execution_spec()->CopyFrom(
+            task.GetTaskExecutionSpec().GetMessage());
+      }
+    } else {
+      auto task_msg = request.add_tasks();
+      task_msg->mutable_task_spec()->CopyFrom(task.GetTaskSpecification().GetMessage());
+      task_msg->mutable_task_execution_spec()->CopyFrom(
+          task.GetTaskExecutionSpec().GetMessage());
+    }
 
     auto status = rpc_client_->AssignTask(request, [](Status status,
                                                       const rpc::AssignTaskReply &reply) {
@@ -154,6 +169,7 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                      << " to worker " << worker_id_;
     }
   } else {
+    RAY_CHECK(!task.IsVectorTask());
     // Use pull mode. This corresponds to existing python/java workers that haven't been
     // migrated to core worker architecture.
     flatbuffers::FlatBufferBuilder fbb;
@@ -167,6 +183,27 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     Connection()->WriteMessageAsync(
         static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
         fbb.GetBufferPointer(), finish_assign_callback);
+  }
+}
+
+void Worker::StealTasks(
+    const std::function<void(std::vector<TaskID>)> finish_steal_callback) {
+  RAY_CHECK(rpc_client_ != nullptr);
+  rpc::StealTasksRequest request;
+  auto status = rpc_client_->StealTasks(
+      request,
+      [this, finish_steal_callback](Status status, const rpc::StealTasksReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to steal tasks from worker " << worker_id_;
+        }
+        std::vector<TaskID> task_ids;
+        for (int i = 0; i < reply.task_ids_size(); i++) {
+          task_ids.push_back(TaskID::FromBinary(reply.task_ids(i)));
+        }
+        finish_steal_callback(task_ids);
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to steal tasks from worker " << worker_id_;
   }
 }
 

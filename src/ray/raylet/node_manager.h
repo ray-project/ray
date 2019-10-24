@@ -62,6 +62,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// Whether we are in single node mode.
+  bool single_node;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {
@@ -216,8 +218,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
+  /// \param num_tasks_completed The number of tasks in the batch that were
+  ///                            executed (not stolen).
   /// \return Void.
-  void FinishAssignedTask(Worker &worker);
+  void FinishAssignedTask(Worker &worker, int num_tasks_completed);
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the
@@ -391,8 +395,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle the case that a worker is available.
   ///
   /// \param client The connection for the worker.
+  /// \param num_tasks_completed If the worker is done executing a task, the number of
+  ///                            tasks in the batch that were completed (not stolen).
   /// \return Void.
-  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
+  void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client,
+                             int num_tasks_completed = -1);
 
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
@@ -496,6 +503,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
 
+  /// Break up assigned vector tasks if there are free workers that could take
+  /// on the work.
+  void RebalanceVectorTasksAmongWorkers();
+
   // GCS client ID for this node.
   ClientID client_id_;
   boost::asio::io_service &io_service_;
@@ -518,6 +529,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   bool fair_queueing_enabled_;
   /// Whether we have printed out a resource deadlock warning.
   bool resource_deadlock_warned_ = false;
+  /// Whether we are currently stealing tasks from a worker.
+  bool stealing_ = false;
   /// The path to the ray temp dir.
   std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and

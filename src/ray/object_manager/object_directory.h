@@ -133,10 +133,11 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   ///
   /// \param io_service The event loop to dispatch callbacks to. This should
   /// usually be the same event loop that the given gcs_client runs on.
-  /// \param gcs_client A Ray GCS client to request object and client
+  /// \param gcs_client A Ray GCS client to request object and client.
+  /// \param bool Whether we are running on a single node.
   /// information from.
   ObjectDirectory(boost::asio::io_service &io_service,
-                  std::shared_ptr<gcs::RedisGcsClient> &gcs_client);
+                  std::shared_ptr<gcs::RedisGcsClient> &gcs_client, bool single_node);
 
   virtual ~ObjectDirectory() {}
 
@@ -192,6 +193,8 @@ class ObjectDirectory : public ObjectDirectoryInterface {
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
   /// Info about subscribers to object locations.
   std::unordered_map<ObjectID, LocationListenerState> listeners_;
+  /// Whether we are running in single node mode.
+  const bool single_node_;
 };
 
 }  // namespace ray

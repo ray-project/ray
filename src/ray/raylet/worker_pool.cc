@@ -389,6 +389,18 @@ std::vector<std::shared_ptr<Worker>> WorkerPool::GetWorkersRunningTasksForJob(
   return workers;
 }
 
+std::shared_ptr<Worker> WorkerPool::FindWorker(
+    std::function<bool(std::shared_ptr<Worker>)> filter) const {
+  for (const auto &entry : states_by_lang_) {
+    for (const auto &worker : entry.second.registered_workers) {
+      if (filter(worker)) {
+        return worker;
+      }
+    }
+  }
+  return nullptr;
+}
+
 void WorkerPool::WarnAboutSize() {
   for (const auto &entry : states_by_lang_) {
     auto state = entry.second;

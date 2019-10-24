@@ -43,6 +43,34 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
   return Status::OK();
 }
 
+Status CoreWorkerPlasmaStoreProvider::PutBatch(
+    const std::vector<std::pair<const RayObject, const ObjectID>> &objects) {
+  std::vector<plasma::UniqueID> object_ids;
+  std::vector<std::string> data_vec;
+  std::vector<std::string> metadata_vec;
+  for (const auto &pair : objects) {
+    auto &obj = pair.first;
+    RAY_CHECK(obj.HasData());
+    auto &data = obj.GetData();
+    object_ids.push_back(pair.second.ToPlasmaId());
+    data_vec.emplace_back(
+        std::string(reinterpret_cast<const char *>(data->Data()), data->Size()));
+    if (obj.HasMetadata()) {
+      auto &metadata = obj.GetMetadata();
+      metadata_vec.emplace_back(std::string(
+          reinterpret_cast<const char *>(metadata->Data()), metadata->Size()));
+    } else {
+      metadata_vec.emplace_back("");
+    }
+  }
+  {
+    std::lock_guard<std::mutex> guard(store_client_mutex_);
+    RAY_ARROW_RETURN_NOT_OK(
+        store_client_.CreateAndSealBatch(object_ids, data_vec, metadata_vec));
+  }
+  return Status::OK();
+}
+
 Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &metadata,
                                              const size_t data_size,
                                              const ObjectID &object_id,

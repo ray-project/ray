@@ -44,6 +44,20 @@ class WorkerTaskClient {
     return call->GetStatus();
   }
 
+  /// Steal tasks from the worker.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  ray::Status StealTasks(const StealTasksRequest &request,
+                         const ClientCallback<StealTasksReply> &callback) {
+    auto call = client_call_manager_
+                    .CreateCall<WorkerTaskService, StealTasksRequest, StealTasksReply>(
+                        *stub_, &WorkerTaskService::Stub::PrepareAsyncStealTasks, request,
+                        callback);
+    return call->GetStatus();
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<WorkerTaskService::Stub> stub_;

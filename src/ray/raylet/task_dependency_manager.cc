@@ -12,13 +12,14 @@ TaskDependencyManager::TaskDependencyManager(
     ObjectManagerInterface &object_manager,
     ReconstructionPolicyInterface &reconstruction_policy,
     boost::asio::io_service &io_service, const ClientID &client_id,
-    int64_t initial_lease_period_ms,
+    int64_t initial_lease_period_ms, bool single_node,
     gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table)
     : object_manager_(object_manager),
       reconstruction_policy_(reconstruction_policy),
       io_service_(io_service),
       client_id_(client_id),
       initial_lease_period_ms_(initial_lease_period_ms),
+      single_node_(single_node),
       task_lease_table_(task_lease_table) {}
 
 bool TaskDependencyManager::CheckObjectLocal(const ObjectID &object_id) const {
@@ -311,7 +312,16 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 void TaskDependencyManager::TaskPending(const Task &task) {
   TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Task execution " << task_id << " pending";
+  if (task.IsVectorTask()) {
+    for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+      TaskPending0(task_spec.TaskId());
+    }
+  } else {
+    TaskPending0(task_id);
+  }
+}
 
+void TaskDependencyManager::TaskPending0(const TaskID &task_id) {
   // Record that the task is pending execution.
   auto inserted =
       pending_tasks_.emplace(task_id, PendingTask(initial_lease_period_ms_, io_service_));
@@ -335,6 +345,10 @@ void TaskDependencyManager::TaskPending(const Task &task) {
 }
 
 void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
+  if (single_node_) {
+    return;
+  }
+
   auto it = pending_tasks_.find(task_id);
   int64_t now_ms = current_time_ms();
   if (it == pending_tasks_.end()) {
@@ -371,7 +385,23 @@ void TaskDependencyManager::AcquireTaskLease(const TaskID &task_id) {
                                      RayConfig::instance().max_task_lease_timeout_ms());
 }
 
-void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
+void TaskDependencyManager::TaskCanceled(const Task &task, int num_tasks_completed) {
+  RAY_CHECK(num_tasks_completed != 0);
+  if (task.IsVectorTask()) {
+    int i = 0;
+    for (const auto &task_spec : task.GetTaskSpecificationVector()) {
+      if (num_tasks_completed > 0 && i >= num_tasks_completed) {
+        break;
+      }
+      TaskCanceled0(task_spec.TaskId());
+      i += 1;
+    }
+  } else {
+    TaskCanceled0(task.GetTaskSpecification().TaskId());
+  }
+}
+
+void TaskDependencyManager::TaskCanceled0(const TaskID &task_id) {
   RAY_LOG(DEBUG) << "Task execution " << task_id << " canceled";
   // Record that the task is no longer pending execution.
   auto it = pending_tasks_.find(task_id);
@@ -392,6 +422,7 @@ void TaskDependencyManager::TaskCanceled(const TaskID &task_id) {
   }
 }
 
+// TODO(ekl) this should handle vector tasks too
 void TaskDependencyManager::RemoveTasksAndRelatedObjects(
     const std::unordered_set<TaskID> &task_ids) {
   // Collect a list of all the unique objects that these tasks were subscribed

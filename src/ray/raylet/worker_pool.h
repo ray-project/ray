@@ -112,6 +112,13 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
       const JobID &job_id) const;
 
+  /// Return a pointer to a worker matching the given filter function.
+  ///
+  /// \param filter Boolean function over workers.
+  /// \return A pointer to a matching worker or nullptr.
+  std::shared_ptr<Worker> FindWorker(
+      std::function<bool(std::shared_ptr<Worker>)> filter) const;
+
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
   /// And if the worker registered but isn't assigned a task,

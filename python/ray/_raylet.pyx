@@ -675,6 +675,7 @@ cdef CRayStatus task_execution_handler(
 
     return CRayStatus.OK()
 
+
 cdef CRayStatus check_signals() nogil:
     with gil:
         try:
@@ -754,15 +755,34 @@ cdef class CoreWorker:
         return has_object
 
     def put_serialized_object(self, serialized_object, ObjectID object_id,
-                              int memcopy_threads=6):
+                              int memcopy_threads=6, c_bool put_async=False):
         cdef:
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
+            shared_ptr[CRayObject] ray_object
             CObjectID c_object_id = object_id.native()
-            size_t data_size
+            int64_t data_size
 
         data_size = serialized_object.total_bytes
 
+        # If we are returning values from a task, and the return objects are
+        # small, we can batch the puts until task batch completion. This saves
+        # a lot of IPCs to plasma for small objects.
+        if put_async and data_size < RayConfig.instance().size_limit():
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>NULL, data_size, True))
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            serialized_object.write_to(stream)
+            ray_object = make_shared[CRayObject](data, metadata)
+            with nogil:
+                check_status(self.core_worker.get().Objects().PutAsync(
+                    dereference(ray_object), c_object_id))
+            return  # Done, async puts will be flushed with task batch.
+
+        # Non-async path.
         with nogil:
             check_status(self.core_worker.get().Objects().Create(
                         metadata, data_size, c_object_id, &data))

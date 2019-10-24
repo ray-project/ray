@@ -1071,7 +1071,8 @@ def start_raylet(redis_address,
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
-                 use_pickle=False):
+                 use_pickle=False,
+                 single_node=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1188,6 +1189,7 @@ def start_raylet(redis_address,
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
+        "--single_node={}".format(single_node),
     ]
     process_info = start_ray_process(
         command,

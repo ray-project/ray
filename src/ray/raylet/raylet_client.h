@@ -84,6 +84,12 @@ class RayletClient {
   /// \return ray::Status.
   ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
 
+  /// Submit tasks using the raylet code path.
+  ///
+  /// \param The task specifications.
+  /// \return ray::Status.
+  ray::Status SubmitTaskBatch(const std::vector<ray::TaskSpecification> &tasks);
+
   /// Get next task for this client. This will block until the scheduler assigns
   /// a task to this worker. The caller takes ownership of the returned task
   /// specification and must free it.
@@ -95,7 +101,7 @@ class RayletClient {
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.
-  ray::Status TaskDone();
+  ray::Status TaskDone(int num_tasks_completed);
 
   /// Tell the raylet to reconstruct or fetch objects.
   ///

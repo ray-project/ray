@@ -10,7 +10,7 @@ message ActiveObjectIDs {
 
 message AssignTaskRequest {
   // The task to be pushed.
-  Task task = 1;
+  repeated Task tasks = 1;
   // A list of the resources reserved for this worker.
   // TODO(zhijunfu): `resource_ids` is represented as
   // flatbutters-serialized bytes, will be moved to protobuf later.
@@ -20,8 +20,17 @@ message AssignTaskRequest {
 message AssignTaskReply {
 }
 
+message StealTasksRequest {
+}
+
+message StealTasksReply {
+  repeated bytes task_ids = 1;
+}
+
 // Service for worker.
 service WorkerTaskService {
   // Push a task to a worker.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
+  // Steal tasks from this worker running a vector task.
+  rpc StealTasks(StealTasksRequest) returns (StealTasksReply);
 }

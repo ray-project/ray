@@ -199,6 +199,8 @@ class Worker(object):
                 # random task ID so that the backend can differentiate
                 # between different threads.
                 self._task_context.current_task_id = TaskID.for_fake_task()
+                import traceback
+                traceback.print_stack()
                 if getattr(self, "_multithreading_warned", False) is not True:
                     logger.warning(
                         "Calling ray.get or ray.wait in a separate thread "
@@ -405,12 +407,13 @@ class Worker(object):
         logger.warning("Local object store memory usage:\n{}\n".format(
             self.core_worker.object_store_memory_usage_string()))
 
-    def store_with_plasma(self, object_id, value):
+    def store_with_plasma(self, object_id, value, put_async=False):
         """Serialize and store an object.
 
         Args:
             object_id: The ID of the object to store.
             value: The value to put in the object store.
+            put_async: Whether to allow the put to be fulfilled async.
 
         Raises:
             Exception: An exception is raised if the attempt to store the
@@ -418,6 +421,9 @@ class Worker(object):
                 with the same ID in the object store or if the object store is
                 full.
         """
+        if put_async:
+            raise NotImplementedError("async put with new serializer")
+
         try:
             if isinstance(value, bytes):
                 # If the object is a byte array, skip serializing it and
@@ -903,6 +909,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
+         single_node_optimizations=True,
          use_pickle=False,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
@@ -992,6 +999,8 @@ def init(address=None,
             directory for the Ray process.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
+        single_node_optimizations: Whether to enable single-node performance
+            optimizations.
         use_pickle: Whether data objects should be serialized with cloudpickle.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
@@ -1075,7 +1084,11 @@ def init(address=None,
         # shutdown the node in the ray.shutdown call that happens in the atexit
         # handler.
         _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, ray_params=ray_params)
+            head=True,
+            shutdown_at_exit=False,
+            ray_params=ray_params,
+            single_node=single_node_optimizations
+            and "DISABLE_SINGLE_NODE" not in os.environ)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:

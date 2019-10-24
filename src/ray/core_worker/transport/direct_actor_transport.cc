@@ -21,6 +21,17 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
 
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTaskBatch(
+    const std::vector<TaskSpecification> &tasks) {
+  for (const auto &task : tasks) {
+    auto status = SubmitTask(task);
+    if (!status.ok()) {
+      return status;
+    }
+  }
+  return Status::OK();
+}
+
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();

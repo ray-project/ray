@@ -10,6 +10,7 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/stats/stats.h"
 #include "ray/util/sample.h"
+#include "ray/util/util.h"
 
 namespace {
 
@@ -68,6 +69,9 @@ namespace ray {
 
 namespace raylet {
 
+/// The max size of any batch of tasks to coschedule.
+const int kMaxTaskBatchSize = 128;
+
 NodeManager::NodeManager(boost::asio::io_service &io_service,
                          const NodeManagerConfig &config, ObjectManager &object_manager,
                          std::shared_ptr<gcs::RedisGcsClient> gcs_client,
@@ -95,15 +99,15 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
           },
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
           gcs_client_->client_table().GetLocalClientId(), gcs_client_->task_lease_table(),
-          object_directory_, gcs_client_->task_reconstruction_log()),
+          object_directory_, gcs_client_->task_reconstruction_log(), config.single_node),
       task_dependency_manager_(
           object_manager, reconstruction_policy_, io_service,
           gcs_client_->client_table().GetLocalClientId(),
           RayConfig::instance().initial_reconstruction_timeout_milliseconds(),
-          gcs_client_->task_lease_table()),
+          config.single_node, gcs_client_->task_lease_table()),
       lineage_cache_(gcs_client_->client_table().GetLocalClientId(),
                      gcs_client_->raylet_task_table(), gcs_client_->raylet_task_table(),
-                     config.max_lineage_size),
+                     config.max_lineage_size, config.single_node),
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
@@ -873,7 +877,8 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::TaskDone: {
     RAY_CHECK(registered_worker->UsePush());
-    HandleWorkerAvailable(client);
+    auto message = flatbuffers::GetRoot<protocol::TaskDone>(message_data);
+    HandleWorkerAvailable(client, message->num_tasks_completed());
   } break;
   case protocol::MessageType::DisconnectClient: {
     ProcessDisconnectClientMessage(client);
@@ -889,6 +894,17 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
+    flatbuffers::FlatBufferBuilder fbb;
+    flatbuffers::Offset<protocol::SubmitTaskReply> reply =
+        protocol::CreateSubmitTaskReply(fbb);
+    fbb.Finish(reply);
+    auto status =
+        client->WriteMessage(static_cast<int64_t>(protocol::MessageType::SubmitTaskReply),
+                             fbb.GetSize(), fbb.GetBufferPointer());
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to send WaitReply to client, so disconnecting client";
+      ProcessDisconnectClientMessage(client);
+    }
   } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
@@ -1025,12 +1041,13 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 }
 
 void NodeManager::HandleWorkerAvailable(
-    const std::shared_ptr<LocalClientConnection> &client) {
+    const std::shared_ptr<LocalClientConnection> &client, int num_tasks_completed) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
   RAY_CHECK(worker);
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
-    FinishAssignedTask(*worker);
+    RAY_CHECK(num_tasks_completed > 0);
+    FinishAssignedTask(*worker, num_tasks_completed);
   }
 
   // Return the worker to the idle pool.
@@ -1168,16 +1185,61 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
+/// Breaks up a task submit request into one or more batches of task specs.
+/// Each task batch will have the same object dependencies and resource shape.
+std::vector<Task> TryVectorizeTasks(const protocol::SubmitTaskRequest *message) {
+  rpc::Task task_message;
+  std::vector<Task> tasks;
+  std::vector<TaskSpecification> taskSpecBatch;
+  std::vector<ObjectID> batchDeps;
+  for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
+    const auto &task_str = message->task_specs()->Get(i);
+    RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
+                                                               task_str->size()));
+    TaskSpecification task_spec(task_message.task_spec());
+    auto taskDeps = task_spec.ComputeDependencies();
+    if (taskSpecBatch.empty()) {
+      taskSpecBatch.push_back(task_spec);
+      batchDeps = taskDeps;  // new batch
+    } else {
+      if (taskSpecBatch.size() >= kMaxTaskBatchSize ||
+          !taskSpecBatch[0].GetRequiredResources().IsEqual(
+              task_spec.GetRequiredResources()) ||
+          taskDeps != batchDeps) {
+        RAY_LOG(DEBUG) << "Created task batch of size " << taskSpecBatch.size();
+        tasks.push_back(
+            Task(TaskExecutionSpecification(task_message.task_execution_spec()),
+                 taskSpecBatch));
+        taskSpecBatch.clear();
+        batchDeps = taskDeps;  // new batch
+      }
+      taskSpecBatch.push_back(task_spec);
+    }
+  }
+  if (!taskSpecBatch.empty()) {
+    RAY_LOG(DEBUG) << "Created task batch of size " << taskSpecBatch.size();
+    tasks.push_back(Task(TaskExecutionSpecification(task_message.task_execution_spec()),
+                         taskSpecBatch));
+  }
+  return tasks;
+}
+
 void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Read the task submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
-
-  // Submit the task to the raylet. Since the task was submitted
-  // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message), Lineage());
+  auto message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+  if (initial_config_.single_node && message->task_specs()->size() > 1) {
+    for (const auto &task : TryVectorizeTasks(message)) {
+      SubmitTask(task, Lineage());
+    }
+  } else {
+    for (int64_t i = 0; i < message->task_specs()->size(); ++i) {
+      rpc::Task task_message;
+      const auto &task_str = message->task_specs()->Get(i);
+      RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(task_str->data(),
+                                                                 task_str->size()));
+      SubmitTask(Task(task_message), Lineage());
+    }
+  }
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1537,7 +1599,7 @@ void NodeManager::TreatTaskAsFailed(const Task &task, const ErrorType &error_typ
   }
   const JobID job_id = task.GetTaskSpecification().JobId();
   MarkObjectsAsFailed(error_type, objects_to_fail, job_id);
-  task_dependency_manager_.TaskCanceled(spec.TaskId());
+  task_dependency_manager_.TaskCanceled(task, -1);
   // Notify the task dependency manager that we no longer need this task's
   // object dependencies. TODO(swang): Ideally, we would check the return value
   // here. However, we don't know at this point if the task was in the WAITING
@@ -1932,7 +1994,7 @@ bool NodeManager::AssignTask(const Task &task) {
   return true;
 }
 
-void NodeManager::FinishAssignedTask(Worker &worker) {
+void NodeManager::FinishAssignedTask(Worker &worker, int num_tasks_completed) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -1961,7 +2023,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 
   // Notify the task dependency manager that this task has finished execution.
-  task_dependency_manager_.TaskCanceled(task_id);
+  task_dependency_manager_.TaskCanceled(task, num_tasks_completed);
 
   // Unset the worker's assigned task.
   worker.AssignTaskId(TaskID::Nil());
@@ -2445,7 +2507,7 @@ void NodeManager::ForwardTask(
 
       // Notify the task dependency manager that we are no longer responsible
       // for executing this task.
-      task_dependency_manager_.TaskCanceled(task_id);
+      task_dependency_manager_.TaskCanceled(task, -1);
       // Preemptively push any local arguments to the receiving node. For now, we
       // only do this with actor tasks, since actor tasks must be executed by a
       // specific process and therefore have affinity to the receiving node.
@@ -2506,6 +2568,40 @@ void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool s
     // (See design_docs/task_states.rst for the state transition diagram.)
     local_queues_.QueueTasks({assigned_task}, TaskState::READY);
     DispatchTasks(MakeTasksByClass({assigned_task}));
+  }
+  RebalanceVectorTasksAmongWorkers();
+}
+
+void NodeManager::RebalanceVectorTasksAmongWorkers() {
+  // Only enabled in single node mode.
+  if (!initial_config_.single_node) return;
+  // Steal tasks IPC in progress.
+  if (stealing_) return;
+  // No need to rebalance if there is a queue of tasks still.
+  if (!local_queues_.GetTasks(TaskState::READY).empty()) return;
+
+  // Try to find a running vector task and redistributed its load.
+  auto victim = worker_pool_.FindWorker([](std::shared_ptr<Worker> worker) {
+    return worker->HasAssignedTask() && worker->GetAssignedTask().IsVectorTask();
+  });
+  if (victim != nullptr) {
+    Task task = victim->GetAssignedTask();
+    stealing_ = true;
+    victim->StealTasks([this, task](std::vector<TaskID> stolen_task_ids) mutable {
+      stealing_ = false;
+      if (stolen_task_ids.empty()) {
+        // Retry, we may have gotten unlucky and the tasks finished already.
+        RebalanceVectorTasksAmongWorkers();
+      } else {
+        RAY_LOG(INFO) << "Rebalancing " << stolen_task_ids.size()
+                      << " tasks from worker running vector of "
+                      << task.GetTaskSpecificationVector().size() << " tasks.";
+        // TODO(ekl) can we avoid mutating the task object?
+        for (auto &task_spec : task.RemoveTaskSpecsFromVector(stolen_task_ids)) {
+          SubmitTask(Task(task_spec, task.GetTaskExecutionSpec()), Lineage());
+        }
+      }
+    });
   }
 }
 

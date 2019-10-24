@@ -32,7 +32,7 @@ class TaskDependencyManager {
   TaskDependencyManager(ObjectManagerInterface &object_manager,
                         ReconstructionPolicyInterface &reconstruction_policy,
                         boost::asio::io_service &io_service, const ClientID &client_id,
-                        int64_t initial_lease_period_ms,
+                        int64_t initial_lease_period_ms, bool single_node,
                         gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table);
 
   /// Check whether an object is locally available.
@@ -104,7 +104,9 @@ class TaskDependencyManager {
   /// objects will be requested.
   ///
   /// \param task_id The ID of the task to cancel.
-  void TaskCanceled(const TaskID &task_id);
+  /// \param num_tasks_completed The number of tasks in the batch completed, or
+  ///                            -1 for all tasks.
+  void TaskCanceled(const Task &task, int num_tasks_completed);
 
   /// Handle an object becoming locally available. If there are any subscribed
   /// tasks that depend on this object, then the object will be canceled.
@@ -150,6 +152,9 @@ class TaskDependencyManager {
   void RecordMetrics() const;
 
  private:
+  void TaskPending0(const TaskID &task_id);
+  void TaskCanceled0(const TaskID &task_id);
+
   struct ObjectDependencies {
     /// The tasks that depend on this object, either because the object is a task argument
     /// or because the task called `ray.get` on the object.
@@ -226,6 +231,8 @@ class TaskDependencyManager {
   /// added to the GCS. The lease expiration period is doubled every time the
   /// lease is renewed.
   const int64_t initial_lease_period_ms_;
+  /// Whether we are in single-node mode.
+  const bool single_node_;
   /// The storage system for the task lease table.
   gcs::TableInterface<TaskID, TaskLeaseData> &task_lease_table_;
   /// A mapping from task ID of each subscribed task to its list of object

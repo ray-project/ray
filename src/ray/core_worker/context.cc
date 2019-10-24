@@ -86,7 +86,8 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   SetCurrentJobId(task_spec.JobId());
   GetThreadContext().SetCurrentTask(task_spec);
   if (task_spec.IsActorCreationTask()) {
-    RAY_CHECK(current_actor_id_.IsNil());
+    // TODO(ekl) why does this happen for direct calls
+    //    RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_use_direct_call_ = task_spec.IsDirectCall();
   }

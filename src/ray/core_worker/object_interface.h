@@ -48,6 +48,19 @@ class CoreWorkerObjectInterface {
   /// \return Status.
   Status Put(const RayObject &object, const ObjectID &object_id);
 
+  /// Put an object with specified ID into object store, asynchronously. Async
+  /// puts will be flushed by the core worker when the task batch completes.
+  ///
+  /// \param[in] object The ray object.
+  /// \param[in] object_id Object ID specified by the user.
+  /// \return Status.
+  Status PutAsync(const RayObject &object, const ObjectID &object_id);
+
+  /// Flush all pending async puts.
+  //
+  /// \return Status.
+  Status FlushAsyncPuts();
+
   /// Create and return a buffer in the object store that can be directly written
   /// into. After writing to the buffer, the caller must call `Seal()` to finalize
   /// the object. The `Create()` and `Seal()` combination is an alternative interface
@@ -153,6 +166,9 @@ class CoreWorkerObjectInterface {
   std::string store_socket_;
   bool use_memory_store_;
 
+  /// Protects async put state.
+  absl::Mutex mu_;
+
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
@@ -161,6 +177,10 @@ class CoreWorkerObjectInterface {
       store_providers_;
 
   std::function<Status()> check_signals_;
+
+  /// Pending async puts to flush.
+  std::vector<std::pair<const RayObject, const ObjectID>> pending_async_puts_
+      GUARDED_BY(mu_);
 
   friend class CoreWorkerTaskInterface;
 

@@ -199,6 +199,10 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
+  /// If no submit task IPC is pending, send one. Otherwise, queue the tasks for
+  /// sending in batch once the current IPC has finished.
+  void SendTasksInBatch();
+
   void StartIOService();
 
   void ReportActiveObjectIDs();
@@ -253,6 +257,11 @@ class CoreWorker {
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
+
+  /// Protects task_batch_.
+  std::recursive_mutex task_batch_lock_;
+  bool flushing_ = false;
+  std::vector<TaskSpecification> task_batch_;
 
   friend class CoreWorkerTest;
 };

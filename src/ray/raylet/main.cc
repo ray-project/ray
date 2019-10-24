@@ -26,6 +26,7 @@ DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_bool(disable_stats, false, "Whether disable the stats.");
+DEFINE_bool(single_node, false, "Whether to enable single node optimizations.");
 DEFINE_string(stat_address, "127.0.0.1:8888", "The address that we report metrics to.");
 DEFINE_bool(enable_stdout_exporter, false,
             "Whether enable the stdout exporter for stats.");
@@ -58,6 +59,7 @@ int main(int argc, char *argv[]) {
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
   const bool disable_stats = FLAGS_disable_stats;
+  const bool single_node = FLAGS_single_node;
   const std::string stat_address = FLAGS_stat_address;
   const bool enable_stdout_exporter = FLAGS_enable_stdout_exporter;
   gflags::ShutDownCommandLineFlags();
@@ -105,6 +107,11 @@ int main(int argc, char *argv[]) {
   node_manager_config.node_manager_port = node_manager_port;
   node_manager_config.num_initial_workers = num_initial_workers;
   node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+  node_manager_config.single_node = single_node;
+
+  if (single_node) {
+    RAY_LOG(WARNING) << "Running in single node mode.";
+  }
 
   if (!python_worker_command.empty()) {
     node_manager_config.worker_commands.emplace(

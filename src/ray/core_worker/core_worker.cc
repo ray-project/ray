@@ -297,7 +297,11 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
                       {}, TaskTransportType::RAYLET, return_ids);
-  return raylet_client_->SubmitTask(builder.Build());
+
+  std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
+  task_batch_.push_back(builder.Build());
+  SendTasksInBatch();
+  return Status::OK();
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -386,6 +390,25 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
     actor_handle->Serialize(output);
   }
   return status;
+}
+
+void CoreWorker::SendTasksInBatch() {
+  std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
+
+  if (task_batch_.empty()) return;
+  if (flushing_) return;
+
+  flushing_ = true;
+  auto copy = task_batch_;
+
+  io_service_.post([this, copy]() {
+    RAY_LOG(DEBUG) << "Flush task batch of size " << copy.size();
+    raylet_client_->SubmitTaskBatch(copy);
+    std::lock_guard<std::recursive_mutex> guard(task_batch_lock_);
+    flushing_ = false;
+    SendTasksInBatch();
+  });
+  task_batch_.clear();
 }
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const {

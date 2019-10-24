@@ -22,6 +22,16 @@ class WorkerTaskHandler {
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   virtual void HandleAssignTask(const AssignTaskRequest &request, AssignTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a `StealTasks` request.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `send_reply_callback` should be called.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
+  virtual void HandleStealTasks(const StealTasksRequest &request, StealTasksReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.
@@ -48,10 +58,17 @@ class WorkerTaskGrpcService : public GrpcService {
                                   AssignTaskReply>(
             service_, &WorkerTaskService::AsyncService::RequestAssignTask,
             service_handler_, &WorkerTaskHandler::HandleAssignTask, cq, main_service_));
-
-    // Set `AssignTask`'s accept concurrency to 5.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(push_task_call_Factory), 5);
+
+    // Initialize the Factory for `StealTasks` requests.
+    std::unique_ptr<ServerCallFactory> steal_task_call_Factory(
+        new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler, StealTasksRequest,
+                                  StealTasksReply>(
+            service_, &WorkerTaskService::AsyncService::RequestStealTasks,
+            service_handler_, &WorkerTaskHandler::HandleStealTasks, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(steal_task_call_Factory), 5);
   }
 
  private:

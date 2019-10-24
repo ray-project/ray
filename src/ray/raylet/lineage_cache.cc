@@ -155,12 +155,19 @@ const std::unordered_set<TaskID> &Lineage::GetChildren(const TaskID &task_id) co
 LineageCache::LineageCache(const ClientID &client_id,
                            gcs::TableInterface<TaskID, TaskTableData> &task_storage,
                            gcs::PubsubInterface<TaskID> &task_pubsub,
-                           uint64_t max_lineage_size)
-    : client_id_(client_id), task_storage_(task_storage), task_pubsub_(task_pubsub) {}
+                           uint64_t max_lineage_size, bool single_node)
+    : client_id_(client_id),
+      task_storage_(task_storage),
+      task_pubsub_(task_pubsub),
+      single_node_(single_node) {}
 
 /// A helper function to add some uncommitted lineage to the local cache.
 void LineageCache::AddUncommittedLineage(const TaskID &task_id,
                                          const Lineage &uncommitted_lineage) {
+  if (single_node_) {
+    return;
+  }
+
   RAY_LOG(DEBUG) << "Adding uncommitted task " << task_id << " on " << client_id_;
   // If the entry is not found in the lineage to merge, then we stop since
   // there is nothing to copy into the merged lineage.
@@ -184,6 +191,10 @@ void LineageCache::AddUncommittedLineage(const TaskID &task_id,
 }
 
 bool LineageCache::CommitTask(const Task &task) {
+  if (single_node_) {
+    return true;
+  }
+
   const TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Committing task " << task_id << " on " << client_id_;
 
@@ -264,6 +275,10 @@ Lineage LineageCache::GetUncommittedLineage(const TaskID &task_id,
 }
 
 void LineageCache::FlushTask(const TaskID &task_id) {
+  if (single_node_) {
+    return;
+  }
+
   auto entry = lineage_.GetEntryMutable(task_id);
   RAY_CHECK(entry);
   RAY_CHECK(entry->GetStatus() < GcsStatus::COMMITTING);
