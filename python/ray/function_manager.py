@@ -294,8 +294,6 @@ class FunctionActorManager(object):
         # to a FunctionExecutionInfo object. This should only be used on
         # workers that execute remote functions.
         self._function_execution_info = defaultdict(lambda: {})
-        self._function_descriptors = defaultdict(lambda: {})
-        self._execution_infos = defaultdict(lambda: {})
         self._num_task_executions = defaultdict(lambda: {})
         # A set of all of the actor class keys that have been imported by the
         # import thread. It is safe to convert this worker into an actor of
