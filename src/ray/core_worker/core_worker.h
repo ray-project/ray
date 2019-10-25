@@ -11,6 +11,8 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/rpc/worker/worker_client.h"
+#include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
@@ -18,6 +20,16 @@ namespace ray {
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
 class CoreWorker {
+  // Callback that must be implemented and provided by the language-specific worker
+  // frontend to execute tasks and return their results.
+  using TaskExecutionCallback = std::function<Status(
+      TaskType task_type, const RayFunction &ray_function,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::vector<std::shared_ptr<RayObject>> &args,
+      const std::vector<ObjectID> &arg_reference_ids,
+      const std::vector<ObjectID> &return_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
+
  public:
   /// Construct a CoreWorker instance.
   ///
@@ -45,8 +57,7 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
-                 &task_execution_callback,
+             const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              bool use_memory_store = true);
 
@@ -235,6 +246,10 @@ class CoreWorker {
   // Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
+  // Profile event for when the worker is idle. Should be reset when the worker
+  // enters and exits an idle period.
+  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
+
   /// Map from actor ID to a handle to that actor.
   std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;
 
@@ -249,6 +264,12 @@ class CoreWorker {
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
+
+  // Task execution callback.
+  TaskExecutionCallback task_execution_callback_;
+
+  /// RPC server used to receive tasks to execute.
+  rpc::GrpcServer worker_server_;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;

@@ -44,8 +44,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
-                       const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
-                           &task_execution_callback,
+                       const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals, bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
@@ -53,7 +52,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
-      heartbeat_timer_(io_service_) {
+      heartbeat_timer_(io_service_),
+      task_execution_callback_(task_execution_callback),
+      worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -78,12 +79,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                     use_memory_store, check_signals));
 
   // Initialize task execution.
-  int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
+    RAY_CHECK(task_execution_callback_ != nullptr);
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-        new CoreWorkerTaskExecutionInterface(*this, worker_context_,
-                                             task_execution_callback));
-    rpc_server_port = task_execution_interface_->worker_server_.GetPort();
+        new CoreWorkerTaskExecutionInterface(*this));
   }
 
   // Initialize raylet client.
@@ -94,7 +93,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       raylet_socket_, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, rpc_server_port));
+      language_, worker_server_.GetPort()));
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.

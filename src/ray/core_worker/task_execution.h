@@ -24,18 +24,8 @@ class TaskSpecification;
 /// execution.
 class CoreWorkerTaskExecutionInterface {
  public:
-  // Callback that must be implemented and provided by the language-specific worker
-  // frontend to execute tasks and return their results.
-  using TaskExecutionCallback = std::function<Status(
-      TaskType task_type, const RayFunction &ray_function,
-      const std::unordered_map<std::string, double> &required_resources,
-      const std::vector<std::shared_ptr<RayObject>> &args,
-      const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker, WorkerContext &worker_context,
-                                   const TaskExecutionCallback &task_execution_callback);
+  CoreWorkerTaskExecutionInterface(CoreWorker &core_worker);
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -81,25 +71,15 @@ class CoreWorkerTaskExecutionInterface {
   /// WorkerContext or to remove this interface entirely.
   CoreWorker &core_worker_;
 
-  // Task execution callback.
-  TaskExecutionCallback task_execution_callback_;
-
   /// All the task task receivers supported.
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
       task_receivers_;
-
-  /// The RPC server.
-  rpc::GrpcServer worker_server_;
 
   /// Event loop where tasks are processed.
   std::shared_ptr<boost::asio::io_service> main_service_;
 
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
-
-  // Profile event for when the worker is idle. Should be reset when the worker
-  // enters and exits an idle period.
-  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
 
   friend class CoreWorker;
 };

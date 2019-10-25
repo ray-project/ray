@@ -7,14 +7,10 @@
 namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
-    CoreWorker &core_worker, WorkerContext &worker_context,
-    const TaskExecutionCallback &task_execution_callback)
+    CoreWorker &core_worker)
     : core_worker_(core_worker),
-      task_execution_callback_(task_execution_callback),
-      worker_server_("Worker", 0 /* let grpc choose port */),
       main_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*main_service_) {
-  RAY_CHECK(task_execution_callback_ != nullptr);
 
   auto func =
       std::bind(&CoreWorkerTaskExecutionInterface::ExecuteTask, this,
@@ -23,22 +19,22 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
           core_worker_.worker_context_, core_worker_.raylet_client_,
-          *core_worker_.object_interface_, *main_service_, worker_server_, func)));
+          *core_worker_.object_interface_, *main_service_, core_worker_.worker_server_, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
           new CoreWorkerDirectActorTaskReceiver(core_worker_.worker_context_,
                                                 *core_worker_.object_interface_,
-                                                *main_service_, worker_server_, func)));
+                                                *main_service_, core_worker_.worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
-  worker_server_.Run();
+  core_worker_.worker_server_.Run();
 }
 
 Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
     std::vector<std::shared_ptr<RayObject>> *results) {
-  idle_profile_event_.reset();
+  core_worker_.idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
   core_worker_.resource_ids_ = resource_ids;
@@ -68,23 +64,23 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
-  status = task_execution_callback_(task_type, func,
+  status = core_worker_.task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, results);
 
   core_worker_.SetCurrentTaskId(TaskID::Nil());
-  worker_context_.ResetCurrentTask(task_spec);
+  core_worker_.worker_context_.ResetCurrentTask(task_spec);
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
-  idle_profile_event_.reset(
+  core_worker_.idle_profile_event_.reset(
       new worker::ProfileEvent(core_worker_.profiler_, "worker_idle"));
   return status;
 }
 
 void CoreWorkerTaskExecutionInterface::Run() {
-  idle_profile_event_.reset(
+  core_worker_.idle_profile_event_.reset(
       new worker::ProfileEvent(core_worker_.profiler_, "worker_idle"));
   main_service_->run();
 }
@@ -94,7 +90,7 @@ void CoreWorkerTaskExecutionInterface::Stop() {
   std::shared_ptr<boost::asio::io_service> main_service = main_service_;
   // Delay the execution of io_service::stop() to avoid deadlock if
   // CoreWorkerTaskExecutionInterface::Stop is called inside a task.
-  idle_profile_event_.reset();
+  core_worker_.idle_profile_event_.reset();
   main_service_->post([main_service]() { main_service->stop(); });
 }
 
