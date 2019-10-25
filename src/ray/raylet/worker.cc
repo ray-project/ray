@@ -123,7 +123,6 @@ void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids)
 
 void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
-  // Use push mode.
   RAY_CHECK(port_ > 0);
   rpc::AssignTaskRequest request;
   request.mutable_task()->mutable_task_spec()->CopyFrom(
