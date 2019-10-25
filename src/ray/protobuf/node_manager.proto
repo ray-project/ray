@@ -19,7 +19,9 @@ message NodeStatsRequest {
 }
 
 message WorkerStats {
+  // PID of the worker process.
   uint32 pid = 1;
+  // Whether this is a driver.
   bool is_driver = 2;
 }
 
