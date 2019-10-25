@@ -14,8 +14,7 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> profiler,
 }
 
 Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-                   boost::asio::io_service &io_service,
-                   std::unique_ptr<gcs::RedisGcsClient> &gcs_client)
+                   boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client)
     : io_service_(io_service),
       timer_(io_service_, boost::asio::chrono::seconds(1)),
       gcs_client_(gcs_client) {
@@ -36,7 +35,7 @@ void Profiler::FlushEvents() {
   if (rpc_profile_data_.profile_events_size() != 0) {
     // TODO(edoakes): this should be migrated to use the new GCS client interface
     // instead of the raw table interface once it's ready.
-    if (!gcs_client_->profile_table().AddProfileEventBatch(rpc_profile_data_).ok()) {
+    if (!gcs_client_.profile_table().AddProfileEventBatch(rpc_profile_data_).ok()) {
       RAY_LOG(WARNING) << "Failed to push profile events to GCS.";
     } else {
       RAY_LOG(DEBUG) << "Pushed " << rpc_profile_data_.profile_events_size()
