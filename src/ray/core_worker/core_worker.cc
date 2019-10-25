@@ -49,17 +49,16 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        std::function<Status()> check_signals, bool use_memory_store)
     : worker_type_(worker_type),
       language_(language),
-      raylet_socket_(raylet_socket),
       log_dir_(log_dir),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       heartbeat_timer_(io_service_),
-      task_execution_callback_(task_execution_callback),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
       object_interface_(worker_context_, raylet_client_, store_socket, use_memory_store,
                         check_signals),
-      main_work_(task_execution_service_) {
+      task_execution_service_work_(task_execution_service_),
+      task_execution_callback_(task_execution_callback) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -103,7 +102,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket_, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
 
@@ -115,7 +114,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   }
 
-  io_thread_ = std::thread(&CoreWorker::StartIOService, this);
+  io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -142,6 +141,48 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
           io_service_, object_interface_.CreateStoreProvider(StoreProviderType::MEMORY)));
+}
+
+CoreWorker::~CoreWorker() {
+  io_service_.stop();
+  io_thread_.join();
+  if (worker_type_ == WorkerType::WORKER) {
+    task_execution_service_.stop();
+  }
+  if (log_dir_ != "") {
+    RayLog::ShutDownRayLog();
+  }
+}
+
+void CoreWorker::Disconnect() {
+  io_service_.stop();
+  gcs_client_.Disconnect();
+  if (raylet_client_) {
+    RAY_IGNORE_EXPR(raylet_client_->Disconnect());
+  }
+}
+
+void CoreWorker::RunIOService() {
+  // Block SIGINT and SIGTERM so they will be handled by the main thread.
+  sigset_t mask;
+  sigemptyset(&mask);
+  sigaddset(&mask, SIGINT);
+  sigaddset(&mask, SIGTERM);
+  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+
+  io_service_.run();
+}
+
+void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
+  worker_context_.SetCurrentTaskId(task_id);
+  main_thread_task_id_ = task_id;
+  // Clear all actor handles at the end of each non-actor task.
+  if (actor_id_.IsNil() && task_id.IsNil()) {
+    for (const auto &handle : actor_handles_) {
+      RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
+    }
+    actor_handles_.clear();
+  }
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
@@ -184,54 +225,6 @@ void CoreWorker::ReportActiveObjectIDs() {
   active_object_ids_updated_ = false;
 }
 
-CoreWorker::~CoreWorker() {
-  io_service_.stop();
-  io_thread_.join();
-  if (worker_type_ == WorkerType::WORKER) {
-    task_execution_service_.stop();
-  }
-  if (log_dir_ != "") {
-    RayLog::ShutDownRayLog();
-  }
-}
-
-void CoreWorker::Disconnect() {
-  io_service_.stop();
-  gcs_client_.Disconnect();
-  if (raylet_client_) {
-    RAY_IGNORE_EXPR(raylet_client_->Disconnect());
-  }
-}
-
-void CoreWorker::StartIOService() {
-  // Block SIGINT and SIGTERM so they will be handled by the main thread.
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, SIGINT);
-  sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, NULL);
-
-  io_service_.run();
-}
-
-std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
-    const std::string &event_type) {
-  return std::unique_ptr<worker::ProfileEvent>(
-      new worker::ProfileEvent(profiler_, event_type));
-}
-
-void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
-  worker_context_.SetCurrentTaskId(task_id);
-  main_thread_task_id_ = task_id;
-  // Clear all actor handles at the end of each non-actor task.
-  if (actor_id_.IsNil() && task_id.IsNil()) {
-    for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
-    }
-    actor_handles_.clear();
-  }
-}
-
 TaskID CoreWorker::GetCallerId() const {
   TaskID caller_id;
   ActorID actor_id = GetActorId();
@@ -241,54 +234,6 @@ TaskID CoreWorker::GetCallerId() const {
     caller_id = main_thread_task_id_;
   }
   return caller_id;
-}
-
-bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
-  const auto &actor_id = actor_handle->GetActorID();
-  auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
-  if (inserted) {
-    // Register a callback to handle actor notifications.
-    auto actor_notification_callback = [this](const ActorID &actor_id,
-                                              const gcs::ActorTableData &actor_data) {
-      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
-        auto it = actor_handles_.find(actor_id);
-        RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
-          // We have to reset the actor handle since the next instance of the
-          // actor will not have the last sequence number that we sent.
-          // TODO: Remove the check for direct calls. We do not reset for the
-          // raylet codepath because it tries to replay all tasks since the
-          // last actor checkpoint.
-          it->second->Reset();
-        }
-      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
-        // We cannot erase the actor handle here because clients can still
-        // submit tasks to dead actors.
-      }
-
-      direct_actor_submitter_->HandleActorUpdate(actor_id, actor_data);
-
-      RAY_LOG(INFO) << "received notification on actor, state="
-                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                    << ", ip address: " << actor_data.ip_address()
-                    << ", port: " << actor_data.port();
-    };
-
-    RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(
-        actor_id, actor_notification_callback, nullptr));
-  }
-  return inserted;
-}
-
-Status CoreWorker::GetActorHandle(const ActorID &actor_id,
-                                  ActorHandle **actor_handle) const {
-  auto it = actor_handles_.find(actor_id);
-  if (it == actor_handles_.end()) {
-    return Status::Invalid("Handle for actor does not exist");
-  }
-  *actor_handle = it->second.get();
-  return Status::OK();
 }
 
 Status CoreWorker::SubmitTask(const RayFunction &function,
@@ -395,7 +340,59 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
   return status;
 }
 
-const ResourceMappingType CoreWorker::GetResourceIDs() const { return resource_ids_; }
+bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
+  const auto &actor_id = actor_handle->GetActorID();
+  auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+  if (inserted) {
+    // Register a callback to handle actor notifications.
+    auto actor_notification_callback = [this](const ActorID &actor_id,
+                                              const gcs::ActorTableData &actor_data) {
+      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+        auto it = actor_handles_.find(actor_id);
+        RAY_CHECK(it != actor_handles_.end());
+        if (it->second->IsDirectCallActor()) {
+          // We have to reset the actor handle since the next instance of the
+          // actor will not have the last sequence number that we sent.
+          // TODO: Remove the check for direct calls. We do not reset for the
+          // raylet codepath because it tries to replay all tasks since the
+          // last actor checkpoint.
+          it->second->Reset();
+        }
+      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+        RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
+        // We cannot erase the actor handle here because clients can still
+        // submit tasks to dead actors.
+      }
+
+      direct_actor_submitter_->HandleActorUpdate(actor_id, actor_data);
+
+      RAY_LOG(INFO) << "received notification on actor, state="
+                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                    << ", ip address: " << actor_data.ip_address()
+                    << ", port: " << actor_data.port();
+    };
+
+    RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(
+        actor_id, actor_notification_callback, nullptr));
+  }
+  return inserted;
+}
+
+Status CoreWorker::GetActorHandle(const ActorID &actor_id,
+                                  ActorHandle **actor_handle) const {
+  auto it = actor_handles_.find(actor_id);
+  if (it == actor_handles_.end()) {
+    return Status::Invalid("Handle for actor does not exist");
+  }
+  *actor_handle = it->second.get();
+  return Status::OK();
+}
+
+std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
+    const std::string &event_type) {
+  return std::unique_ptr<worker::ProfileEvent>(
+      new worker::ProfileEvent(profiler_, event_type));
+}
 
 void CoreWorker::StartExecutingTasks() {
   idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));

@@ -65,25 +65,15 @@ class CoreWorker {
 
   void Disconnect();
 
-  /// Type of this worker.
   WorkerType GetWorkerType() const { return worker_type_; }
 
-  /// Language of this worker.
   Language GetLanguage() const { return language_; }
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
   RayletClient &GetRayletClient() { return *raylet_client_; }
 
-  /// Return the `CoreWorkerObjectInterface` that contains methods related to object
-  /// store.
   CoreWorkerObjectInterface &Objects() { return object_interface_; }
-
-  /// Create a profile event with a reference to the core worker's profiler.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
-
-  // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const;
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
@@ -96,7 +86,15 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  const ActorID &GetActorId() const { return actor_id_; }
+  // Add this object ID to the set of active object IDs that is sent to the raylet
+  // in the heartbeat messsage.
+  void AddActiveObjectID(const ObjectID &object_id);
+
+  // Remove this object ID from the set of active object IDs that is sent to the raylet
+  // in the heartbeat messsage.
+  void RemoveActiveObjectID(const ObjectID &object_id);
+
+  /* Public methods related to task submission. */
 
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
@@ -105,8 +103,6 @@ class CoreWorker {
   /// IDs have the same type, we embed the actor ID in a TaskID with the rest
   /// of the bytes zeroed out.
   TaskID GetCallerId() const;
-
-  /* Methods related to task submission. */
 
   /// Submit a normal task.
   ///
@@ -168,19 +164,29 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
-  // Add this object ID to the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void AddActiveObjectID(const ObjectID &object_id);
+  /* Public methods related to task execution. Should not be used by driver processes. */
 
-  // Remove this object ID from the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void RemoveActiveObjectID(const ObjectID &object_id);
+  const ActorID &GetActorId() const { return actor_id_; }
+
+  // Get the resource IDs available to this worker (as assigned by the raylet).
+  const ResourceMappingType GetResourceIDs() const { return resource_ids_; }
+
+  /// Create a profile event with a reference to the core worker's profiler.
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
 
   /// Start receiving and executing tasks.
   /// \return void.
   void StartExecutingTasks();
 
  private:
+  /// Run the io_service_ event loop. This should be called in a background thread.
+  void RunIOService();
+
+  /// Send the list of active object IDs to the raylet.
+  void ReportActiveObjectIDs();
+
+  /* Private methods related to task submission. */
+
   /// Give this worker a handle to an actor.
   ///
   /// This handle will remain as long as the current actor or task is
@@ -200,6 +206,8 @@ class CoreWorker {
   /// \param[out] actor_handle A handle to the requested actor.
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
+
+  /* Private methods related to task execution. Should not be used by driver processes. */
 
   /// Execute a task.
   ///
@@ -229,21 +237,24 @@ class CoreWorker {
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
 
-  void StartIOService();
-
-  void ReportActiveObjectIDs();
-
+  /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
+
+  /// Application language of this worker (i.e., PYTHON or JAVA).
   const Language language_;
-  const std::string raylet_socket_;
+
+  /// Directory where log files are written.
   const std::string log_dir_;
+
+  /// Shared state of the worker. Includes process-level and thread-level state.
+  /// TODO(edoakes): we should move process-level state into this class and make
+  /// this a ThreadContext.
   WorkerContext worker_context_;
+
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
   TaskID main_thread_task_id_;
-  /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
@@ -255,12 +266,6 @@ class CoreWorker {
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
-  // Thread that runs a boost::asio service to process IO events.
-  std::thread io_thread_;
-
-  // Task execution callback.
-  TaskExecutionCallback task_execution_callback_;
-
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer worker_server_;
 
@@ -270,21 +275,8 @@ class CoreWorker {
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
 
-  // Interface to submit tasks directly to other actors.
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
-
-  // Interface for storing and retrieving shared objects.
-  CoreWorkerObjectInterface object_interface_;
-
-  // Profiler including a background thread that pushes profiling events to the GCS.
-  std::shared_ptr<worker::Profiler> profiler_;
-
-  // Profile event for when the worker is idle. Should be reset when the worker
-  // enters and exits an idle period.
-  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
-
-  /// Map from actor ID to a handle to that actor.
-  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+  // Thread that runs a boost::asio service to process IO events.
+  std::thread io_thread_;
 
   /// Set of object IDs that are in scope in the language worker.
   std::unordered_set<ObjectID> active_object_ids_;
@@ -293,16 +285,42 @@ class CoreWorker {
   /// last time it was sent to the raylet.
   bool active_object_ids_updated_ = false;
 
-  /// A map from resource name to the resource IDs that are currently reserved
-  /// for this worker. Each pair consists of the resource ID and the fraction
-  /// of that resource allocated for this worker.
-  ResourceMappingType resource_ids_;
+  // Interface for storing and retrieving shared objects.
+  CoreWorkerObjectInterface object_interface_;
+
+  /* Fields related to task submission. */
+
+  // Interface to submit tasks directly to other actors.
+  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  /// Map from actor ID to a handle to that actor.
+  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+
+  /* Fields related to task execution. */
+
+  /// Our actor ID. If this is nil, then we execute only stateless tasks.
+  ActorID actor_id_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
-  boost::asio::io_service::work main_work_;
+  boost::asio::io_service::work task_execution_service_work_;
+
+  // Profiler including a background thread that pushes profiling events to the GCS.
+  std::shared_ptr<worker::Profiler> profiler_;
+
+  // Profile event for when the worker is idle. Should be reset when the worker
+  // enters and exits an idle period.
+  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
+
+  // Task execution callback.
+  TaskExecutionCallback task_execution_callback_;
+
+  /// A map from resource name to the resource IDs that are currently reserved
+  /// for this worker. Each pair consists of the resource ID and the fraction
+  /// of that resource allocated for this worker.
+  ResourceMappingType resource_ids_;
 
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
