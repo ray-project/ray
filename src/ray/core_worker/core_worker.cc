@@ -168,16 +168,20 @@ void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
 void CoreWorker::ReportActiveObjectIDs() {
   // Only send a heartbeat when the set of active object IDs has changed because the
   // raylet only modifies the set of IDs when it receives a heartbeat.
-  if (active_object_ids_updated_) {
-    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-    if (active_object_ids_.size() >
-        RayConfig::instance().raylet_max_active_object_ids()) {
-      RAY_LOG(WARNING) << active_object_ids_.size()
-                       << "object IDs are currently in scope. "
-                       << "This may lead to required objects being garbage collected.";
-    }
-    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(active_object_ids_));
+  // TODO(edoakes): this is currently commented out because this heartbeat causes the
+  // workers to die when the raylet crashes unexpectedly. Without this, they could
+  // hang idle forever because they wait for the raylet to push tasks via gRPC.
+  // if (active_object_ids_updated_) {
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+  if (active_object_ids_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+                     << "This may lead to required objects being garbage collected.";
   }
+  if (!raylet_client_->ReportActiveObjectIDs(active_object_ids_).ok()) {
+    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
+    Shutdown();
+  }
+  // }
 
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
@@ -189,13 +193,20 @@ void CoreWorker::ReportActiveObjectIDs() {
 }
 
 CoreWorker::~CoreWorker() {
-  io_service_.stop();
+  Shutdown();
   io_thread_.join();
-  if (worker_type_ == WorkerType::WORKER) {
-    StopExecutingTasks();
-  }
-  if (log_dir_ != "") {
-    RayLog::ShutDownRayLog();
+}
+
+void CoreWorker::Shutdown() {
+  if (!shutdown_) {
+    io_service_.stop();
+    if (worker_type_ == WorkerType::WORKER) {
+      StopExecutingTasks();
+    }
+    if (log_dir_ != "") {
+      RayLog::ShutDownRayLog();
+    }
+    shutdown_ = true;
   }
 }
 
@@ -411,7 +422,7 @@ void CoreWorker::StopExecutingTasks() {
   std::shared_ptr<boost::asio::io_service> task_execution_service =
       task_execution_service_;
   // Delay the execution of io_service::stop() to avoid deadlock if
-  // Stop is called inside a task.
+  // StopExecutingTasks is called inside a task.
   idle_profile_event_.reset();
   task_execution_service_->post(
       [task_execution_service]() { task_execution_service->stop(); });

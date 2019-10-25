@@ -184,6 +184,10 @@ class CoreWorker {
   /// \return void.
   void StopExecutingTasks();
 
+  /// Shut down the worker completely.
+  /// \return void.
+  void Shutdown();
+
  private:
   /// Give this worker a handle to an actor.
   ///
@@ -248,6 +252,9 @@ class CoreWorker {
   TaskID main_thread_task_id_;
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
+
+  // Flag indicating whether this worker has been shut down.
+  bool shutdown_ = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
