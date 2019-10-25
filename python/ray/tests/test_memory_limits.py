@@ -76,7 +76,8 @@ class TestMemoryLimits(unittest.TestCase):
             print("Raised exception", type(e), e)
             raise e
         finally:
-            print(ray.worker.global_worker.dump_object_store_memory_usage())
+            print(ray.worker.global_worker.core_worker.
+                  dump_object_store_memory_usage())
             ray.shutdown()
 
 

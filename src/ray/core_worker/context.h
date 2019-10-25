@@ -28,6 +28,8 @@ class WorkerContext {
 
   void SetCurrentTask(const TaskSpecification &task_spec);
 
+  void ResetCurrentTask(const TaskSpecification &task_spec);
+
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const;
@@ -46,7 +48,7 @@ class WorkerContext {
   bool current_actor_use_direct_call_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

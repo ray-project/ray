@@ -42,7 +42,6 @@ from ray import (
     ActorID,
     JobID,
     ObjectID,
-    TaskID,
 )
 from ray import import_thread
 from ray import profiling
@@ -141,10 +140,6 @@ class Worker(object):
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
         self.function_actor_manager = FunctionActorManager(self)
-        # Identity of the job that this worker is processing.
-        # It is a JobID.
-        self.current_job_id = JobID.nil()
-        self._task_context = threading.local()
         # This event is checked regularly by all of the threads so that they
         # know when to exit.
         self.threads_stopped = threading.Event()
@@ -175,46 +170,20 @@ class Worker(object):
         return self.node.use_pickle
 
     @property
-    def task_context(self):
-        """A thread-local that contains the following attributes.
+    def current_job_id(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_current_job_id()
+        return JobID.nil()
 
-        current_task_id: For the main thread, this field is the ID of this
-            worker's current running task; for other threads, this field is a
-            fake random ID.
-        task_index: The number of tasks that have been submitted from the
-            current task.
-        put_index: The number of objects that have been put from the current
-            task.
-        """
-        if not hasattr(self._task_context, "initialized"):
-            # Initialize task_context for the current thread.
-            if ray.utils.is_main_thread():
-                # If this is running on the main thread, initialize it to
-                # NIL. The actual value will set when the worker receives
-                # a task from raylet backend.
-                self._task_context.current_task_id = TaskID.nil()
-            else:
-                # If this is running on a separate thread, then the mapping
-                # to the current task ID may not be correct. Generate a
-                # random task ID so that the backend can differentiate
-                # between different threads.
-                self._task_context.current_task_id = TaskID.for_fake_task()
-                if getattr(self, "_multithreading_warned", False) is not True:
-                    logger.warning(
-                        "Calling ray.get or ray.wait in a separate thread "
-                        "may lead to deadlock if the main thread blocks on "
-                        "this thread and there are not enough resources to "
-                        "execute more tasks")
-                    self._multithreading_warned = True
-
-            self._task_context.task_index = 0
-            self._task_context.put_index = 1
-            self._task_context.initialized = True
-        return self._task_context
+    @property
+    def actor_id(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_id()
+        return ActorID.nil()
 
     @property
     def current_task_id(self):
-        return self.task_context.current_task_id
+        return self.core_worker.get_current_task_id()
 
     @property
     def current_session_and_job(self):
@@ -283,19 +252,111 @@ class Worker(object):
         """
         self.mode = mode
 
-    def store_and_register(self, object_id, value, depth=100):
+    def put_object(self, value, object_id=None):
+        """Put value in the local object store with object id `objectid`.
+
+        This assumes that the value for `objectid` has not yet been placed in
+        the local object store. If the plasma store is full, the worker will
+        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
+        retry will delay for an exponentially doubling amount of time,
+        starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
+        will be raised.
+
+        Args:
+            value: The value to put in the object store.
+            object_id (object_id.ObjectID): The object ID of the value to be
+                put. If None, one will be generated.
+
+        Returns:
+            object_id.ObjectID: The object ID the object was put under.
+
+        Raises:
+            ray.exceptions.ObjectStoreFullError: This is raised if the attempt
+                to store the object fails because the object store is full even
+                after multiple retries.
+        """
+        # Make sure that the value is not an object ID.
+        if isinstance(value, ObjectID):
+            raise TypeError(
+                "Calling 'put' on an ray.ObjectID is not allowed "
+                "(similarly, returning an ray.ObjectID from a remote "
+                "function is not allowed). If you really want to "
+                "do this, you can wrap the ray.ObjectID in a list and "
+                "call 'put' on it (or return it).")
+
+        if isinstance(value, bytes):
+            # If the object is a byte array, skip serializing it and
+            # use a special metadata to indicate it's raw binary. So
+            # that this object can also be read by Java.
+            return self.core_worker.put_raw_buffer(
+                value,
+                object_id=object_id,
+                memcopy_threads=self.memcopy_threads)
+
+        if self.use_pickle:
+            return self._serialize_and_put_pickle5(value, object_id=object_id)
+        else:
+            return self._serialize_and_put_pyarrow(value, object_id=object_id)
+
+    def _serialize_and_put_pickle5(self, value, object_id=None):
+        """Serialize an object using pickle5 and store it in the object store.
+
+        Args:
+            value: The value to put in the object store.
+            object_id: The ID of the object to store. If none, one will be
+                generated.
+
+        Raises:
+            Exception: An exception is raised if the attempt to store the
+                object fails. This can happen if the object store is full.
+        """
+        writer = Pickle5Writer()
+        if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
+            inband = pickle.dumps(
+                value, protocol=5, buffer_callback=writer.buffer_callback)
+        else:
+            inband = pickle.dumps(value)
+        return self.core_worker.put_pickle5_buffers(
+            inband,
+            writer,
+            object_id=object_id,
+            memcopy_threads=self.memcopy_threads)
+
+    def _serialize_and_put_pyarrow(self, value, object_id=None):
+        """Wraps `store_and_register` with cases for existence and pickling.
+
+        Args:
+            object_id (object_id.ObjectID): The object ID of the value to be
+                put.
+            value: The value to put in the object store.
+        """
+        try:
+            serialized_value = self._serialize_with_pyarrow(value)
+        except TypeError:
+            # TypeError can happen because one of the members of the object
+            # may not be serializable for cloudpickle. So we need
+            # these extra fallbacks here to start from the beginning.
+            # Hopefully the object could have a `__reduce__` method.
+            _register_custom_serializer(type(value), use_pickle=True)
+            logger.warning("WARNING: Serializing the class {} failed, "
+                           "falling back to cloudpickle.".format(type(value)))
+            serialized_value = self._serialize_with_pyarrow(value)
+
+        return self.core_worker.put_serialized_object(
+            serialized_value,
+            object_id=object_id,
+            memcopy_threads=self.memcopy_threads)
+
+    def _serialize_with_pyarrow(self, value, depth=100):
         """Store an object and attempt to register its class if needed.
 
         Args:
-            object_id: The ID of the object to store.
             value: The value to put in the object store.
             depth: The maximum number of classes to recursively register.
 
         Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
+            Exception: An exception is raised if the attempt to serialize the
+                object fails.
         """
         counter = 0
         while True:
@@ -306,20 +367,9 @@ class Worker(object):
                                 "type {}.".format(type(value)))
             counter += 1
             try:
-                if isinstance(value, bytes):
-                    # If the object is a byte array, skip serializing it and
-                    # use a special metadata to indicate it's raw binary. So
-                    # that this object can also be read by Java.
-                    self.core_worker.put_raw_buffer(
-                        value, object_id, memcopy_threads=self.memcopy_threads)
-                else:
-                    serialization_context = self.get_serialization_context(
-                        self.current_job_id)
-                    self.core_worker.put_serialized_object(
-                        pyarrow.serialize(value, serialization_context),
-                        object_id,
-                        memcopy_threads=self.memcopy_threads)
-                break
+                serialization_context = self.get_serialization_context(
+                    self.current_job_id)
+                return pyarrow.serialize(value, serialization_context)
             except pyarrow.SerializationCallbackError as e:
                 cls_type = type(e.example_object)
                 try:
@@ -351,121 +401,6 @@ class Worker(object):
                                            "and only registering the class "
                                            "locally.".format(cls_type))
                         logger.warning(warning_message)
-
-    def put_object(self, object_id, value):
-        """Put value in the local object store with object id `objectid`.
-
-        This assumes that the value for `objectid` has not yet been placed in
-        the local object store. If the plasma store is full, the worker will
-        automatically retry up to DEFAULT_PUT_OBJECT_RETRIES times. Each
-        retry will delay for an exponentially doubling amount of time,
-        starting with DEFAULT_PUT_OBJECT_DELAY. After this, exception
-        will be raised.
-
-        Args:
-            object_id (object_id.ObjectID): The object ID of the value to be
-                put.
-            value: The value to put in the object store.
-
-        Raises:
-            ray.exceptions.ObjectStoreFullError: This is raised if the attempt
-                to store the object fails because the object store is full even
-                after multiple retries.
-        """
-        # Make sure that the value is not an object ID.
-        if isinstance(value, ObjectID):
-            raise TypeError(
-                "Calling 'put' on an ray.ObjectID is not allowed "
-                "(similarly, returning an ray.ObjectID from a remote "
-                "function is not allowed). If you really want to "
-                "do this, you can wrap the ray.ObjectID in a list and "
-                "call 'put' on it (or return it).")
-
-        delay = ray_constants.DEFAULT_PUT_OBJECT_DELAY
-        for attempt in reversed(
-                range(ray_constants.DEFAULT_PUT_OBJECT_RETRIES)):
-            try:
-                if self.use_pickle:
-                    self.store_with_plasma(object_id, value)
-                else:
-                    self._try_store_and_register(object_id, value)
-                break
-            except ObjectStoreFullError as e:
-                if attempt:
-                    logger.warning("Waiting {} seconds for space to free up "
-                                   "in the object store.".format(delay))
-                    time.sleep(delay)
-                    delay *= 2
-                else:
-                    self.dump_object_store_memory_usage()
-                    raise e
-
-    def dump_object_store_memory_usage(self):
-        """Prints object store debug string to stdout."""
-        logger.warning("Local object store memory usage:\n{}\n".format(
-            self.core_worker.object_store_memory_usage_string()))
-
-    def store_with_plasma(self, object_id, value):
-        """Serialize and store an object.
-
-        Args:
-            object_id: The ID of the object to store.
-            value: The value to put in the object store.
-
-        Raises:
-            Exception: An exception is raised if the attempt to store the
-                object fails. This can happen if there is already an object
-                with the same ID in the object store or if the object store is
-                full.
-        """
-        try:
-            if isinstance(value, bytes):
-                # If the object is a byte array, skip serializing it and
-                # use a special metadata to indicate it's raw binary. So
-                # that this object can also be read by Java.
-                self.core_worker.put_raw_buffer(
-                    value, object_id, memcopy_threads=self.memcopy_threads)
-            else:
-                writer = Pickle5Writer()
-                if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
-                    inband = pickle.dumps(
-                        value,
-                        protocol=5,
-                        buffer_callback=writer.buffer_callback)
-                else:
-                    inband = pickle.dumps(value)
-                self.core_worker.put_pickle5_buffers(object_id, inband, writer,
-                                                     self.memcopy_threads)
-        except pyarrow.plasma.PlasmaObjectExists:
-            # The object already exists in the object store, so there is no
-            # need to add it again. TODO(rkn): We need to compare hashes
-            # and make sure that the objects are in fact the same. We also
-            # should return an error code to caller instead of printing a
-            # message.
-            logger.info("The object with ID {} already exists "
-                        "in the object store.".format(object_id))
-
-    def _try_store_and_register(self, object_id, value):
-        """Wraps `store_and_register` with cases for existence and pickling.
-
-        Args:
-            object_id (object_id.ObjectID): The object ID of the value to be
-                put.
-            value: The value to put in the object store.
-        """
-        try:
-            self.store_and_register(object_id, value)
-        except TypeError:
-            # TypeError can happen because one of the members of the object
-            # may not be serializable for cloudpickle. So we need
-            # these extra fallbacks here to start from the beginning.
-            # Hopefully the object could have a `__reduce__` method.
-            _register_custom_serializer(type(value), use_pickle=True)
-            warning_message = ("WARNING: Serializing the class {} failed, "
-                               "falling back to cloudpickle.".format(
-                                   type(value)))
-            logger.warning(warning_message)
-            self.store_and_register(object_id, value)
 
     def deserialize_objects(self,
                             data_metadata_pairs,
@@ -673,22 +608,6 @@ class Worker(object):
                     arguments[object_indices[i]] = value
 
         return ray.signature.recover_args(arguments)
-
-    def _set_object_store_client_options(self, name, object_store_memory):
-        try:
-            logger.debug("Setting plasma memory limit to {} for {}".format(
-                object_store_memory, name))
-            self.core_worker.set_object_store_client_options(
-                name.encode("ascii"), object_store_memory)
-        except RayError as e:
-            self.dump_object_store_memory_usage()
-            raise memory_monitor.RayOutOfMemoryError(
-                "Failed to set object_store_memory={} for {}. The "
-                "plasma store may have insufficient memory remaining "
-                "to satisfy this limit (30% of object store memory is "
-                "permanently reserved for shared usage). The current "
-                "object store memory status is:\n\n{}".format(
-                    object_store_memory, name, e))
 
     def main_loop(self):
         """The main loop a worker runs to receive and execute tasks."""
@@ -1461,11 +1380,9 @@ def connect(node,
 
     if not isinstance(job_id, JobID):
         raise TypeError("The type of given job id must be JobID.")
-    worker.current_job_id = job_id
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
-    worker.actor_id = ActorID.nil()
     worker.node = node
     worker.set_mode(mode)
 
@@ -1560,24 +1477,22 @@ def connect(node,
         (mode == SCRIPT_MODE),
         node.plasma_store_socket_name,
         node.raylet_socket_name,
-        worker.current_job_id,
+        job_id,
         gcs_options,
         node.get_logs_dir_path(),
         node.node_ip_address,
     )
-    worker.task_context.current_task_id = (
-        worker.core_worker.get_current_task_id())
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
     if driver_object_store_memory is not None:
-        worker._set_object_store_client_options(
+        worker.core_worker.set_object_store_client_options(
             "ray_driver_{}".format(os.getpid()), driver_object_store_memory)
 
     # Put something in the plasma store so that subsequent plasma store
     # accesses will be faster. Currently the first access is always slow, and
     # we don't want the user to experience this.
     temporary_object_id = ray.ObjectID(np.random.bytes(20))
-    worker.put_object(temporary_object_id, 1)
+    worker.put_object(1, object_id=temporary_object_id)
     ray.internal.free([temporary_object_id])
 
     # Start the import thread
@@ -1944,7 +1859,7 @@ def get(object_ids):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()
                 if isinstance(value, ray.exceptions.UnreconstructableError):
-                    worker.dump_object_store_memory_usage()
+                    worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
                     raise value.as_instanceof_cause()
                 else:
@@ -1981,12 +1896,8 @@ def put(value, weakref=False):
         if worker.mode == LOCAL_MODE:
             object_id = worker.local_mode_manager.put_object(value)
         else:
-            object_id = ray._raylet.compute_put_id(
-                worker.current_task_id,
-                worker.task_context.put_index,
-            )
             try:
-                worker.put_object(object_id, value)
+                object_id = worker.put_object(value)
             except ObjectStoreFullError:
                 logger.info(
                     "Put failed since the value was either too large or the "
@@ -1995,7 +1906,6 @@ def put(value, weakref=False):
                     "ray.put(value, weakref=True) to allow object data to "
                     "be evicted early.")
                 raise
-        worker.task_context.put_index += 1
         # Pin the object buffer with the returned id. This avoids put returns
         # from getting evicted out from under the id.
         # TODO(edoakes): we should be able to avoid this extra IPC by holding
