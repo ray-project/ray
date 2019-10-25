@@ -84,25 +84,21 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Initialize task execution.
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
-    task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-        new CoreWorkerTaskExecutionInterface(*this));
-  }
 
-  // Initialize task receivers.
-  auto execute_task =
-      std::bind(&CoreWorker::ExecuteTask, this,
-                std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-  task_receivers_.emplace(
-      TaskTransportType::RAYLET,
-      std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          worker_context_, raylet_client_,
-          *object_interface_, *main_service_, worker_server_, execute_task)));
-  task_receivers_.emplace(
-      TaskTransportType::DIRECT_ACTOR,
-      std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(worker_context_,
-                                                *object_interface_,
-                                                *main_service_, worker_server_, execute_task)));
+    // Initialize task receivers.
+    auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                                  std::placeholders::_2, std::placeholders::_3);
+    task_receivers_.emplace(
+        TaskTransportType::RAYLET,
+        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+            worker_context_, raylet_client_, *object_interface_, *main_service_,
+            worker_server_, execute_task)));
+    task_receivers_.emplace(TaskTransportType::DIRECT_ACTOR,
+                            std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+                                new CoreWorkerDirectActorTaskReceiver(
+                                    worker_context_, *object_interface_, *main_service_,
+                                    worker_server_, execute_task)));
+  }
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -198,8 +194,8 @@ void CoreWorker::ReportActiveObjectIDs() {
 CoreWorker::~CoreWorker() {
   io_service_.stop();
   io_thread_.join();
-  if (task_execution_interface_) {
-    task_execution_interface_->Stop();
+  if (worker_type_ == WorkerType::WORKER) {
+    StopExecutingTasks();
   }
   if (log_dir_ != "") {
     RayLog::ShutDownRayLog();
@@ -410,9 +406,23 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
 
 const ResourceMappingType CoreWorker::GetResourceIDs() const { return resource_ids_; }
 
-Status CoreWorker::ExecuteTask(
-    const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-    std::vector<std::shared_ptr<RayObject>> *results) {
+void CoreWorker::StartExecutingTasks() {
+  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
+  main_service_->run();
+}
+
+void CoreWorker::StopExecutingTasks() {
+  // Stop main IO service.
+  std::shared_ptr<boost::asio::io_service> main_service = main_service_;
+  // Delay the execution of io_service::stop() to avoid deadlock if
+  // Stop is called inside a task.
+  idle_profile_event_.reset();
+  main_service_->post([main_service]() { main_service->stop(); });
+}
+
+Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
+                               const ResourceMappingType &resource_ids,
+                               std::vector<std::shared_ptr<RayObject>> *results) {
   idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
@@ -453,14 +463,13 @@ Status CoreWorker::ExecuteTask(
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
-  idle_profile_event_.reset(
-      new worker::ProfileEvent(profiler_, "worker_idle"));
+  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   return status;
 }
 
-Status CoreWorker::BuildArgsForExecutor(
-    const TaskSpecification &task, std::vector<std::shared_ptr<RayObject>> *args,
-    std::vector<ObjectID> *arg_reference_ids) {
+Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
+                                        std::vector<std::shared_ptr<RayObject>> *args,
+                                        std::vector<ObjectID> *arg_reference_ids) {
   auto num_args = task.NumArgs();
   args->resize(num_args);
   arg_reference_ids->resize(num_args);

@@ -7,9 +7,8 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
-#include "ray/core_worker/task_execution.h"
-#include "ray/core_worker/transport/transport.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_client.h"
@@ -82,13 +81,6 @@ class CoreWorker {
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
-
-  /// Return the `CoreWorkerTaskExecutionInterface` that contains methods related to
-  /// task execution.
-  CoreWorkerTaskExecutionInterface &Execution() {
-    RAY_CHECK(task_execution_interface_ != nullptr);
-    return *task_execution_interface_;
-  }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
@@ -175,6 +167,14 @@ class CoreWorker {
   /// \param[out] The serialized handle.
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
+
+  /// Start receiving and executing tasks.
+  /// \return void.
+  void StartExecutingTasks();
+
+  /// Stop receiving and executing tasks.
+  /// \return void.
+  void StopExecutingTasks();
 
   // Add this object ID to the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
@@ -280,7 +280,7 @@ class CoreWorker {
   std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
 
   /// Map from actor ID to a handle to that actor.
-  std::unordered_map<ActorID, std::unique_ptr<ActorHandle> > actor_handles_;
+  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
   /// Set of object IDs that are in scope in the language worker.
   std::unordered_set<ObjectID> active_object_ids_;
@@ -310,12 +310,7 @@ class CoreWorker {
   EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
       task_receivers_;
 
-  /// Only available if it's not a driver.
-  std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
-
   friend class CoreWorkerTest;
-
-  friend class CoreWorkerTaskExecutionInterface;
 };
 
 }  // namespace ray
