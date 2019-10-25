@@ -56,11 +56,10 @@ Status CoreWorkerObjectInterface::SetClientOptions(std::string name,
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
-  ObjectID put_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                     worker_context_.GetNextPutIndex(),
-                                     static_cast<uint8_t>(TaskTransportType::RAYLET));
-  *object_id = put_id;
-  return Put(object, put_id);
+  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  return Put(object, *object_id);
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object,
@@ -69,6 +68,15 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
             static_cast<uint8_t>(TaskTransportType::RAYLET))
       << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
   return store_providers_[StoreProviderType::PLASMA]->Put(object, object_id);
+}
+
+Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,
+                                         const size_t data_size, ObjectID *object_id,
+                                         std::shared_ptr<Buffer> *data) {
+  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  return Create(metadata, data_size, *object_id, data);
 }
 
 Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,

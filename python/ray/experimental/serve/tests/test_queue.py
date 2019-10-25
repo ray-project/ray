@@ -12,7 +12,7 @@ def test_single_prod_cons_queue(serve_instance):
     assert got_work.request_args == 1
     assert got_work.request_kwargs == "kwargs"
 
-    ray.worker.global_worker.put_object(got_work.result_object_id, 2)
+    ray.worker.global_worker.put_object(2, got_work.result_object_id)
     assert ray.get(ray.ObjectID(result_object_id)) == 2
 
 
@@ -24,7 +24,7 @@ def test_alter_backend(serve_instance):
     work_object_id = q.dequeue_request("backend-1")
     got_work = ray.get(ray.ObjectID(work_object_id))
     assert got_work.request_args == 1
-    ray.worker.global_worker.put_object(got_work.result_object_id, 2)
+    ray.worker.global_worker.put_object(2, got_work.result_object_id)
     assert ray.get(ray.ObjectID(result_object_id)) == 2
 
     q.set_traffic("svc", {"backend-2": 1})
@@ -32,7 +32,7 @@ def test_alter_backend(serve_instance):
     work_object_id = q.dequeue_request("backend-2")
     got_work = ray.get(ray.ObjectID(work_object_id))
     assert got_work.request_args == 1
-    ray.worker.global_worker.put_object(got_work.result_object_id, 2)
+    ray.worker.global_worker.put_object(2, got_work.result_object_id)
     assert ray.get(ray.ObjectID(result_object_id)) == 2
 
 

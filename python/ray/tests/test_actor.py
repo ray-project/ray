@@ -2281,7 +2281,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
                 # put a new object in plasma store.
                 global_worker = ray.worker.global_worker
                 if not global_worker.core_worker.object_exists(obj_id):
-                    global_worker.put_object(obj_id, 1)
+                    global_worker.put_object(1, obj_id)
                     break
 
         def get_pid(self):
