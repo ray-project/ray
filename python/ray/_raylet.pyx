@@ -471,8 +471,6 @@ cdef _store_task_outputs(worker, return_ids, outputs):
 cdef execute_task(
         CTaskType task_type,
         const CRayFunction &ray_function,
-        const CJobID &c_job_id,
-        const CActorID &c_actor_id,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
@@ -603,8 +601,6 @@ cdef execute_task(
 cdef CRayStatus task_execution_handler(
         CTaskType task_type,
         const CRayFunction &ray_function,
-        const CJobID &c_job_id,
-        const CActorID &c_actor_id,
         const unordered_map[c_string, double] &c_resources,
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
@@ -615,8 +611,7 @@ cdef CRayStatus task_execution_handler(
         try:
             # The call to execute_task should never raise an exception. If it
             # does, that indicates that there was an unexpected internal error.
-            execute_task(task_type, ray_function, c_job_id,
-                         c_actor_id, c_resources, c_args,
+            execute_task(task_type, ray_function, c_resources, c_args,
                          c_arg_reference_ids, c_return_ids, returns)
         except Exception:
             traceback_str = traceback.format_exc() + (
@@ -672,22 +667,8 @@ cdef class CoreWorker:
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
 
-    def set_current_task_id(self, TaskID task_id):
-        cdef:
-            CTaskID c_task_id = task_id.native()
-
-        with nogil:
-            self.core_worker.get().SetCurrentTaskId(c_task_id)
-
     def get_current_job_id(self):
         return JobID(self.core_worker.get().GetCurrentJobId().Binary())
-
-    def set_current_job_id(self, JobID job_id):
-        cdef:
-            CJobID c_job_id = job_id.native()
-
-        with nogil:
-            self.core_worker.get().SetCurrentJobId(c_job_id)
 
     def get_actor_id(self):
         return ActorID(self.core_worker.get().GetActorId().Binary())
