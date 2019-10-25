@@ -22,21 +22,24 @@ Status NodeStateAccessor::UnregisterSelf() {
 void NodeStateAccessor::RegisterWatcher(const NodeInfoCallback &node_added_callback,
                                         const NodeInfoCallback &node_removed_callback) {
   // TODO(micafan) Subscribe all and request notifications.
-  RAY_CHECK(node_added_callback != nullptr && node_removed_callback != nullptr);
   ClientTable &client_table = client_impl_.client_table();
 
-  auto on_node_added = [node_added_callback](RedisGcsClient *client, const ClientID &id,
-                                             const GcsNodeInfo &node_info) {
-    node_added_callback(node_info);
-  };
-  client_table.RegisterClientAddedCallback(on_node_added);
+  if (node_added_callback != nullptr) {
+    auto on_node_added = [node_added_callback](RedisGcsClient *client, const ClientID &id,
+                                               const GcsNodeInfo &node_info) {
+      node_added_callback(node_info);
+    };
+    client_table.RegisterClientAddedCallback(on_node_added);
+  }
 
-  auto on_node_removed = [node_removed_callback](RedisGcsClient *client,
-                                                 const ClientID &id,
-                                                 const GcsNodeInfo &node_info) {
-    node_removed_callback(node_info);
-  };
-  client_table.RegisterClientRemovedCallback(on_node_removed);
+  if (node_removed_callback != nullptr) {
+    auto on_node_removed = [node_removed_callback](RedisGcsClient *client,
+                                                   const ClientID &id,
+                                                   const GcsNodeInfo &node_info) {
+      node_removed_callback(node_info);
+    };
+    client_table.RegisterClientRemovedCallback(on_node_removed);
+  }
 }
 
 const ClientID &NodeStateAccessor::GetSelfId() const {

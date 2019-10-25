@@ -44,6 +44,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   raylet::TaskTable &raylet_task_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
+  // TODO(micafan) Change this method to private in next PR,
+  // to avoid conflicts with other PRs.
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();

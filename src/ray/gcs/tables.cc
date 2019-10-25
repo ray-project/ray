@@ -633,7 +633,7 @@ Status ClientTable::Connect(const GcsNodeInfo &local_node_info) {
   // Construct the data to add to the client table.
   auto data = std::make_shared<GcsNodeInfo>(local_node_info_);
   data->set_state(GcsNodeInfo::ALIVE);
-  Status status = SyncAppendAt(JobID::Nil(), client_log_key_, data, 0);
+  Status status = SyncAppend(JobID::Nil(), client_log_key_, data);
   if (!status.ok()) {
     return status;
   }

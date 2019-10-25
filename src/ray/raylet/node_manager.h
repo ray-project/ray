@@ -70,9 +70,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param resource_config The initial set of node resources.
   /// \param object_manager A reference to the local object manager.
-  NodeManager(boost::asio::io_service &io_service, const ClientID &self_id,
-              const NodeManagerConfig &config,
-              ObjectManager &object_manager,
+  NodeManager(boost::asio::io_service &io_service, const ClientID &self_node_id,
+              const NodeManagerConfig &config, ObjectManager &object_manager,
               std::shared_ptr<gcs::RedisGcsClient> gcs_client,
               std::shared_ptr<ObjectDirectoryInterface> object_directory_);
 
@@ -501,7 +500,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void WarnResourceDeadlock();
 
   /// ID of this node.
-  ClientID self_id_;
+  ClientID self_node_id_;
   boost::asio::io_service &io_service_;
   ObjectManager &object_manager_;
   /// A Plasma object store client. This is used exclusively for creating new

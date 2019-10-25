@@ -130,23 +130,23 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
 
   int num_connected_clients = 0;
 
-  ClientID client_id_1;
-  ClientID client_id_2;
+  ClientID node_id_1;
+  ClientID node_id_2;
 
   void WaitConnections() {
-    client_id_1 = gcs_client_1->client_table().GetLocalClientId();
-    client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    gcs_client_1->client_table().RegisterClientAddedCallback(
-        [this](gcs::RedisGcsClient *client, const ClientID &id,
-               const rpc::GcsNodeInfo &data) {
+    node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    gcs_client_1->Nodes().RegisterWatcher(
+        [this](const rpc::GcsNodeInfo &data) {
           ClientID parsed_id = ClientID::FromBinary(data.node_id);
-          if (parsed_id == client_id_1 || parsed_id == client_id_2) {
+          if (parsed_id == node_id_1 || parsed_id == node_id_2) {
             num_connected_clients += 1;
           }
           if (num_connected_clients == 2) {
             StartTests();
           }
-        });
+        },
+        nullptr);
   }
 
   void StartTests() {
@@ -180,7 +180,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
 
     num_expected_objects = (uint)1;
     ObjectID oid1 = WriteDataToClient(client1, data_size);
-    server1->object_manager_.Push(oid1, client_id_2);
+    server1->object_manager_.Push(oid1, node_id_2);
   }
 
   void TestPushComplete() {
@@ -199,25 +199,24 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "Server client ids:"
                   << "\n";
-    ClientID client_id_1 = gcs_client_1->client_table().GetLocalClientId();
-    ClientID client_id_2 = gcs_client_2->client_table().GetLocalClientId();
-    RAY_LOG(INFO) << "Server 1: " << client_id_1;
-    RAY_LOG(INFO) << "Server 2: " << client_id_2;
+    ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
+    ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
+    RAY_LOG(INFO) << "Server 1: " << node_id_1;
+    RAY_LOG(INFO) << "Server 2: " << node_id_2;
 
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    rpc::GcsNodeInfo data;
-    gcs_client_2->client_table().GetClient(client_id_1, data);
-    RAY_LOG(INFO) << (ClientID::FromBinary(data.node_id()).IsNil());
-    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data.node_id());
-    RAY_LOG(INFO) << "ClientIp=" << data.node_manager_address();
-    RAY_LOG(INFO) << "ClientPort=" << data.node_manager_port();
+    auto data = gcs_client_2->Nodes().GetFromCache(node_id_1);
+    RAY_LOG(INFO) << (ClientID::FromBinary(data->node_id()).IsNil());
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data->node_id());
+    RAY_LOG(INFO) << "ClientIp=" << data->node_manager_address();
+    RAY_LOG(INFO) << "ClientPort=" << data->node_manager_port();
     rpc::GcsNodeInfo data2;
-    gcs_client_1->client_table().GetClient(client_id_2, data2);
-    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2.node_id());
-    RAY_LOG(INFO) << "ClientIp=" << data2.node_manager_address();
-    RAY_LOG(INFO) << "ClientPort=" << data2.node_manager_port();
+    gcs_client_1->Nodes().GetFromCache(node_id_2);
+    RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2->node_id());
+    RAY_LOG(INFO) << "ClientIp=" << data2->node_manager_address();
+    RAY_LOG(INFO) << "ClientPort=" << data2->node_manager_port();
   }
 };
 

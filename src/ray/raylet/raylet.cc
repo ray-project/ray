@@ -45,23 +45,22 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
                const NodeManagerConfig &node_manager_config,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::RedisGcsClient> gcs_client)
-    : self_id_(ClientID::FromRandom()),
+    : self_node_id_(ClientID::FromRandom()),
       gcs_client_(gcs_client),
       object_directory_(std::make_shared<ObjectDirectory>(main_service, gcs_client_)),
-      object_manager_(main_service, object_manager_config, object_directory_),
-      node_manager_(main_service, self_id_, node_manager_config, object_manager_,
+      object_manager_(main_service, self_node_id_, object_manager_config,
+                      object_directory_),
+      node_manager_(main_service, self_node_id_, node_manager_config, object_manager_,
                     gcs_client_, object_directory_),
       socket_name_(socket_name),
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service) {
-  self_info_.set_node_id(self_id_.Binary());
-  self_info_.set_node_manager_address(node_ip_address);
-  self_info_.set_raylet_socket_name(socket_name);
-  self_info_.set_object_store_socket_name(object_manager_config.store_socket_name);
-  self_info_.set_object_manager_port(object_manager_.GetServerPort());
-  self_info_.set_node_manager_port(node_manager_.GetServerPort());
-
-  RAY_CHECK_OK(RegisterPeriodicTimer(main_service));
+  self_node_info_.set_node_id(self_node_id_.Binary());
+  self_node_info_.set_node_manager_address(node_ip_address);
+  self_node_info_.set_raylet_socket_name(socket_name);
+  self_node_info_.set_object_store_socket_name(object_manager_config.store_socket_name);
+  self_node_info_.set_object_manager_port(object_manager_.GetServerPort());
+  self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
 }
 
 Raylet::~Raylet() {}
@@ -75,22 +74,17 @@ void Raylet::Start() {
 
 void Raylet::Stop() {
   RAY_CHECK_OK(gcs_client_->Nodes().UnregisterSelf());
-}
-
-ray::Status Raylet::RegisterPeriodicTimer(boost::asio::io_service &io_service) {
-  boost::posix_time::milliseconds timer_period_ms(100);
-  boost::asio::deadline_timer timer(io_service, timer_period_ms);
-  return ray::Status::OK();
+  acceptor_.close();
 }
 
 ray::Status Raylet::RegisterGcs() {
-  RAY_RETURN_NOT_OK(gcs_client_->Nodes().RegisterSelf(self_info_));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().RegisterSelf(self_node_info_));
 
-  RAY_LOG(DEBUG) << "Node manager " << self_id_
-                 << " started on " << self_info_.node_manager_address() << ":"
-                 << self_info_.node_manager_port() << " object manager at "
-                 << self_info_.node_manager_address() << ":"
-                 << self_info_.object_manager_port();
+  RAY_LOG(DEBUG) << "Node manager " << self_node_id_ << " started on "
+                 << self_node_info_.node_manager_address() << ":"
+                 << self_node_info_.node_manager_port() << " object manager at "
+                 << self_node_info_.node_manager_address() << ":"
+                 << self_node_info_.object_manager_port();
 
   // Add resource information.
   const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();
@@ -100,8 +94,8 @@ ray::Status Raylet::RegisterGcs() {
     resource->set_resource_capacity(resource_pair.second);
     resources.emplace(resource_pair.first, resource);
   }
-  RAY_RETURN_NOT_OK(gcs_client_->resource_table().Update(
-      JobID::Nil(), self_id_, resources, nullptr));
+  RAY_RETURN_NOT_OK(gcs_client_->resource_table().Update(JobID::Nil(), self_node_id_,
+                                                         resources, nullptr));
 
   RAY_RETURN_NOT_OK(node_manager_.RegisterGcs());
 

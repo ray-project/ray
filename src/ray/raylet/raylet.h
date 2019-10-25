@@ -56,7 +56,6 @@ class Raylet {
   /// Register GCS client.
   ray::Status RegisterGcs();
 
-  ray::Status RegisterPeriodicTimer(boost::asio::io_service &io_service);
   /// Accept a client connection.
   void DoAccept();
   /// Handle an accepted client connection.
@@ -65,9 +64,9 @@ class Raylet {
   friend class TestObjectManagerIntegration;
 
   /// ID of this node.
-  ClientID self_id_;
+  ClientID self_node_id_;
   /// Information of this node.
-  GcsNodeInfo self_info_;
+  GcsNodeInfo self_node_info_;
 
   /// A client connection to the GCS.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
