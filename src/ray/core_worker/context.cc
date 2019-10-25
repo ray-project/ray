@@ -60,9 +60,9 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                          ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil());
+  GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                              ? TaskID::ForDriverTask(job_id)
+                                              : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -122,15 +122,19 @@ bool WorkerContext::CurrentActorUseDirectCall() const {
 }
 
 WorkerThreadContext &WorkerContext::GetThreadContext(bool for_main_thread) {
+  // Flag used to ensure that we only print a warning about multithreading once per
+  // process.
+  static bool multithreading_warning_printed = false;
+
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
-    if (!for_main_thread && !multithreading_warning_printed_) {
+    if (!for_main_thread && !multithreading_warning_printed) {
       std::cout << "WARNING: "
                 << "Calling ray.get or ray.wait in a separate thread "
                 << "may lead to deadlock if the main thread blocks on "
                 << "this thread and there are not enough resources to "
                 << "execute more tasks." << std::endl;
-      multithreading_warning_printed_ = true;
+      multithreading_warning_printed = true;
     }
   }
 
