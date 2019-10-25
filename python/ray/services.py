@@ -442,7 +442,8 @@ def start_ray_process(command,
         env=modified_env,
         cwd=cwd,
         stdout=stdout_file,
-        stderr=stderr_file)
+        stderr=stderr_file,
+        preexec_fn=os.setsid)
 
     return ProcessInfo(
         process=process,
