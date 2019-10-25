@@ -62,23 +62,23 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   }
 
   Status status;
-  ActorID actor_id = ActorID::Nil();
   TaskType task_type = TaskType::NORMAL_TASK;
   if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
-    actor_id = task_spec.ActorCreationId();
     task_type = TaskType::ACTOR_CREATION_TASK;
-    core_worker_.SetActorId(actor_id);
+    core_worker_.SetActorId(task_spec.ActorCreationId());
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
-    actor_id = task_spec.ActorId();
     task_type = TaskType::ACTOR_TASK;
   }
-  status = task_execution_callback_(task_type, func, task_spec.JobId(), actor_id,
+  status = task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, results);
+
+  core_worker_.SetCurrentTaskId(TaskID::Nil());
+  worker_context_.ResetCurrentTask(task_spec);
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.

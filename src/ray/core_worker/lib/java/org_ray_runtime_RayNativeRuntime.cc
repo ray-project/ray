@@ -39,7 +39,6 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
 
   auto task_execution_callback =
       [](ray::TaskType task_type, const ray::RayFunction &ray_function,
-         const JobID &job_id, const ActorID &actor_id,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
