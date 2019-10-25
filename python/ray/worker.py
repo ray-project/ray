@@ -1584,9 +1584,11 @@ def disconnect(exiting_interpreter=False):
     worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
 
-    if not exiting_interpreter:
-        if hasattr(worker, "core_worker"):
-            del worker.core_worker
+    # We need to destruct the core worker here because after this function,
+    # we will tear down any processes spawned by ray.init() and the background
+    # threads in the core worker don't currently handle that gracefully.
+    if hasattr(worker, "core_worker"):
+        del worker.core_worker
 
 
 @contextmanager
