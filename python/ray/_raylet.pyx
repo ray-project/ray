@@ -481,8 +481,8 @@ cdef execute_task(
 
     worker = ray.worker.global_worker
 
-    actor_id = ActorID(c_actor_id.Binary())
-    job_id = JobID(c_job_id.Binary())
+    actor_id = worker.core_worker.get_actor_id()
+    job_id = worker.core_worker.get_current_job_id()
     task_id = worker.core_worker.get_current_task_id()
 
     # Automatically restrict the GPUs available to this task.
@@ -492,7 +492,6 @@ cdef execute_task(
         ray_function.GetFunctionDescriptor())
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
-        worker.actor_id = actor_id
         actor_class = worker.function_actor_manager.load_actor_class(
             job_id, function_descriptor)
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -689,6 +688,9 @@ cdef class CoreWorker:
 
         with nogil:
             self.core_worker.get().SetCurrentJobId(c_job_id)
+
+    def get_actor_id(self):
+        return ActorID(self.core_worker.get().GetActorId().Binary())
 
     def get_objects(self, object_ids, TaskID current_task_id,
                     int64_t timeout_ms=-1):

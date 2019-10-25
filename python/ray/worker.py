@@ -176,6 +176,12 @@ class Worker(object):
         return JobID.nil()
 
     @property
+    def actor_id(self):
+        if hasattr(self, "core_worker"):
+            return self.core_worker.get_actor_id()
+        return ActorID.nil()
+
+    @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
 
@@ -1377,7 +1383,6 @@ def connect(node,
 
     # All workers start out as non-actors. A worker can be turned into an actor
     # after it is created.
-    worker.actor_id = ActorID.nil()
     worker.node = node
     worker.set_mode(mode)
 
