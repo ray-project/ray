@@ -60,7 +60,6 @@ class Worker {
   const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
   void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
 
-  bool UsePush() const;
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                   const std::function<void(Status)> finish_assign_callback);
 
