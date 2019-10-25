@@ -20,7 +20,9 @@ void GrpcServer::Run() {
   }
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
-  cq_ = builder.AddCompletionQueue();
+  for (int i=0; i < num_threads_; i++) { 
+    cqs_.push_back(builder.AddCompletionQueue());
+  }
   // Build and start server.
   server_ = builder.BuildAndStart();
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
@@ -32,22 +34,24 @@ void GrpcServer::Run() {
       entry.first->CreateCall();
     }
   }
-  // Start a thread that polls incoming requests.
-  polling_thread_ = std::thread(&GrpcServer::PollEventsFromCompletionQueue, this);
+  // Start threads that polls incoming requests.
+  for (int i = 0 ; i < num_threads_; i++) {
+    polling_threads_.emplace_back(&GrpcServer::PollEventsFromCompletionQueue, this, i);
+  }
   // Set the server as running.
   is_closed_ = false;
 }
 
 void GrpcServer::RegisterService(GrpcService &service) {
   services_.emplace_back(service.GetGrpcService());
-  service.InitServerCallFactories(cq_, &server_call_factories_and_concurrencies_);
+  service.InitServerCallFactories(cqs_[0], &server_call_factories_and_concurrencies_);
 }
 
-void GrpcServer::PollEventsFromCompletionQueue() {
+void GrpcServer::PollEventsFromCompletionQueue(int index) {
   void *tag;
   bool ok;
   // Keep reading events from the `CompletionQueue` until it's shutdown.
-  while (cq_->Next(&tag, &ok)) {
+  while (cqs_[index]->Next(&tag, &ok)) {
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
     if (ok) {

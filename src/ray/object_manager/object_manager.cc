@@ -18,7 +18,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_("ObjectManager", config_.object_manager_port),
+      object_manager_server_("ObjectManager", config_.object_manager_port, config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);

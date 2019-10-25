@@ -4,6 +4,8 @@
 #include <thread>
 
 #include <grpcpp/grpcpp.h>
+#include <grpcpp/resource_quota.h>
+#include <grpcpp/support/channel_arguments.h>
 
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
@@ -25,8 +27,11 @@ class ObjectManagerClient {
   ObjectManagerClient(const std::string &address, const int port,
                       ClientCallManager &client_call_manager)
       : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
+        grpc::ResourceQuota quota;
+        quota.SetMaxThreads(4);
+        grpc::ChannelArguments argument;
+    std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
+        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials(), argument);
     stub_ = ObjectManagerService::NewStub(channel);
   };
 
