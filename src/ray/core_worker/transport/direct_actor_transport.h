@@ -7,7 +7,6 @@
 
 #include "ray/common/id.h"
 #include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
@@ -196,9 +195,12 @@ class SchedulingQueue {
   friend class SchedulingQueueTest;
 };
 
-class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
-                                          public rpc::DirectActorHandler {
+class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  public:
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
+
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     CoreWorkerObjectInterface &object_interface,
                                     boost::asio::io_service &io_service,

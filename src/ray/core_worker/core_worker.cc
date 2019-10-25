@@ -59,8 +59,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       gcs_client_(gcs_options),
       object_interface_(worker_context_, raylet_client_, store_socket, use_memory_store,
                         check_signals),
-      task_execution_service_(std::make_shared<boost::asio::io_service>()),
-      main_work_(*task_execution_service_) {
+      main_work_(task_execution_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -85,17 +84,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     // Initialize task receivers.
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    task_receivers_.emplace(
-        TaskTransportType::RAYLET,
+    raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, object_interface_, *task_execution_service_,
-            worker_server_, execute_task)));
-    task_receivers_.emplace(
-        TaskTransportType::DIRECT_ACTOR,
-        std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-            new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                                  *task_execution_service_,
-                                                  worker_server_, execute_task)));
+            worker_context_, raylet_client_, object_interface_, task_execution_service_,
+            worker_server_, execute_task));
+    direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+        new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+                                              task_execution_service_, worker_server_,
+                                              execute_task));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -403,19 +399,10 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const { return resource_i
 
 void CoreWorker::StartExecutingTasks() {
   idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
-  task_execution_service_->run();
+  task_execution_service_.run();
 }
 
-void CoreWorker::StopExecutingTasks() {
-  // Stop main IO service.
-  std::shared_ptr<boost::asio::io_service> task_execution_service =
-      task_execution_service_;
-  // Delay the execution of io_service::stop() to avoid deadlock if
-  // Stop is called inside a task.
-  idle_profile_event_.reset();
-  task_execution_service_->post(
-      [task_execution_service]() { task_execution_service->stop(); });
-}
+void CoreWorker::StopExecutingTasks() { task_execution_service_.stop(); }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,

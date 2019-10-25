@@ -8,7 +8,7 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_client.h"
@@ -303,14 +303,16 @@ class CoreWorker {
   ResourceMappingType resource_ids_;
 
   /// Event loop where tasks are processed.
-  std::shared_ptr<boost::asio::io_service> task_execution_service_;
+  boost::asio::io_service task_execution_service_;
 
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work main_work_;
 
-  /// All the task receivers supported.
-  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
-      task_receivers_;
+  // Interface that receives tasks from the raylet.
+  std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
+
+  // Interface that receives tasks from direct actor calls.
+  std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
 
   friend class CoreWorkerTest;
 };
