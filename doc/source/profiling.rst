@@ -61,21 +61,22 @@ To run a set of single-node Ray microbenchmarks, use:
 
   ray microbenchmark
 
-The following are the results for the 0.7.5 release on a Python 3 / a m4.16xl instance:
+The following are the results for the 0.7.6 release on a m4.16xl instance running
+Ubuntu 18.04 and Python 3.6:
 
 .. code-block:: text
 
-  single core get calls per second 12169.8 +- 386.41
-  single core put calls per second 3117.45 +- 94.17
-  single core put gigabytes per second 11.32 +- 3.4
-  multi core put calls per second 16221.06 +- 895.13
-  multi core put gigabytes per second 24.14 +- 0.29
-  single core tasks sync per second 887.77 +- 3.69
-  single core tasks async per second 4524.45 +- 196.39
-  multi core tasks async per second 6963.49 +- 161.31
-  single core actor calls sync per second 762.4 +- 56.47
-  single core actor calls async per second 1030.44 +- 45.42
-  multi core actor calls async per second 6065.92 +- 175.05
+  single core get calls per second 13387.15 +- 9.53
+  single core put calls per second 4569.31 +- 53.59
+  single core put gigabytes per second 12.64 +- 6.07
+  multi core put calls per second 15667.53 +- 110.85
+  multi core put gigabytes per second 22.85 +- 1.15
+  single core tasks sync per second 1822.1 +- 51.61
+  single core tasks async per second 6603.71 +- 39.5
+  multi core tasks async per second 8161.46 +- 456.28
+  single core actor calls sync per second 1374.22 +- 81.32
+  single core actor calls async per second 1786.57 +- 138.77
+  multi core actor calls async per second 6418.93 +- 128.0
 
 References
 ----------
