@@ -422,6 +422,9 @@ cdef deserialize_args(
     cdef:
         c_vector[shared_ptr[CRayObject]] by_reference_objects
 
+    if c_args.size() == 0:
+        return [], {}
+
     args = []
     by_reference_ids = []
     by_reference_indices = []
