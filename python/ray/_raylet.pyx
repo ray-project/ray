@@ -745,7 +745,7 @@ cdef class CoreWorker:
         # which we ignore.
         # TODO(edoakes): this is hacky, we should return the error instead
         # and deal with it here.
-        return not data
+        return data.get() == NULL
 
     def put_serialized_object(self, serialized_object, ObjectID object_id=None,
                               int memcopy_threads=6):
