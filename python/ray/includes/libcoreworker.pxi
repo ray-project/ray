@@ -35,7 +35,8 @@ cdef class ProfileEvent:
         elif self.extra_data is not None:
             extra_data = self.extra_data
 
-        self.inner.get().SetExtraData(json.dumps(extra_data).encode("ascii") if extra_data else b"{}")
+        self.inner.get().SetExtraData(
+            json.dumps(extra_data).encode("ascii") if extra_data else b"{}")
 
         # Deleting the CProfileEvent will add it to a queue to be pushed to
         # the driver.
