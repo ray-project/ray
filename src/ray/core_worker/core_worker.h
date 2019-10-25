@@ -251,8 +251,10 @@ class CoreWorker {
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;
+
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
+
   /// Timer used to periodically send heartbeat containing active object IDs to the
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
@@ -260,8 +262,14 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
+  // Task execution callback.
+  TaskExecutionCallback task_execution_callback_;
+
+  /// RPC server used to receive tasks to execute.
+  rpc::GrpcServer worker_server_;
+
   // Client to the GCS shared by core worker interfaces.
-  std::unique_ptr<gcs::RedisGcsClient> gcs_client_;
+  gcs::RedisGcsClient gcs_client_;
 
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
@@ -293,12 +301,6 @@ class CoreWorker {
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
   ResourceMappingType resource_ids_;
-
-  // Task execution callback.
-  TaskExecutionCallback task_execution_callback_;
-
-  /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer worker_server_;
 
   /// Event loop where tasks are processed.
   std::shared_ptr<boost::asio::io_service> task_execution_service_;

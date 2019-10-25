@@ -54,10 +54,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       heartbeat_timer_(io_service_),
-      object_interface_(worker_context_, raylet_client_, store_socket, use_memory_store,
-                        check_signals),
       task_execution_callback_(task_execution_callback),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
+      gcs_client_(gcs_options),
+      object_interface_(worker_context_, raylet_client_, store_socket, use_memory_store,
+                        check_signals),
       task_execution_service_(std::make_shared<boost::asio::io_service>()),
       main_work_(*task_execution_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
@@ -71,9 +72,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
 
   // Initialize gcs client.
-  gcs_client_ =
-      std::unique_ptr<gcs::RedisGcsClient>(new gcs::RedisGcsClient(gcs_options));
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
+  RAY_CHECK_OK(gcs_client_.Connect(io_service_));
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -140,7 +139,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
-    RAY_CHECK_OK(gcs_client_->raylet_task_table().Add(job_id, task_id, data, nullptr));
+    RAY_CHECK_OK(gcs_client_.raylet_task_table().Add(job_id, task_id, data, nullptr));
     SetCurrentTaskId(task_id);
   }
 
@@ -202,9 +201,7 @@ CoreWorker::~CoreWorker() {
 
 void CoreWorker::Disconnect() {
   io_service_.stop();
-  if (gcs_client_) {
-    gcs_client_->Disconnect();
-  }
+  gcs_client_.Disconnect();
   if (raylet_client_) {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }
@@ -233,7 +230,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   // Clear all actor handles at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
     for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
+      RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
     actor_handles_.clear();
   }
@@ -269,7 +266,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
           it->second->Reset();
         }
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
+        RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors.
       }
@@ -282,7 +279,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                     << ", port: " << actor_data.port();
     };
 
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribe(
+    RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(
         actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
