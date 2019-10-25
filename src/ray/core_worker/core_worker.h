@@ -81,17 +81,11 @@ class CoreWorker {
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const;
 
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
-
-  // TODO(edoakes): remove this once Python core worker uses the task interfaces.
-  void SetCurrentJobId(const JobID &job_id) { worker_context_.SetCurrentJobId(job_id); }
 
   void SetActorId(const ActorID &actor_id) {
     RAY_CHECK(actor_id_.IsNil());
