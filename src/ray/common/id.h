@@ -58,6 +58,7 @@ template <typename T>
 class BaseID {
  public:
   BaseID();
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static T FromRandom();
   static T FromBinary(const std::string &binary);
   static const T &Nil();
@@ -104,6 +105,7 @@ class JobID : public BaseID<JobID> {
 
   static size_t Size() { return kLength; }
 
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
@@ -142,6 +144,7 @@ class ActorID : public BaseID<ActorID> {
   /// \return The `ActorID` with unique bytes being nil.
   static ActorID NilFromJob(const JobID &job_id);
 
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static ActorID FromRandom() = delete;
 
   /// Constructor of `ActorID`.
@@ -169,6 +172,7 @@ class TaskID : public BaseID<TaskID> {
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static TaskID FromRandom() = delete;
 
   /// The ID generated for driver task.
@@ -318,6 +322,9 @@ class ObjectID : public BaseID<ObjectID> {
                                 uint8_t transport_type);
 
   /// Create an object id randomly.
+  ///
+  /// Warning: this can duplicate IDs after a fork() call. We assume this
+  /// never happens.
   ///
   /// \param transport_type Which type of the transport that is used to
   ///        transfer this object.

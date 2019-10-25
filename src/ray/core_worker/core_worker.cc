@@ -46,7 +46,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const CoreWorkerTaskExecutionInterface::TaskExecutionCallback
                            &task_execution_callback,
-                       std::function<Status()> check_signals, bool use_memory_store)
+                       std::function<Status()> check_signals)
     : worker_type_(worker_type),
       language_(language),
       raylet_socket_(raylet_socket),
@@ -73,9 +73,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
 
-  object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
-      new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket,
-                                    use_memory_store, check_signals));
+  object_interface_ =
+      std::unique_ptr<CoreWorkerObjectInterface>(new CoreWorkerObjectInterface(
+          worker_context_, raylet_client_, store_socket, check_signals));
 
   // Initialize task execution.
   int rpc_server_port = 0;
