@@ -245,10 +245,17 @@ class CoreWorker {
   /// last time it was sent to the raylet.
   bool active_object_ids_updated_ = false;
 
+  /// A map from resource name to the resource IDs that are currently reserved
+  /// for this worker. Each pair consists of the resource ID and the fraction
+  /// of that resource allocated for this worker.
+  ResourceMappingType resource_ids_;
+
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;
 
   friend class CoreWorkerTest;
+
+  friend class CoreWorkerTaskExecutionInterface;
 };
 
 }  // namespace ray

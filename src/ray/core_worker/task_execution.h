@@ -35,13 +35,7 @@ class CoreWorkerTaskExecutionInterface {
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerTaskExecutionInterface(CoreWorker &core_worker, WorkerContext &worker_context,
-                                   std::unique_ptr<RayletClient> &raylet_client,
-                                   CoreWorkerObjectInterface &object_interface,
-                                   const std::shared_ptr<worker::Profiler> profiler,
                                    const TaskExecutionCallback &task_execution_callback);
-
-  // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
   /// Start receiving and executing tasks.
   /// \return void.
@@ -87,14 +81,6 @@ class CoreWorkerTaskExecutionInterface {
   /// WorkerContext or to remove this interface entirely.
   CoreWorker &core_worker_;
 
-  /// Reference to the parent CoreWorker's context.
-  WorkerContext &worker_context_;
-  /// Reference to the parent CoreWorker's objects interface.
-  CoreWorkerObjectInterface &object_interface_;
-
-  // Reference to the parent CoreWorker's profiler.
-  const std::shared_ptr<worker::Profiler> profiler_;
-
   // Task execution callback.
   TaskExecutionCallback task_execution_callback_;
 
@@ -110,11 +96,6 @@ class CoreWorkerTaskExecutionInterface {
 
   /// The asio work to keep main_service_ alive.
   boost::asio::io_service::work main_work_;
-
-  /// A map from resource name to the resource IDs that are currently reserved
-  /// for this worker. Each pair consists of the resource ID and the fraction
-  /// of that resource allocated for this worker.
-  ResourceMappingType resource_ids_;
 
   // Profile event for when the worker is idle. Should be reset when the worker
   // enters and exits an idle period.

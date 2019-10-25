@@ -8,14 +8,8 @@ namespace ray {
 
 CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
     CoreWorker &core_worker, WorkerContext &worker_context,
-    std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface,
-    const std::shared_ptr<worker::Profiler> profiler,
     const TaskExecutionCallback &task_execution_callback)
     : core_worker_(core_worker),
-      worker_context_(worker_context),
-      object_interface_(object_interface),
-      profiler_(profiler),
       task_execution_callback_(task_execution_callback),
       worker_server_("Worker", 0 /* let grpc choose port */),
       main_service_(std::make_shared<boost::asio::io_service>()),
@@ -28,12 +22,13 @@ CoreWorkerTaskExecutionInterface::CoreWorkerTaskExecutionInterface(
   task_receivers_.emplace(
       TaskTransportType::RAYLET,
       std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-          worker_context_, raylet_client, object_interface_, *main_service_,
-          worker_server_, func)));
+          core_worker_.worker_context_, core_worker_.raylet_client_,
+          *core_worker_.object_interface_, *main_service_, worker_server_, func)));
   task_receivers_.emplace(
       TaskTransportType::DIRECT_ACTOR,
       std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-          new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+          new CoreWorkerDirectActorTaskReceiver(core_worker_.worker_context_,
+                                                *core_worker_.object_interface_,
                                                 *main_service_, worker_server_, func)));
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -46,8 +41,8 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
-  resource_ids_ = resource_ids;
-  worker_context_.SetCurrentTask(task_spec);
+  core_worker_.resource_ids_ = resource_ids;
+  core_worker_.worker_context_.SetCurrentTask(task_spec);
   core_worker_.SetCurrentTaskId(task_spec.TaskId());
 
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
@@ -83,12 +78,14 @@ Status CoreWorkerTaskExecutionInterface::ExecuteTask(
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
+  idle_profile_event_.reset(
+      new worker::ProfileEvent(core_worker_.profiler_, "worker_idle"));
   return status;
 }
 
 void CoreWorkerTaskExecutionInterface::Run() {
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
+  idle_profile_event_.reset(
+      new worker::ProfileEvent(core_worker_.profiler_, "worker_idle"));
   main_service_->run();
 }
 
@@ -137,7 +134,7 @@ Status CoreWorkerTaskExecutionInterface::BuildArgsForExecutor(
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
+  auto status = core_worker_.object_interface_->Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       args->at(indices[i]) = results[i];

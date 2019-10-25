@@ -81,8 +81,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   int rpc_server_port = 0;
   if (worker_type_ == WorkerType::WORKER) {
     task_execution_interface_ = std::unique_ptr<CoreWorkerTaskExecutionInterface>(
-        new CoreWorkerTaskExecutionInterface(*this, worker_context_, raylet_client_,
-                                             *object_interface_, profiler_,
+        new CoreWorkerTaskExecutionInterface(*this, worker_context_,
                                              task_execution_callback));
     rpc_server_port = task_execution_interface_->worker_server_.GetPort();
   }
@@ -388,12 +387,6 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
   return status;
 }
 
-const ResourceMappingType CoreWorker::GetResourceIDs() const {
-  if (worker_type_ == WorkerType::DRIVER) {
-    ResourceMappingType empty;
-    return empty;
-  }
-  return task_execution_interface_->GetResourceIDs();
-}
+const ResourceMappingType CoreWorker::GetResourceIDs() const { return resource_ids_; }
 
 }  // namespace ray
