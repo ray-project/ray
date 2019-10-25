@@ -69,11 +69,11 @@ class NodeManagerGrpcService : public GrpcService {
             service_handler_, &NodeManagerServiceHandler::HandleNodeStatsRequest, cq,
             main_service_));
 
-    // Set accept concurrency to 100.
+    // Set accept concurrency.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(forward_task_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(node_stats_call_factory), 100);
+        std::move(node_stats_call_factory), 1);
   }
 
  private:
