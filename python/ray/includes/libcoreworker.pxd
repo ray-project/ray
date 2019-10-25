@@ -59,6 +59,9 @@ cdef extern from "ray/core_worker/object_interface.h" nogil:
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, CObjectID *object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size, const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
         CRayStatus Seal(const CObjectID &object_id)
@@ -81,8 +84,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     CRayStatus (
                         CTaskType task_type,
                         const CRayFunction &ray_function,
-                        const CJobID &job_id,
-                        const CActorID &actor_id,
                         const unordered_map[c_string, double] &resources,
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &arg_reference_ids,
@@ -113,12 +114,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
         CRayletClient &GetRayletClient()
-        # TODO(edoakes): remove these once the Python core worker uses the task
-        # interfaces
         CJobID GetCurrentJobId()
-        void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
-        void SetCurrentTaskId(const CTaskID &task_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const

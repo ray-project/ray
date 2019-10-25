@@ -59,7 +59,7 @@ def test_dying_worker_get(ray_start_2_cpus):
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(x_id, 1)
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -102,7 +102,7 @@ ray.get(ray.ObjectID(ray.utils.hex_to_binary("{}")))
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # get has been fulfilled.
-    ray.worker.global_worker.put_object(x_id, 1)
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -142,7 +142,7 @@ def test_dying_worker_wait(ray_start_2_cpus):
     time.sleep(0.1)
 
     # Create the object.
-    ray.worker.global_worker.put_object(x_id, 1)
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.
@@ -185,7 +185,7 @@ ray.wait([ray.ObjectID(ray.utils.hex_to_binary("{}"))])
     assert len(ready_ids) == 0
     # Seal the object so the store attempts to notify the worker that the
     # wait can return.
-    ray.worker.global_worker.put_object(x_id, 1)
+    ray.worker.global_worker.put_object(1, x_id)
     time.sleep(0.1)
 
     # Make sure that nothing has died.

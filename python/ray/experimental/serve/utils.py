@@ -3,8 +3,6 @@ import logging
 
 from pygments import formatters, highlight, lexers
 
-import ray
-
 
 def _get_logger():
     logger = logging.getLogger("ray.serve")
@@ -30,15 +28,6 @@ class BytesEncoder(json.JSONEncoder):
         if isinstance(o, bytes):
             return o.decode("utf-8")
         return super().default(o)
-
-
-def get_custom_object_id():
-    """Use ray worker API to get computed ObjectID"""
-    worker = ray.worker.global_worker
-    object_id = ray._raylet.compute_put_id(worker.current_task_id,
-                                           worker.task_context.put_index)
-    worker.task_context.put_index += 1
-    return object_id
 
 
 def pformat_color_json(d):
