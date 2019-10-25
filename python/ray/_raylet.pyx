@@ -457,12 +457,12 @@ cdef deserialize_args(
 
 cdef _store_task_outputs(
         worker, return_ids, outputs,
-        c_bool is_direct_call,
+        c_bool return_outputs_directly,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     # Direct actor call returns are not placed in the object store directly,
     # but returned to the core worker.
-    if is_direct_call:
+    if return_outputs_directly:
         return_buffer = []
     else:
         return_buffer = None
@@ -482,7 +482,7 @@ cdef _store_task_outputs(
             worker.put_object(
                 output, object_id=return_id, return_buffer=return_buffer)
 
-    if is_direct_call:
+    if return_outputs_directly:
         assert len(return_ids) == len(return_buffer), \
             (return_ids, return_buffer)
         push_objects_into_return_vector(return_buffer, returns)
@@ -495,7 +495,7 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_bool is_direct_call,
+        c_bool return_outputs_directly,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
@@ -574,7 +574,8 @@ cdef execute_task(
             # Store the outputs in the object store.
             with profiling.profile("task:store_outputs"):
                 _store_task_outputs(
-                    worker, return_ids, outputs, is_direct_call, returns)
+                    worker, return_ids, outputs, return_outputs_directly,
+                    returns)
 
         except Exception as error:
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
@@ -591,7 +592,7 @@ cdef execute_task(
                                               error.__class__)
             _store_task_outputs(
                 worker, return_ids, [failure_object] * len(return_ids),
-                is_direct_call, returns)
+                return_outputs_directly, returns)
             ray.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
@@ -667,7 +668,7 @@ cdef CRayStatus check_signals() nogil:
 
 cdef void push_objects_into_return_vector(
         py_objects,
-        c_vector[shared_ptr[CRayObject]] *returns) nogil:
+        c_vector[shared_ptr[CRayObject]] *returns):
 
     cdef:
         shared_ptr[CBuffer] data
@@ -675,18 +676,17 @@ cdef void push_objects_into_return_vector(
         shared_ptr[CRayObject] ray_object
         int64_t data_size
 
-    with gil:
-        for serialized_object in py_objects:
-            data_size = serialized_object.total_bytes
-            data = dynamic_pointer_cast[
-                CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>NULL, data_size, True))
-            stream = pyarrow.FixedSizeBufferWriter(
-                pyarrow.py_buffer(Buffer.make(data)))
-            serialized_object.write_to(stream)
-            ray_object = make_shared[CRayObject](data, metadata)
-            returns.push_back(ray_object)
+    for serialized_object in py_objects:
+        data_size = serialized_object.total_bytes
+        data = dynamic_pointer_cast[
+            CBuffer, LocalMemoryBuffer](
+                make_shared[LocalMemoryBuffer](
+                    <uint8_t*>NULL, data_size, True))
+        stream = pyarrow.FixedSizeBufferWriter(
+            pyarrow.py_buffer(Buffer.make(data)))
+        serialized_object.write_to(stream)
+        ray_object = make_shared[CRayObject](data, metadata)
+        returns.push_back(ray_object)
 
 
 cdef class CoreWorker:
