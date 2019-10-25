@@ -76,8 +76,6 @@ class LogInterface {
   virtual Status AppendAt(const JobID &job_id, const ID &id,
                           const std::shared_ptr<Data> &data, const WriteCallback &done,
                           const WriteCallback &failure, int log_length) = 0;
-  virtual Status SyncAppendAt(const JobID &job_id, const ID &id,
-                              const std::shared_ptr<Data> &data, int log_length) = 0;
   virtual ~LogInterface(){};
 };
 
