@@ -18,7 +18,13 @@ message ForwardTaskReply {
 message NodeStatsRequest {
 }
 
+message WorkerStats {
+  uint32 pid = 1;
+  bool is_driver = 2;
+}
+
 message NodeStatsReply {
+  repeated WorkerStats workers_stats = 1;
 }
 
 // Service for inter-node-manager communication.

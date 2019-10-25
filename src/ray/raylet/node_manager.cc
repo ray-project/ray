@@ -2553,7 +2553,16 @@ std::string NodeManager::DebugString() const {
 void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
                                          rpc::NodeStatsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(WARNING) << "HELLO";
+  for (const auto &worker : worker_pool_.GetAllWorkers()) {
+    auto worker_stats = reply->add_workers_stats();
+    worker_stats->set_pid(worker->Pid());
+    worker_stats->set_is_driver(false);
+  }
+  for (const auto &driver : worker_pool_.GetAllDrivers()) {
+    auto worker_stats = reply->add_workers_stats();
+    worker_stats->set_pid(driver->Pid());
+    worker_stats->set_is_driver(true);
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
