@@ -24,8 +24,8 @@ class CoreWorkerObjectInterface {
   ///            in addition to the plasma store.
   CoreWorkerObjectInterface(WorkerContext &worker_context,
                             std::unique_ptr<RayletClient> &raylet_client,
-                            const std::string &store_socket,
-                            bool use_memory_store = true);
+                            const std::string &store_socket, bool use_memory_store = true,
+                            std::function<Status()> check_signals = nullptr);
 
   /// Set options for this client's interactions with the object store.
   ///
@@ -115,6 +115,10 @@ class CoreWorkerObjectInterface {
   /// \return std::string The string describing memory usage.
   std::string MemoryUsageString();
 
+  /// Create a new store provider for the specified type on demand.
+  std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
+      StoreProviderType type) const;
+
  private:
   /// Helper function to group object IDs by the store provider that should be used
   /// for them.
@@ -138,10 +142,6 @@ class CoreWorkerObjectInterface {
       EnumUnorderedMap<StoreProviderType, std::unordered_set<ObjectID>> &ids_per_provider,
       int64_t timeout_ms, int *num_objects, std::unordered_set<ObjectID> *results);
 
-  /// Create a new store provider for the specified type on demand.
-  std::unique_ptr<CoreWorkerStoreProvider> CreateStoreProvider(
-      StoreProviderType type) const;
-
   /// Add a store provider for the specified type.
   void AddStoreProvider(StoreProviderType type);
 
@@ -159,6 +159,8 @@ class CoreWorkerObjectInterface {
   /// All the store providers supported.
   EnumUnorderedMap<StoreProviderType, std::unique_ptr<CoreWorkerStoreProvider>>
       store_providers_;
+
+  std::function<Status()> check_signals_;
 
   friend class CoreWorkerTaskInterface;
 

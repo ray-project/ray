@@ -10,7 +10,6 @@ from ray.includes.common cimport (
     ResourceSet,
 )
 from ray.includes.unique_ids cimport (
-    CActorHandleID,
     CActorID,
     CJobID,
     CObjectID,
@@ -71,10 +70,8 @@ cdef extern from "ray/common/task/task_spec.h" nogil:
         CObjectID PreviousActorTaskDummyObjectId() const
         uint64_t MaxActorReconstructions() const
         CActorID ActorId() const
-        CActorHandleID ActorHandleId() const
         uint64_t ActorCounter() const
         CObjectID ActorDummyObject() const
-        c_vector[CActorHandleID] NewActorHandles() const
 
 
 cdef extern from "ray/common/task/task_execution_spec.h" nogil:

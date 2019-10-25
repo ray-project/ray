@@ -16,7 +16,7 @@ import ray.ray_constants as ray_constants
 import ray._raylet
 import ray.signature as signature
 import ray.worker
-from ray import ActorID, ActorHandleID, ActorClassID, profiling
+from ray import ActorID, ActorClassID
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,6 @@ class ActorClassMetadata(object):
             # supported. We don't raise an exception because if the actor
             # inherits from a class that has a method whose signature we
             # don't support, there may not be much the user can do about it.
-            signature.check_signature_supported(method, warn=True)
             self.method_signatures[method_name] = signature.extract_signature(
                 method, ignore_first=not ray.utils.is_class_method(method))
             # Set the default number of return values for this method.
@@ -277,7 +276,6 @@ class ActorClass(object):
         DerivedActorClass.__module__ = modified_class.__module__
         DerivedActorClass.__name__ = name
         DerivedActorClass.__qualname__ = name
-
         # Construct the base object.
         self = DerivedActorClass.__new__(DerivedActorClass)
 
@@ -372,9 +370,6 @@ class ActorClass(object):
             actor_id = ActorID.from_random()
             worker.actors[actor_id] = meta.modified_class(
                 *copy.deepcopy(args), **copy.deepcopy(kwargs))
-            core_handle = ray._raylet.ActorHandle(
-                actor_id, ActorHandleID.nil(), worker.current_job_id,
-                function_descriptor.get_function_descriptor_list())
         else:
             # Export the actor.
             if (meta.last_export_session_and_job !=
@@ -400,17 +395,16 @@ class ActorClass(object):
             if actor_method_cpu == 1:
                 actor_placement_resources = resources.copy()
                 actor_placement_resources["CPU"] += 1
-
             function_signature = meta.method_signatures[function_name]
-            creation_args = signature.extend_args(function_signature, args,
-                                                  kwargs)
-            core_handle = worker.core_worker.create_actor(
+            creation_args = signature.flatten_args(function_signature, args,
+                                                   kwargs)
+            actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
                 actor_placement_resources)
 
         actor_handle = ActorHandle(
-            core_handle,
+            actor_id,
             meta.modified_class.__module__,
             meta.class_name,
             meta.actor_method_names,
@@ -436,7 +430,7 @@ class ActorHandle(object):
     cloudpickle).
 
     Attributes:
-        _ray_core_handle: Core worker actor handle for this actor.
+        _ray_actor_id: Actor ID.
         _ray_module_name: The module name of this actor.
         _ray_actor_method_names: The names of the actor methods.
         _ray_method_decorators: Optional decorators for the function
@@ -454,7 +448,7 @@ class ActorHandle(object):
     """
 
     def __init__(self,
-                 core_handle,
+                 actor_id,
                  module_name,
                  class_name,
                  actor_method_names,
@@ -464,7 +458,7 @@ class ActorHandle(object):
                  actor_method_cpus,
                  session_and_job,
                  original_handle=False):
-        self._ray_core_handle = core_handle
+        self._ray_actor_id = actor_id
         self._ray_module_name = module_name
         self._ray_original_handle = original_handle
         self._ray_actor_method_names = actor_method_names
@@ -474,6 +468,12 @@ class ActorHandle(object):
         self._ray_class_name = class_name
         self._ray_actor_method_cpus = actor_method_cpus
         self._ray_session_and_job = session_and_job
+        self._ray_function_descriptor_lists = {
+            method_name: FunctionDescriptor(
+                self._ray_module_name, method_name,
+                self._ray_class_name).get_function_descriptor_list()
+            for method_name in self._ray_method_signatures.keys()
+        }
 
     def _actor_method_call(self,
                            method_name,
@@ -502,25 +502,19 @@ class ActorHandle(object):
         worker.check_connected()
 
         function_signature = self._ray_method_signatures[method_name]
-        if args is None:
-            args = []
-        if kwargs is None:
-            kwargs = {}
-        args = signature.extend_args(function_signature, args, kwargs)
+        args = args or []
+        kwargs = kwargs or {}
 
-        function_descriptor = FunctionDescriptor(
-            self._ray_module_name, method_name, self._ray_class_name)
-
-        with profiling.profile("submit_task"):
-            if worker.mode == ray.LOCAL_MODE:
-                function = getattr(worker.actors[self._actor_id], method_name)
-                object_ids = worker.local_mode_manager.execute(
-                    function, function_descriptor, args, num_return_vals)
-            else:
-                object_ids = worker.core_worker.submit_actor_task(
-                    self._ray_core_handle,
-                    function_descriptor.get_function_descriptor_list(), args,
-                    num_return_vals, {"CPU": self._ray_actor_method_cpus})
+        list_args = signature.flatten_args(function_signature, args, kwargs)
+        if worker.mode == ray.LOCAL_MODE:
+            function = getattr(worker.actors[self._actor_id], method_name)
+            object_ids = worker.local_mode_manager.execute(
+                function, method_name, args, kwargs, num_return_vals)
+        else:
+            object_ids = worker.core_worker.submit_actor_task(
+                self._ray_actor_id,
+                self._ray_function_descriptor_lists[method_name], list_args,
+                num_return_vals, {"CPU": self._ray_actor_method_cpus})
 
         if len(object_ids) == 1:
             object_ids = object_ids[0]
@@ -579,8 +573,8 @@ class ActorHandle(object):
             # and we don't need to send `__ray_terminate__` again.
             logger.warning(
                 "Actor is garbage collected in the wrong driver." +
-                " Actor id = %s, class name = %s.",
-                self._ray_core_handle.actor_id(), self._ray_class_name)
+                " Actor id = %s, class name = %s.", self._ray_actor_id,
+                self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
             # TODO(rkn): Should we be passing in the actor cursor as a
@@ -589,11 +583,7 @@ class ActorHandle(object):
 
     @property
     def _actor_id(self):
-        return self._ray_core_handle.actor_id()
-
-    @property
-    def _actor_handle_id(self):
-        return self._ray_core_handle.actor_handle_id()
+        return self._ray_actor_id
 
     def _serialization_helper(self, ray_forking):
         """This is defined in order to make pickling work.
@@ -605,8 +595,13 @@ class ActorHandle(object):
         Returns:
             A dictionary of the information needed to reconstruct the object.
         """
+        worker = ray.worker.get_global_worker()
+        worker.check_connected()
         state = {
-            "core_handle": self._ray_core_handle.fork(ray_forking).to_bytes(),
+            # Local mode just uses the actor ID.
+            "core_handle": worker.core_worker.serialize_actor_handle(
+                self._ray_actor_id)
+            if hasattr(worker, "core_worker") else self._ray_actor_id,
             "module_name": self._ray_module_name,
             "class_name": self._ray_class_name,
             "actor_method_names": self._ray_actor_method_names,
@@ -632,8 +627,10 @@ class ActorHandle(object):
         self.__init__(
             # TODO(swang): Accessing the worker's current task ID is not
             # thread-safe.
-            ray._raylet.ActorHandle.from_bytes(state["core_handle"],
-                                               worker.current_task_id),
+            # Local mode just uses the actor ID.
+            worker.core_worker.deserialize_and_register_actor_handle(
+                state["core_handle"])
+            if hasattr(worker, "core_worker") else state["core_handle"],
             state["module_name"],
             state["class_name"],
             state["actor_method_names"],

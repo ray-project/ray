@@ -238,9 +238,10 @@ ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_
   auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
   // Set the resource IDs for this task.
   resource_ids_.clear();
-  for (size_t i = 0; i < reply_message->fractional_resource_ids()->size(); ++i) {
+  for (size_t i = 0;
+       i < reply_message->fractional_resource_ids()->resource_infos()->size(); ++i) {
     auto const &fractional_resource_ids =
-        reply_message->fractional_resource_ids()->Get(i);
+        reply_message->fractional_resource_ids()->resource_infos()->Get(i);
     auto &acquired_resources =
         resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
 
@@ -389,4 +390,14 @@ ray::Status RayletClient::SetResource(const std::string &resource_name,
       fbb, fbb.CreateString(resource_name), capacity, to_flatbuf(fbb, client_Id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SetResourceRequest, &fbb);
+}
+
+ray::Status RayletClient::ReportActiveObjectIDs(
+    const std::unordered_set<ObjectID> &object_ids) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message =
+      ray::protocol::CreateReportActiveObjectIDs(fbb, to_flatbuf(fbb, object_ids));
+  fbb.Finish(message);
+
+  return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
 }

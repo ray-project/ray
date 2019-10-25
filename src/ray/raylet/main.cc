@@ -120,7 +120,7 @@ int main(int argc, char *argv[]) {
   }
 
   node_manager_config.heartbeat_period_ms =
-      RayConfig::instance().heartbeat_timeout_milliseconds();
+      RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
   node_manager_config.debug_dump_period_ms =
       RayConfig::instance().debug_dump_period_milliseconds();
   node_manager_config.fair_queueing_enabled =
@@ -168,10 +168,10 @@ int main(int argc, char *argv[]) {
   // We should stop the service and remove the local socket file.
   auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
+    RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
     server->Stop();
     gcs_client->Disconnect();
     main_service.stop();
-    RAY_LOG(INFO) << "Raylet server received SIGTERM message, shutting down...";
     remove(raylet_socket_name.c_str());
   };
   boost::asio::signal_set signals(main_service, SIGTERM);

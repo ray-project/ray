@@ -226,3 +226,7 @@ class TrialExecutor(object):
         """
         raise NotImplementedError("Subclasses of TrialExecutor must provide "
                                   "export_trial_if_needed() method")
+
+    def has_gpus(self):
+        """Returns True if GPUs are detected on the cluster."""
+        return None

@@ -246,13 +246,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void FinishAssignedActorCreationTask(const ActorID &parent_actor_id,
                                        const TaskSpecification &task_spec,
                                        bool resumed_from_checkpoint, int port);
-  /// Extend actor frontier after an actor task or actor creation task executes.
-  ///
-  /// \param dummy_object Dummy object corresponding to the task.
-  /// \param actor_id The relevant actor ID.
-  /// \param actor_handle_id The relevant actor handle ID.
-  void ExtendActorFrontier(const ObjectID &dummy_object, const ActorID &actor_id,
-                           const ActorHandleID &actor_handle_id);
   /// Make a placement decision for placeable tasks given the resource_map
   /// provided. This will perform task state transitions and task forwarding.
   ///
@@ -455,6 +448,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \param message_data A pointer to the message data.
   void ProcessNotifyActorResumedFromCheckpoint(const uint8_t *message_data);
+
+  /// Process client message of ReportActiveObjectIDs.
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  void ProcessReportActiveObjectIDs(const std::shared_ptr<LocalClientConnection> &client,
+                                    const uint8_t *message_data);
 
   /// Update actor frontier when a task finishes.
   /// If the task is an actor creation task and the actor was resumed from a checkpoint,

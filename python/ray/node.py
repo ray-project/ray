@@ -265,6 +265,10 @@ class Node(object):
         return self._ray_params.load_code_from_local
 
     @property
+    def use_pickle(self):
+        return self._ray_params.use_pickle
+
+    @property
     def object_id_seed(self):
         """Get the seed for deterministic generation of object IDs"""
         return self._ray_params.object_id_seed
@@ -461,6 +465,7 @@ class Node(object):
         """Start the dashboard."""
         stdout_file, stderr_file = self.new_log_files("dashboard", True)
         self._webui_url, process_info = ray.services.start_dashboard(
+            self._ray_params.webui_host,
             self.redis_address,
             self._temp_dir,
             stdout_file=stdout_file,
@@ -520,7 +525,7 @@ class Node(object):
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
             load_code_from_local=self._ray_params.load_code_from_local,
-        )
+            use_pickle=self._ray_params.use_pickle)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 

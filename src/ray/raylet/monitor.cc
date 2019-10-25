@@ -94,7 +94,7 @@ void Monitor::Tick() {
   }
 
   auto heartbeat_period = boost::posix_time::milliseconds(
-      RayConfig::instance().heartbeat_timeout_milliseconds());
+      RayConfig::instance().raylet_heartbeat_timeout_milliseconds());
   heartbeat_timer_.expires_from_now(heartbeat_period);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);

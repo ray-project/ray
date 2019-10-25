@@ -112,6 +112,12 @@ class PopulationBasedTraining(FIFOScheduler):
     they will be time-multiplexed as to balance training progress across the
     population. To run multiple trials, use `tune.run(num_samples=<int>)`.
 
+    In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in
+    `pbt_global.txt` and individual policy perturbations are recorded
+    in pbt_policy_{i}.txt. Tune logs: [target trial tag, clone trial tag,
+    target trial iteration, clone trial iteration, old config, new config]
+    on each perturbation step.
+
     Args:
         time_attr (str): The training result attr to use for comparing time.
             Note that you can pass in something non-temporal such as
