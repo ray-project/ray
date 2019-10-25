@@ -77,7 +77,7 @@ class CoreWorker {
 
   /// Return the `CoreWorkerObjectInterface` that contains methods related to object
   /// store.
-  CoreWorkerObjectInterface &Objects() { return *object_interface_; }
+  CoreWorkerObjectInterface &Objects() { return object_interface_; }
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
@@ -168,14 +168,6 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
-  /// Start receiving and executing tasks.
-  /// \return void.
-  void StartExecutingTasks();
-
-  /// Stop receiving and executing tasks.
-  /// \return void.
-  void StopExecutingTasks();
-
   // Add this object ID to the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
   void AddActiveObjectID(const ObjectID &object_id);
@@ -183,6 +175,14 @@ class CoreWorker {
   // Remove this object ID from the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
   void RemoveActiveObjectID(const ObjectID &object_id);
+
+  /// Start receiving and executing tasks.
+  /// \return void.
+  void StartExecutingTasks();
+
+  /// Stop receiving and executing tasks.
+  /// \return void.
+  void StopExecutingTasks();
 
  private:
   /// Give this worker a handle to an actor.
@@ -270,7 +270,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   // Interface for storing and retrieving shared objects.
-  std::unique_ptr<CoreWorkerObjectInterface> object_interface_;
+  CoreWorkerObjectInterface object_interface_;
 
   // Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
@@ -301,9 +301,9 @@ class CoreWorker {
   rpc::GrpcServer worker_server_;
 
   /// Event loop where tasks are processed.
-  std::shared_ptr<boost::asio::io_service> main_service_;
+  std::shared_ptr<boost::asio::io_service> task_execution_service_;
 
-  /// The asio work to keep main_service_ alive.
+  /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work main_work_;
 
   /// All the task receivers supported.

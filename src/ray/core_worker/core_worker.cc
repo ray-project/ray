@@ -54,10 +54,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       heartbeat_timer_(io_service_),
+      object_interface_(worker_context_, raylet_client_, store_socket, use_memory_store,
+                        check_signals),
       task_execution_callback_(task_execution_callback),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      main_service_(std::make_shared<boost::asio::io_service>()),
-      main_work_(*main_service_) {
+      task_execution_service_(std::make_shared<boost::asio::io_service>()),
+      main_work_(*task_execution_service_) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -77,10 +79,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
 
-  object_interface_ = std::unique_ptr<CoreWorkerObjectInterface>(
-      new CoreWorkerObjectInterface(worker_context_, raylet_client_, store_socket,
-                                    use_memory_store, check_signals));
-
   // Initialize task execution.
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
@@ -91,13 +89,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     task_receivers_.emplace(
         TaskTransportType::RAYLET,
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, *object_interface_, *main_service_,
+            worker_context_, raylet_client_, object_interface_, *task_execution_service_,
             worker_server_, execute_task)));
-    task_receivers_.emplace(TaskTransportType::DIRECT_ACTOR,
-                            std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-                                new CoreWorkerDirectActorTaskReceiver(
-                                    worker_context_, *object_interface_, *main_service_,
-                                    worker_server_, execute_task)));
+    task_receivers_.emplace(
+        TaskTransportType::DIRECT_ACTOR,
+        std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+            new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+                                                  *task_execution_service_,
+                                                  worker_server_, execute_task)));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -147,8 +146,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
-          io_service_,
-          object_interface_->CreateStoreProvider(StoreProviderType::MEMORY)));
+          io_service_, object_interface_.CreateStoreProvider(StoreProviderType::MEMORY)));
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
@@ -408,16 +406,18 @@ const ResourceMappingType CoreWorker::GetResourceIDs() const { return resource_i
 
 void CoreWorker::StartExecutingTasks() {
   idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
-  main_service_->run();
+  task_execution_service_->run();
 }
 
 void CoreWorker::StopExecutingTasks() {
   // Stop main IO service.
-  std::shared_ptr<boost::asio::io_service> main_service = main_service_;
+  std::shared_ptr<boost::asio::io_service> task_execution_service =
+      task_execution_service_;
   // Delay the execution of io_service::stop() to avoid deadlock if
   // Stop is called inside a task.
   idle_profile_event_.reset();
-  main_service_->post([main_service]() { main_service->stop(); });
+  task_execution_service_->post(
+      [task_execution_service]() { task_execution_service->stop(); });
 }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
@@ -503,7 +503,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = object_interface_->Get(object_ids_to_fetch, -1, &results);
+  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       args->at(indices[i]) = results[i];
