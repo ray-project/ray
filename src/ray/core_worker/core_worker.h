@@ -8,6 +8,7 @@
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/task_execution.h"
+#include "ray/core_worker/transport/transport.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
@@ -204,6 +205,34 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
+  /// Execute a task.
+  ///
+  /// \param spec[in] Task specification.
+  /// \param spec[in] Resource IDs of resources assigned to this worker.
+  /// \param results[out] Results for task execution.
+  /// \return Status.
+  Status ExecuteTask(const TaskSpecification &task_spec,
+                     const ResourceMappingType &resource_ids,
+                     std::vector<std::shared_ptr<RayObject>> *results);
+
+  /// Build arguments for task executor. This would loop through all the arguments
+  /// in task spec, and for each of them that's passed by reference (ObjectID),
+  /// fetch its content from store and; for arguments that are passed by value,
+  /// just copy their content.
+  ///
+  /// \param spec[in] Task specification.
+  /// \param args[out] Argument data as RayObjects.
+  /// \param args[out] ObjectIDs corresponding to each by reference argument. The length
+  ///                  of this vector will be the same as args, and by value arguments
+  ///                  will have ObjectID::Nil().
+  ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
+  ///                  we have separate serialization paths for by-value and by-reference
+  ///                  arguments in Python. This should ideally be handled better there.
+  /// \return The arguments for passing to task executor.
+  Status BuildArgsForExecutor(const TaskSpecification &task,
+                              std::vector<std::shared_ptr<RayObject>> *args,
+                              std::vector<ObjectID> *arg_reference_ids);
+
   void StartIOService();
 
   void ReportActiveObjectIDs();
@@ -270,6 +299,16 @@ class CoreWorker {
 
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer worker_server_;
+
+  /// Event loop where tasks are processed.
+  std::shared_ptr<boost::asio::io_service> main_service_;
+
+  /// The asio work to keep main_service_ alive.
+  boost::asio::io_service::work main_work_;
+
+  /// All the task receivers supported.
+  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
+      task_receivers_;
 
   /// Only available if it's not a driver.
   std::unique_ptr<CoreWorkerTaskExecutionInterface> task_execution_interface_;

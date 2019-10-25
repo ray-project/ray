@@ -36,33 +36,6 @@ class CoreWorkerTaskExecutionInterface {
   void Stop();
 
  private:
-  /// Build arguments for task executor. This would loop through all the arguments
-  /// in task spec, and for each of them that's passed by reference (ObjectID),
-  /// fetch its content from store and; for arguments that are passed by value,
-  /// just copy their content.
-  ///
-  /// \param spec[in] Task specification.
-  /// \param args[out] Argument data as RayObjects.
-  /// \param args[out] ObjectIDs corresponding to each by reference argument. The length
-  ///                  of this vector will be the same as args, and by value arguments
-  ///                  will have ObjectID::Nil().
-  ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
-  ///                  we have separate serialization paths for by-value and by-reference
-  ///                  arguments in Python. This should ideally be handled better there.
-  /// \return The arguments for passing to task executor.
-  Status BuildArgsForExecutor(const TaskSpecification &task,
-                              std::vector<std::shared_ptr<RayObject>> *args,
-                              std::vector<ObjectID> *arg_reference_ids);
-
-  /// Execute a task.
-  ///
-  /// \param spec[in] Task specification.
-  /// \param spec[in] Resource IDs of resources assigned to this worker.
-  /// \param results[out] Results for task execution.
-  /// \return Status.
-  Status ExecuteTask(const TaskSpecification &task_spec,
-                     const ResourceMappingType &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Reference to the parent CoreWorker.
   /// TODO(edoakes) this is very ugly, but unfortunately necessary so that we
@@ -70,16 +43,6 @@ class CoreWorkerTaskExecutionInterface {
   /// possible solutions are to either move the ActorHandle state into the
   /// WorkerContext or to remove this interface entirely.
   CoreWorker &core_worker_;
-
-  /// All the task task receivers supported.
-  EnumUnorderedMap<TaskTransportType, std::unique_ptr<CoreWorkerTaskReceiver>>
-      task_receivers_;
-
-  /// Event loop where tasks are processed.
-  std::shared_ptr<boost::asio::io_service> main_service_;
-
-  /// The asio work to keep main_service_ alive.
-  boost::asio::io_service::work main_work_;
 
   friend class CoreWorker;
 };
