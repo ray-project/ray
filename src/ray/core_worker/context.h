@@ -47,8 +47,12 @@ class WorkerContext {
   ActorID current_actor_id_;
   bool current_actor_use_direct_call_;
 
+  // Flag used to ensure that we only print a warning about multithreading once per
+  // process.
+  static bool multithreading_warning_printed_;
+
  private:
-  static WorkerThreadContext &GetThreadContext();
+  static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

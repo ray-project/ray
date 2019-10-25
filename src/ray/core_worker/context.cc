@@ -79,10 +79,8 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-// TODO(edoakes): remove this once Python core worker uses the task interfaces.
 void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
 
-// TODO(edoakes): remove this once Python core worker uses the task interfaces.
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
@@ -123,9 +121,17 @@ bool WorkerContext::CurrentActorUseDirectCall() const {
   return current_actor_use_direct_call_;
 }
 
-WorkerThreadContext &WorkerContext::GetThreadContext() {
+WorkerThreadContext &WorkerContext::GetThreadContext(bool for_main_thread) {
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
+    if (!for_main_thread && !multithreading_warning_printed_) {
+      std::cout << "WARNING: "
+                << "Calling ray.get or ray.wait in a separate thread "
+                << "may lead to deadlock if the main thread blocks on "
+                << "this thread and there are not enough resources to "
+                << "execute more tasks." << std::endl;
+      multithreading_warning_printed_ = true;
+    }
   }
 
   return *thread_context_;
