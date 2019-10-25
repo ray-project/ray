@@ -188,7 +188,7 @@ CoreWorker::~CoreWorker() {
   io_service_.stop();
   io_thread_.join();
   if (worker_type_ == WorkerType::WORKER) {
-    StopExecutingTasks();
+    task_execution_service_.stop();
   }
   if (log_dir_ != "") {
     RayLog::ShutDownRayLog();
@@ -401,8 +401,6 @@ void CoreWorker::StartExecutingTasks() {
   idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   task_execution_service_.run();
 }
-
-void CoreWorker::StopExecutingTasks() { task_execution_service_.stop(); }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,

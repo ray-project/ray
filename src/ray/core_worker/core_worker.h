@@ -180,10 +180,6 @@ class CoreWorker {
   /// \return void.
   void StartExecutingTasks();
 
-  /// Stop receiving and executing tasks.
-  /// \return void.
-  void StopExecutingTasks();
-
  private:
   /// Give this worker a handle to an actor.
   ///
