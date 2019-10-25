@@ -92,7 +92,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CObjectInterface &Objects()
 
         void StartExecutingTasks()
-        void StopExecutingTasks()
 
         CRayStatus SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
