@@ -286,6 +286,9 @@ class Worker(object):
                 "call 'put' on it (or return it).")
 
         if isinstance(value, bytes):
+            if return_buffer is not None:
+                raise NotImplementedError(
+                    "returning raw buffers from direct actor calls")
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
@@ -295,9 +298,12 @@ class Worker(object):
                 memcopy_threads=self.memcopy_threads)
 
         if self.use_pickle:
+            raise NotImplementedError(
+                "pickle5 serialization with direct actor calls")
             return self._serialize_and_put_pickle5(value, object_id=object_id)
         else:
-            return self._serialize_and_put_pyarrow(value, object_id=object_id)
+            return self._serialize_and_put_pyarrow(
+                value, object_id=object_id, return_buffer=return_buffer)
 
     def _serialize_and_put_pickle5(self, value, object_id=None):
         """Serialize an object using pickle5 and store it in the object store.
@@ -323,7 +329,10 @@ class Worker(object):
             object_id=object_id,
             memcopy_threads=self.memcopy_threads)
 
-    def _serialize_and_put_pyarrow(self, value, object_id=None):
+    def _serialize_and_put_pyarrow(self,
+                                   value,
+                                   object_id=None,
+                                   return_buffer=None):
         """Wraps `store_and_register` with cases for existence and pickling.
 
         Args:
@@ -345,10 +354,13 @@ class Worker(object):
                            "falling back to cloudpickle.".format(type(value)))
             serialized_value = self._serialize_with_pyarrow(value)
 
-        return self.core_worker.put_serialized_object(
-            serialized_value,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+        if return_buffer is not None:
+            return_buffer.append(serialized_value)
+        else:
+            return self.core_worker.put_serialized_object(
+                serialized_value,
+                object_id=object_id,
+                memcopy_threads=self.memcopy_threads)
 
     def _serialize_with_pyarrow(self, value, depth=100):
         """Store an object and attempt to register its class if needed.

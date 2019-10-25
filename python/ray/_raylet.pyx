@@ -479,7 +479,8 @@ cdef _store_task_outputs(
                     "from a remote function, but the corresponding "
                     "ObjectID does not exist in the local object store.")
         else:
-            worker.put_object(output, object_id=return_id, return_buffer=return_buffer)
+            worker.put_object(
+                output, object_id=return_id, return_buffer=return_buffer)
 
     if is_direct_call:
         assert len(return_ids) == len(return_buffer), \
@@ -636,7 +637,8 @@ cdef CRayStatus task_execution_handler(
             # The call to execute_task should never raise an exception. If it
             # does, that indicates that there was an unexpected internal error.
             execute_task(task_type, ray_function, c_resources, c_args,
-                         c_arg_reference_ids, c_return_ids, is_direct_call, returns)
+                         c_arg_reference_ids, c_return_ids, is_direct_call,
+                         returns)
         except Exception:
             traceback_str = traceback.format_exc() + (
                 "An unexpected internal error occurred while the worker was"
