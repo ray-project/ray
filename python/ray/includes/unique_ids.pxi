@@ -158,8 +158,10 @@ cdef class ObjectID(BaseID):
                 # There is a strange error in rllib that causes the above to
                 # fail. Somehow the global 'ray' variable corresponding to the
                 # imported package is None when this gets called. Unfortunately
-                # this is hard to debug because . In any case, there's not much
-                # we can do besides ignore it (re-importing ray won't help).
+                # this is hard to debug because __dealloc__ is called during
+                # garbage collection so we can't get a good stack trace. In any
+                # case, there's not much we can do besides ignore it
+                # (re-importing ray won't help).
                 pass
 
     cdef CObjectID native(self):
