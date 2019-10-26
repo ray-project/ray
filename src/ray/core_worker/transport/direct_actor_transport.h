@@ -1,10 +1,10 @@
 #ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
+#include <boost/thread.hpp>
 #include <list>
 #include <set>
 #include <utility>
-#include <boost/thread.hpp>
 
 #include "ray/common/id.h"
 #include "ray/core_worker/object_interface.h"
@@ -145,13 +145,35 @@ class InboundRequest {
   bool has_pending_dependencies_;
 };
 
+/// Abstract class for notifying when dependencies are available.
+class DependencyWaiter {
+ public:
+  /// Calls `callback` once the specified objects become available.
+  virtual void Wait(const std::vector<ObjectID> &dependencies,
+                    std::function<void()> on_dependencies_available) = 0;
+};
+
+class DependencyWaiterImpl : public DependencyWaiter {
+ public:
+  DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
+
+  /// Calls `callback` once the specified objects become available.
+  void Wait(const std::vector<ObjectID> &dependencies,
+            std::function<void()> on_dependencies_available) override {}
+
+ private:
+  RayletClient &raylet_client_;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
-  SchedulingQueue(boost::asio::io_service &main_io_service,
+  SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : wait_timer_(main_io_service), reorder_wait_seconds_(reorder_wait_seconds),
+      : wait_timer_(main_io_service),
+        waiter_(waiter),
+        reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()) {}
 
   // This function must always be run on the main io service.
@@ -167,14 +189,14 @@ class SchedulingQueue {
     pending_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
-//      waiter_.Wait(dependencies, [seq_no, this]() {
-//        RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-//        auto it = pending_tasks_.find(seq_no);
-//        if (it != pending_tasks.end()) {
-//          it->second->MarkDependenciesSatisfied();
-//          ScheduleRequests();
-//        }
-//      });
+      waiter_.Wait(dependencies, [seq_no, this]() {
+        RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+        auto it = pending_tasks_.find(seq_no);
+        if (it != pending_tasks_.end()) {
+          it->second.MarkDependenciesSatisfied();
+          ScheduleRequests();
+        }
+      });
     }
     ScheduleRequests();
   }
@@ -214,9 +236,9 @@ class SchedulingQueue {
 
   /// Called when we time out waiting for an earlier task to show up.
   void OnSequencingWaitTimeout() {
+    RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                    << ", cancelling all queued tasks";
-    RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     while (!pending_tasks_.empty()) {
       auto head = pending_tasks_.begin();
       head->second.Cancel();
@@ -235,6 +257,8 @@ class SchedulingQueue {
   boost::asio::deadline_timer wait_timer_;
   /// The id of the thread that constructed this scheduling queue.
   boost::thread::id main_thread_id_;
+  /// Reference to the waiter owned by the task receiver.
+  DependencyWaiter &waiter_;
 
   friend class SchedulingQueueTest;
 };
@@ -275,6 +299,8 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   TaskHandler task_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
+  /// Shared waiter for dependencies required by incoming tasks.
+  std::unique_ptr<DependencyWaiter> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
