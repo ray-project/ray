@@ -135,7 +135,7 @@ class InboundRequest {
         has_pending_dependencies_(has_dependencies) {}
 
   void Accept() { accept_callback_(); }
-  void Cancel() { accept_callback_(); }
+  void Cancel() { reject_callback_(); }
   bool CanExecute() { return !has_pending_dependencies_; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
@@ -145,7 +145,7 @@ class InboundRequest {
   bool has_pending_dependencies_;
 };
 
-/// Abstract class for notifying when dependencies are available.
+/// This class is abstract for testing.
 class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
@@ -157,7 +157,6 @@ class DependencyWaiterImpl : public DependencyWaiter {
  public:
   DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
 
-  /// Calls `callback` once the specified objects become available.
   void Wait(const std::vector<ObjectID> &dependencies,
             std::function<void()> on_dependencies_available) override {}
 
@@ -177,9 +176,9 @@ class SchedulingQueue {
         main_thread_id_(boost::this_thread::get_id()) {}
 
   // This function must always be run on the main io service.
-  void Add(int64_t seq_no, const std::vector<ObjectID> &dependencies,
-           int64_t client_processed_up_to, std::function<void()> accept_request,
-           std::function<void()> reject_request) {
+  void Add(int64_t seq_no, int64_t client_processed_up_to,
+           std::function<void()> accept_request, std::function<void()> reject_request,
+           const std::vector<ObjectID> &dependencies = {}) {
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
