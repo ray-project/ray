@@ -301,6 +301,8 @@ class FunctionActorManager(object):
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
         self.lock = threading.Lock()
+        self.function_descriptors = defaultdict(lambda: defaultdict(lambda: {}))
+        self.execution_infos = defaultdict(lambda: defaultdict(lambda: {}))
 
     def increase_task_counter(self, job_id, function_descriptor):
         function_id = function_descriptor.function_id
@@ -446,6 +448,11 @@ class FunctionActorManager(object):
         Returns:
             A FunctionExecutionInfo object.
         """
+        function_id = function_descriptor.function_id
+        info = self._function_execution_info[job_id].get(function_id)
+        if info:
+            return info
+
         if self._worker.load_code_from_local:
             # Load function from local code.
             # Currently, we don't support isolating code by jobs,
@@ -463,7 +470,6 @@ class FunctionActorManager(object):
             with profiling.profile("wait_for_function"):
                 self._wait_for_function(function_descriptor, job_id)
         try:
-            function_id = function_descriptor.function_id
             info = self._function_execution_info[job_id][function_id]
         except KeyError as e:
             message = ("Error occurs in get_execution_info: "
