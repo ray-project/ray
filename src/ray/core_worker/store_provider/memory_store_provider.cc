@@ -3,7 +3,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
@@ -87,10 +86,11 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &o
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
-  store_->Delete(object_ids);
+Status CoreWorkerMemoryStoreProvider::Delete(
+    const std::unordered_set<ObjectID> &object_ids, bool local_only,
+    bool delete_creating_tasks) {
+  std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
+  store_->Delete(object_id_vector);
   return Status::OK();
 }
 

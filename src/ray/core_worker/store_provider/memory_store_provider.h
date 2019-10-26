@@ -42,7 +42,7 @@ class CoreWorkerMemoryStoreProvider : public CoreWorkerStoreProvider {
               std::unordered_set<ObjectID> *ready) override;
 
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
+  Status Delete(const std::unordered_set<ObjectID> &object_ids, bool local_only = true,
                 bool delete_creating_tasks = false) override;
 
   std::string MemoryUsageString() override;

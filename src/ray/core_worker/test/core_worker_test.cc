@@ -168,9 +168,6 @@ class CoreWorkerTest : public ::testing::Test {
 
   void TearDown() {}
 
-  // Test tore provider.
-  void TestStoreProvider(StoreProviderType type);
-
   // Test normal tasks.
   void TestNormalTask(std::unordered_map<std::string, double> &resources);
 
@@ -457,143 +454,6 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
   }
 }
 
-void CoreWorkerTest::TestStoreProvider(StoreProviderType type) {
-  std::unique_ptr<CoreWorkerStoreProvider> provider_ptr;
-  std::shared_ptr<CoreWorkerMemoryStore> memory_store;
-
-  switch (type) {
-  case StoreProviderType::MEMORY:
-    memory_store = std::make_shared<CoreWorkerMemoryStore>();
-    provider_ptr = std::unique_ptr<CoreWorkerStoreProvider>(
-        new CoreWorkerMemoryStoreProvider(memory_store));
-    break;
-  default:
-    RAY_LOG(FATAL) << "unspported store provider type " << static_cast<int>(type);
-    break;
-  }
-
-  auto &provider = *provider_ptr;
-
-  uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
-
-  std::vector<RayObject> buffers;
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
-                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
-  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
-                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
-
-  std::vector<ObjectID> ids(buffers.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    ids[i] = ObjectID::FromRandom();
-    RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
-  }
-
-  std::unordered_set<ObjectID> wait_ids(ids.begin(), ids.end());
-  std::unordered_set<ObjectID> wait_results;
-
-  ObjectID nonexistent_id = ObjectID::FromRandom();
-  wait_ids.insert(nonexistent_id);
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), ids.size());
-  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
-
-  // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
-  wait_results.clear();
-  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), ids.size());
-  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
-
-  // Test Get().
-  bool got_exception = false;
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
-  std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
-  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results, &got_exception));
-
-  ASSERT_TRUE(!got_exception);
-  ASSERT_EQ(results.size(), ids.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    const auto &expected = buffers[i];
-    ASSERT_EQ(results[ids[i]]->GetData()->Size(), expected.GetData()->Size());
-    ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(), expected.GetData()->Data(),
-                     expected.GetData()->Size()),
-              0);
-    ASSERT_EQ(results[ids[i]]->GetMetadata()->Size(), expected.GetMetadata()->Size());
-    ASSERT_EQ(memcmp(results[ids[i]]->GetMetadata()->Data(),
-                     expected.GetMetadata()->Data(), expected.GetMetadata()->Size()),
-              0);
-  }
-
-  // Test Delete().
-  // clear the reference held.
-  results.clear();
-
-  RAY_CHECK_OK(provider.Delete(ids, true, false));
-
-  usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception));
-  ASSERT_TRUE(!got_exception);
-  ASSERT_EQ(results.size(), 0);
-
-  // Test Wait() with objects which will become ready later.
-  std::vector<ObjectID> ready_ids(buffers.size());
-  std::vector<ObjectID> unready_ids(buffers.size());
-  for (size_t i = 0; i < unready_ids.size(); i++) {
-    ready_ids[i] = ObjectID::FromRandom();
-    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
-    unready_ids[i] = ObjectID::FromRandom();
-  }
-
-  auto thread_func = [&unready_ids, &provider, &buffers]() {
-    sleep(1);
-
-    for (size_t i = 0; i < unready_ids.size(); i++) {
-      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
-    }
-  };
-
-  std::thread async_thread(thread_func);
-
-  wait_ids.clear();
-  wait_ids.insert(ready_ids.begin(), ready_ids.end());
-  wait_ids.insert(unready_ids.begin(), unready_ids.end());
-  wait_results.clear();
-
-  // Check that only the ready ids are returned when timeout ends before thread runs.
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, ready_ids.size() + 1, 100, RandomTaskId(), &wait_results));
-  ASSERT_EQ(ready_ids.size(), wait_results.size());
-  for (const auto &ready_id : ready_ids) {
-    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
-  }
-  for (const auto &unready_id : unready_ids) {
-    ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
-  }
-
-  wait_results.clear();
-  // Check that enough objects are returned after the thread inserts at least one object.
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, ready_ids.size() + 1, 5000, RandomTaskId(), &wait_results));
-  ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
-  for (const auto &ready_id : ready_ids) {
-    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
-  }
-
-  wait_results.clear();
-  // Check that all objects are returned after the thread completes.
-  async_thread.join();
-  RAY_CHECK_OK(
-      provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
-  ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
-  for (const auto &ready_id : ready_ids) {
-    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
-  }
-  for (const auto &unready_id : unready_ids) {
-    ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
-  }
-}
-
 class ZeroNodeTest : public CoreWorkerTest {
  public:
   ZeroNodeTest() : CoreWorkerTest(0) {}
@@ -766,7 +626,133 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  TestStoreProvider(StoreProviderType::MEMORY);
+  provider_ptr;
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+      std::make_shared<CoreWorkerMemoryStore>();
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> provider_ptr =
+      std::unique_ptr<CoreWorkerMemoryStoreProvider>(
+          new CoreWorkerMemoryStoreProvider(memory_store));
+
+  auto &provider = *provider_ptr;
+
+  uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  uint8_t array2[] = {10, 11, 12, 13, 14, 15};
+
+  std::vector<RayObject> buffers;
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1)),
+                       std::make_shared<LocalMemoryBuffer>(array1, sizeof(array1) / 2));
+  buffers.emplace_back(std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2)),
+                       std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2) / 2));
+
+  std::vector<ObjectID> ids(buffers.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    ids[i] = ObjectID::FromRandom();
+    RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
+  }
+
+  std::unordered_set<ObjectID> wait_ids(ids.begin(), ids.end());
+  std::unordered_set<ObjectID> wait_results;
+
+  ObjectID nonexistent_id = ObjectID::FromRandom();
+  wait_ids.insert(nonexistent_id);
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
+
+  // Test Wait() where the required `num_objects` is less than size of `wait_ids`.
+  wait_results.clear();
+  RAY_CHECK_OK(provider.Wait(wait_ids, ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ids.size());
+  ASSERT_TRUE(wait_results.count(nonexistent_id) == 0);
+
+  // Test Get().
+  bool got_exception = false;
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
+  std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
+  RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results, &got_exception));
+
+  ASSERT_TRUE(!got_exception);
+  ASSERT_EQ(results.size(), ids.size());
+  for (size_t i = 0; i < ids.size(); i++) {
+    const auto &expected = buffers[i];
+    ASSERT_EQ(results[ids[i]]->GetData()->Size(), expected.GetData()->Size());
+    ASSERT_EQ(memcmp(results[ids[i]]->GetData()->Data(), expected.GetData()->Data(),
+                     expected.GetData()->Size()),
+              0);
+    ASSERT_EQ(results[ids[i]]->GetMetadata()->Size(), expected.GetMetadata()->Size());
+    ASSERT_EQ(memcmp(results[ids[i]]->GetMetadata()->Data(),
+                     expected.GetMetadata()->Data(), expected.GetMetadata()->Size()),
+              0);
+  }
+
+  // Test Delete().
+  // clear the reference held.
+  results.clear();
+
+  RAY_CHECK_OK(provider.Delete(ids, true, false));
+
+  usleep(200 * 1000);
+  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception));
+  ASSERT_TRUE(!got_exception);
+  ASSERT_EQ(results.size(), 0);
+
+  // Test Wait() with objects which will become ready later.
+  std::vector<ObjectID> ready_ids(buffers.size());
+  std::vector<ObjectID> unready_ids(buffers.size());
+  for (size_t i = 0; i < unready_ids.size(); i++) {
+    ready_ids[i] = ObjectID::FromRandom();
+    RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
+    unready_ids[i] = ObjectID::FromRandom();
+  }
+
+  auto thread_func = [&unready_ids, &provider, &buffers]() {
+    sleep(1);
+
+    for (size_t i = 0; i < unready_ids.size(); i++) {
+      RAY_CHECK_OK(provider.Put(buffers[i], unready_ids[i]));
+    }
+  };
+
+  std::thread async_thread(thread_func);
+
+  wait_ids.clear();
+  wait_ids.insert(ready_ids.begin(), ready_ids.end());
+  wait_ids.insert(unready_ids.begin(), unready_ids.end());
+  wait_results.clear();
+
+  // Check that only the ready ids are returned when timeout ends before thread runs.
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ready_ids.size() + 1, 100, RandomTaskId(), &wait_results));
+  ASSERT_EQ(ready_ids.size(), wait_results.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) == wait_results.end());
+  }
+
+  wait_results.clear();
+  // Check that enough objects are returned after the thread inserts at least one object.
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, ready_ids.size() + 1, 5000, RandomTaskId(), &wait_results));
+  ASSERT_TRUE(wait_results.size() >= ready_ids.size() + 1);
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+
+  wait_results.clear();
+  // Check that all objects are returned after the thread completes.
+  async_thread.join();
+  RAY_CHECK_OK(
+      provider.Wait(wait_ids, wait_ids.size(), -1, RandomTaskId(), &wait_results));
+  ASSERT_EQ(wait_results.size(), ready_ids.size() + unready_ids.size());
+  for (const auto &ready_id : ready_ids) {
+    ASSERT_TRUE(wait_results.find(ready_id) != wait_results.end());
+  }
+  for (const auto &unready_id : unready_ids) {
+    ASSERT_TRUE(wait_results.find(unready_id) != wait_results.end());
+  }
 }
 
 TEST_F(SingleNodeTest, TestObjectInterface) {
