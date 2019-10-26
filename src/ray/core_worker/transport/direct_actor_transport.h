@@ -136,7 +136,7 @@ class InboundRequest {
   void Accept() { accept_callback_(); }
   void Cancel() { accept_callback_(); }
   bool CanExecute() { return has_pending_dependencies_; }
-  void DependenciesSatisfied() { has_pending_dependencies_ = false; }
+  void OnDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
   std::function<void()> accept_callback_;
@@ -163,9 +163,12 @@ class SchedulingQueue {
     pending_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
-      waiter_.Wait(dependencies, [this]() {
-        it->second->DependenciesSatisfied();
-        ScheduleRequests();
+      waiter_.Wait(dependencies, [seq_no, this]() {
+        auto it = pending_tasks_.find(seq_no);
+        if (it != pending_tasks.end()) {
+          it->second->OnDependenciesSatisfied();
+          ScheduleRequests();
+        }
       });
     }
     ScheduleRequests();
