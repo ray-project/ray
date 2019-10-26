@@ -7,7 +7,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
-#include "ray/core_worker/transport/transport.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/worker/worker_client.h"
 #include "ray/rpc/worker/worker_server.h"

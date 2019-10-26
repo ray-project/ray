@@ -88,6 +88,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             worker_server_, execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
+                                              io_service_,
                                               task_execution_service_, worker_server_,
                                               execute_task));
   }
@@ -433,7 +434,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   }
   status = task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, results);
+                                    args, arg_reference_ids, return_ids, worker_context_.CurrentActorUseDirectCall(), results);
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
