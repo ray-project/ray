@@ -454,6 +454,7 @@ cdef deserialize_args(
 
     return ray.signature.recover_args(args)
 
+
 cdef _store_task_outputs(worker, return_ids, outputs):
     for i in range(len(return_ids)):
         return_id, output = return_ids[i], outputs[i]
