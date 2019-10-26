@@ -85,12 +85,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                   std::placeholders::_2, std::placeholders::_3);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, object_interface_, task_execution_service_,
-            worker_server_, execute_task));
+            worker_context_, raylet_client_, task_execution_service_, worker_server_,
+            execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-        new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                              task_execution_service_, worker_server_,
-                                              execute_task));
+        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
+                                              worker_server_, execute_task));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -438,6 +437,25 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
+
+  // TODO(edoakes): also check if not direct actor call.
+  // TODO(edoakes): this is only used by java.
+  if (results->size() != 0) {
+    for (size_t i = 0; i < results->size(); i++) {
+      ObjectID id = ObjectID::ForTaskReturn(
+          task_spec.TaskId(), /*index=*/i + 1,
+          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
+      if (!object_interface_.Put(*results->at(i), id).ok()) {
+        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
+        // `ObjectInterface::Put`, we treat other error types as fatal here.
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
+                       << " in store: " << status.message();
+      } else {
+        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
+                       << " in store.";
+      }
+    }
+  }
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.
