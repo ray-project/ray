@@ -539,7 +539,7 @@ cdef execute_task(
             return execution_info.function(actor, *arguments, **kwarguments)
 
     return_ids = VectorToObjectIDs(c_return_ids)
-    with core_worker.profile_event("task", extra_data=extra_data):
+    with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
             task_exception = False
             if not (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
@@ -547,12 +547,12 @@ cdef execute_task(
                 worker.reraise_actor_init_error()
                 worker.memory_monitor.raise_if_low_memory()
 
-            with core_worker.profile_event("task:deserialize_arguments"):
+            with core_worker.profile_event(b"task:deserialize_arguments"):
                 args, kwargs = deserialize_args(c_args, c_arg_reference_ids)
 
             # Execute the task.
             with ray.worker._changeproctitle(title, next_title):
-                with core_worker.profile_event("task:execute"):
+                with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
                     task_exception = False
@@ -560,7 +560,7 @@ cdef execute_task(
                         outputs = (outputs,)
 
             # Store the outputs in the object store.
-            with core_worker.profile_event("task:store_outputs"):
+            with core_worker.profile_event(b"task:store_outputs"):
                 _store_task_outputs(worker, return_ids, outputs)
         except Exception as error:
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
@@ -878,7 +878,7 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
-        with self.profile_event("submit_task"):
+        with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
@@ -937,7 +937,7 @@ cdef class CoreWorker:
             c_vector[CTaskArg] args_vector
             c_vector[CObjectID] return_ids
 
-        with self.profile_event("submit_task"):
+        with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
@@ -974,12 +974,9 @@ cdef class CoreWorker:
 
         return resources_dict
 
-    def profile_event(self, event_type, object extra_data=None):
-        cdef:
-            c_string c_event_type = event_type.encode("ascii")
-
+    def profile_event(self, c_string event_type, object extra_data=None):
         return ProfileEvent.make(
-            self.core_worker.get().CreateProfileEvent(c_event_type),
+            self.core_worker.get().CreateProfileEvent(event_type),
             extra_data)
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes):
