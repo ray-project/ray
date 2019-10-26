@@ -480,12 +480,14 @@ cdef execute_task(
         const c_vector[CObjectID] &c_return_ids,
         c_vector[shared_ptr[CRayObject]] *returns):
 
-    cdef object worker = ray.worker.global_worker
-    cdef object manager = worker.function_actor_manager
-    cdef dict execution_infos = manager.execution_infos
-    cdef CoreWorker core_worker = worker.core_worker
-    cdef JobID job_id = core_worker.get_current_job_id()
-    cdef CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
+    worker = ray.worker.global_worker
+    manager = worker.function_actor_manager
+
+    cdef:
+        dict execution_infos = manager.execution_infos
+        CoreWorker core_worker = worker.core_worker
+        JobID job_id = core_worker.get_current_job_id()
+        CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -516,14 +518,14 @@ cdef execute_task(
                   b' "task_id": ' + task_id.Hex() + b'}')
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        title = "ray_worker:" + function_name + "()"
+        title = "ray_worker:{}()".format(function_name)
         next_title = "ray_worker"
         function_executor = execution_info.function
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
-        title = "ray_" + class_name + ":" + function_name + "()"
-        next_title = "ray_" + class_name
+        title = "ray_{}:{}()".format(class_name, function_name)
+        next_title = "ray_{}".format(class_name)
         worker_name = "ray_{}_{}".format(class_name, os.getpid())
         if c_resources.find(b"memory") != c_resources.end():
             worker.memory_monitor.set_heap_limit(
@@ -907,7 +909,7 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
 
-        with profiling.profile("submit_task"):
+        with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(

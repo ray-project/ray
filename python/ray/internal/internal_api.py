@@ -88,7 +88,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         return
 
     worker.check_connected()
-    with profiling.profile("ray.free"):
+    with worker.core_worker.profile_event(b"ray.free"):
         if len(object_ids) == 0:
             return
 
