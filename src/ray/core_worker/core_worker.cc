@@ -46,7 +46,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals, bool use_memory_store)
+                       std::function<Status()> check_signals)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -55,8 +55,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       heartbeat_timer_(io_service_),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
-      object_interface_(worker_context_, raylet_client_, store_socket, use_memory_store,
-                        check_signals),
+      object_interface_(worker_context_, raylet_client_, store_socket, check_signals),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized

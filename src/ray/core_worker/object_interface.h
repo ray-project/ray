@@ -20,11 +20,9 @@ class CoreWorkerObjectInterface {
  public:
   /// \param[in] worker_context WorkerContext of the parent CoreWorker.
   /// \param[in] store_socket Path to the plasma store socket.
-  /// \param[in] use_memory_store Whether or not to use the in-memory object store
-  ///            in addition to the plasma store.
   CoreWorkerObjectInterface(WorkerContext &worker_context,
                             std::unique_ptr<RayletClient> &raylet_client,
-                            const std::string &store_socket, bool use_memory_store = true,
+                            const std::string &store_socket,
                             std::function<Status()> check_signals = nullptr);
 
   /// Set options for this client's interactions with the object store.
@@ -164,7 +162,6 @@ class CoreWorkerObjectInterface {
   std::unique_ptr<RayletClient> &raylet_client_;
 
   std::string store_socket_;
-  bool use_memory_store_;
 
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
