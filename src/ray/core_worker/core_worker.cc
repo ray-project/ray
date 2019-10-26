@@ -295,7 +295,7 @@ Status CoreWorker::Seal(const ObjectID &object_id) {
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
-  (*results).resize(ids.size(), nullptr);
+  results->resize(ids.size(), nullptr);
 
   std::unordered_set<ObjectID> plasma_object_ids;
   std::unordered_set<ObjectID> memory_object_ids;
@@ -313,7 +313,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
       timeout_ms = std::max(static_cast<int64_t>(0),
                             timeout_ms - (current_time_ms() - start_time));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_->Get(plasma_object_ids, timeout_ms,
+    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, timeout_ms,
                                                   worker_context_.GetCurrentTaskID(),
                                                   &result_map, &got_exception));
   }
@@ -338,7 +338,7 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                         int64_t timeout_ms, std::vector<bool> *results) {
-  (*results).resize(ids.size(), false);
+  results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
     return Status::Invalid(
@@ -373,23 +373,23 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
       memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
       /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
 
-  if (static_cast<int>(ready.size()) - num_objects > 0 && timeout_ms > 0) {
+  if (static_cast<int>(ready.size()) < num_objects && timeout_ms != 0) {
     int64_t start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-        plasma_object_ids, num_objects, /*timeout_ms=*/timeout_ms,
-        worker_context_.GetCurrentTaskID(), &ready));
+    RAY_RETURN_NOT_OK(
+        plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
+                                     worker_context_.GetCurrentTaskID(), &ready));
     if (timeout_ms > 0) {
       timeout_ms =
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
-        memory_object_ids, num_objects, /*timeout_ms=*/timeout_ms,
-        worker_context_.GetCurrentTaskID(), &ready));
+    RAY_RETURN_NOT_OK(
+        memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
+                                     worker_context_.GetCurrentTaskID(), &ready));
   }
 
   for (size_t i = 0; i < ids.size(); i++) {
     if (ready.find(ids[i]) != ready.end()) {
-      (*results)[i] = true;
+      results->at(i) = true;
     }
   }
 

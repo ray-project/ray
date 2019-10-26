@@ -349,7 +349,9 @@ class CoreWorker {
   /// Directory where log files are written.
   const std::string log_dir_;
 
-  /// TODO.
+  /// Application-language callback to check for signals that have been received
+  /// since calling into C++. This will be called periodically (at least every
+  /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
 
   /// Shared state of the worker. Includes process-level and thread-level state.
