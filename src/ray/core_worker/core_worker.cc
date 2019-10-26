@@ -73,7 +73,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals, bool use_memory_store)
+                       std::function<Status()> check_signals)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
