@@ -220,7 +220,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       auto buffer2 = GenerateRandomBuffer();
 
       ObjectID object_id;
-      RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer2, nullptr), &object_id));
+      RAY_CHECK_OK(driver.Put(RayObject(buffer2, nullptr), &object_id));
 
       std::vector<TaskArg> args;
       args.emplace_back(
@@ -236,7 +236,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       ASSERT_EQ(return_ids.size(), 1);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
-      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+      RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
@@ -283,7 +283,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
           is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
-      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+      RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
       ASSERT_EQ(results.size(), 1);
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
@@ -304,7 +304,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     auto buffer2 = std::make_shared<LocalMemoryBuffer>(array2, sizeof(array2));
 
     ObjectID object_id;
-    RAY_CHECK_OK(driver.Objects().Put(RayObject(buffer1, nullptr), &object_id));
+    RAY_CHECK_OK(driver.Put(RayObject(buffer1, nullptr), &object_id));
 
     // Create arguments with PassByRef and PassByValue.
     std::vector<TaskArg> args;
@@ -327,7 +327,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     ASSERT_EQ(return_ids.size(), 1);
 
     std::vector<std::shared_ptr<ray::RayObject>> results;
-    RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+    RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
 
     ASSERT_EQ(results.size(), 1);
     ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size() + buffer2->Size());
@@ -387,7 +387,7 @@ void CoreWorkerTest::TestActorReconstruction(
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
 
-      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+      RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
       ASSERT_EQ(results[0]->GetData()->Size(), buffer1->Size());
       ASSERT_EQ(*results[0]->GetData(), *buffer1);
     }
@@ -438,7 +438,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
       std::vector<ObjectID> return_ids;
       return_ids.push_back(entry.first);
       std::vector<std::shared_ptr<RayObject>> results;
-      RAY_CHECK_OK(driver.Objects().Get(return_ids, -1, &results));
+      RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
       ASSERT_EQ(results.size(), 1);
 
       if (results[0]->HasMetadata()) {
@@ -576,7 +576,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
   for (const auto &object_id : object_ids) {
     std::vector<std::shared_ptr<RayObject>> results;
-    RAY_CHECK_OK(driver.Objects().Get({object_id}, -1, &results));
+    RAY_CHECK_OK(driver.Get({object_id}, -1, &results));
     ASSERT_EQ(results.size(), 1);
   }
   RAY_LOG(INFO) << "finish executing " << num_tasks << " tasks"
@@ -626,7 +626,6 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  provider_ptr;
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>();
   std::unique_ptr<CoreWorkerMemoryStoreProvider> provider_ptr =
@@ -690,7 +689,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // clear the reference held.
   results.clear();
 
-  RAY_CHECK_OK(provider.Delete(ids, true, false));
+  RAY_CHECK_OK(provider.Delete(ids_set));
 
   usleep(200 * 1000);
   RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception));
@@ -771,12 +770,12 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(core_worker.Objects().Put(buffers[i], &ids[i]));
+    RAY_CHECK_OK(core_worker.Put(buffers[i], &ids[i]));
   }
 
   // Test Get().
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(core_worker.Objects().Get(ids, -1, &results));
+  RAY_CHECK_OK(core_worker.Get(ids, -1, &results));
   ASSERT_EQ(results.size(), ids.size());
   for (size_t i = 0; i < ids.size(); i++) {
     ASSERT_EQ(*results[i]->GetData(), *buffers[i].GetData());
@@ -794,9 +793,8 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
       nullptr, std::make_shared<LocalMemoryBuffer>(
                    reinterpret_cast<uint8_t *>(error_buffer), len));
 
-  RAY_CHECK_OK(core_worker.Objects().Put(buffers_with_exception.back(),
-                                         ids_with_exception.back()));
-  RAY_CHECK_OK(core_worker.Objects().Get(ids_with_exception, -1, &results));
+  RAY_CHECK_OK(core_worker.Put(buffers_with_exception.back(), ids_with_exception.back()));
+  RAY_CHECK_OK(core_worker.Get(ids_with_exception, -1, &results));
 
   // Test Wait().
   ObjectID non_existent_id = ObjectID::FromRandom();
@@ -804,24 +802,24 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   all_ids.push_back(non_existent_id);
 
   std::vector<bool> wait_results;
-  RAY_CHECK_OK(core_worker.Objects().Wait(all_ids, 2, -1, &wait_results));
+  RAY_CHECK_OK(core_worker.Wait(all_ids, 2, -1, &wait_results));
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  RAY_CHECK_OK(core_worker.Objects().Wait(all_ids, 3, 100, &wait_results));
+  RAY_CHECK_OK(core_worker.Wait(all_ids, 3, 100, &wait_results));
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   // Test Delete().
   // clear the reference held by PlasmaBuffer.
   results.clear();
-  RAY_CHECK_OK(core_worker.Objects().Delete(ids, true, false));
+  RAY_CHECK_OK(core_worker.Delete(ids, true, false));
 
   // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
-  RAY_CHECK_OK(core_worker.Objects().Get(ids, 0, &results));
+  RAY_CHECK_OK(core_worker.Get(ids, 0, &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
@@ -845,12 +843,12 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_CHECK_OK(worker1.Objects().Put(RayObject(buffers[i], nullptr), &ids[i]));
+    RAY_CHECK_OK(worker1.Put(RayObject(buffers[i], nullptr), &ids[i]));
   }
 
   // Test Get() from remote node.
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(worker2.Objects().Get(ids, -1, &results));
+  RAY_CHECK_OK(worker2.Get(ids, -1, &results));
 
   ASSERT_EQ(results.size(), 2);
   for (size_t i = 0; i < ids.size(); i++) {
@@ -864,30 +862,30 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   all_ids.push_back(non_existent_id);
 
   std::vector<bool> wait_results;
-  RAY_CHECK_OK(worker2.Objects().Wait(all_ids, 2, -1, &wait_results));
+  RAY_CHECK_OK(worker2.Wait(all_ids, 2, -1, &wait_results));
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
-  RAY_CHECK_OK(worker2.Objects().Wait(all_ids, 3, 100, &wait_results));
+  RAY_CHECK_OK(worker2.Wait(all_ids, 3, 100, &wait_results));
   ASSERT_EQ(wait_results.size(), 3);
   ASSERT_EQ(wait_results, std::vector<bool>({true, true, false}));
 
   // Test Delete() from all machines.
   // clear the reference held by PlasmaBuffer.
   results.clear();
-  RAY_CHECK_OK(worker2.Objects().Delete(ids, false, false));
+  RAY_CHECK_OK(worker2.Delete(ids, false, false));
 
   // Note that Delete() calls RayletClient::FreeObjects and would not
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(1000 * 1000);
   // Verify objects are deleted from both machines.
-  RAY_CHECK_OK(worker2.Objects().Get(ids, 0, &results));
+  RAY_CHECK_OK(worker2.Get(ids, 0, &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
 
-  RAY_CHECK_OK(worker1.Objects().Get(ids, 0, &results));
+  RAY_CHECK_OK(worker1.Get(ids, 0, &results));
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
