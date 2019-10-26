@@ -1223,9 +1223,25 @@ def test_direct_actor_errors(ray_start_regular):
     with pytest.raises(Exception):
         ray.get(f.remote([a.f.remote(2)]))
 
-    # by ref args not implemented
-    with pytest.raises(ray.exceptions.RayletError):
-        a.f.remote(f.remote(2))
+
+def test_direct_actor_pass_by_ref(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return x
+
+    a = Actor._remote(is_direct_call=True)
+    assert ray.get(a.f.remote(f.remote(1))) == 2
+
+    fut = [a.f.remote(f.remote(i)) for i in range(100)]
+    assert ray.get(fut) == [i * 2 for i in range(100)]
 
 
 def test_direct_actor_recursive(ray_start_regular):
