@@ -46,20 +46,14 @@ class CoreWorker {
   /// \parma[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \param[in] use_memory_store Whether or not to use the in-memory object store
-  ///            in addition to the plasma store.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
-  /// NOTE(edoakes): the use_memory_store flag is a stop-gap solution to the issue
-  ///                that randomly generated ObjectIDs may use the memory store
-  ///                instead of the plasma store.
   CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
              const TaskExecutionCallback &task_execution_callback,
-             std::function<Status()> check_signals = nullptr,
-             bool use_memory_store = true);
+             std::function<Status()> check_signals = nullptr);
 
   ~CoreWorker();
 
