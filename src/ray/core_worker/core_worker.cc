@@ -263,6 +263,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
+  RAY_LOG(INFO) << "SIMON: CoreWorker::CreateActor is_persistent: "
+                << actor_creation_options.is_persistent << "\n";
   BuildCommonTaskSpec(
       builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
       next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,

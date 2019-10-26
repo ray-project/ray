@@ -2816,3 +2816,12 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     failure_detected = False
     while not failure_detected:
         failure_detected = ray.get(parent_actor.wait.remote())
+
+def test_actor_persistence(ray_start_regular):
+    @ray.remote
+    class PersistentActor:
+        def ping(self):
+            return "pong"
+
+    persistent_actor = PersistentActor._remote(is_persistent=True)
+    assert ray.get(persistent_actor.ping.remote()) == "pong"

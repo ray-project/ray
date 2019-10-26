@@ -306,7 +306,8 @@ class ActorClass(object):
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
-                resources=None):
+                resources=None,
+                is_persistent=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -401,7 +402,7 @@ class ActorClass(object):
             actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources)
+                actor_placement_resources, is_persistent)
 
         actor_handle = ActorHandle(
             actor_id,

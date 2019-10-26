@@ -103,12 +103,14 @@ struct ActorCreationOptions {
   ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
-                       const std::vector<std::string> &dynamic_worker_options)
+                       const std::vector<std::string> &dynamic_worker_options,
+                       bool is_persistent)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
         resources(resources),
         placement_resources(placement_resources),
-        dynamic_worker_options(dynamic_worker_options) {}
+        dynamic_worker_options(dynamic_worker_options),
+        is_persistent(is_persistent){};
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
@@ -123,6 +125,9 @@ struct ActorCreationOptions {
   /// The dynamic options used in the worker command when starting a worker process for
   /// an actor creation task.
   const std::vector<std::string> dynamic_worker_options;
+  /// Whether to keep the actor persistent after driver exit. If true, this will set
+  /// the worker to not be destroyed after the driver shutdown.
+  const bool is_persistent = false;
 };
 
 }  // namespace ray
