@@ -171,7 +171,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // TODO(edoakes): why don't we just share the memory store provider?
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
-          io_service_, std::unique_ptr<CoreWorkerStoreProvider>(
+          io_service_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
                            new CoreWorkerMemoryStoreProvider(memory_store_))));
 }
 
@@ -404,7 +404,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
-  RAY_RETURN_NOT_OK(memory_store_provider_->Delete(memory_object_ids, false, false));
+  RAY_RETURN_NOT_OK(memory_store_provider_->Delete(memory_object_ids));
 
   return Status::OK();
 }
