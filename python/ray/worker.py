@@ -44,7 +44,6 @@ from ray import (
     ObjectID,
 )
 from ray import import_thread
-from ray import profiling
 from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
 from ray.gcs_utils import ErrorType
