@@ -482,6 +482,7 @@ cdef execute_task(
 
     cdef object worker = ray.worker.global_worker
     cdef object manager = worker.function_actor_manager
+    cdef dict execution_infos = manager.execution_infos
     cdef CoreWorker core_worker = worker.core_worker
     cdef JobID job_id = core_worker.get_current_job_id()
     cdef CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
@@ -503,26 +504,26 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = manager.execution_infos.get(descriptor)
+    execution_info = execution_infos.get(descriptor)
     if not execution_info:
         function_descriptor = FunctionDescriptor.from_bytes_list(
             ray_function.GetFunctionDescriptor())
         execution_info = manager.get_execution_info(job_id, function_descriptor)
-        manager.execution_infos[descriptor] = execution_info
+        execution_infos[descriptor] = execution_info
 
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.Hex() + b'}')
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
-        title = "ray_worker:{}()".format(function_name)
+        title = "ray_worker:" + function_name + "()"
         next_title = "ray_worker"
         function_executor = execution_info.function
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
-        title = "ray_{}:{}()".format(class_name, function_name)
-        next_title = "ray_{}".format(class_name)
+        title = "ray_" + class_name + ":" + function_name + "()"
+        next_title = "ray_" + class_name
         worker_name = "ray_{}_{}".format(class_name, os.getpid())
         if c_resources.find(b"memory") != c_resources.end():
             worker.memory_monitor.set_heap_limit(
