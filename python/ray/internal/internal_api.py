@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import ray.worker
-from ray import profiling
 
 __all__ = ["free", "pin_object_data"]
 
