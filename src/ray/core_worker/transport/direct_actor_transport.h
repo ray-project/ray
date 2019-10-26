@@ -134,7 +134,7 @@ class SchedulingQueue {
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request) {
     if (client_processed_up_to >= next_seq_no_) {
-      RAY_LOG(DEBUG) << "client skipping requests " << next_seq_no_ << " to "
+      RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
                      << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }

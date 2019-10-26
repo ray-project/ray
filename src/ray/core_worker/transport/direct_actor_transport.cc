@@ -81,7 +81,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     // Check if this actor is the one that we're interested, if we already have
     // a connection to the actor, or have pending requests for it, we should
     // create a new connection.
-    if (pending_requests_.count(actor_id) > 0) {
+    if (pending_requests_.count(actor_id) > 0 && rpc_clients_.count(actor_id) == 0) {
       ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
     }
   } else {
@@ -144,6 +144,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
           waiting_reply_tasks_[actor_id].erase(task_id);
         }
         if (!status.ok()) {
+          RAY_LOG(ERROR) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }

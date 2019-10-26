@@ -44,6 +44,11 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     {
       std::lock_guard<std::mutex> lock(mutex_);
+      if (request->task_spec().caller_id() != cur_caller_id_) {
+        // We are running a new task, reset the seq no counter.
+        max_finished_seq_no_ = -1;
+        cur_caller_id_ = request->task_spec().caller_id();
+      }
       send_queue_.push_back(std::make_pair(std::move(request), callback));
     }
     SendRequests();
@@ -124,6 +129,10 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
 
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
+
+  /// The task id we are currently sending requests for. When this changes,
+  /// the max finished seq no counter is reset.
+  std::string cur_caller_id_;
 };
 
 }  // namespace rpc
