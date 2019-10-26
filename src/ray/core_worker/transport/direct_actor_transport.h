@@ -123,6 +123,27 @@ class CoreWorkerDirectActorTaskSubmitter {
   friend class CoreWorkerTest;
 };
 
+/// Holds state associated with an inbound request.
+class InboundRequest {
+ public:
+  InboundRequest(){};
+  InboundRequest(std::function<void()> accept_callback,
+                 std::function<void()> reject_callback, bool has_dependencies)
+      : accept_callback_(accept_callback),
+        reject_callback_(reject_callback),
+        has_pending_dependencies_(has_dependencies) {}
+
+  void Accept() { accept_callback_(); }
+  void Cancel() { accept_callback_(); }
+  bool CanExecute() { return has_pending_dependencies_; }
+  void DependenciesSatisfied() { has_pending_dependencies_ = false; }
+
+ private:
+  std::function<void()> accept_callback_;
+  std::function<void()> reject_callback_;
+  bool has_pending_dependencies_;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
@@ -131,26 +152,40 @@ class SchedulingQueue {
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(io_service), reorder_wait_seconds_(reorder_wait_seconds) {}
 
-  void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request) {
+  void Add(int64_t seq_no, const std::vector<ObjectID> &dependencies,
+           int64_t client_processed_up_to, std::function<void()> accept_request,
+           std::function<void()> reject_request) {
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
                      << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }
-    pending_tasks_[seq_no] = make_pair(accept_request, reject_request);
+    pending_tasks_[seq_no] =
+        InboundRequest(accept_request, reject_request, dependencies.size() > 0);
+    if (dependencies.size() > 0) {
+      waiter_.Wait(dependencies, [this]() {
+        it->second->DependenciesSatisfied();
+        ScheduleRequests();
+      });
+    }
+    ScheduleRequests();
+  }
 
-    // Reject any stale requests that the client doesn't need any longer.
+ private:
+  /// Schedules as many requests as possible in sequence.
+  void ScheduleRequests() {
+    // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_tasks_.begin();
-      head->second.second();  // reject_request
+      head->second->Cancel();
       pending_tasks_.erase(head);
     }
 
     // Process as many in-order requests as we can.
-    while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_) {
+    while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_ &&
+           head->second->CanExecute()) {
       auto head = pending_tasks_.begin();
-      head->second.first();  // accept_request
+      head->second->Accept();
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
@@ -164,19 +199,18 @@ class SchedulingQueue {
         if (error == boost::asio::error::operation_aborted) {
           return;  // time deadline was adjusted
         }
-        OnDependencyWaitTimeout();
+        OnSequencingWaitTimeout();
       });
     }
   }
 
- private:
-  /// Called when we time out waiting for a task dependency to show up.
-  void OnDependencyWaitTimeout() {
+  /// Called when we time out waiting for an earlier task to show up.
+  void OnSequencingWaitTimeout() {
     RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                    << ", cancelling all queued tasks";
     while (!pending_tasks_.empty()) {
       auto head = pending_tasks_.begin();
-      head->second.second();  // reject_request
+      head->second->Cancel();
       pending_tasks_.erase(head);
       next_seq_no_ = std::max(next_seq_no_, head->first + 1);
     }
@@ -185,8 +219,7 @@ class SchedulingQueue {
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  std::map<int64_t, std::pair<std::function<void()>, std::function<void()>>>
-      pending_tasks_;
+  std::map<int64_t, InboundRequest> pending_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies.

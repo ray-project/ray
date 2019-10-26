@@ -213,6 +213,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const TaskSpecification task_spec(request.task_spec());
+  const Task task(task_spec, TaskExecutionSpecification());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
   if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
@@ -228,7 +229,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     it = result.first;
   }
   it->second->Add(
-      request.sequence_number(), request.client_processed_up_to(),
+      request.sequence_number(), task.GetDependencies(), request.client_processed_up_to(),
       [this, reply, send_reply_callback, task_spec]() {
         auto num_returns = task_spec.NumReturns();
         RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
