@@ -110,7 +110,7 @@ cdef class UniqueID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(os.urandom(CUniqueID.Size()))
+        return cls(CUniqueID.FromRandom().Binary())
 
     def size(self):
         return CUniqueID.Size()
@@ -197,7 +197,7 @@ cdef class ObjectID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(os.urandom(CObjectID.Size()))
+        return cls(CObjectID.FromRandom().Binary())
 
 
 cdef class TaskID(BaseID):

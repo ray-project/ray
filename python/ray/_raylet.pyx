@@ -657,7 +657,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), task_execution_handler,
-            check_signals, False))
+            check_signals))
 
     def disconnect(self):
         with nogil:
