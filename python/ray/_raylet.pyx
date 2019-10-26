@@ -488,14 +488,11 @@ cdef execute_task(
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
 
-    cdef const c_vector[c_string]* d = &ray_function.GetFunctionDescriptor()
-    function_descriptor = manager.function_descriptors[d[0][0]][d[0][1]].get(d[0][2])
-    if not function_descriptor:
-        function_descriptor = FunctionDescriptor.from_bytes_list(
-            ray_function.GetFunctionDescriptor())
-        manager.function_descriptors[d[0][0]][d[0][1]][d[0][2]] = function_descriptor
+    descriptor = tuple(ray_function.GetFunctionDescriptor())
 
     if <int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK:
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            ray_function.GetFunctionDescriptor())
         actor_class = manager.load_actor_class(job_id, function_descriptor)
         actor_id = core_worker.get_actor_id()
         worker.actors[actor_id] = actor_class.__new__(actor_class)
@@ -505,7 +502,13 @@ cdef execute_task(
                 last_checkpoint_timestamp=int(1000 * time.time()),
                 checkpoint_ids=[]))
 
-    execution_info = manager.get_execution_info(job_id, function_descriptor)
+    execution_info = manager.execution_infos.get(descriptor)
+    if not execution_info:
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            ray_function.GetFunctionDescriptor())
+        execution_info = manager.get_execution_info(job_id, function_descriptor)
+        manager.execution_infos[descriptor] = execution_info
+
     function_name = execution_info.function_name
     extra_data = (b'{"name": ' + function_name.encode("ascii") +
                   b' "task_id": ' + task_id.Hex() + b'}')
@@ -515,7 +518,7 @@ cdef execute_task(
         next_title = "ray_worker"
         function_executor = execution_info.function
     else:
-        actor = worker.actors[actor_id]
+        actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
         title = "ray_{}:{}()".format(class_name, function_name)
         next_title = "ray_{}".format(class_name)
@@ -592,6 +595,9 @@ cdef execute_task(
         ray_signal.reset()
 
     if execution_info.max_calls != 0:
+        function_descriptor = FunctionDescriptor.from_bytes_list(
+            ray_function.GetFunctionDescriptor())
+
         # Reset the state of the worker for the next task to execute.
         # Increase the task execution counter.
         manager.increase_task_counter(job_id, function_descriptor)
