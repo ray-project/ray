@@ -4,6 +4,7 @@
 #include <list>
 #include <set>
 #include <utility>
+#include <boost/thread.hpp>
 
 #include "ray/common/id.h"
 #include "ray/core_worker/object_interface.h"
@@ -135,8 +136,8 @@ class InboundRequest {
 
   void Accept() { accept_callback_(); }
   void Cancel() { accept_callback_(); }
-  bool CanExecute() { return has_pending_dependencies_; }
-  void OnDependenciesSatisfied() { has_pending_dependencies_ = false; }
+  bool CanExecute() { return !has_pending_dependencies_; }
+  void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
   std::function<void()> accept_callback_;
@@ -148,13 +149,16 @@ class InboundRequest {
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
-  SchedulingQueue(boost::asio::io_service &io_service,
+  SchedulingQueue(boost::asio::io_service &main_io_service,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : wait_timer_(io_service), reorder_wait_seconds_(reorder_wait_seconds) {}
+      : wait_timer_(main_io_service), reorder_wait_seconds_(reorder_wait_seconds),
+        main_thread_id_(boost::this_thread::get_id()) {}
 
+  // This function must always be run on the main io service.
   void Add(int64_t seq_no, const std::vector<ObjectID> &dependencies,
            int64_t client_processed_up_to, std::function<void()> accept_request,
            std::function<void()> reject_request) {
+    RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
                      << client_processed_up_to;
@@ -163,13 +167,14 @@ class SchedulingQueue {
     pending_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
-      waiter_.Wait(dependencies, [seq_no, this]() {
-        auto it = pending_tasks_.find(seq_no);
-        if (it != pending_tasks.end()) {
-          it->second->OnDependenciesSatisfied();
-          ScheduleRequests();
-        }
-      });
+//      waiter_.Wait(dependencies, [seq_no, this]() {
+//        RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+//        auto it = pending_tasks_.find(seq_no);
+//        if (it != pending_tasks.end()) {
+//          it->second->MarkDependenciesSatisfied();
+//          ScheduleRequests();
+//        }
+//      });
     }
     ScheduleRequests();
   }
@@ -180,15 +185,15 @@ class SchedulingQueue {
     // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_tasks_.begin();
-      head->second->Cancel();
+      head->second.Cancel();
       pending_tasks_.erase(head);
     }
 
     // Process as many in-order requests as we can.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_ &&
-           head->second->CanExecute()) {
+           pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
-      head->second->Accept();
+      head->second.Accept();
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
@@ -211,9 +216,10 @@ class SchedulingQueue {
   void OnSequencingWaitTimeout() {
     RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                    << ", cancelling all queued tasks";
+    RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     while (!pending_tasks_.empty()) {
       auto head = pending_tasks_.begin();
-      head->second->Cancel();
+      head->second.Cancel();
       pending_tasks_.erase(head);
       next_seq_no_ = std::max(next_seq_no_, head->first + 1);
     }
@@ -227,6 +233,8 @@ class SchedulingQueue {
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies.
   boost::asio::deadline_timer wait_timer_;
+  /// The id of the thread that constructed this scheduling queue.
+  boost::thread::id main_thread_id_;
 
   friend class SchedulingQueueTest;
 };
