@@ -1,6 +1,5 @@
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/common/task/task.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 
 using ray::rpc::ActorTableData;
 
