@@ -85,10 +85,6 @@ echo "Using Python executable $PYTHON_EXECUTABLE."
 BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
 echo "Using Bazel executable $BAZEL_EXECUTABLE."
 
-RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
-RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
-bash "$ROOT_DIR/setup_thirdparty.sh" "$PYTHON_EXECUTABLE"
-
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
 if [ ! -d "${BUILD_DIR}" ]; then
