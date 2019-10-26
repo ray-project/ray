@@ -25,9 +25,6 @@ enum MessageType:int {
   // Notify the raylet that this client is disconnecting gracefully.
   // This is sent from a worker to a raylet.
   IntentionalDisconnectClient,
-  // Get a new task from the raylet. This is sent from a worker to a
-  // raylet.
-  GetTask,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -119,14 +116,6 @@ table ResourceIdSetInfos {
   resource_infos: [ResourceIdSetInfo];
 }
 
-// This message is sent from the raylet to a worker.
-table GetTaskReply {
-  // A string of bytes representing the task specification.
-  task_spec: string;
-  // A list of the resources reserved for this worker.
-  fractional_resource_ids: ResourceIdSetInfos;
-}
-
 // This struct is used to register a new worker with the raylet.
 // It is shipped as part of raylet_connect.
 table RegisterClientRequest {
@@ -142,8 +131,6 @@ table RegisterClientRequest {
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
   // Port that this worker is listening on.
-  // If port > 0, then worker will listen to this port and wait for
-  // raylet to push tasks, instead of invoking GetTask().
   port: int;
 }
 
