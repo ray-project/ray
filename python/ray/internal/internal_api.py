@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray.worker
+from ray import profiling
 
 __all__ = ["free", "pin_object_data"]
 
@@ -87,7 +88,7 @@ def free(object_ids, local_only=False, delete_creating_tasks=False):
         return
 
     worker.check_connected()
-    with worker.core_worker.profile_event(b"ray.free"):
+    with profiling.profile("ray.free"):
         if len(object_ids) == 0:
             return
 

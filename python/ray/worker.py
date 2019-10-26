@@ -44,6 +44,7 @@ from ray import (
     ObjectID,
 )
 from ray import import_thread
+from ray import profiling
 from ray._raylet import Pickle5Writer, unpack_pickle5_buffers
 
 from ray.gcs_utils import ErrorType
@@ -1843,7 +1844,7 @@ def get(object_ids):
     """
     worker = global_worker
     worker.check_connected()
-    with worker.core_worker.profile_event(b"ray.get"):
+    with profiling.profile("ray.get"):
         is_individual_id = isinstance(object_ids, ray.ObjectID)
         if is_individual_id:
             object_ids = [object_ids]
@@ -1891,7 +1892,7 @@ def put(value, weakref=False):
     """
     worker = global_worker
     worker.check_connected()
-    with worker.core_worker.profile_event(b"ray.put"):
+    with profiling.profile("ray.put"):
         if worker.mode == LOCAL_MODE:
             object_id = worker.local_mode_manager.put_object(value)
         else:
@@ -1980,7 +1981,7 @@ def wait(object_ids, num_returns=1, timeout=None):
 
     worker.check_connected()
     # TODO(swang): Check main thread.
-    with worker.core_worker.profile_event(b"ray.wait"):
+    with profiling.profile("ray.wait"):
         # When Ray is run in LOCAL_MODE, all functions are run immediately,
         # so all objects in object_id are ready.
         if worker.mode == LOCAL_MODE:
