@@ -35,11 +35,6 @@ from ray.includes.libraylet cimport CRayletClient
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
 
-cdef extern from "ray/core_worker/task_execution.h" namespace "ray" nogil:
-    cdef cppclass CTaskExecutionInterface "CoreWorkerTaskExecutionInterface":
-        void Run()
-        void Stop()
-
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -95,7 +90,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        CTaskExecutionInterface &Execution()
+
+        void StartExecutingTasks()
 
         CRayStatus SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,

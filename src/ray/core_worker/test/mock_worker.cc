@@ -2,7 +2,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/store_provider/store_provider.h"
-#include "ray/core_worker/task_execution.h"
 #include "src/ray/util/test_util.h"
 
 using namespace std::placeholders;
@@ -27,10 +26,7 @@ class MockWorker {
                 /*node_id_address=*/"127.0.0.1",
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7)) {}
 
-  void Run() {
-    // Start executing tasks.
-    worker_.Execution().Run();
-  }
+  void StartExecutingTasks() { worker_.StartExecutingTasks(); }
 
  private:
   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
@@ -82,6 +78,6 @@ int main(int argc, char **argv) {
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::MockWorker worker(store_socket, raylet_socket, gcs_options);
-  worker.Run();
+  worker.StartExecutingTasks();
   return 0;
 }

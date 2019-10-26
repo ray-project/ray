@@ -95,7 +95,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
   local_env = env;
   local_java_task_executor = javaTaskExecutor;
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  core_worker->Execution().Run();
+  core_worker->StartExecutingTasks();
   local_env = nullptr;
   local_java_task_executor = nullptr;
 }

@@ -4,15 +4,17 @@
 #include <list>
 
 #include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
-class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
-                                     public rpc::WorkerTaskHandler {
+class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
  public:
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
+
   CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
                                std::unique_ptr<RayletClient> &raylet_client,
                                CoreWorkerObjectInterface &object_interface,
