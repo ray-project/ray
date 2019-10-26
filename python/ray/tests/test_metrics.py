@@ -49,5 +49,5 @@ def test_worker_stats(ray_start_regular):
             if p.info["pid"] in pids
         ]
         for process in processes:
-            assert "python" in process
+            assert "python" in process or "ray" in process
         break
