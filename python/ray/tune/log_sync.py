@@ -24,10 +24,10 @@ def log_sync_template(options=""):
     rsync to be installed.
 
     Args:
-        options: Rsync options.
+        options (str): Addtional rsync options.
 
     Returns:
-
+        Sync template with source and target parameters.
     """
     if not distutils.spawn.find_executable("rsync"):
         logger.error("Log sync requires rsync to be installed.")

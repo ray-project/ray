@@ -34,20 +34,36 @@ def wait_for_sync():
 
 
 class SyncClient(object):
+
     def sync_up(self, source, target):
+        """Sync up from source to target.
+
+        Args:
+            source (str): Source path.
+            target (str): Target path.
+        """
         raise NotImplementedError
 
     def sync_down(self, source, target):
+        """Sync down from source to target.
+
+        Args:
+            source (str): Source path.
+            target (str): Target path.
+        """
         raise NotImplementedError
 
     def wait(self):
+        """Wait on sync."""
         pass
 
     def reset(self):
+        """Reset state."""
         pass
 
 
 class FunctionBasedClient(SyncClient):
+
     def __init__(self, sync_up_func, sync_down_func):
         self.sync_up_func = sync_up_func
         self.sync_down_func = sync_down_func
