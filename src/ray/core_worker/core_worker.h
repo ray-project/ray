@@ -60,24 +60,19 @@ class CoreWorker {
 
   void Disconnect();
 
-  WorkerType GetWorkerType() const { return worker_type_; }
+  const WorkerType &GetWorkerType() const { return worker_type_; }
+
+  const WorkerID &GetWorkerID() const { return worker_id_; }
 
   Language GetLanguage() const { return language_; }
 
-  WorkerContext &GetWorkerContext() { return worker_context_; }
+  const JobID &GetCurrentJobId() const { return current_job_id_; }
 
   RayletClient &GetRayletClient() { return *raylet_client_; }
 
-  const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+  const TaskID &GetCurrentTaskId() const { return GetThreadContext().GetCurrentTaskID(); }
 
-  void SetCurrentTaskId(const TaskID &task_id);
-
-  const JobID &GetCurrentJobId() const { return worker_context_.GetCurrentJobID(); }
-
-  void SetActorId(const ActorID &actor_id) {
-    RAY_CHECK(actor_id_.IsNil());
-    actor_id_ = actor_id;
-  }
+  const ActorID &GetActorId() const { return actor_id_; }
 
   // Add this object ID to the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
@@ -262,8 +257,6 @@ class CoreWorker {
 
   /* Public methods related to task execution. Should not be used by driver processes. */
 
-  const ActorID &GetActorId() const { return actor_id_; }
-
   // Get the resource IDs available to this worker (as assigned by the raylet).
   const ResourceMappingType GetResourceIDs() const { return resource_ids_; }
 
@@ -275,6 +268,9 @@ class CoreWorker {
   void StartExecutingTasks();
 
  private:
+  /// Get the per-thread worker context for the currently executing thread.
+  static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);
+
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
@@ -333,11 +329,20 @@ class CoreWorker {
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
 
+  /// Application language of this worker (i.e., PYTHON or JAVA).
+  const Language language_;
+
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;
 
-  /// Application language of this worker (i.e., PYTHON or JAVA).
-  const Language language_;
+  /// ID of this worker.
+  const WorkerID worker_id_;
+
+  /// ID of the current job being processed by this worker.
+  JobID current_job_id_;
+
+  /// Our actor ID. If this is nil, then we execute only stateless tasks.
+  ActorID actor_id_;
 
   /// Directory where log files are written.
   const std::string log_dir_;
@@ -346,11 +351,6 @@ class CoreWorker {
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
   std::function<Status()> check_signals_;
-
-  /// Shared state of the worker. Includes process-level and thread-level state.
-  /// TODO(edoakes): we should move process-level state into this class and make
-  /// this a ThreadContext.
-  WorkerContext worker_context_;
 
   /// The ID of the current task being executed by the main thread. If there
   /// are multiple threads, they will have a thread-local task ID stored in the
@@ -406,9 +406,6 @@ class CoreWorker {
   std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
   /* Fields related to task execution. */
-
-  /// Our actor ID. If this is nil, then we execute only stateless tasks.
-  ActorID actor_id_;
 
   /// Event loop where tasks are processed.
   boost::asio::io_service task_execution_service_;

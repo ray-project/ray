@@ -74,11 +74,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals)
-    : worker_type_(worker_type),
-      language_(language),
+    : language_(language),
+      worker_type_(worker_type),
+      worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
+                                                    : WorkerID::FromRandom()),
+      current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
       log_dir_(log_dir),
       check_signals_(check_signals),
-      worker_context_(worker_type, job_id),
       io_work_(io_service_),
       heartbeat_timer_(io_service_),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
@@ -91,18 +93,24 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   if (log_dir_ != "") {
     std::stringstream app_name;
     app_name << LanguageString(language_) << "-" << WorkerTypeString(worker_type_) << "-"
-             << worker_context_.GetWorkerID();
+             << worker_id_;
     RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, log_dir_);
     RayLog::InstallFailureSignalHandler();
   }
+
+  // For worker main thread which initializes the WorkerContext,
+  // set task_id according to whether current worker is a driver.
+  // (For other threads it's set to random ID via GetThreadContext).
+  GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                              ? TaskID::ForDriverTask(job_id)
+                                              : TaskID::Nil());
 
   // Initialize gcs client.
   RAY_CHECK_OK(gcs_client_.Connect(io_service_));
 
   // Initialize profiler.
-  profiler_ =
-      std::make_shared<worker::Profiler>(worker_type, worker_context_.GetWorkerID(),
-                                         node_ip_address, io_service_, gcs_client_);
+  profiler_ = std::make_shared<worker::Profiler>(
+      worker_type_, worker_id_, node_ip_address, io_service_, gcs_client_);
 
   // Initialize task execution.
   if (worker_type_ == WorkerType::WORKER) {
@@ -127,10 +135,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
-  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
-      (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, worker_server_.GetPort()));
+  raylet_client_ = std::unique_ptr<RayletClient>(
+      new RayletClient(raylet_socket, WorkerID::FromBinary(worker_id_.Binary()),
+                       (worker_type_ == ray::WorkerType::WORKER), current_job_id_,
+                       language_, worker_server_.GetPort()));
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -156,16 +164,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     TaskSpecBuilder builder;
     std::vector<std::string> empty_descriptor;
     std::unordered_map<std::string, double> empty_resources;
-    const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
-                              worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
-                              0, GetCallerId(), 0, empty_resources, empty_resources);
+    const TaskID task_id = TaskID::ForDriverTask(current_job_id_);
+    builder.SetCommonTaskSpec(task_id, language_, empty_descriptor, current_job_id_,
+                              TaskID::ComputeDriverTaskId(worker_id_), 0, GetCallerId(),
+                              0, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     RAY_CHECK_OK(gcs_client_.raylet_task_table().Add(job_id, task_id, data, nullptr));
-    SetCurrentTaskId(task_id);
+    GetThreadContext().SetCurrentTaskId(task_id);
   }
 
   // TODO(edoakes): why don't we just share the memory store provider?
@@ -194,6 +201,29 @@ void CoreWorker::Disconnect() {
   }
 }
 
+/// Per-thread worker context.
+static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
+
+// Flag used to ensure that we only print a warning about multithreading once per
+// process.
+static bool multithreading_warning_printed_ = false;
+
+WorkerThreadContext &CoreWorker::GetThreadContext(bool for_main_thread) {
+  if (thread_context_ == nullptr) {
+    thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
+    if (!for_main_thread && !multithreading_warning_printed_) {
+      std::cout << "WARNING: "
+                << "Calling ray.get or ray.wait in a separate thread "
+                << "may lead to deadlock if the main thread blocks on "
+                << "this thread and there are not enough resources to "
+                << "execute more tasks." << std::endl;
+      multithreading_warning_printed_ = true;
+    }
+  }
+
+  return *thread_context_;
+}
+
 void CoreWorker::RunIOService() {
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
   sigset_t mask;
@@ -203,18 +233,6 @@ void CoreWorker::RunIOService() {
   pthread_sigmask(SIG_BLOCK, &mask, NULL);
 
   io_service_.run();
-}
-
-void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
-  worker_context_.SetCurrentTaskId(task_id);
-  main_thread_task_id_ = task_id;
-  // Clear all actor handles at the end of each non-actor task.
-  if (actor_id_.IsNil() && task_id.IsNil()) {
-    for (const auto &handle : actor_handles_) {
-      RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
-    }
-    actor_handles_.clear();
-  }
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
@@ -263,8 +281,8 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
 }
 
 Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
-  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex(),
+  *object_id = ObjectID::ForPut(GetThreadContext().GetCurrentTaskID(),
+                                GetThreadContext().GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   return Put(object, *object_id);
 }
@@ -278,8 +296,8 @@ Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
-  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                worker_context_.GetNextPutIndex(),
+  *object_id = ObjectID::ForPut(GetThreadContext().GetCurrentTaskID(),
+                                GetThreadContext().GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   return Create(metadata, data_size, *object_id, data);
 }
@@ -305,7 +323,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
-                                                worker_context_.GetCurrentTaskID(),
+                                                GetThreadContext().GetCurrentTaskID(),
                                                 &result_map, &got_exception));
 
   if (!got_exception) {
@@ -314,7 +332,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                             timeout_ms - (current_time_ms() - start_time));
     }
     RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, timeout_ms,
-                                                  worker_context_.GetCurrentTaskID(),
+                                                  GetThreadContext().GetCurrentTaskID(),
                                                   &result_map, &got_exception));
   }
 
@@ -368,23 +386,23 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // provider before even trying another (which might have all of the objects available).
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Wait(plasma_object_ids, num_objects, /*timeout_ms=*/0,
-                                   worker_context_.GetCurrentTaskID(), &ready));
+                                   GetThreadContext().GetCurrentTaskID(), &ready));
   RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
       memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
-      /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
+      /*timeout_ms=*/0, GetThreadContext().GetCurrentTaskID(), &ready));
 
   if (static_cast<int>(ready.size()) < num_objects && timeout_ms != 0) {
     int64_t start_time = current_time_ms();
     RAY_RETURN_NOT_OK(
         plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
-                                     worker_context_.GetCurrentTaskID(), &ready));
+                                     GetThreadContext().GetCurrentTaskID(), &ready));
     if (timeout_ms > 0) {
       timeout_ms =
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     RAY_RETURN_NOT_OK(
         memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
-                                     worker_context_.GetCurrentTaskID(), &ready));
+                                     GetThreadContext().GetCurrentTaskID(), &ready));
   }
 
   for (size_t i = 0; i < ids.size(); i++) {
@@ -430,14 +448,13 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                               const TaskOptions &task_options,
                               std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
-  const auto task_id =
-      TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
-                            worker_context_.GetCurrentTaskID(), next_task_index);
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, task_options.num_returns, task_options.resources,
-                      {}, TaskTransportType::RAYLET, return_ids);
+  const int next_task_index = GetThreadContext().GetNextTaskIndex();
+  const auto task_id = TaskID::ForNormalTask(
+      current_job_id_, GetThreadContext().GetCurrentTaskID(), next_task_index);
+  BuildCommonTaskSpec(builder, current_job_id_, task_id,
+                      GetThreadContext().GetCurrentTaskID(), next_task_index,
+                      GetCallerId(), function, args, task_options.num_returns,
+                      task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
   return raylet_client_->SubmitTask(builder.Build());
 }
 
@@ -445,16 +462,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
                                ActorID *return_actor_id) {
-  const int next_task_index = worker_context_.GetNextTaskIndex();
-  const ActorID actor_id =
-      ActorID::Of(worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
-                  next_task_index);
+  const int next_task_index = GetThreadContext().GetNextTaskIndex();
+  const ActorID actor_id = ActorID::Of(
+      current_job_id_, GetThreadContext().GetCurrentTaskID(), next_task_index);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
-  const JobID job_id = worker_context_.GetCurrentJobID();
+  const JobID job_id = current_job_id_;
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
+      builder, job_id, actor_creation_task_id, GetThreadContext().GetCurrentTaskID(),
       next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
@@ -488,14 +504,14 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   // Build common task spec.
   TaskSpecBuilder builder;
-  const int next_task_index = worker_context_.GetNextTaskIndex();
-  const TaskID actor_task_id = TaskID::ForActorTask(
-      worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
-      next_task_index, actor_handle->GetActorID());
+  const int next_task_index = GetThreadContext().GetNextTaskIndex();
+  const TaskID actor_task_id =
+      TaskID::ForActorTask(current_job_id_, GetThreadContext().GetCurrentTaskID(),
+                           next_task_index, actor_handle->GetActorID());
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, num_returns, task_options.resources, {},
-                      transport_type, return_ids);
+                      GetThreadContext().GetCurrentTaskID(), next_task_index,
+                      GetCallerId(), function, args, num_returns, task_options.resources,
+                      {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
@@ -594,10 +610,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
-  resource_ids_ = resource_ids;
-  worker_context_.SetCurrentTask(task_spec);
-  SetCurrentTaskId(task_spec.TaskId());
-
   RayFunction func{task_spec.GetLanguage(), task_spec.FunctionDescriptor()};
 
   std::vector<std::shared_ptr<RayObject>> args;
@@ -609,24 +621,42 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.push_back(task_spec.ReturnId(i));
   }
 
-  Status status;
-  TaskType task_type = TaskType::NORMAL_TASK;
-  if (task_spec.IsActorCreationTask()) {
+  TaskType task_type;
+  resource_ids_ = resource_ids;
+  main_thread_task_id_ = task_spec.TaskId();
+  if (task_spec.IsNormalTask()) {
+    RAY_CHECK(current_job_id_.IsNil());
+    current_job_id_ = task_spec.JobId();
+    task_type = TaskType::NORMAL_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    RAY_CHECK(current_job_id_.IsNil());
+    current_job_id_ = task_spec.JobId();
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
+    RAY_CHECK(actor_id_.IsNil());
+    actor_id_ = task_spec.ActorCreationId();
     task_type = TaskType::ACTOR_CREATION_TASK;
-    SetActorId(task_spec.ActorCreationId());
-  } else if (task_spec.IsActorTask()) {
+  } else {
+    RAY_CHECK(current_job_id_ == task_spec.JobId());
+    RAY_CHECK(actor_id_ == task_spec.ActorId());
     RAY_CHECK(return_ids.size() > 0);
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
-  status = task_execution_callback_(task_type, func,
-                                    task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, results);
 
-  SetCurrentTaskId(TaskID::Nil());
-  worker_context_.ResetCurrentTask(task_spec);
+  Status status = task_execution_callback_(
+      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
+      arg_reference_ids, return_ids, results);
+
+  GetThreadContext().ResetCurrentTaskId();
+  if (task_spec.IsNormalTask()) {
+    current_job_id_ = JobID::Nil();
+    // Clear all actor handles at the end of each normal task.
+    for (const auto &handle : actor_handles_) {
+      RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
+    }
+    actor_handles_.clear();
+  }
 
   // TODO(edoakes): also check if not direct actor call.
   // TODO(edoakes): this is only used by java.
