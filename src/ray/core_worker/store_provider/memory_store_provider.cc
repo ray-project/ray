@@ -1,7 +1,6 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include <condition_variable>
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 
 namespace ray {

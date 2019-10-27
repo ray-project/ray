@@ -4,8 +4,8 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/thread_context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
 #include "ray/core_worker/store_provider/memory_store_provider.h"
@@ -583,10 +583,8 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
-TEST_F(ZeroNodeTest, TestWorkerContext) {
-  auto job_id = NextJobId();
-
-  WorkerContext context(WorkerType::WORKER, job_id);
+TEST_F(ZeroNodeTest, TestWorkerThreadContext) {
+  WorkerThreadContext context;
   ASSERT_TRUE(context.GetCurrentTaskID().IsNil());
   ASSERT_EQ(context.GetNextTaskIndex(), 1);
   ASSERT_EQ(context.GetNextTaskIndex(), 2);

@@ -1,6 +1,5 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/common/ray_config.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/protobuf/gcs.pb.h"
 
