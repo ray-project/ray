@@ -692,8 +692,7 @@ cdef void push_objects_into_return_vector(
         data_size = serialized_object.total_bytes
         data = dynamic_pointer_cast[
             CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](
-                    <uint8_t*>NULL, data_size, True))
+                make_shared[LocalMemoryBuffer](data_size))
         stream = pyarrow.FixedSizeBufferWriter(
             pyarrow.py_buffer(Buffer.make(data)))
         serialized_object.write_to(stream)

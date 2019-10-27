@@ -88,8 +88,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             worker_server_, execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                              io_service_, task_execution_service_,
-                                              worker_server_, execute_task));
+                                              task_execution_service_, worker_server_,
+                                              execute_task));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
