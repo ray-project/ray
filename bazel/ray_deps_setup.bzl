@@ -74,7 +74,7 @@ def ray_deps_setup():
     new_git_repository(
         name = "plasma",
         build_file = "@//bazel:BUILD.plasma",
-        commit = "0aad5a08e539a7b7f4abd4ee57e08fe78957d412",
+        commit = "141a213a54f4979ab0b94b94928739359a2ee9ad",
         remote = "https://github.com/apache/arrow",
     )
 
@@ -122,9 +122,8 @@ def ray_deps_setup():
 	sha256 = "b5efbe086b9a00826a3f830094312e6d1647157b5a5e7954a8ac4179bce3de8b",
     )
 
-    http_archive(
+    git_repository(
         name = "build_stack_rules_proto",
-        urls = ["https://github.com/stackb/rules_proto/archive/b93b544f851fdcd3fc5c3d47aee3b7ca158a8841.tar.gz"],
-        sha256 = "c62f0b442e82a6152fcd5b1c0b7c4028233a9e314078952b6b04253421d56d61",
-        strip_prefix = "rules_proto-b93b544f851fdcd3fc5c3d47aee3b7ca158a8841",
+        remote = "https://github.com/stackb/rules_proto.git",
+        commit = "d9a123032f8436dbc34069cfc3207f2810a494ee",
     )
