@@ -186,7 +186,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CRayFunction(CLanguage language,
                      const c_vector[c_string] function_descriptor)
         CLanguage GetLanguage()
-        c_vector[c_string] GetFunctionDescriptor()
+        const c_vector[c_string]& GetFunctionDescriptor()
 
     cdef cppclass CTaskArg "ray::TaskArg":
         @staticmethod
