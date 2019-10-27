@@ -482,7 +482,6 @@ cdef execute_task(
 
     worker = ray.worker.global_worker
     manager = worker.function_actor_manager
-    print("manager", manager)
 
     cdef:
         dict execution_infos = manager.execution_infos
