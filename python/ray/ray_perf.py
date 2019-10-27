@@ -170,7 +170,7 @@ def main():
 
     timeit("single client direct actor calls sync", actor_sync_direct)
 
-    n = 5000
+    n = 1000
     n_cpu = multiprocessing.cpu_count() // 2
     actors = [Actor._remote(is_direct_call=True) for _ in range(n_cpu)]
     client = Client.remote(actors)
@@ -182,6 +182,8 @@ def main():
            n * len(actors))
 
     clients = [Client.remote(a) for a in actors]
+
+    n = 5000
 
     def actor_multi2_direct():
         ray.get([c.small_value_batch.remote(n) for c in clients])
