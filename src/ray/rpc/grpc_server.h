@@ -31,8 +31,7 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  GrpcServer(std::string name, const uint32_t port, int num_threads = 1)
-      : name_(std::move(name)), port_(port), is_closed_(true), num_threads_(num_threads) {}
+  GrpcServer(std::string name, const uint32_t port, int num_threads = 1);
 
   /// Destruct this gRPC server.
   ~GrpcServer() { Shutdown(); }

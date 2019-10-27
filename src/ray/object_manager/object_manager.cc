@@ -20,7 +20,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       object_manager_server_("ObjectManager", config_.object_manager_port, config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service) {
+      client_call_manager_(rpc_service_) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
@@ -44,6 +44,7 @@ void ObjectManager::RunRpcService() { rpc_service_.run(); }
 void ObjectManager::StartRpcService() {
   rpc_threads_.resize(config_.rpc_service_threads_number);
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
+    RAY_LOG(WARNING) << "starting rpc thread index = " << i;
     rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this);
   }
   object_manager_server_.RegisterService(object_manager_service_);
@@ -74,7 +75,7 @@ void ObjectManager::HandleObjectAdded(
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &client_id = pair.first;
-      main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
+      rpc_service_.post([this, object_id, client_id]() { Push(object_id, client_id); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -262,6 +263,9 @@ void ObjectManager::SendPullRequest(
                        << " failed due to" << status.message();
     }
   });
+
+      RAY_LOG(WARNING) << "Send pull " << object_id << " request to client " << client_id;
+
 }
 
 void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
@@ -430,23 +434,27 @@ ray::Status ObjectManager::SendObjectChunk(
   push_request.set_chunk_index(chunk_index);
 
   // Get data
+
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
-
+ 
   // Fail on status not okay. The object is local, and there is
   // no other anticipated error here.
+
+
   ray::Status status = chunk_status.second;
   if (!chunk_status.second.ok()) {
     RAY_LOG(WARNING) << "Attempting to push object " << object_id
                      << " which is not local. It may have been evicted.";
     RAY_RETURN_NOT_OK(status);
   }
+  
 
-  std::string buffer;
-  buffer.resize(chunk_info.buffer_length);
-  buffer.assign(chunk_info.data, chunk_info.data + chunk_info.buffer_length);
-  push_request.set_data(std::move(buffer));
+  //std::string tmp;
+  //tmp.assign(1024 * 1024,'a');
+  push_request.set_data(chunk_info.data, chunk_info.buffer_length);
+  //push_request.set_data(tmp);
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback = [this, start_time, object_id, client_id,
@@ -668,8 +676,13 @@ void ObjectManager::WaitComplete(const UniqueID &wait_id) {
 void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
                                       rpc::PushReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(WARNING) << "time = " << (double)absl::GetCurrentTimeNanos() / 1e9;
+
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   ClientID client_id = ClientID::FromBinary(request.client_id());
+
+
+  RAY_LOG(WARNING) << "I am thread no. " << std::this_thread::get_id();
 
   // Serialize.
   uint64_t chunk_index = request.chunk_index();
@@ -691,10 +704,11 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
                                               uint64_t data_size, uint64_t metadata_size,
                                               uint64_t chunk_index,
                                               const std::string &data) {
-  RAY_LOG(DEBUG) << "ReceiveObjectChunk on " << client_id_ << " from " << client_id
+  RAY_LOG(WARNING) << "ReceiveObjectChunk on " << client_id_ << " from " << client_id
                  << " of object " << object_id << " chunk index: " << chunk_index
                  << ", chunk data size: " << data.size()
                  << ", object size: " << data_size;
+
 
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.CreateChunk(object_id, data_size, metadata_size, chunk_index);
@@ -710,6 +724,8 @@ ray::Status ObjectManager::ReceiveObjectChunk(const ClientID &client_id,
     // TODO(hme): If the object isn't local, create a pull request for this chunk.
   }
   return status;
+
+//  return Status::OK();
 }
 
 void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
@@ -731,7 +747,7 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
     profile_events_.emplace_back(profile_event);
   }
 
-  main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
+  rpc_service_.post([this, object_id, client_id]() { Push(object_id, client_id); });
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
