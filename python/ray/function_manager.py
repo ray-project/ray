@@ -301,6 +301,7 @@ class FunctionActorManager(object):
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
         self.lock = threading.Lock()
+        self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
         function_id = function_descriptor.function_id
