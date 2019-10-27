@@ -23,6 +23,17 @@ class NodeManagerServiceHandler {
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a `GetNodeStats` request.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `send_reply_callback` should be called.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
+  virtual void HandleNodeStatsRequest(const NodeStatsRequest &request,
+                                      NodeStatsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeManagerService`.
@@ -43,7 +54,7 @@ class NodeManagerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
-    // Initialize the factory for `ForwardTask` requests.
+    // Initialize the factory for requests.
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
@@ -51,9 +62,18 @@ class NodeManagerGrpcService : public GrpcService {
             service_handler_, &NodeManagerServiceHandler::HandleForwardTask, cq,
             main_service_));
 
-    // Set `ForwardTask`'s accept concurrency to 100.
+    std::unique_ptr<ServerCallFactory> node_stats_call_factory(
+        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
+                                  NodeStatsRequest, NodeStatsReply>(
+            service_, &NodeManagerService::AsyncService::RequestGetNodeStats,
+            service_handler_, &NodeManagerServiceHandler::HandleNodeStatsRequest, cq,
+            main_service_));
+
+    // Set accept concurrency.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(forward_task_call_factory), 100);
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(node_stats_call_factory), 1);
   }
 
  private:

@@ -286,7 +286,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
 
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
                                     boost::asio::io_service &main_io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
@@ -310,8 +309,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
   // Object interface.
   CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.
