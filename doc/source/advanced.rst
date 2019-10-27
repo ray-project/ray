@@ -61,20 +61,20 @@ load balancing, gang scheduling, and priority-based scheduling.
 .. code-block:: python
 
     ray.init()
-    res_name = "test_res"
-    res_capacity = 1.0
+    resource_name = "test_resource"
+    resource_capacity = 1.0
 
     @ray.remote
-    def set_res(resource_name, resource_capacity):
+    def set_resource(resource_name, resource_capacity):
         ray.experimental.set_resource(resource_name, resource_capacity)
 
-    ray.get(set_res.remote(res_name, res_capacity))
+    ray.get(set_resource.remote(resource_name, resource_capacity))
 
-    available_res = ray.available_resources()
-    cluster_res = ray.cluster_resources()
+    available_resources = ray.available_resources()
+    cluster_resources = ray.cluster_resources()
 
-    assert available_res[res_name] == res_capacity
-    assert cluster_res[res_name] == res_capacity
+    assert available_resources[resource_name] == resource_capacity
+    assert cluster_resources[resource_name] == resource_capacity
 
 
 .. autofunction:: ray.experimental.set_resource
