@@ -118,7 +118,7 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results
+        upload_dir (str): Optional URI to sync training results and checkpoints
             to (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
@@ -167,8 +167,8 @@ def run(run_or_experiment,
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
-            LOCAL/True restores the checkpoint from the local_checkpoint_dir.
-            REMOTE restores the checkpoint from remote_checkpoint_dir.
+            LOCAL/True restores the checkpoint from the local_dir.
+            REMOTE restores the checkpoint from upload_dir.
             PROMPT provides CLI feedback. False forces a new
             experiment. If resume is set but checkpoint does not exist,
             ValueError will be thrown.

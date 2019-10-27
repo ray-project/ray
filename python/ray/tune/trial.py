@@ -11,6 +11,7 @@ import time
 import tempfile
 import os
 from numbers import Number
+from python.ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.util import flatten_dict
@@ -29,31 +30,6 @@ logger = logging.getLogger(__name__)
 
 def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-
-
-class Checkpoint(object):
-    """Describes a checkpoint of trial state.
-
-    Checkpoint may be saved in different storage.
-
-    Attributes:
-        storage (str): Storage type.
-        value (str): If storage==MEMORY,value is a Python object.
-            If storage==DISK,value is a path points to the checkpoint in disk.
-    """
-
-    MEMORY = "memory"
-    DISK = "disk"
-
-    def __init__(self, storage, value, last_result=None):
-        self.storage = storage
-        self.value = value
-        self.last_result = last_result or {}
-
-    @staticmethod
-    def from_object(value=None):
-        """Creates a checkpoint from a Python object."""
-        return Checkpoint(Checkpoint.MEMORY, value)
 
 
 class ExportFormat(object):
@@ -161,16 +137,10 @@ class Trial(object):
         # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
 
-        self.keep_checkpoints_num = keep_checkpoints_num
-        self.checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
-        if self.checkpoint_score_desc:
-            self.checkpoint_score_attr = checkpoint_score_attr[4:]
-            self.best_checkpoint_score = float("inf")
-        else:
-            self.checkpoint_score_attr = checkpoint_score_attr
-            self.best_checkpoint_score = float("-inf")
-        self.checkpoint = Checkpoint(
-            storage=Checkpoint.DISK, value=restore_path)
+        self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
+                                                    checkpoint_score_attr)
+        newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
+        self.checkpoint_manager.add_checkpoint(newest_checkpoint)
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -200,6 +170,10 @@ class Trial(object):
         ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
+
+    @property
+    def checkpoint(self):
+        return self.checkpoint_manager.newest_checkpoint
 
     @classmethod
     def generate_id(cls):
@@ -292,36 +266,30 @@ class Trial(object):
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
         result = self.last_result or {}
-
         if result.get(DONE) and self.checkpoint_at_end:
             return True
-
-        if self.checkpoint_freq:
-            return result.get(TRAINING_ITERATION,
-                              0) % self.checkpoint_freq == 0
-        else:
-            return False
+        return (self.checkpoint_freq and
+                result.get(TRAINING_ITERATION, 0) % self.checkpoint_freq == 0)
 
     def has_checkpoint(self):
         return self.checkpoint.value is not None
 
-    def update_checkpoint(self, checkpoint_path):
-        """Update checkpoint if it is at least as good as the current best.
-
-        Args:
-            checkpoint_path (str): Path to checkpoint.
-        """
-        if not self.checkpoint_score_attr:
-            self.checkpoint.value = checkpoint_path
-            return
-        last_score = self.last_result[self.checkpoint_score_attr]
-        best = min if self.checkpoint_score_desc else max
-        if last_score == best(last_score, self.best_checkpoint_score):
-            self.best_checkpoint_score = last_score
-            self.checkpoint.value = checkpoint_path
-
     def clear_checkpoint(self):
         self.checkpoint.value = None
+
+    def commit_checkpoint(self, checkpoint):
+        """Attempt to commit checkpoint.
+
+        Disk checkpoints are committed if and only if they are successfully
+        synced down.
+
+        Args:
+            checkpoint (Checkpoint): Checkpoint taken.
+        """
+        if checkpoint.storage == Checkpoint.DISK:
+            self.result_logger.sync_down()
+            self.result_logger.wait()
+        self.checkpoint_manager.add_checkpoint(checkpoint)
 
     def should_recover(self):
         """Returns whether the trial qualifies for retrying.

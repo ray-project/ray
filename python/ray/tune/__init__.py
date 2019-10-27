@@ -16,5 +16,6 @@ __all__ = [
     "Trainable", "TuneError", "grid_search", "register_env",
     "register_trainable", "run", "run_experiments", "Experiment", "function",
     "sample_from", "track", "uniform", "choice", "randint", "randn",
-    "loguniform", "progress_reporter", "ExperimentAnalysis", "Analysis"
+    "loguniform", "progress_reporter", "ExperimentAnalysis", "Analysis",
+    "checkpoint_manager"
 ]

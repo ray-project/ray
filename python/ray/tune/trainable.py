@@ -92,12 +92,6 @@ class Trainable(object):
         self._iterations_since_restore = 0
         self._restored = False
 
-        self.evaluate_checkpoint = None
-        self._last_result = None
-        self._checkpoint_attr = None
-        self._last_checkpoint_attr_val = None
-        self._best_checkpoint_dirs = None
-
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
@@ -246,16 +240,6 @@ class Trainable(object):
 
         return result
 
-    def register_checkpoint_eval_policy(self, policy):
-        """Registers a checkpoint-evaluating policy.
-
-        This policy decides whether or not to follow through with a checkpoint
-        once save() is called.
-        """
-        if not callable(policy):
-            raise ValueError("Policy {} must be a callable.", policy)
-        self.evaluate_checkpoint = policy
-
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
@@ -267,18 +251,9 @@ class Trainable(object):
 
         Returns:
             Checkpoint path or prefix that may be passed to restore().
-            None if state is not saved.
         """
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
-
-        try:
-            if self.evaluate_checkpoint and self._last_result:
-                if not self.evaluate_checkpoint(
-                        checkpoint_dir, self._last_result):
-                    return None
-        except Exception:
-            logger.warning("Checkpoint evaluation failed.", exc_info=True)
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
@@ -310,9 +285,7 @@ class Trainable(object):
                 "saved_as_dict": saved_as_dict,
                 "ray_version": ray.__version__,
                 "last_result": self._last_result,
-                "evaluate_checkpoint": self.evaluate_checkpoint,
             }, f)
-
         return checkpoint_path
 
     def save_to_object(self):
@@ -325,7 +298,6 @@ class Trainable(object):
         """
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-
         # Save all files in subtree.
         data = {}
         for basedir, _, file_names in os.walk(tmpdir):
@@ -361,10 +333,6 @@ class Trainable(object):
         self._timesteps_total = metadata["timesteps_total"]
         self._time_total = metadata["time_total"]
         self._episodes_total = metadata["episodes_total"]
-
-        self._last_result = metadata["last_result"]
-        self.evaluate_checkpoint = metadata["evaluate_checkpoint"]
-
         saved_as_dict = metadata["saved_as_dict"]
         if saved_as_dict:
             with open(checkpoint_path, "rb") as loaded_state:

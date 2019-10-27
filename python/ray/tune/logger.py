@@ -436,6 +436,15 @@ class UnifiedLogger(Logger):
             _logger.flush()
         self._log_syncer.sync_down()
 
+    def sync_up(self):
+        self._log_syncer.sync_up()
+
+    def sync_down(self):
+        self._log_syncer.sync_down()
+
+    def wait(self):
+        self._log_syncer.wait()
+
     def sync_results_to_new_location(self, worker_ip):
         """Sends the current log directory to the remote node.
 
