@@ -3,7 +3,7 @@ from collections import defaultdict, deque
 import numpy as np
 
 import ray
-from ray.experimental.serve.utils import get_custom_object_id, logger
+from ray.experimental.serve.utils import logger
 
 
 class Query:
@@ -17,7 +17,7 @@ class Query:
         self.request_context = request_context
 
         if result_object_id is None:
-            self.result_object_id = get_custom_object_id()
+            self.result_object_id = ray.ObjectID.from_random()
         else:
             self.result_object_id = result_object_id
 
@@ -25,7 +25,7 @@ class Query:
 class WorkIntent:
     def __init__(self, work_object_id=None):
         if work_object_id is None:
-            self.work_object_id = get_custom_object_id()
+            self.work_object_id = ray.ObjectID.from_random()
         else:
             self.work_object_id = work_object_id
 
@@ -160,7 +160,7 @@ class CentralizedQueues:
                         work_queue.popleft(),
                     )
                     ray.worker.global_worker.put_object(
-                        work.work_object_id, request)
+                        request, work.work_object_id)
 
 
 @ray.remote

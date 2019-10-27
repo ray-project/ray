@@ -27,7 +27,9 @@ class RayFunction {
 
   Language GetLanguage() const { return language_; }
 
-  std::vector<std::string> GetFunctionDescriptor() const { return function_descriptor_; }
+  const std::vector<std::string> &GetFunctionDescriptor() const {
+    return function_descriptor_;
+  }
 
  private:
   Language language_;

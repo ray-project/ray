@@ -123,12 +123,12 @@ class RayServeMixin:
         start_timestamp = time.time()
         try:
             result = self.__call__(*args, **kwargs)
-            ray.worker.global_worker.put_object(result_object_id, result)
+            ray.worker.global_worker.put_object(result, result_object_id)
         except Exception as e:
             wrapped_exception = wrap_to_ray_error(e)
             self._serve_metric_error_counter += 1
-            ray.worker.global_worker.put_object(result_object_id,
-                                                wrapped_exception)
+            ray.worker.global_worker.put_object(wrapped_exception,
+                                                result_object_id)
         self._serve_metric_latency_list.append(time.time() - start_timestamp)
 
         serve_context.web = False

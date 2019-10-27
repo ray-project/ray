@@ -121,52 +121,32 @@ void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids)
   active_object_ids_ = object_ids;
 }
 
-bool Worker::UsePush() const { return rpc_client_ != nullptr; }
-
 void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  if (rpc_client_ != nullptr) {
-    // Use push mode.
-    RAY_CHECK(port_ > 0);
-    rpc::AssignTaskRequest request;
-    request.mutable_task()->mutable_task_spec()->CopyFrom(
-        task.GetTaskSpecification().GetMessage());
-    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
-        task.GetTaskExecutionSpec().GetMessage());
-    request.set_resource_ids(resource_id_set.Serialize());
+  RAY_CHECK(port_ > 0);
+  rpc::AssignTaskRequest request;
+  request.mutable_task()->mutable_task_spec()->CopyFrom(
+      task.GetTaskSpecification().GetMessage());
+  request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
+      task.GetTaskExecutionSpec().GetMessage());
+  request.set_resource_ids(resource_id_set.Serialize());
 
-    auto status = rpc_client_->AssignTask(request, [](Status status,
-                                                      const rpc::AssignTaskReply &reply) {
-      if (!status.ok()) {
-        RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
-      }
-      // Worker has finished this task. There's nothing to do here
-      // and assigning new task will be done when raylet receives
-      // `TaskDone` message.
-    });
-    finish_assign_callback(status);
+  auto status = rpc_client_->AssignTask(request, [](Status status,
+                                                    const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
-                     << " to worker " << worker_id_;
-    } else {
-      RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
-                     << " to worker " << worker_id_;
+      RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }
+    // Worker has finished this task. There's nothing to do here
+    // and assigning new task will be done when raylet receives
+    // `TaskDone` message.
+  });
+  finish_assign_callback(status);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
+                   << " to worker " << worker_id_;
   } else {
-    // Use pull mode. This corresponds to existing python/java workers that haven't been
-    // migrated to core worker architecture.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
-
-    auto message =
-        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
-                                     protocol::CreateResourceIdSetInfos(
-                                         fbb, fbb.CreateVector(resource_id_set_flatbuf)));
-    fbb.Finish(message);
-    Connection()->WriteMessageAsync(
-        static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-        fbb.GetBufferPointer(), finish_assign_callback);
+    RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
+                   << " to worker " << worker_id_;
   }
 }
 
