@@ -226,6 +226,9 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     return;
   }
 
+  // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
+  // the raylet, which is a central bottleneck. In the future, we should inline
+  // dependencies that are small and already known to be local to the client.
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
     int count = task_spec.ArgIdCount(i);
