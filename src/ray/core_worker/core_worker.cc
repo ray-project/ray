@@ -84,8 +84,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                   std::placeholders::_2, std::placeholders::_3);
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                              io_service_, task_execution_service_,
-                                              worker_server_, execute_task));
+                                              task_execution_service_, worker_server_,
+                                              execute_task));
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_, raylet_client_, object_interface_, task_execution_service_,

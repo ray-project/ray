@@ -1,14 +1,21 @@
 """This is the script for `ray microbenchmark`."""
 
+import os
 import time
 import numpy as np
 import multiprocessing
 import ray
 
+# Only run tests matching this filter pattern.
+filter_pattern = os.environ.get("TESTS_TO_RUN", "")
+
 
 @ray.remote
 class Actor(object):
     def small_value(self):
+        return 0
+
+    def small_value_arg(self, x):
         return 0
 
     def small_value_batch(self, n):
@@ -22,6 +29,10 @@ class Client(object):
 
     def small_value_batch(self, n):
         ray.get([self.server.small_value.remote() for _ in range(n)])
+
+    def small_value_batch_arg(self, n):
+        x = ray.put(0)
+        ray.get([self.server.small_value_arg.remote(x) for _ in range(n)])
 
 
 @ray.remote
@@ -37,6 +48,8 @@ def small_value_batch(n):
 
 
 def timeit(name, fn, multiplier=1):
+    if filter_pattern not in name:
+        return
     # warmup
     start = time.time()
     while time.time() - start < 1:
@@ -56,6 +69,7 @@ def timeit(name, fn, multiplier=1):
 
 
 def main():
+    print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     ray.init()
     value = ray.put(0)
     arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
@@ -165,6 +179,24 @@ def main():
 
     timeit("multi client direct actor calls async", actor_multi2_direct,
            n * len(clients))
+
+    a = Actor._remote(is_direct_call=True)
+
+    def actor_async_direct_arg():
+        x = ray.put(0)
+        ray.get([a.small_value_arg.remote(x) for _ in range(1000)])
+
+    timeit("single client direct actor calls with arg async",
+           actor_async_direct_arg, 1000)
+
+    actors = [Actor._remote(is_direct_call=True) for _ in range(n_cpu)]
+    clients = [Client.remote(a) for a in actors]
+
+    def actor_multi2_direct_arg():
+        ray.get([c.small_value_batch_arg.remote(n) for c in clients])
+
+    timeit("multi client direct actor calls with arg async",
+           actor_multi2_direct_arg, n * len(clients))
 
 
 if __name__ == "__main__":

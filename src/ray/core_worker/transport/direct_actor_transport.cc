@@ -144,7 +144,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
           waiting_reply_tasks_[actor_id].erase(task_id);
         }
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Task failed with error: " << status;
+          // Note that this might be the __ray_terminate__ task, so we don't log
+          // loudly with ERROR here.
+          RAY_LOG(DEBUG) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
