@@ -200,18 +200,28 @@ def _from_pinnable(obj):
     return obj[0]
 
 
-def validate_save_restore(trainable_cls, config=None, use_object_store=False):
+def validate_save_restore(trainable_cls,
+                          config=None,
+                          resources_per_trial=None,
+                          use_object_store=False):
     """Helper method to check if your Trainable class will resume correctly.
 
     Args:
         trainable_cls: Trainable class for evaluation.
         config (dict): Config to pass to Trainable when testing.
+        resources_per_trial (dict): Machine resources to allocate per trial
+            when testing.
         use_object_store (bool): Whether to save and restore to Ray's object
             store. Recommended to set this to True if planning to use
             algorithms that pause training (i.e., PBT, HyperBand).
     """
     assert ray.is_initialized(), "Need Ray to be initialized."
-    remote_cls = ray.remote(trainable_cls)
+
+    if resources_per_trial is not None:
+        remote_handle = ray.remote(**resources_per_trial)
+    else:
+        remote_handle = ray.remote
+    remote_cls = remote_handle(trainable_cls)
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 
