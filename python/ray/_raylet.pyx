@@ -510,7 +510,8 @@ cdef execute_task(
     if not execution_info:
         function_descriptor = FunctionDescriptor.from_bytes_list(
             ray_function.GetFunctionDescriptor())
-        execution_info = manager.get_execution_info(job_id, function_descriptor)
+        execution_info = manager.get_execution_info(
+            job_id, function_descriptor)
         execution_infos[descriptor] = execution_info
 
     function_name = execution_info.function_name
