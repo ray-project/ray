@@ -100,8 +100,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   RAY_CHECK_OK(gcs_client_.Connect(io_service_));
 
   // Initialize profiler.
-  profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
-                                                 io_service_, gcs_client_);
+  profiler_ =
+      std::make_shared<worker::Profiler>(worker_type, worker_context_.GetWorkerID(),
+                                         node_ip_address, io_service_, gcs_client_);
 
   // Initialize task execution.
   if (worker_type_ == WorkerType::WORKER) {
@@ -112,11 +113,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                   std::placeholders::_2, std::placeholders::_3);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, task_execution_service_, worker_server_,
-            execute_task));
+            raylet_client_, task_execution_service_, worker_server_, execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              worker_server_, execute_task));
+        new CoreWorkerDirectActorTaskReceiver(task_execution_service_, worker_server_,
+                                              execute_task));
   }
 
   // Start RPC server after all the task receivers are properly initialized.

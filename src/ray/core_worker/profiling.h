@@ -4,7 +4,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 
-#include "ray/core_worker/context.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/redis_gcs_client.h"
 
 namespace ray {
@@ -13,8 +13,9 @@ namespace worker {
 
 class Profiler {
  public:
-  Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-           boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client);
+  Profiler(const WorkerType &worker_type, const WorkerID &worker_id,
+           const std::string &node_ip_address, boost::asio::io_service &io_service,
+           gcs::RedisGcsClient &gcs_client);
 
   // Add an event to the queue to be flushed periodically.
   void AddEvent(const rpc::ProfileTableData::ProfileEvent &event);

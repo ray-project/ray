@@ -13,14 +13,15 @@ ProfileEvent::ProfileEvent(const std::shared_ptr<Profiler> profiler,
   rpc_event_.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
 }
 
-Profiler::Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
+Profiler::Profiler(const WorkerType &worker_type, const WorkerID &worker_id,
+                   const std::string &node_ip_address,
                    boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client)
     : io_service_(io_service),
       timer_(io_service_, boost::asio::chrono::seconds(1)),
       gcs_client_(gcs_client) {
   absl::MutexLock l(&mu_);
-  rpc_profile_data_.set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
-  rpc_profile_data_.set_component_id(worker_context.GetWorkerID().Binary());
+  rpc_profile_data_.set_component_type(WorkerTypeString(worker_type));
+  rpc_profile_data_.set_component_id(worker_id.Binary());
   rpc_profile_data_.set_node_ip_address(node_ip_address);
   timer_.async_wait(boost::bind(&Profiler::FlushEvents, this));
 }

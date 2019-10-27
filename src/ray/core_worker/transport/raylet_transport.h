@@ -4,7 +4,6 @@
 #include <list>
 
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
@@ -16,8 +15,7 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
-                               std::unique_ptr<RayletClient> &raylet_client,
+  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
                                boost::asio::io_service &io_service,
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
 
@@ -33,8 +31,6 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
                         rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  // Worker context.
-  WorkerContext &worker_context_;
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
   /// The rpc service for `WorkerTaskService`.

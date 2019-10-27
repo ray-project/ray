@@ -7,7 +7,6 @@
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
-#include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
@@ -203,8 +202,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    boost::asio::io_service &io_service,
+  CoreWorkerDirectActorTaskReceiver(boost::asio::io_service &io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
@@ -219,8 +217,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
                       rpc::SendReplyCallback send_reply_callback) override;
 
  private:
-  // Worker context.
-  WorkerContext &worker_context_;
   /// The IO event loop.
   boost::asio::io_service &io_service_;
   /// The rpc service for `DirectActorService`.
