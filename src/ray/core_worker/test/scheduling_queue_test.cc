@@ -64,6 +64,24 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   ASSERT_EQ(n_ok, 4);
 }
 
+TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
+  ObjectID obj1 = ObjectID::FromRandom();
+  boost::asio::io_service io_service;
+  MockWaiter waiter;
+  SchedulingQueue queue(io_service, waiter, 0);
+  int n_ok = 0;
+  int n_rej = 0;
+  auto fn_ok = [&n_ok]() { n_ok++; };
+  auto fn_rej = [&n_rej]() { n_rej++; };
+  queue.Add(0, -1, fn_ok, fn_rej);
+  queue.Add(1, -1, fn_ok, fn_rej, {obj1});
+  ASSERT_EQ(n_ok, 1);
+  io_service.run();
+  ASSERT_EQ(n_rej, 0);
+  waiter.Complete(0);
+  ASSERT_EQ(n_ok, 2);
+}
+
 TEST(SchedulingQueueTest, TestOutOfOrder) {
   boost::asio::io_service io_service;
   MockWaiter waiter;

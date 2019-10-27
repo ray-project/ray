@@ -22,6 +22,12 @@ class WorkerTaskHandler {
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   virtual void HandleAssignTask(const AssignTaskRequest &request, AssignTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
+
+  // TODO(ekl) this shouldn't be in the raylet task receiver
+  virtual void HandleDirectActorCallArgWaitComplete(
+      const DirectActorCallArgWaitCompleteRequest &request,
+      DirectActorCallArgWaitCompleteReply *reply,
+      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.
@@ -48,10 +54,20 @@ class WorkerTaskGrpcService : public GrpcService {
                                   AssignTaskReply>(
             service_, &WorkerTaskService::AsyncService::RequestAssignTask,
             service_handler_, &WorkerTaskHandler::HandleAssignTask, cq, main_service_));
-
-    // Set `AssignTask`'s accept concurrency to 5.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(push_task_call_Factory), 5);
+
+    // Initialize the Factory for `DirectActorCallArgWaitComplete` requests.
+    std::unique_ptr<ServerCallFactory> wait_call_Factory(
+        new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler,
+                                  DirectActorCallArgWaitCompleteRequest,
+                                  DirectActorCallArgWaitCompleteReply>(
+            service_,
+            &WorkerTaskService::AsyncService::RequestDirectActorCallArgWaitComplete,
+            service_handler_, &WorkerTaskHandler::HandleDirectActorCallArgWaitComplete,
+            cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(std::move(wait_call_Factory),
+                                                          5);
   }
 
  private:

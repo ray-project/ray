@@ -62,6 +62,7 @@ class Worker {
 
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                   const std::function<void(Status)> finish_assign_callback);
+  void DirectActorCallArgWaitComplete(int64_t tag);
 
  private:
   /// The worker's ID.

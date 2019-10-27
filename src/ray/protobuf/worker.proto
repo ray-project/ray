@@ -20,8 +20,19 @@ message AssignTaskRequest {
 message AssignTaskReply {
 }
 
+message DirectActorCallArgWaitCompleteRequest {
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  int64 tag = 1;
+}
+
+message DirectActorCallArgWaitCompleteReply {
+}
+
 // Service for worker.
 service WorkerTaskService {
   // Push a task to a worker.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
+  // Notify wait for direct actor call args has completed
+  rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest) returns (DirectActorCallArgWaitCompleteReply);
 }

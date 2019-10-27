@@ -158,9 +158,22 @@ class DependencyWaiterImpl : public DependencyWaiter {
   DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
 
   void Wait(const std::vector<ObjectID> &dependencies,
-            std::function<void()> on_dependencies_available) override {}
+            std::function<void()> on_dependencies_available) override {
+    auto tag = next_request_id_++;
+    requests_[tag] = on_dependencies_available;
+    raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
+  }
+
+  void OnWaitComplete(int64_t request_id) {
+    auto it = requests_.find(request_id);
+    RAY_CHECK(it != requests_.end());
+    it->second();
+    requests_.erase(it);
+  }
 
  private:
+  int64_t next_request_id_ = 0;
+  std::unordered_map<int64_t, std::function<void()>> requests_;
   RayletClient &raylet_client_;
 };
 
@@ -219,9 +232,12 @@ class SchedulingQueue {
       next_seq_no_++;
     }
 
-    // Set a timeout on the queued tasks to avoid an infinite wait on failure.
-    wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
-    if (!pending_tasks_.empty()) {
+    if (pending_tasks_.empty() || !pending_tasks_.begin()->second.CanExecute()) {
+      // No timeout for object dependency waits.
+      wait_timer_.cancel();
+    } else {
+      // Set a timeout on the queued tasks to avoid an infinite wait on failure.
+      wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
       RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
                      << pending_tasks_.size();
       wait_timer_.async_wait([this](const boost::system::error_code &error) {
@@ -275,6 +291,9 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
+  /// Initialize this receiver. This must be called prior to use.
+  void Init(RayletClient &client);
+
   /// Handle a `PushTask` request.
   /// The implementation can handle this request asynchronously. When hanling is done, the
   /// `done_callback` should be called.
@@ -284,6 +303,9 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// \param[in] done_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Notify this transport that the wait for an argument has completed.
+  void OnWaitComplete(int64_t request_id) { waiter_->OnWaitComplete(request_id); }
 
  private:
   // Worker context.
@@ -299,7 +321,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
   /// Shared waiter for dependencies required by incoming tasks.
-  std::unique_ptr<DependencyWaiter> waiter_;
+  std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;

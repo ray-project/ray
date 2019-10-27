@@ -82,14 +82,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     // Initialize task receivers.
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    raylet_task_receiver_ =
-        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, object_interface_, task_execution_service_,
-            worker_server_, execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
                                               io_service_, task_execution_service_,
                                               worker_server_, execute_task));
+    raylet_task_receiver_ =
+        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+            worker_context_, raylet_client_, object_interface_, task_execution_service_,
+            worker_server_, execute_task,
+            [this](int64_t tag) { direct_actor_task_receiver_->OnWaitComplete(tag); }));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -104,6 +105,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
+  if (direct_actor_task_receiver_ != nullptr) {
+    direct_actor_task_receiver_->Init(*raylet_client_);
+  }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.

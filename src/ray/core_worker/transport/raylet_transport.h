@@ -19,11 +19,12 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
                                std::unique_ptr<RayletClient> &raylet_client,
                                CoreWorkerObjectInterface &object_interface,
                                boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server, const TaskHandler &task_handler);
+                               rpc::GrpcServer &server, const TaskHandler &task_handler,
+                               std::function<void(int64_t)> on_wait_complete);
 
   /// Handle a `AssignTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `send_reply_callback` should be called.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `send_reply_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
@@ -31,6 +32,12 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
+
+  // TODO(ekl) this shouldn't be in the raylet task receiver
+  void HandleDirectActorCallArgWaitComplete(
+      const rpc::DirectActorCallArgWaitCompleteRequest &request,
+      rpc::DirectActorCallArgWaitCompleteReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   // Worker context.
@@ -43,6 +50,8 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The callback to process arg wait complete.
+  std::function<void(int64_t)> on_wait_complete_;
 };
 
 }  // namespace ray

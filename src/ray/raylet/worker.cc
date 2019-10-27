@@ -150,6 +150,21 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
   }
 }
 
+void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+  RAY_CHECK(port_ > 0);
+  rpc::DirectActorCallArgWaitCompleteRequest request;
+  request.set_tag(tag);
+  auto status = rpc_client_->DirectActorCallArgWaitComplete(
+      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
+  }
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

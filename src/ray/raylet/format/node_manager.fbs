@@ -55,6 +55,8 @@ enum MessageType:int {
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.
   WaitReply,
+  // Wait for objects asynchronously. The reply will be sent back via gRPC push.
+  WaitForDirectActorCallArgsRequest,
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
@@ -185,6 +187,14 @@ table WaitReply {
   found: [string];
   // List of object ids not found.
   remaining: [string];
+}
+
+table WaitForDirectActorCallArgsRequest {
+  // List of object ids we'll be waiting on.
+  object_ids: [string];
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  tag: int;
 }
 
 // This struct is the same as ErrorTableData.

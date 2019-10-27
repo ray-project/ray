@@ -209,16 +209,28 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
   server.RegisterService(task_service_);
 }
 
+void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
+  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+}
+
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  const Task task(task_spec, TaskExecutionSpecification());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
   if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
+  }
+
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
+    int count = task_spec.ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(task_spec.ArgId(i, j));
+    }
   }
 
   auto it = scheduling_queue_.find(task_spec.CallerId());
@@ -265,7 +277,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       [send_reply_callback]() {
         send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
       },
-      task.GetDependencies());
+      dependencies);
 }
 
 }  // namespace ray
