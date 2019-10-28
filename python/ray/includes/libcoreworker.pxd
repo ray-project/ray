@@ -48,27 +48,6 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/object_interface.h" nogil:
-    cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
-        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
-        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
-        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, CObjectID *object_id,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, const CObjectID &object_id,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id)
-        CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_vector[shared_ptr[CRayObject]] *results)
-        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
-        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results)
-        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only, c_bool delete_creating_tasks)
-        c_string MemoryUsageString()
-
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
@@ -89,7 +68,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
-        CObjectInterface &Objects()
 
         void StartExecutingTasks()
 
@@ -120,3 +98,22 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                         *bytes)
         void AddActiveObjectID(const CObjectID &object_id)
         void RemoveActiveObjectID(const CObjectID &object_id)
+
+        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
+        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
+        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, CObjectID *object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, const CObjectID &object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Seal(const CObjectID &object_id)
+        CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
+                       c_vector[shared_ptr[CRayObject]] *results)
+        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
+        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
+                        int64_t timeout_ms, c_vector[c_bool] *results)
+        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
+                          c_bool local_only, c_bool delete_creating_tasks)
+        c_string MemoryUsageString()

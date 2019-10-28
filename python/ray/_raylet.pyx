@@ -743,7 +743,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Get(
+            check_status(self.core_worker.get().Get(
                 c_object_ids, timeout_ms, &results))
 
         return RayObjectsToDataMetadataPairs(results)
@@ -754,7 +754,7 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Contains(
+            check_status(self.core_worker.get().Contains(
                 c_object_id, &has_object))
 
         return has_object
@@ -768,12 +768,12 @@ cdef class CoreWorker:
             try:
                 if object_id is None:
                     with nogil:
-                        check_status(self.core_worker.get().Objects().Create(
+                        check_status(self.core_worker.get().Create(
                                     metadata, data_size, c_object_id, data))
                 else:
                     c_object_id[0] = object_id.native()
                     with nogil:
-                        check_status(self.core_worker.get().Objects().Create(
+                        check_status(self.core_worker.get().Create(
                                     metadata, data_size, c_object_id[0], data))
                 break
             except ObjectStoreFullError as e:
@@ -810,7 +810,7 @@ cdef class CoreWorker:
 
             with nogil:
                 check_status(
-                    self.core_worker.get().Objects().Seal(c_object_id))
+                    self.core_worker.get().Seal(c_object_id))
 
         return ObjectID(c_object_id.Binary())
 
@@ -835,7 +835,7 @@ cdef class CoreWorker:
 
             with nogil:
                 check_status(
-                    self.core_worker.get().Objects().Seal(c_object_id))
+                    self.core_worker.get().Seal(c_object_id))
 
         return ObjectID(c_object_id.Binary())
 
@@ -858,7 +858,7 @@ cdef class CoreWorker:
             writer.write_to(inband, data, memcopy_threads)
             with nogil:
                 check_status(
-                    self.core_worker.get().Objects().Seal(c_object_id))
+                    self.core_worker.get().Seal(c_object_id))
 
         return ObjectID(c_object_id.Binary())
 
@@ -872,7 +872,7 @@ cdef class CoreWorker:
 
         wait_ids = ObjectIDsToVector(object_ids)
         with nogil:
-            check_status(self.core_worker.get().Objects().Wait(
+            check_status(self.core_worker.get().Wait(
                 wait_ids, num_returns, timeout_ms, &results))
 
         assert len(results) == len(object_ids)
@@ -892,7 +892,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] free_ids = ObjectIDsToVector(object_ids)
 
         with nogil:
-            check_status(self.core_worker.get().Objects().Delete(
+            check_status(self.core_worker.get().Delete(
                 free_ids, local_only, delete_creating_tasks))
 
     def set_object_store_client_options(self, client_name,
@@ -900,7 +900,7 @@ cdef class CoreWorker:
         try:
             logger.debug("Setting plasma memory limit to {} for {}".format(
                 limit_bytes, client_name))
-            check_status(self.core_worker.get().Objects().SetClientOptions(
+            check_status(self.core_worker.get().SetClientOptions(
                 client_name.encode("ascii"), limit_bytes))
         except RayError as e:
             self.dump_object_store_memory_usage()
@@ -913,7 +913,7 @@ cdef class CoreWorker:
                     limit_bytes, client_name, e))
 
     def dump_object_store_memory_usage(self):
-        message = self.core_worker.get().Objects().MemoryUsageString()
+        message = self.core_worker.get().MemoryUsageString()
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 

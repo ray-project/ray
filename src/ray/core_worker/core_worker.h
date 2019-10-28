@@ -5,8 +5,9 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/profiling.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
@@ -67,8 +68,6 @@ class CoreWorker {
 
   RayletClient &GetRayletClient() { return *raylet_client_; }
 
-  CoreWorkerObjectInterface &Objects() { return object_interface_; }
-
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   void SetCurrentTaskId(const TaskID &task_id);
@@ -87,6 +86,109 @@ class CoreWorker {
   // Remove this object ID from the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
   void RemoveActiveObjectID(const ObjectID &object_id);
+
+  /* Public methods related to storing and retrieving objects. */
+
+  /// Set options for this client's interactions with the object store.
+  ///
+  /// \param[in] name Unique name for this object store client.
+  /// \param[in] limit The maximum amount of memory in bytes that this client
+  /// can use in the object store.
+  Status SetClientOptions(std::string name, int64_t limit_bytes);
+
+  /// Put an object into object store.
+  ///
+  /// \param[in] object The ray object.
+  /// \param[out] object_id Generated ID of the object.
+  /// \return Status.
+  Status Put(const RayObject &object, ObjectID *object_id);
+
+  /// Put an object with specified ID into object store.
+  ///
+  /// \param[in] object The ray object.
+  /// \param[in] object_id Object ID specified by the user.
+  /// \return Status.
+  Status Put(const RayObject &object, const ObjectID &object_id);
+
+  /// Create and return a buffer in the object store that can be directly written
+  /// into. After writing to the buffer, the caller must call `Seal()` to finalize
+  /// the object. The `Create()` and `Seal()` combination is an alternative interface
+  /// to `Put()` that allows frontends to avoid an extra copy when possible.
+  ///
+  /// \param[in] metadata Metadata of the object to be written.
+  /// \param[in] data_size Size of the object to be written.
+  /// \param[out] object_id Object ID generated for the put.
+  /// \param[out] data Buffer for the user to write the object into.
+  /// \return Status.
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                ObjectID *object_id, std::shared_ptr<Buffer> *data);
+
+  /// Create and return a buffer in the object store that can be directly written
+  /// into. After writing to the buffer, the caller must call `Seal()` to finalize
+  /// the object. The `Create()` and `Seal()` combination is an alternative interface
+  /// to `Put()` that allows frontends to avoid an extra copy when possible.
+  ///
+  /// \param[in] metadata Metadata of the object to be written.
+  /// \param[in] data_size Size of the object to be written.
+  /// \param[in] object_id Object ID specified by the user.
+  /// \param[out] data Buffer for the user to write the object into.
+  /// \return Status.
+  Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
+
+  /// Finalize placing an object into the object store. This should be called after
+  /// a corresponding `Create()` call and then writing into the returned buffer.
+  ///
+  /// \param[in] object_id Object ID corresponding to the object.
+  /// \return Status.
+  Status Seal(const ObjectID &object_id);
+
+  /// Get a list of objects from the object store. Objects that failed to be retrieved
+  /// will be returned as nullptrs.
+  ///
+  /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results Result list of objects data.
+  /// \return Status.
+  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+             std::vector<std::shared_ptr<RayObject>> *results);
+
+  /// Return whether or not the object store contains the given object.
+  ///
+  /// \param[in] object_id ID of the objects to check for.
+  /// \param[out] has_object Whether or not the object is present.
+  /// \return Status.
+  Status Contains(const ObjectID &object_id, bool *has_object);
+
+  /// Wait for a list of objects to appear in the object store.
+  /// Duplicate object ids are supported, and `num_objects` includes duplicate ids in this
+  /// case.
+  /// TODO(zhijunfu): it is probably more clear in semantics to just fail when there
+  /// are duplicates, and require it to be handled at application level.
+  ///
+  /// \param[in] IDs of the objects to wait for.
+  /// \param[in] num_objects Number of objects that should appear.
+  /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[out] results A bitset that indicates each object has appeared or not.
+  /// \return Status.
+  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
+              int64_t timeout_ms, std::vector<bool> *results);
+
+  /// Delete a list of objects from the object store.
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
+  /// the cluster.
+  /// \param[in] delete_creating_tasks Whether also delete the tasks that
+  /// created these objects.
+  /// \return Status.
+  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only,
+                bool delete_creating_tasks);
+
+  /// Get a string describing object store memory usage for debugging purposes.
+  ///
+  /// \return std::string The string describing memory usage.
+  std::string MemoryUsageString();
 
   /* Public methods related to task submission. */
 
@@ -240,6 +342,11 @@ class CoreWorker {
   /// Directory where log files are written.
   const std::string log_dir_;
 
+  /// Application-language callback to check for signals that have been received
+  /// since calling into C++. This will be called periodically (at least every
+  /// 1s) during long-running operations.
+  std::function<Status()> check_signals_;
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -279,8 +386,16 @@ class CoreWorker {
   /// last time it was sent to the raylet.
   bool active_object_ids_updated_ = false;
 
-  // Interface for storing and retrieving shared objects.
-  CoreWorkerObjectInterface object_interface_;
+  /* Fields related to storing and retrieving objects. */
+
+  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
+
+  /// Plasma store interface.
+  std::unique_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
+
+  /// In-memory store interface.
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
 
   /* Fields related to task submission. */
 
@@ -301,14 +416,14 @@ class CoreWorker {
   /// The asio work to keep task_execution_service_ alive.
   boost::asio::io_service::work task_execution_service_work_;
 
-  // Profiler including a background thread that pushes profiling events to the GCS.
+  /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
-  // Profile event for when the worker is idle. Should be reset when the worker
-  // enters and exits an idle period.
+  /// Profile event for when the worker is idle. Should be reset when the worker
+  /// enters and exits an idle period.
   std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
 
-  // Task execution callback.
+  /// Task execution callback.
   TaskExecutionCallback task_execution_callback_;
 
   /// A map from resource name to the resource IDs that are currently reserved

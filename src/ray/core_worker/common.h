@@ -81,8 +81,6 @@ class TaskArg {
   const std::shared_ptr<RayObject> value_;
 };
 
-enum class StoreProviderType { PLASMA, MEMORY };
-
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}

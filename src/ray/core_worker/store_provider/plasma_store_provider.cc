@@ -2,13 +2,12 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/object_interface.h"
 #include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, std::unique_ptr<RayletClient> &raylet_client,
+    const std::string &store_socket, const std::unique_ptr<RayletClient> &raylet_client,
     std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
@@ -240,10 +239,11 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
-  return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+Status CoreWorkerPlasmaStoreProvider::Delete(
+    const std::unordered_set<ObjectID> &object_ids, bool local_only,
+    bool delete_creating_tasks) {
+  std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
+  return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {

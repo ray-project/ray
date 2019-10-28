@@ -1,7 +1,6 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 #include "src/ray/util/test_util.h"
 
 using namespace std::placeholders;

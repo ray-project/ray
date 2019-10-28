@@ -16,7 +16,7 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service,
-    std::unique_ptr<CoreWorkerStoreProvider> store_provider)
+    std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
     : io_service_(io_service),
       client_call_manager_(io_service),
       store_provider_(std::move(store_provider)) {}
@@ -199,11 +199,9 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    WorkerContext &worker_context, CoreWorkerObjectInterface &object_interface,
-    boost::asio::io_service &main_io_service, rpc::GrpcServer &server,
-    const TaskHandler &task_handler)
+    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
+    rpc::GrpcServer &server, const TaskHandler &task_handler)
     : worker_context_(worker_context),
-      object_interface_(object_interface),
       task_service_(main_io_service, *this),
       task_handler_(task_handler),
       task_main_io_service_(main_io_service) {
