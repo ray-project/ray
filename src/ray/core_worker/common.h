@@ -27,7 +27,9 @@ class RayFunction {
 
   Language GetLanguage() const { return language_; }
 
-  std::vector<std::string> GetFunctionDescriptor() const { return function_descriptor_; }
+  const std::vector<std::string> &GetFunctionDescriptor() const {
+    return function_descriptor_;
+  }
 
  private:
   Language language_;
@@ -78,8 +80,6 @@ class TaskArg {
   /// Value of the argument if passed by value, otherwise nullptr.
   const std::shared_ptr<RayObject> value_;
 };
-
-enum class StoreProviderType { PLASMA, MEMORY };
 
 enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
 

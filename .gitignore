@@ -100,6 +100,7 @@ scripts/nodes.txt
 
 # Generated documentation files
 /doc/_build
+/doc/source/_static/thumbs
 
 # User-specific stuff:
 .idea/**/workspace.xml
