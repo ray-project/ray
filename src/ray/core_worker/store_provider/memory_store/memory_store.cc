@@ -2,7 +2,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 namespace ray {
