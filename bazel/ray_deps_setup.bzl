@@ -2,9 +2,9 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_r
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 def ray_deps_setup():
-    RULES_JVM_EXTERNAL_TAG = "1.2"
+    RULES_JVM_EXTERNAL_TAG = "2.9"
 
-    RULES_JVM_EXTERNAL_SHA = "e5c68b87f750309a79f59c2b69ead5c3221ffa54ff9496306937bfa1c9c8c86b"
+    RULES_JVM_EXTERNAL_SHA = "e5b97a31a3e8feed91636f42e19b11c49487b85e5de2f387c999ea14d77c7f45"
 
     http_archive(
         name = "rules_jvm_external",
