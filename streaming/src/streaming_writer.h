@@ -49,14 +49,11 @@ class StreamingWriter : public StreamingCommon {
    * @param meta_ptr, it's resend empty bundle if meta pointer is non-null.
    */
   StreamingStatus WriteEmptyMessage(
-      ProducerChannelInfo &channel_info,
-      const StreamingMessageBundleMetaPtr &meta_ptr = nullptr);
+      ProducerChannelInfo &channel_info);
 
   StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo &channel_info);
 
-  bool CollectFromRingBuffer(ProducerChannelInfo &channel_info, uint64_t &buffer_remain,
-                             StreamingMessageList *message_list_ptr = nullptr,
-                             const StreamingMessageBundleMetaPtr &meta_ptr = nullptr);
+  bool CollectFromRingBuffer(ProducerChannelInfo &channel_info, uint64_t &buffer_remain);
 
   StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
                                       bool *is_empty_message);
@@ -79,8 +76,7 @@ class StreamingWriter : public StreamingCommon {
   StreamingStatus Init(const std::vector<ObjectID> &queue_id_vec,
                        const std::string &plasma_store_path,
                        const std::vector<uint64_t> &channel_message_id_vec,
-                       const std::vector<uint64_t> &queue_size_vec,
-                       std::vector<ObjectID> &abnormal_queues);
+                       const std::vector<uint64_t> &queue_size_vec);
 
   /*!
    * @brief new writer client in raylet
@@ -89,16 +85,12 @@ class StreamingWriter : public StreamingCommon {
    * @param channel_seq_id_vec
    * @param raylet_client
    * @param queue_size
-   * @param abnormal_queues reamaining queue id vector
-   * @param create_types_vec channel creation type.
    */
 
   StreamingStatus Init(const std::vector<ObjectID> &queue_id_vec,
                        const std::string &plasma_store_path,
                        const std::vector<uint64_t> &channel_seq_id_vec,
-                       const std::vector<uint64_t> &queue_size_vec,
-                       std::vector<ObjectID> &abnormal_queues,
-                       const std::vector<StreamingQueueCreationType> &create_types_vec);
+                       const std::vector<uint64_t> &queue_size_vec);
   /*!
    * @brief To increase throughout, we employed an output buffer for message
    * transformation,

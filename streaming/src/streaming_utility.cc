@@ -34,38 +34,5 @@ void StreamingUtility::Split(const ray::ObjectID &q_id,
   }
 }
 
-void StreamingUtility::FindTagsFromQueueName(const ray::ObjectID &q_id, TagMap &tags,
-                                             bool is_reader) {
-  std::string qname = StreamingUtility::Hexqid2str(q_id.Hex());
-  std::vector<std::string> splited_vec;
-  StreamingUtility::Split(q_id, splited_vec);
-
-  if (splited_vec.size() < 2) {
-    tags["qname"] = qname;
-  } else {
-    if (is_reader) {
-      tags["worker_id"] = splited_vec[1];
-    } else {
-      tags["worker_id"] = splited_vec[0];
-    }
-    tags["qname"] = splited_vec[0] + "-" + splited_vec[1];
-  }
-}
-std::string StreamingUtility::Qid2EdgeInfo(const ray::ObjectID &q_id) {
-  std::vector<std::string> str_vec;
-  Split(q_id, str_vec);
-  STREAMING_CHECK(str_vec.size() == 2);
-  return str_vec[0] + "-" + str_vec[1];
-}
-
-std::vector<ObjectID> StreamingUtility::SetDifference(
-    const std::vector<ObjectID> &ids_a, const std::vector<ObjectID> &ids_b) {
-  std::vector<ObjectID> diff_ids;
-  std::unordered_set<ObjectID> id_b_set(ids_b.begin(), ids_b.end());
-  std::copy_if(
-      ids_a.begin(), ids_a.end(), std::back_inserter(diff_ids),
-      [&id_b_set](const ObjectID &id) { return id_b_set.find(id) == id_b_set.end(); });
-  return diff_ids;
-}
 }  // namespace streaming
 }  // namespace ray

@@ -10,11 +10,6 @@ namespace streaming {
 
 class BufferPool;
 
-struct StreamingMessageList {
-  std::list<StreamingMessagePtr> message_list;
-  uint64_t bundle_size = 0;
-};
-
 struct StreamingQueueInfo {
   uint64_t first_seq_id = 0;
   uint64_t last_seq_id = 0;
@@ -28,10 +23,8 @@ struct ProducerChannelInfo {
   uint64_t current_message_id;
   uint64_t current_seq_id;
   uint64_t message_last_commit_id;
-  uint64_t queue_size;
-  StreamingQueueCreationType queue_creation_type;
   StreamingQueueInfo queue_info;
-
+  uint32_t queue_size;
   int64_t message_pass_by_ts;
 
 };

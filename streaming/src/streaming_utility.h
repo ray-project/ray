@@ -21,14 +21,6 @@ class StreamingUtility {
 
   static void Split(const ray::ObjectID &q_id, std::vector<std::string> &q_splited_vec);
 
-  static void FindTagsFromQueueName(const ray::ObjectID &q_id, TagMap &tags,
-                                    bool is_reader = false);
-
-  // Return all items in a vector, not in b vector which means the returned
-  // result is set A minus set B ( |A| - |B| ).
-  static std::vector<ObjectID> SetDifference(const std::vector<ObjectID> &ids_a,
-                                             const std::vector<ObjectID> &ids_b);
-
   template <typename T>
   static std::string join(const T &v, const std::string &delimiter,
                           const std::string &prefix = "",
