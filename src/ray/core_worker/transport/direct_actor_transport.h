@@ -6,7 +6,9 @@
 #include <utility>
 
 #include "ray/common/id.h"
-#include "ray/core_worker/object_interface.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
@@ -36,7 +38,7 @@ class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       boost::asio::io_service &io_service,
-      std::unique_ptr<CoreWorkerStoreProvider> store_provider);
+      std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
@@ -118,7 +120,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
 
   friend class CoreWorkerTest;
 };
@@ -202,7 +204,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    CoreWorkerObjectInterface &object_interface,
                                     boost::asio::io_service &io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
@@ -222,8 +223,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   WorkerContext &worker_context_;
   /// The IO event loop.
   boost::asio::io_service &io_service_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.

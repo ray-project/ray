@@ -6,7 +6,6 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/status.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 
 /// Boolean class
 extern jclass java_boolean_class;
