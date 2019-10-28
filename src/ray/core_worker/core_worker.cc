@@ -175,12 +175,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                            new CoreWorkerMemoryStoreProvider(memory_store_))));
 }
 
-CoreWorker::~CoreWorker() { Shutdown(); }
+CoreWorker::~CoreWorker() {
+  Shutdown();
+  io_thread_.join();
+}
 
 void CoreWorker::Shutdown() {
   if (!shutdown_) {
     io_service_.stop();
-    io_thread_.join();
     if (worker_type_ == WorkerType::WORKER) {
       task_execution_service_.stop();
     }
