@@ -37,6 +37,33 @@ void BuildCommonTaskSpec(
   }
 }
 
+// Group object ids according the the corresponding store providers.
+void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
+                                   std::unordered_set<ObjectID> *plasma_object_ids,
+                                   std::unordered_set<ObjectID> *memory_object_ids) {
+  // There are two cases:
+  // - for task return objects from direct actor call, use memory store provider;
+  // - all the others use plasma store provider.
+  for (const auto &object_id : object_ids) {
+    // For raylet transport we always use plasma store provider, for direct actor call
+    // there are a few cases:
+    // - objects manually added to store by `ray.put`: for these objects they always use
+    //   plasma store provider;
+    // - task arguments: these objects are passed by value, and are not put into store;
+    // - task return objects: these are put into memory store of the task submitter
+    //   and are only used locally.
+    // Thus we need to check whether this object is a task return object in additional
+    // to whether it's from direct actor call before we can choose memory store provider.
+    if (object_id.IsReturnObject() &&
+        object_id.GetTransportType() ==
+            static_cast<uint8_t>(ray::TaskTransportType::DIRECT_ACTOR)) {
+      memory_object_ids->insert(object_id);
+    } else {
+      plasma_object_ids->insert(object_id);
+    }
+  }
+}
+
 }  // namespace
 
 namespace ray {
@@ -50,12 +77,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
+      check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       heartbeat_timer_(io_service_),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
-      object_interface_(worker_context_, raylet_client_, store_socket, check_signals),
+      memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
@@ -83,13 +111,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-        new CoreWorkerDirectActorTaskReceiver(worker_context_, object_interface_,
-                                              task_execution_service_, worker_server_,
-                                              execute_task));
+        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
+                                              worker_server_, execute_task));
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, object_interface_, task_execution_service_,
-            worker_server_, execute_task,
+            worker_context_, raylet_client_, task_execution_service_, worker_server_,
+            execute_task,
             [this](int64_t tag) { direct_actor_task_receiver_->OnWaitComplete(tag); }));
   }
 
@@ -119,6 +146,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
+  plasma_store_provider_.reset(
+      new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
+  memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
+
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
   // related to this driver task back to the driver. For example, if the
@@ -141,9 +172,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
+  // TODO(edoakes): why don't we just share the memory store provider?
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
-          io_service_, object_interface_.CreateStoreProvider(StoreProviderType::MEMORY)));
+          io_service_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
+                           new CoreWorkerMemoryStoreProvider(memory_store_))));
 }
 
 CoreWorker::~CoreWorker() {
@@ -226,6 +259,163 @@ void CoreWorker::ReportActiveObjectIDs() {
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   active_object_ids_updated_ = false;
+}
+
+Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
+  // Currently only the Plasma store supports client options.
+  return plasma_store_provider_->SetClientOptions(name, limit_bytes);
+}
+
+Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
+  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  return Put(object, *object_id);
+}
+
+Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
+  RAY_CHECK(object_id.GetTransportType() ==
+            static_cast<uint8_t>(TaskTransportType::RAYLET))
+      << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
+  return plasma_store_provider_->Put(object, object_id);
+}
+
+Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                          ObjectID *object_id, std::shared_ptr<Buffer> *data) {
+  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  return Create(metadata, data_size, *object_id, data);
+}
+
+Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
+                          const ObjectID &object_id, std::shared_ptr<Buffer> *data) {
+  return plasma_store_provider_->Create(metadata, data_size, object_id, data);
+}
+
+Status CoreWorker::Seal(const ObjectID &object_id) {
+  return plasma_store_provider_->Seal(object_id);
+}
+
+Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+                       std::vector<std::shared_ptr<RayObject>> *results) {
+  results->resize(ids.size(), nullptr);
+
+  std::unordered_set<ObjectID> plasma_object_ids;
+  std::unordered_set<ObjectID> memory_object_ids;
+  GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
+
+  bool got_exception = false;
+  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  auto start_time = current_time_ms();
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
+                                                worker_context_.GetCurrentTaskID(),
+                                                &result_map, &got_exception));
+
+  if (!got_exception) {
+    if (timeout_ms >= 0) {
+      timeout_ms = std::max(static_cast<int64_t>(0),
+                            timeout_ms - (current_time_ms() - start_time));
+    }
+    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, timeout_ms,
+                                                  worker_context_.GetCurrentTaskID(),
+                                                  &result_map, &got_exception));
+  }
+
+  // Loop through `ids` and fill each entry for the `results` vector,
+  // this ensures that entries `results` have exactly the same order as
+  // they are in `ids`. When there are duplicate object ids, all the entries
+  // for the same id are filled in.
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (result_map.find(ids[i]) != result_map.end()) {
+      (*results)[i] = result_map[ids[i]];
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
+  // Currently only the Plasma store supports Contains().
+  return plasma_store_provider_->Contains(object_id, has_object);
+}
+
+Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
+                        int64_t timeout_ms, std::vector<bool> *results) {
+  results->resize(ids.size(), false);
+
+  if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
+    return Status::Invalid(
+        "Number of objects to wait for must be between 1 and the number of ids.");
+  }
+
+  std::unordered_set<ObjectID> plasma_object_ids;
+  std::unordered_set<ObjectID> memory_object_ids;
+  GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
+
+  if (plasma_object_ids.size() + memory_object_ids.size() != ids.size()) {
+    return Status::Invalid("Duplicate object IDs not supported in wait.");
+  }
+
+  // TODO(edoakes): this logic is not ideal, and will have to be addressed
+  // before we enable direct actor calls in the Python code. If we are waiting
+  // on a list of objects mixed between multiple store providers, we could
+  // easily end up in the situation where we're blocked waiting on one store
+  // provider while another actually has enough objects ready to fulfill
+  // 'num_objects'. This is partially addressed by trying them all once with
+  // a timeout of 0, but that does not address the situation where objects
+  // become available on the second store provider while waiting on the first.
+
+  std::unordered_set<ObjectID> ready;
+  // Wait from both store providers with timeout set to 0. This is to avoid the case
+  // where we might use up the entire timeout on trying to get objects from one store
+  // provider before even trying another (which might have all of the objects available).
+  RAY_RETURN_NOT_OK(
+      plasma_store_provider_->Wait(plasma_object_ids, num_objects, /*timeout_ms=*/0,
+                                   worker_context_.GetCurrentTaskID(), &ready));
+  RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
+      memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
+      /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
+
+  if (static_cast<int>(ready.size()) < num_objects && timeout_ms != 0) {
+    int64_t start_time = current_time_ms();
+    RAY_RETURN_NOT_OK(
+        plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
+                                     worker_context_.GetCurrentTaskID(), &ready));
+    if (timeout_ms > 0) {
+      timeout_ms =
+          std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
+    }
+    RAY_RETURN_NOT_OK(
+        memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
+                                     worker_context_.GetCurrentTaskID(), &ready));
+  }
+
+  for (size_t i = 0; i < ids.size(); i++) {
+    if (ready.find(ids[i]) != ready.end()) {
+      results->at(i) = true;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
+                          bool delete_creating_tasks) {
+  std::unordered_set<ObjectID> plasma_object_ids;
+  std::unordered_set<ObjectID> memory_object_ids;
+  GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
+
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
+                                                   delete_creating_tasks));
+  RAY_RETURN_NOT_OK(memory_store_provider_->Delete(memory_object_ids));
+
+  return Status::OK();
+}
+
+std::string CoreWorker::MemoryUsageString() {
+  // Currently only the Plasma store returns a debug string.
+  return plasma_store_provider_->MemoryUsageString();
 }
 
 TaskID CoreWorker::GetCallerId() const {
@@ -443,6 +633,25 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
 
+  // TODO(edoakes): also check if not direct actor call.
+  // TODO(edoakes): this is only used by java.
+  if (results->size() != 0) {
+    for (size_t i = 0; i < results->size(); i++) {
+      ObjectID id = ObjectID::ForTaskReturn(
+          task_spec.TaskId(), /*index=*/i + 1,
+          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
+      if (!Put(*results->at(i), id).ok()) {
+        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
+        // Put`, we treat other error types as fatal here.
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
+                       << " in store: " << status.message();
+      } else {
+        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
+                       << " in store.";
+      }
+    }
+  }
+
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
@@ -486,7 +695,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   std::vector<std::shared_ptr<RayObject>> results;
-  auto status = object_interface_.Get(object_ids_to_fetch, -1, &results);
+  auto status = Get(object_ids_to_fetch, -1, &results);
   if (status.ok()) {
     for (size_t i = 0; i < results.size(); i++) {
       args->at(indices[i]) = results[i];

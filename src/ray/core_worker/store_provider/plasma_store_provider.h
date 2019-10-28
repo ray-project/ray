@@ -6,7 +6,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -17,38 +16,38 @@ class CoreWorker;
 /// local and remote stores. Local access goes is done via a
 /// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
 /// See `CoreWorkerStoreProvider` for the semantics of public methods.
-class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
+class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
-                                std::unique_ptr<RayletClient> &raylet_client,
+                                const std::unique_ptr<RayletClient> &raylet_client,
                                 std::function<Status()> check_signals);
 
   ~CoreWorkerPlasmaStoreProvider();
 
   Status SetClientOptions(std::string name, int64_t limit_bytes);
 
-  Status Put(const RayObject &object, const ObjectID &object_id) override;
+  Status Put(const RayObject &object, const ObjectID &object_id);
 
   Status Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
-                const ObjectID &object_id, std::shared_ptr<Buffer> *data) override;
+                const ObjectID &object_id, std::shared_ptr<Buffer> *data);
 
-  Status Seal(const ObjectID &object_id) override;
+  Status Seal(const ObjectID &object_id);
 
   Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
              const TaskID &task_id,
              std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
-             bool *got_exception) override;
+             bool *got_exception);
 
-  Status Contains(const ObjectID &object_id, bool *has_object) override;
+  Status Contains(const ObjectID &object_id, bool *has_object);
 
   Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
-              std::unordered_set<ObjectID> *ready) override;
+              std::unordered_set<ObjectID> *ready);
 
-  Status Delete(const std::vector<ObjectID> &object_ids, bool local_only = true,
-                bool delete_creating_tasks = false) override;
+  Status Delete(const std::unordered_set<ObjectID> &object_ids, bool local_only,
+                bool delete_creating_tasks);
 
-  std::string MemoryUsageString() override;
+  std::string MemoryUsageString();
 
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
@@ -81,7 +80,7 @@ class CoreWorkerPlasmaStoreProvider : public CoreWorkerStoreProvider {
   static void WarnIfAttemptedTooManyTimes(int num_attempts,
                                           const std::unordered_set<ObjectID> &remaining);
 
-  std::unique_ptr<RayletClient> &raylet_client_;
+  const std::unique_ptr<RayletClient> &raylet_client_;
   plasma::PlasmaClient store_client_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;

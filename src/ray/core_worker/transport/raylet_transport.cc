@@ -7,12 +7,10 @@ namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler,
-    std::function<void(int64_t)> on_wait_complete)
+    boost::asio::io_service &io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler, std::function<void(int64_t)> on_wait_complete)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
-      object_interface_(object_interface),
       task_service_(io_service, *this),
       task_handler_(task_handler),
       on_wait_complete_(on_wait_complete) {
@@ -69,24 +67,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId()
                  << " finished execution. num_returns: " << num_returns;
-  if (results.size() != 0) {
-    RAY_CHECK(results.size() == num_returns);
-    for (size_t i = 0; i < num_returns; i++) {
-      ObjectID id = ObjectID::ForTaskReturn(
-          task_spec.TaskId(), /*index=*/i + 1,
-          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
-      Status status = object_interface_.Put(*results[i], id);
-      if (!status.ok()) {
-        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
-        // `ObjectInterface::Put`, we treat other error types as fatal here.
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
-                       << " in store: " << status.message();
-      } else {
-        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
-                       << " in store.";
-      }
-    }
-  }
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous
