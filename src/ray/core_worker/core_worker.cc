@@ -98,10 +98,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
-  // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                              ? TaskID::ForDriverTask(job_id)
-                                              : TaskID::Nil());
+  // (For other threads it's set to random ID via ThreadContext::Get).
+  ThreadContext::Get(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                                ? TaskID::ForDriverTask(job_id)
+                                                : TaskID::Nil());
 
   // Initialize gcs client.
   RAY_CHECK_OK(gcs_client_.Connect(io_service_));
@@ -170,7 +170,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     RAY_CHECK_OK(gcs_client_.raylet_task_table().Add(job_id, task_id, data, nullptr));
-    GetThreadContext().SetCurrentTaskId(task_id);
+    ThreadContext::Get().SetCurrentTaskId(task_id);
   }
 
   // TODO(edoakes): why don't we just share the memory store provider?
@@ -197,29 +197,6 @@ void CoreWorker::Disconnect() {
   if (raylet_client_) {
     RAY_IGNORE_EXPR(raylet_client_->Disconnect());
   }
-}
-
-/// Per-thread worker context.
-static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
-
-// Flag used to ensure that we only print a warning about multithreading once per
-// process.
-static bool multithreading_warning_printed_ = false;
-
-WorkerThreadContext &CoreWorker::GetThreadContext(bool for_main_thread) {
-  if (thread_context_ == nullptr) {
-    thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
-    if (!for_main_thread && !multithreading_warning_printed_) {
-      std::cout << "WARNING: "
-                << "Calling ray.get or ray.wait in a separate thread "
-                << "may lead to deadlock if the main thread blocks on "
-                << "this thread and there are not enough resources to "
-                << "execute more tasks." << std::endl;
-      multithreading_warning_printed_ = true;
-    }
-  }
-
-  return *thread_context_;
 }
 
 void CoreWorker::RunIOService() {
@@ -279,8 +256,8 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
 }
 
 Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
-  *object_id = ObjectID::ForPut(GetThreadContext().GetCurrentTaskID(),
-                                GetThreadContext().GetNextPutIndex(),
+  *object_id = ObjectID::ForPut(ThreadContext::Get().GetCurrentTaskID(),
+                                ThreadContext::Get().GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   return Put(object, *object_id);
 }
@@ -294,8 +271,8 @@ Status CoreWorker::Put(const RayObject &object, const ObjectID &object_id) {
 
 Status CoreWorker::Create(const std::shared_ptr<Buffer> &metadata, const size_t data_size,
                           ObjectID *object_id, std::shared_ptr<Buffer> *data) {
-  *object_id = ObjectID::ForPut(GetThreadContext().GetCurrentTaskID(),
-                                GetThreadContext().GetNextPutIndex(),
+  *object_id = ObjectID::ForPut(ThreadContext::Get().GetCurrentTaskID(),
+                                ThreadContext::Get().GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
   return Create(metadata, data_size, *object_id, data);
 }
@@ -321,7 +298,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
   std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
-                                                GetThreadContext().GetCurrentTaskID(),
+                                                ThreadContext::Get().GetCurrentTaskID(),
                                                 &result_map, &got_exception));
 
   if (!got_exception) {
@@ -330,7 +307,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                             timeout_ms - (current_time_ms() - start_time));
     }
     RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, timeout_ms,
-                                                  GetThreadContext().GetCurrentTaskID(),
+                                                  ThreadContext::Get().GetCurrentTaskID(),
                                                   &result_map, &got_exception));
   }
 
@@ -384,23 +361,23 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // provider before even trying another (which might have all of the objects available).
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Wait(plasma_object_ids, num_objects, /*timeout_ms=*/0,
-                                   GetThreadContext().GetCurrentTaskID(), &ready));
+                                   ThreadContext::Get().GetCurrentTaskID(), &ready));
   RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
       memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
-      /*timeout_ms=*/0, GetThreadContext().GetCurrentTaskID(), &ready));
+      /*timeout_ms=*/0, ThreadContext::Get().GetCurrentTaskID(), &ready));
 
   if (static_cast<int>(ready.size()) < num_objects && timeout_ms != 0) {
     int64_t start_time = current_time_ms();
     RAY_RETURN_NOT_OK(
         plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
-                                     GetThreadContext().GetCurrentTaskID(), &ready));
+                                     ThreadContext::Get().GetCurrentTaskID(), &ready));
     if (timeout_ms > 0) {
       timeout_ms =
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     RAY_RETURN_NOT_OK(
         memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
-                                     GetThreadContext().GetCurrentTaskID(), &ready));
+                                     ThreadContext::Get().GetCurrentTaskID(), &ready));
   }
 
   for (size_t i = 0; i < ids.size(); i++) {
@@ -446,11 +423,11 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                               const TaskOptions &task_options,
                               std::vector<ObjectID> *return_ids) {
   TaskSpecBuilder builder;
-  const int next_task_index = GetThreadContext().GetNextTaskIndex();
+  const int next_task_index = ThreadContext::Get().GetNextTaskIndex();
   const auto task_id = TaskID::ForNormalTask(
-      current_job_id_, GetThreadContext().GetCurrentTaskID(), next_task_index);
+      current_job_id_, ThreadContext::Get().GetCurrentTaskID(), next_task_index);
   BuildCommonTaskSpec(builder, current_job_id_, task_id,
-                      GetThreadContext().GetCurrentTaskID(), next_task_index,
+                      ThreadContext::Get().GetCurrentTaskID(), next_task_index,
                       GetCallerId(), function, args, task_options.num_returns,
                       task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
   return raylet_client_->SubmitTask(builder.Build());
@@ -460,15 +437,15 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<TaskArg> &args,
                                const ActorCreationOptions &actor_creation_options,
                                ActorID *return_actor_id) {
-  const int next_task_index = GetThreadContext().GetNextTaskIndex();
+  const int next_task_index = ThreadContext::Get().GetNextTaskIndex();
   const ActorID actor_id = ActorID::Of(
-      current_job_id_, GetThreadContext().GetCurrentTaskID(), next_task_index);
+      current_job_id_, ThreadContext::Get().GetCurrentTaskID(), next_task_index);
   const TaskID actor_creation_task_id = TaskID::ForActorCreationTask(actor_id);
   const JobID job_id = current_job_id_;
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, GetThreadContext().GetCurrentTaskID(),
+      builder, job_id, actor_creation_task_id, ThreadContext::Get().GetCurrentTaskID(),
       next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
@@ -502,12 +479,12 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   // Build common task spec.
   TaskSpecBuilder builder;
-  const int next_task_index = GetThreadContext().GetNextTaskIndex();
+  const int next_task_index = ThreadContext::Get().GetNextTaskIndex();
   const TaskID actor_task_id =
-      TaskID::ForActorTask(current_job_id_, GetThreadContext().GetCurrentTaskID(),
+      TaskID::ForActorTask(current_job_id_, ThreadContext::Get().GetCurrentTaskID(),
                            next_task_index, actor_handle->GetActorID());
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
-                      GetThreadContext().GetCurrentTaskID(), next_task_index,
+                      ThreadContext::Get().GetCurrentTaskID(), next_task_index,
                       GetCallerId(), function, args, num_returns, task_options.resources,
                       {}, transport_type, return_ids);
 
@@ -646,7 +623,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
       arg_reference_ids, return_ids, results);
 
-  GetThreadContext().ResetCurrentTaskId();
+  ThreadContext::Get().ResetCurrentTaskId();
   if (task_spec.IsNormalTask()) {
     current_job_id_ = JobID::Nil();
     // Clear all actor handles at the end of each normal task.

@@ -70,7 +70,9 @@ class CoreWorker {
 
   RayletClient &GetRayletClient() { return *raylet_client_; }
 
-  const TaskID &GetCurrentTaskId() const { return GetThreadContext().GetCurrentTaskID(); }
+  const TaskID &GetCurrentTaskId() const {
+    return ThreadContext::Get().GetCurrentTaskID();
+  }
 
   const ActorID &GetActorId() const { return actor_id_; }
 
@@ -268,9 +270,6 @@ class CoreWorker {
   void StartExecutingTasks();
 
  private:
-  /// Get the per-thread worker context for the currently executing thread.
-  static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);
-
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 

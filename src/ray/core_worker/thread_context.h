@@ -5,9 +5,12 @@
 
 namespace ray {
 
-struct WorkerThreadContext {
-  WorkerThreadContext()
+struct ThreadContext {
+  ThreadContext()
       : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_index_(0) {}
+
+  /// Get the per-thread worker context for the currently executing thread.
+  static ThreadContext &Get(bool for_main_thread = false);
 
   int GetNextTaskIndex() { return ++task_index_; }
 
