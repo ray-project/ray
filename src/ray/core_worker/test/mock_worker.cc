@@ -21,10 +21,11 @@ class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
              const gcs::GcsClientOptions &gcs_options)
-      : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-                JobID::FromInt(1), gcs_options, /*log_dir=*/"",
-                /*node_id_address=*/"127.0.0.1",
-                std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7)) {}
+      : worker_(
+            WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+            JobID::FromInt(1), gcs_options, /*log_dir=*/"",
+            /*node_id_address=*/"127.0.0.1",
+            std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8)) {}
 
   void StartExecutingTasks() { worker_.StartExecutingTasks(); }
 
@@ -34,6 +35,7 @@ class MockWorker {
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
+                     const bool return_results_directly,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(return_ids.size() >= 0);
