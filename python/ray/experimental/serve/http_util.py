@@ -1,5 +1,6 @@
-import flask
 import io
+
+import flask
 
 
 def build_flask_request(asgi_scope_dict, request_body):
