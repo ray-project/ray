@@ -200,6 +200,7 @@ def main():
     timeit("single client direct actor calls with arg async",
            actor_async_direct_arg, 1000)
 
+    n = 1000
     actors = [Actor._remote(is_direct_call=True) for _ in range(n_cpu)]
     clients = [Client.remote(a) for a in actors]
 
