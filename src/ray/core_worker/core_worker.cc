@@ -263,15 +263,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  RAY_LOG(INFO) << "SIMON: CoreWorker::CreateActor is_persistent: "
-                << actor_creation_options.is_persistent << "\n";
   BuildCommonTaskSpec(
       builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
       next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.is_direct_call);
+                                   actor_creation_options.is_direct_call,
+                                   actor_creation_options.is_persistent);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),

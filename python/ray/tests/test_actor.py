@@ -21,12 +21,9 @@ import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
-from ray.tests.utils import (
-    relevant_errors,
-    wait_for_condition,
-    wait_for_errors,
-    wait_for_pid_to_exit,
-)
+from ray.tests.utils import (relevant_errors, wait_for_condition,
+                             wait_for_errors, wait_for_pid_to_exit,
+                             run_string_as_driver)
 
 
 @pytest.fixture
@@ -2817,11 +2814,25 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     while not failure_detected:
         failure_detected = ray.get(parent_actor.wait.remote())
 
-def test_actor_persistence(ray_start_regular):
-    @ray.remote
-    class PersistentActor:
-        def ping(self):
-            return "pong"
 
-    persistent_actor = PersistentActor._remote(is_persistent=True)
+def test_actor_persistence(ray_start_regular):
+    redis_address = ray_start_regular["redis_address"]
+
+    actor_name = "PersistentActor"
+    driver_script = """
+import ray
+ray.init(address="{}")
+
+@ray.remote
+class PersistentActor:
+    def ping(self):
+        return "pong"
+
+actor = PersistentActor._remote(is_persistent=True)
+ray.experimental.register_actor("{}", actor)
+ray.get(actor.ping.remote())
+""".format(redis_address, actor_name)
+
+    run_string_as_driver(driver_script)
+    persistent_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(persistent_actor.ping.remote()) == "pong"

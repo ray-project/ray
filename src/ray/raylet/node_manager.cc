@@ -275,13 +275,15 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       // Kill all the workers. The actual cleanup for these workers is done
       // later when we receive the DisconnectClient message from them.
       for (const auto &worker : workers) {
-        // Clean up any open ray.wait calls that the worker made.
-        task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
-        // Mark the worker as dead so further messages from it are ignored
-        // (except DisconnectClient).
-        worker->MarkDead();
-        // Then kill the worker process.
-        KillWorker(worker);
+        if (!worker->IsPersistentActor()) {
+          // Clean up any open ray.wait calls that the worker made.
+          task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+          // Mark the worker as dead so further messages from it are ignored
+          // (except DisconnectClient).
+          worker->MarkDead();
+          KillWorker(worker);
+          // Then kill the worker process.
+        }
       }
 
       // Remove all tasks for this job from the scheduling queues, mark
@@ -1981,6 +1983,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
     actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+    actor_info_ptr->set_is_persistent(task_spec.IsPersistentActor());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -2032,6 +2035,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   if (task_spec.IsActorCreationTask()) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
+
+    if (task_spec.IsPersistentActor()) {
+      worker.MarkPersistentActor();
+    }
+
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     int port = worker.Port();

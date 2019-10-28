@@ -76,6 +76,10 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
+void Worker::MarkPersistentActor() { is_persistent_ = true; }
+
+bool Worker::IsPersistentActor() const { return is_persistent_; }
+
 const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
