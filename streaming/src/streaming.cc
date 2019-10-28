@@ -61,16 +61,6 @@ void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_l
   config_.SetStreaming_role(conf_fb_instance->role());
   config_.SetStreaming_rollback_checkpoint_id(conf_fb_instance->checkpoint_id());
 
-  is_streaming_log_init_ = true;
-  std::string log_path = config_.GetStreaming_log_path();
-  auto log_path_ch = std::getenv("STREAMING_LOG_DIR");
-  if (log_path_ch) {
-    log_path = std::string(log_path_ch);
-  }
-  set_streaming_log_config(
-      config_.GetStreaming_job_name() + "_" + config_.GetStreaming_op_name() + "_" +
-          config_.GetStreaming_worker_name(),
-      static_cast<StreamingLogLevel>(config_.GetStreaming_log_level()), 0, log_path);
   ray::JobID task_job_id = ray::JobID::FromInt(-1);
   if (conf_fb_instance->task_job_id() &&
       conf_fb_instance->task_job_id()->size() == 2 * JobID::Size()) {
@@ -83,15 +73,9 @@ void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_l
 }
 
 StreamingCommon::~StreamingCommon() {
-  async_io_.stop();
-  timer_cv_.notify_all();
-  worker_threads_.join_all();
   if (raylet_client_ != nullptr) {
     delete raylet_client_;
     STREAMING_LOG(INFO) << "free new raylet client instance";
-  }
-  if (is_streaming_log_init_) {
-    streaming_log_shutdown();
   }
 }
 
@@ -122,34 +106,8 @@ void StreamingCommon::CreateRayletClient(const JobID &job_id) {
 StreamingChannelState StreamingCommon::GetChannelState() { return channel_state_; }
 
 StreamingCommon::StreamingCommon()
-    : channel_state_(StreamingChannelState::Init),
-      is_streaming_log_init_(false) {}
+    : channel_state_(StreamingChannelState::Init) {}
 
-static std::atomic<int32_t> streaming_log_ref_count(0);
-static std::mutex streaming_log_mutex;
-
-void set_streaming_log_config(const std::string &app_name,
-                              const StreamingLogLevel &log_level,
-                              const int &log_buffer_flush_in_secs,
-                              const std::string &log_dir) {
-  std::unique_lock<std::mutex> lock(streaming_log_mutex);
-  if (!streaming_log_ref_count) {
-    ray::streaming::StreamingLog::StartStreamingLog(app_name, log_level,
-                                                    log_buffer_flush_in_secs, log_dir);
-  }
-  streaming_log_ref_count++;
-  STREAMING_LOG(WARNING) << "streaming log ref => " << streaming_log_ref_count;
-}
-
-void streaming_log_shutdown() {
-  streaming_log_ref_count--;
-  if (streaming_log_ref_count == 0) {
-    STREAMING_LOG(WARNING) << "streaming log shutdown";
-    ray::streaming::StreamingLog::ShutDownStreamingLog();
-  } else {
-    STREAMING_LOG(WARNING) << "streaming log ref => " << streaming_log_ref_count;
-  }
-}
 
 }  // namespace streaming
 }  // namespace ray

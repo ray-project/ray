@@ -82,18 +82,7 @@ class StreamingCommon {
   StreamingConfig config_;
   StreamingChannelState channel_state_;
   RayletClient *raylet_client_ = nullptr;
-
- private:
-  bool is_streaming_log_init_;
 };
-
-void set_streaming_log_config(
-    const std::string &app_name = "streaming",
-    const StreamingLogLevel &log_level = StreamingLogLevel::INFO,
-    const int &log_buffer_flush_in_secs = 0,
-    const std::string &log_dir = "/tmp/streaminglogs/");
-
-void streaming_log_shutdown();
 
 }  // namespace streaming
 }  // namespace ray
