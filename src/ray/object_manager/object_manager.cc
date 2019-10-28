@@ -504,7 +504,8 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
 
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
-  RAY_CHECK(num_required_objects <= object_ids.size());
+  RAY_CHECK(num_required_objects <= object_ids.size())
+      << num_required_objects << " " << object_ids.size();
   if (object_ids.size() == 0) {
     callback(std::vector<ObjectID>(), std::vector<ObjectID>());
   }
