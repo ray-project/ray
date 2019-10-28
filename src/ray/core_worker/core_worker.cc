@@ -654,6 +654,25 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
+  // TODO(edoakes): also check if not direct actor call.
+  // TODO(edoakes): this is only used by java.
+  if (results->size() != 0) {
+    for (size_t i = 0; i < results->size(); i++) {
+      ObjectID id = ObjectID::ForTaskReturn(
+          task_spec.TaskId(), /*index=*/i + 1,
+          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
+      if (!Put(*results->at(i), id).ok()) {
+        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
+        // Put`, we treat other error types as fatal here.
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
+                       << " in store: " << status.message();
+      } else {
+        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
+                       << " in store.";
+      }
+    }
+  }
+
   // TODO(zhijunfu):
   // 1. Check and handle failure.
   // 2. Save or load checkpoint.
