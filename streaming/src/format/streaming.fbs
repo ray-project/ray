@@ -1,0 +1,64 @@
+namespace ray.streaming.fbs;
+
+enum StreamingConfigKey : uint32 {
+  StreamingDefault = 0,
+  StreamingStrategy = 1,
+  StreamingRingBufferCapacity = 2,
+  StreamingEmptyMessageTimeInterval = 3,
+  StreamingReconstructObjectsTimeOutPerMb = 4,
+  StreamingReconstructObjectsRetryTimes = 5,
+  StreamingFullQueueTimeInterval = 6,
+  StreamingPersistencePath = 7,
+  StreamingJobName = 8,
+  StreamingLogPath = 9,
+  StreamingLogLevel = 10,
+  StreamingOpName = 11,
+  StreamingWriterConsumedStep = 12,
+  StreamingReaderConsumedStep = 13,
+  StreamingRayletSocketPath = 14,
+  StreamingWorkerName = 15,
+  StreamingPersistenceClusterName = 16,
+  RayPipeBatchInterval = 17,
+  StreamingReaderConsumedStepUpdater = 18,
+  StreamingFlowControl = 19,
+  PlasmaStoreSocketPath = 20,
+  StreamingBufferPoolSize = 21,
+  StreamingBufferPoolMinBufferSize = 22
+}
+
+enum StreamingRole : uint32 {
+  Operator = 0,
+  Source = 1,
+  Sink = 2
+}
+
+enum StreamingStepUpdater : uint32 {
+  Default = 0,
+  Average = 1
+}
+
+enum StreamingFlowControlType : uint32 {
+  Close = 0,
+  UnconsumedSeq = 1,
+  UnconsumedBytes = 2
+}
+
+table StreamingStringPair {
+  key : StreamingConfigKey;
+  value : string;
+}
+
+table StreamingUintPair {
+  key : StreamingConfigKey;
+  value : uint32;
+}
+
+table StreamingConfig {
+  string_config : [StreamingStringPair];
+  uint_config : [StreamingUintPair];
+  role : StreamingRole;
+  checkpoint_id : uint64 = 0;
+  task_job_id : string;
+}
+
+root_type StreamingConfig;
