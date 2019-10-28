@@ -171,6 +171,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
     RAY_CHECK_OK(gcs_client_.raylet_task_table().Add(job_id, task_id, data, nullptr));
     ThreadContext::Get().SetCurrentTaskId(task_id);
+    main_thread_task_id_ = task_id;
   }
 
   // TODO(edoakes): why don't we just share the memory store provider?
@@ -624,6 +625,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       arg_reference_ids, return_ids, results);
 
   ThreadContext::Get().ResetCurrentTaskId();
+  main_thread_task_id_ = TaskID::Nil();
   if (task_spec.IsNormalTask()) {
     current_job_id_ = JobID::Nil();
     // Clear all actor handles at the end of each normal task.
