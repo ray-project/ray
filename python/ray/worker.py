@@ -298,8 +298,9 @@ class Worker(object):
                 memcopy_threads=self.memcopy_threads)
 
         if self.use_pickle:
-            raise NotImplementedError(
-                "pickle5 serialization with direct actor calls")
+            if self.return_buffer is not None:
+                raise NotImplementedError(
+                    "pickle5 serialization with direct actor calls")
             return self._serialize_and_put_pickle5(value, object_id=object_id)
         else:
             return self._serialize_and_put_pyarrow(

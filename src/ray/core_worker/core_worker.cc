@@ -370,25 +370,33 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // Wait from both store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->Wait(plasma_object_ids, num_objects, /*timeout_ms=*/0,
-                                   worker_context_.GetCurrentTaskID(), &ready));
-  RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
-      memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
-      /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
+  if (plasma_object_ids.size() > 0) {
+    RAY_RETURN_NOT_OK(
+        plasma_store_provider_->Wait(plasma_object_ids, num_objects, /*timeout_ms=*/0,
+                                     worker_context_.GetCurrentTaskID(), &ready));
+  }
+  if (memory_object_ids.size() > 0) {
+    RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
+        memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
+        /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
+  }
 
   if (static_cast<int>(ready.size()) < num_objects && timeout_ms != 0) {
     int64_t start_time = current_time_ms();
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
-                                     worker_context_.GetCurrentTaskID(), &ready));
+    if (plasma_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(
+          plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
+                                       worker_context_.GetCurrentTaskID(), &ready));
+    }
     if (timeout_ms > 0) {
       timeout_ms =
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
-    RAY_RETURN_NOT_OK(
-        memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
-                                     worker_context_.GetCurrentTaskID(), &ready));
+    if (memory_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(
+          memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
+                                       worker_context_.GetCurrentTaskID(), &ready));
+    }
   }
 
   for (size_t i = 0; i < ids.size(); i++) {
