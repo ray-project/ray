@@ -90,15 +90,6 @@ class StreamingReader : public StreamingCommon {
   StreamingStatus GetBundle(const uint32_t timeout_ms,
                             std::shared_ptr<StreamingReaderBundle> &message);
 
-  /*!
-   * get offset infomation
-   * @param offset_seq_id, return offsets in plasma seq_id of each input queue, in
-   * unordered_map
-   * @param offset_msg_id, return offsets in streaming msg_id of each input queue, in
-   * unordered_map
-   */
-  void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
-
   void Stop();
 
   virtual ~StreamingReader();

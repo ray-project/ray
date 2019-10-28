@@ -279,36 +279,9 @@ StreamingWriter::~StreamingWriter() {
   channel_state_ = StreamingChannelState::Interrupted;
   // Shutdown metrics reporter timer
   ShutdownTimer();
-  if (config_.GetStreaming_transfer_event_driven()) {
-    event_server_->Stop();
-    if (empty_message_thread_->joinable()) {
-      STREAMING_LOG(INFO) << "Writer loop thread waiting for join";
-      empty_message_thread_->join();
-    }
-    if (flow_control_thread_->joinable()) {
-      STREAMING_LOG(INFO) << "Writer loop thread waiting for join";
-      flow_control_thread_->join();
-    }
-    int user_event_count = 0, empty_event_count = 0, flow_control_event_count = 0,
-        in_event_queue_cnt = 0, queue_full_cnt = 0;
-    for (auto &output_queue : output_queue_ids_) {
-      ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
-      user_event_count += channel_info.user_event_cnt;
-      empty_event_count += channel_info.sent_empty_cnt;
-      flow_control_event_count += channel_info.flow_control_cnt;
-      in_event_queue_cnt += channel_info.in_event_queue_cnt;
-      queue_full_cnt += channel_info.queue_full_cnt;
-    }
-    STREAMING_LOG(WARNING) << "user event nums: " << user_event_count;
-    STREAMING_LOG(WARNING) << "empty event nums: " << empty_event_count;
-    STREAMING_LOG(WARNING) << "flow control event nums: " << flow_control_event_count;
-    STREAMING_LOG(WARNING) << "queue full nums: " << queue_full_cnt;
-    STREAMING_LOG(WARNING) << "in event queue: " << in_event_queue_cnt;
-  } else {
-    if (loop_thread_->joinable()) {
-      STREAMING_LOG(INFO) << "Writer loop thread waiting for join";
-      loop_thread_->join();
-    }
+  if (loop_thread_->joinable()) {
+    STREAMING_LOG(INFO) << "Writer loop thread waiting for join";
+    loop_thread_->join();
   }
   // DestroyChannel(output_queue_ids_);
   STREAMING_LOG(INFO) << "Writer client queue disconnect.";
