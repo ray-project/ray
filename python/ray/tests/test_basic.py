@@ -1237,11 +1237,19 @@ def test_direct_actor_pass_by_ref(ray_start_regular):
     def f(x):
         return x
 
+    @ray.remote
+    def error():
+        sys.exit(0)
+
     a = Actor._remote(is_direct_call=True)
     assert ray.get(a.f.remote(f.remote(1))) == 2
 
     fut = [a.f.remote(f.remote(i)) for i in range(100)]
     assert ray.get(fut) == [i * 2 for i in range(100)]
+
+    # propagates errors for pass by ref
+    with pytest.raises(Exception):
+        ray.get(a.f.remote(error.remote()))
 
 
 def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
