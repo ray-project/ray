@@ -8,8 +8,6 @@
 namespace ray {
 namespace streaming {
 
-class BufferPool;
-
 struct StreamingQueueInfo {
   uint64_t first_seq_id = 0;
   uint64_t last_seq_id = 0;
@@ -19,7 +17,6 @@ struct StreamingQueueInfo {
 struct ProducerChannelInfo {
   ObjectID channel_id;
   StreamingRingBufferPtr writer_ring_buffer;
-  std::shared_ptr<BufferPool> buffer_pool;
   uint64_t current_message_id;
   uint64_t current_seq_id;
   uint64_t message_last_commit_id;

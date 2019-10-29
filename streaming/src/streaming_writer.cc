@@ -116,25 +116,9 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
     return 0;
   }
   std::shared_ptr<uint8_t> msg_data;
-  if (message_type == StreamingMessageType::Message) {
-    auto status =
-        channel_info.buffer_pool->MarkUsed(reinterpret_cast<uint64_t>(data), data_size);
-    STREAMING_CHECK(status == StreamingStatus::OK)
-        << "mark range [" << reinterpret_cast<void *>(data) << ", "
-        << reinterpret_cast<void *>(data + data_size) << "), pool usage "
-        << channel_info.buffer_pool->PrintUsage();
-    // Since RingBufferImplLockFree doesn't pop items actually (it override item by reader
-    // index), we can't rely on ring buffer to pop items in order to release buffer. So we
-    // don't place release operations in shared_ptr deleter, we release buffer in
-    // CollectFromRingBuffer instead. This is also needed for zero copy bundling messages
-    // TODO change StreamingMessage::message_data_ from share_ptr to raw pointer, because
-    // buffer is released manually
-    msg_data.reset(data, [](uint8_t *p) {});
-  } else {
-    auto new_buffer = new uint8_t[data_size];
-    std::memcpy(new_buffer, data, data_size);
-    msg_data.reset(new_buffer, std::default_delete<uint8_t[]>());
-  }
+  auto new_buffer = new uint8_t[data_size];
+  std::memcpy(new_buffer, data, data_size);
+  msg_data.reset(new_buffer);
 
   ring_buffer_ptr->Push(std::make_shared<StreamingMessage>(
       msg_data, data_size, write_message_id, message_type));
@@ -154,9 +138,6 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
   // init queue
   channel_info.writer_ring_buffer = std::make_shared<StreamingRingBuffer>(
       config_.GetStreaming_ring_buffer_capacity(), StreamingRingBufferType::SPSC);
-  channel_info.buffer_pool =
-      std::make_shared<BufferPool>(config_.GetStreaming_buffer_pool_size(),
-                                   config_.GetStreaming_buffer_pool_min_buffer_size());
   channel_info.message_pass_by_ts = current_sys_time_ms();
   RETURN_IF_NOT_OK(transfer_->CreateTransferChannel(channel_info));
   return StreamingStatus::OK;
@@ -275,58 +256,11 @@ StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
   return StreamingStatus::OK;
 }
 
-void ReleaseMessages(const StreamingMessageBundlePtr &bundle,
-                     const std::shared_ptr<BufferPool> &buffer_pool) {
+void ReleaseMessages(const StreamingMessageBundlePtr &bundle) {
   auto msg_list = bundle->GetMessageList();
   STREAMING_LOG(DEBUG) << "message list size " << msg_list.size() << ", "
                        << "bundle size " << bundle->ClassBytesSize();
-  std::vector<std::tuple<uint64_t, uint64_t>> release_ranges;
-  auto release_start = reinterpret_cast<uint64_t>(msg_list.front()->RawData());
-  uint64_t release_end = release_start;
-  for (auto &msg_ptr : msg_list) {
-    auto start_addr = reinterpret_cast<uint64_t>(msg_ptr->RawData());
-    if (start_addr != release_end) {
-      release_ranges.emplace_back(release_start, release_end);
-      release_start = start_addr;
-      release_end = release_start;
-    }
-    release_end = start_addr + msg_ptr->GetDataSize();
-  }
-  release_ranges.emplace_back(release_start, release_end);
-
-  for (auto &range : release_ranges) {
-    auto start = std::get<0>(range);
-    auto end = std::get<1>(range);
-    if (release_start == release_end) {
-      // Empty message may not correspond a valid address in buffer pool,
-      // because the buffer may have been released in previous release if buffer is empty
-      // after that release.
-      STREAMING_LOG(WARNING) << "Empty message shouldn't happen. "
-                             << "message list size " << msg_list.size() << ", "
-                             << "bundle size " << bundle->ClassBytesSize();
-      continue;
-    }
-    if (buffer_pool->Release(start, end - start) != StreamingStatus::OK) {
-      std::stringstream ss;
-      ss << "Release buffer error, current release range: ["
-         << reinterpret_cast<void *>(start) << ", " << reinterpret_cast<void *>(end)
-         << "). ";
-      ss << "Release ranges: [";
-      int len = static_cast<int>(release_ranges.size());
-      for (int i = 0; i < len; i++) {
-        auto r = release_ranges[i];
-        if (i != 0) {
-          ss << ", ";
-        }
-        ss << "[" << reinterpret_cast<void *>(std::get<0>(r)) << ", "
-           << reinterpret_cast<void *>(std::get<1>(r));
-        ss << ")";
-      }
-      ss << "]. ";
-      ss << "pool usage: " << buffer_pool->PrintUsage();
-      STREAMING_LOG(FATAL) << ss.str();
-    }
-  }
+  msg_list.clear();
 }
 
 bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
@@ -372,17 +306,13 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
       bundle_buffer_size);
   buffer_ptr->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(buffer_ptr->GetTransientBufferMutable());
-  ReleaseMessages(bundle_ptr, channel_info.buffer_pool);
+  ReleaseMessages(bundle_ptr);
 
   STREAMING_CHECK(bundle_ptr->ClassBytesSize() == buffer_ptr->GetTransientBufferSize());
   return true;
 }
 
 void StreamingWriter::Stop() { channel_state_ = StreamingChannelState::Interrupted; }
-
-std::shared_ptr<BufferPool> StreamingWriter::GetBufferPool(const ObjectID &qid) {
-  return channel_info_map_[qid].buffer_pool;
-}
 
 }  // namespace streaming
 }  // namespace ray
