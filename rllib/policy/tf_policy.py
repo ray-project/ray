@@ -198,7 +198,7 @@ class TFPolicy(Policy):
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        if hasattr(self, "model"):
+        if hasattr(self, "model") and self.model is not None:
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
         else:
