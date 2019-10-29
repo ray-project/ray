@@ -195,12 +195,14 @@ class ExperimentAnalysis(Analysis):
         if mode not in ["max", "min"]:
             logger.warning(
                 "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for mode {} not in [\"max\", \"min\"]".format(metric, mode))
+                "metric {} for mode {} not in [\"max\", \"min\"]".format(
+                    metric, mode))
             return None
         if scope not in ["all", "last"]:
             logger.warning(
                 "ExperimentAnalysis: attempting to get best trial for "
-                "metric {} for scope {} not in [\"all\", \"last\"]".format(metric, scope))
+                "metric {} for scope {} not in [\"all\", \"last\"]".format(
+                    metric, scope))
             return None
         best_trial = None
         best_metric_score = None
