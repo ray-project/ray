@@ -7,7 +7,6 @@
 #include <thread>
 #include <vector>
 
-#include "buffer_pool.h"
 #include "streaming.h"
 #include "streaming_channel.h"
 #include "streaming_config.h"
@@ -98,8 +97,6 @@ class StreamingWriter : public StreamingCommon {
   void Run();
 
   void Stop();
-
-  std::shared_ptr<BufferPool> GetBufferPool(const ObjectID &qid);
 };
 
 }  // namespace streaming
