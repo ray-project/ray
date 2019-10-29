@@ -1,7 +1,7 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@com_github_ray_project_ray//bazel:ray.bzl", "if_linux_x86_64", "flatbuffer_py_library")
+load("@com_github_ray_project_ray//bazel:ray.bzl", "flatbuffer_py_library")
 load("@com_github_ray_project_ray//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
@@ -32,11 +32,10 @@ cc_library(
         "//:ray_util",
         "//:raylet_lib",
         "//:ray_common",
-        "//:ray_metrics",
         "@boost//:asio",
         "@boost//:any",
         "@boost//:circular_buffer",
-        "@plasma//:plasma_client",
+        "@boost//:thread",
         "@com_google_googletest//:gtest"
     ],
     visibility = ["//visibility:public"],
@@ -95,128 +94,3 @@ filegroup(
     }),
     visibility = ["//visibility:public"],
 )
-
-cc_binary(
-    name = "libstreaming_python.so",
-    srcs = glob([
-        "lib/python/*.cc",
-        "lib/python/*.h",
-    ]),
-    includes = [
-        "streaming/src/lib/python",
-        "src",
-    ],
-    deps = [
-        ":streaming_lib",
-        "@local_config_python//:python_headers",
-    ]
-    linkshared = True,
-    linkstatic = True,
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "streaming_test_lib",
-    srcs = ["test/test_utils.cc"],
-    hdrs = glob(["test/*.h"]),
-    includes = ["test/"],
-    deps = [":streaming_lib"]
-)
-
-cc_binary(
-    name = "streaming_message_ring_buffer_tests",
-    srcs = [
-        "test/streaming_message_ring_buffer_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib"
-    ],
-)
-
-cc_binary(
-    name = "buffer_pool_tests",
-    srcs = [
-        "test/buffer_pool_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [":streaming_test_lib"]
-)
-
-cc_binary(
-    name = "streaming_message_serialization_tests",
-    srcs = [
-        "test/streaming_message_serialization_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib",
-    ],
-)
-
-cc_binary(
-    name = "streaming_barrier_merge_tests",
-    srcs = [
-        "test/streaming_barrier_merge_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib",
-    ],
-)
-
-cc_binary(
-    name = "streaming_asio_tests",
-    srcs = [
-        "test/streaming_asio_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib",
-    ],
-)
-
-cc_binary(
-    name = "streaming_fbs_tests",
-    srcs = [
-        "test/streaming_fbs_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib",
-    ],
-)
-
-cc_binary(
-    name = "streaming_utility_tests",
-    srcs = [
-        "test/streaming_utility_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib",
-    ],
-)
-
-cc_binary(
-    name = "streaming_writer_tests",
-    srcs = [
-        "test/streaming_writer_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib"
-    ],
-)
-
-cc_binary(
-    name = "streaming_reader_tests",
-    srcs = [
-        "test/streaming_reader_tests.cc",
-    ],
-    copts = streaming_opts,
-    deps = [
-        ":streaming_test_lib"
-    ],
-)
-

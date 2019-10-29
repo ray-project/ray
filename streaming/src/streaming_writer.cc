@@ -25,9 +25,6 @@ void StreamingWriter::WriterLoopForward() {
         return;
       }
       ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
-      if (flow_controller_->ShouldFlowControl(channel_info)) {
-        continue;
-      }
       bool is_push_empty_message = false;
       StreamingStatus write_status =
           WriteChannelProcess(channel_info, &is_push_empty_message);
@@ -38,9 +35,7 @@ void StreamingWriter::WriterLoopForward() {
           min_passby_message_ts =
               std::min(channel_info.message_pass_by_ts, min_passby_message_ts);
           empty_messge_send_count++;
-          channel_info.sent_empty_cnt++;
         } else {
-          channel_info.sent_empty_cnt = 0;
         }
       } else if (StreamingStatus::FullChannel == write_status) {
       } else {
@@ -100,8 +95,7 @@ StreamingStatus StreamingWriter::WriteBufferToChannel(ProducerChannelInfo &chann
 }
 
 void StreamingWriter::Run() {
-  loop_thread_ =
-      std::make_shared<std::thread>(&StreamingWriter::WriterLoopForward, this);
+  loop_thread_ = std::make_shared<std::thread>(&StreamingWriter::WriterLoopForward, this);
 }
 
 uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
@@ -112,29 +106,10 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
   last_write_q_id_ = q_id;
   // Write message id stands for current lastest message id and differs from
   // channel.current_message_id if it's barrier message.
-  uint64_t write_message_id;
-  if (reliability_helper_->FilterMessage(channel_info, data, message_type,
-                                         &write_message_id)) {
-    return write_message_id;
-  }
-  if (StreamingMessageType::Barrier == message_type) {
-    StreamingBarrierHeader barrier_header;
-    StreamingMessage::GetBarrierIdFromRawData(data, &barrier_header);
-    if (barrier_header.IsGlobalBarrier()) {
-      barrier_helper_.SetBarrierIdByLastMessageId(q_id, write_message_id,
-                                                  barrier_header.barrier_id);
-    }
-  }
+  uint64_t &write_message_id = channel_info.current_message_id;
   auto &ring_buffer_ptr = channel_info.writer_ring_buffer;
-  uint32_t begin = 0;
   while (ring_buffer_ptr->IsFull() && channel_state_ == StreamingChannelState::Running) {
     std::this_thread::sleep_for(std::chrono::milliseconds(config_.TIME_WAIT_UINT));
-    ++begin;
-    if (begin == 1) {
-      channel_info.rb_full_cnt++;
-      STREAMING_LOG(WARNING) << "ringbuffer of qId : " << q_id << " is full, its size => "
-                             << ring_buffer_ptr->Size();
-    }
   }
   if (channel_state_ != StreamingChannelState::Running) {
     STREAMING_LOG(WARNING) << "stop in write message to ringbuffer";
@@ -174,12 +149,8 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   channel_info.current_message_id = channel_message_id;
   channel_info.channel_id = q_id;
-  barrier_helper_.SetCurrentMaxCheckpointIdInQueue(
-      q_id, config_.GetStreaming_rollback_checkpoint_id());
   channel_info.queue_size = queue_size;
-  STREAMING_LOG(WARNING) << " Init queue [" << q_id << "], "
-                         << " max block size => "
-                         << queue_size / config_.GetStreaming_writer_consumed_step();
+  STREAMING_LOG(WARNING) << " Init queue [" << q_id << "]";
   // init queue
   channel_info.writer_ring_buffer = std::make_shared<StreamingRingBuffer>(
       config_.GetStreaming_ring_buffer_capacity(), StreamingRingBufferType::SPSC);
@@ -194,40 +165,20 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
 StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
                                       const std::string &plasma_store_path,
                                       const std::vector<uint64_t> &channel_message_id_vec,
-                                      const std::vector<uint64_t> &queue_size_vec,
-                                      std::vector<ObjectID> &abnormal_queues) {
+                                      const std::vector<uint64_t> &queue_size_vec) {
   STREAMING_CHECK(queue_id_vec.size() && channel_message_id_vec.size());
 
-  if (channel_info_map_.size() != queue_id_vec.size()) {
-    for (auto &q_id : queue_id_vec) {
-      channel_info_map_[q_id].queue_creation_type = StreamingQueueCreationType::RECREATE;
-    }
-  }
-
-  std::function<std::string(decltype(channel_info_map_.begin()))> func =
-      [](decltype(channel_info_map_.begin()) it) {
-        return it->first.Hex() + "->" +
-               std::to_string(static_cast<uint64_t>(it->second.queue_creation_type));
-      };
-  std::string creator_list_str = StreamingUtility::join(
-      channel_info_map_.begin(), channel_info_map_.end(), func, "|");
   ray::JobID job_id =
       JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
 
-  STREAMING_LOG(INFO) << "Streaming queue creator => " << creator_list_str << ", role => "
+  STREAMING_LOG(INFO) << "role => "
                       << streaming::fbs::EnumNameStreamingRole(
                              config_.GetStreaming_role())
                       << ", strategy => "
-                      << static_cast<uint32_t>(config_.GetStreaming_strategy_())
                       << ", job name => " << config_.GetStreaming_job_name()
                       << ", log level => " << config_.GetStreaming_log_level()
-                      << ", log path => " << config_.GetStreaming_log_path()
-                      << ", rollback checkpoint id => "
-                      << config_.GetStreaming_rollback_checkpoint_id() << ", job id => "
-                      << job_id << ", unified map"
-                      << ", flow control => "
-                      << streaming::fbs::EnumNameStreamingFlowControlType(
-                             config_.GetStreaming_flow_control_type());
+                      << ", log path => " << config_.GetStreaming_log_path() << job_id
+                      << ", unified map";
 
   output_queue_ids_ = queue_id_vec;
   std::shared_ptr<Config> transfer_config = std::make_shared<Config>();
@@ -238,32 +189,14 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   transfer_config->Set(ConfigEnum::RAYLET_CLIENT,
                        reinterpret_cast<uint64_t>(raylet_client_));
   transfer_config->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
-  transfer_config->Set(ConfigEnum::RECONSTRUCT_RETRY_TIMES,
-                       config_.GetStreaming_reconstruct_objects_retry_times());
-  transfer_config->Set(ConfigEnum::RECONSTRUCT_TIMEOUT_PER_MB,
-                       config_.GetStreaming_reconstruct_objects_timeout_per_mb());
 
-  transfer_.reset(new PlasmaProducer(transfer_config));
-
-  std::vector<ObjectID> reconstruct_q_vec;
-  std::copy_if(queue_id_vec.begin(), queue_id_vec.end(),
-               std::back_inserter(reconstruct_q_vec), [&](const ObjectID &q_id) {
-                 return channel_info_map_[q_id].queue_creation_type ==
-                        StreamingQueueCreationType::RECONSTRUCT;
-               });
-  if (reconstruct_q_vec.size() > 0) {
-    RETURN_IF_NOT_OK(transfer_->WaitChannelsReady(
-        reconstruct_q_vec, config_.GetStreaming_waiting_queue_time_out(),
-        abnormal_queues));
-  }
+  transfer_.reset(new MockProducer(transfer_config));
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     // init channelIdGenerator or create it
     StreamingStatus status = InitChannel(queue_id_vec[i], channel_message_id_vec[i],
                                          plasma_store_path, queue_size_vec[i]);
     if (status != StreamingStatus::OK) {
-      abnormal_queues.insert(abnormal_queues.begin(), queue_id_vec.begin() + i,
-                             queue_id_vec.end());
       return status;
     }
   }
@@ -277,8 +210,6 @@ StreamingWriter::~StreamingWriter() {
     return;
   }
   channel_state_ = StreamingChannelState::Interrupted;
-  // Shutdown metrics reporter timer
-  ShutdownTimer();
   if (loop_thread_->joinable()) {
     STREAMING_LOG(INFO) << "Writer loop thread waiting for join";
     loop_thread_->join();
@@ -292,11 +223,9 @@ bool StreamingWriter::IsMessageAvailableInBuffer(ProducerChannelInfo &channel_in
          !channel_info.writer_ring_buffer->IsEmpty();
 }
 
-StreamingStatus StreamingWriter::WriteEmptyMessage(
-    ProducerChannelInfo &channel_info) {
+StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_info) {
   auto &q_id = channel_info.channel_id;
-  if (channel_info.message_last_commit_id < channel_info.current_message_id &&
-      !meta_ptr) {
+  if (channel_info.message_last_commit_id < channel_info.current_message_id) {
     // Abort to send empty message if ring buffer is not empty now.
     STREAMING_LOG(DEBUG) << "q_id =>" << q_id << " abort to send empty, last commit id =>"
                          << channel_info.message_last_commit_id << ", channel max id => "
@@ -329,22 +258,9 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingWriter::Init(
-    const std::vector<ObjectID> &queue_id_vec, const std::string &plasma_store_path,
-    const std::vector<uint64_t> &channel_seq_id_vec,
-    const std::vector<uint64_t> &queue_size_vec, std::vector<ObjectID> &abnormal_queues,
-    const std::vector<StreamingQueueCreationType> &create_types_vec) {
-  for (size_t i = 0; i < queue_id_vec.size(); ++i) {
-    channel_info_map_[queue_id_vec[i]].queue_creation_type = create_types_vec[i];
-  }
-  return Init(queue_id_vec, plasma_store_path, channel_seq_id_vec, queue_size_vec,
-              abnormal_queues);
-}
-
 StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
     ProducerChannelInfo &channel_info) {
   StreamingRingBufferPtr &buffer_ptr = channel_info.writer_ring_buffer;
-  auto &q_id = channel_info.channel_id;
   StreamingStatus status = transfer_->ProduceItemToChannel(
       channel_info, buffer_ptr->GetTransientBufferMutable(),
       buffer_ptr->GetTransientBufferSize());
@@ -353,32 +269,6 @@ StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
   auto transient_bundle_meta =
       StreamingMessageBundleMeta::FromBytes(buffer_ptr->GetTransientBuffer());
   bool is_barrier_bundle = transient_bundle_meta->IsBarrier();
-  if (is_barrier_bundle) {
-    StreamingBarrierHeader barrier_header;
-    StreamingMessage::GetBarrierIdFromRawData(
-        buffer_ptr->GetTransientBuffer() + kMessageBundleHeaderSize + kMessageHeaderSize,
-        &barrier_header);
-    // Skip partial barrier
-    if (barrier_header.IsGlobalBarrier()) {
-      uint64_t global_barrier_id = 0;
-      StreamingStatus status = barrier_helper_.GetBarrierIdByLastMessageId(
-          q_id, transient_bundle_meta->GetLastMessageId(), global_barrier_id, true);
-      uint64_t max_queue_seq_id = channel_info.current_seq_id;
-
-      if (StreamingStatus::OK != status) {
-        STREAMING_LOG(WARNING)
-            << "[Writer] [Barrier] global barrier was removed because of out of memory, "
-            << " global barrier id => " << global_barrier_id << " q id => " << q_id
-            << ", queue seq id => " << max_queue_seq_id;
-      } else {
-        barrier_helper_.SetSeqIdByBarrierId(q_id, global_barrier_id, max_queue_seq_id);
-
-        STREAMING_LOG(INFO) << "[Writer] [Barrier] q id => " << q_id
-                            << ", global barrier id => " << global_barrier_id
-                            << ", queue seq id => " << max_queue_seq_id;
-      }
-    }
-  }
   // force delete if it's barrier bundle
   buffer_ptr->FreeTransientBuffer(is_barrier_bundle);
   channel_info.message_last_commit_id = transient_bundle_meta->GetLastMessageId();
@@ -439,16 +329,14 @@ void ReleaseMessages(const StreamingMessageBundlePtr &bundle,
   }
 }
 
-bool StreamingWriter::CollectFromRingBuffer(
-    ProducerChannelInfo &channel_info, uint64_t &buffer_remain) {
+bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
+                                            uint64_t &buffer_remain) {
   StreamingRingBufferPtr &buffer_ptr = channel_info.writer_ring_buffer;
   auto &q_id = channel_info.channel_id;
 
   std::list<StreamingMessagePtr> message_list;
   uint64_t bundle_buffer_size = 0;
-  const uint32_t max_queue_item_size =
-      channel_info.queue_size /
-      std::max(config_.GetStreaming_writer_consumed_step(), kQueueItemMaxBlocks);
+  const uint32_t max_queue_item_size = channel_info.queue_size;
   while (message_list.size() < config_.GetStreaming_ring_buffer_capacity() &&
          !buffer_ptr->IsEmpty()) {
     StreamingMessagePtr &message_ptr = buffer_ptr->Front();
@@ -459,8 +347,8 @@ bool StreamingWriter::CollectFromRingBuffer(
                            << " max queue item size => " << max_queue_item_size;
       break;
     }
-    if (!message_list.empty() && (message_ptr->IsBarrier() ||
-        message_list.back()->GetMessageType() != message_ptr->GetMessageType())) {
+    if (!message_list.empty() &&
+        message_list.back()->GetMessageType() != message_ptr->GetMessageType()) {
       break;
     }
     // ClassBytesSize = DataSize + MetaDataSize
@@ -469,9 +357,6 @@ bool StreamingWriter::CollectFromRingBuffer(
     message_list.push_back(message_ptr);
     buffer_ptr->Pop();
     buffer_remain = buffer_ptr->Size();
-    if (message_ptr->IsBarrier()) {
-      break;
-    }
   }
 
   if (bundle_buffer_size >= channel_info.queue_size) {
@@ -483,24 +368,17 @@ bool StreamingWriter::CollectFromRingBuffer(
   StreamingMessageBundlePtr bundle_ptr;
   bundle_ptr = std::make_shared<StreamingMessageBundle>(
       std::move(message_list), current_sys_time_ms(),
-      message_list.back()->GetMessageSeqId(),
-      message_list.back()->IsBarrier() ? StreamingMessageBundleType::Barrier
-                                        : StreamingMessageBundleType::Bundle,
+      message_list.back()->GetMessageSeqId(), StreamingMessageBundleType::Bundle,
       bundle_buffer_size);
   buffer_ptr->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(buffer_ptr->GetTransientBufferMutable());
-
-  if (bundle_ptr->IsBundle()) {
-    ReleaseMessages(bundle_ptr, channel_info.buffer_pool);
-  }
+  ReleaseMessages(bundle_ptr, channel_info.buffer_pool);
 
   STREAMING_CHECK(bundle_ptr->ClassBytesSize() == buffer_ptr->GetTransientBufferSize());
   return true;
 }
 
-void StreamingWriter::Stop() {
-  channel_state_ = StreamingChannelState::Interrupted;
-}
+void StreamingWriter::Stop() { channel_state_ = StreamingChannelState::Interrupted; }
 
 std::shared_ptr<BufferPool> StreamingWriter::GetBufferPool(const ObjectID &qid) {
   return channel_info_map_[qid].buffer_pool;

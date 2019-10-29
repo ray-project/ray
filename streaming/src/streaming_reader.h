@@ -22,16 +22,11 @@ struct StreamingReaderBundle {
   uint32_t data_size;
   ObjectID from;
   uint64_t seq_id;
-  uint64_t last_barrier_id = 0;
-  uint64_t last_partial_barrier_id = 0;
   StreamingMessageBundleMetaPtr meta;
 };
 
 struct StreamingReaderMsgPtrComparator {
-  StreamingReaderMsgPtrComparator(StreamingStrategy strategy) : comp_strategy(strategy){};
   StreamingReaderMsgPtrComparator(){};
-  StreamingStrategy comp_strategy = StreamingStrategy::EXACTLY_ONCE;
-
   bool operator()(const std::shared_ptr<StreamingReaderBundle> &a,
                   const std::shared_ptr<StreamingReaderBundle> &b);
 };
@@ -47,11 +42,8 @@ class StreamingReader : public StreamingCommon {
                                          StreamingReaderMsgPtrComparator>>
       reader_merger_;
 
-  std::unordered_map<uint64_t, uint32_t> barrier_cnt_;
-  std::unordered_map<uint64_t, uint32_t> partial_barrier_cnt_;
   std::shared_ptr<StreamingReaderBundle> last_fetched_queue_item_;
 
-  bool is_recreate_;
   int64_t timer_interval_;
   int64_t last_bundle_ts_;
   int64_t last_message_ts_;
@@ -73,11 +65,10 @@ class StreamingReader : public StreamingCommon {
    */
   void Init(const std::string &store_path, const std::vector<ObjectID> &input_ids,
             const std::vector<uint64_t> &plasma_queue_seq_ids,
-            const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval,
-            bool is_recreate, std::vector<ObjectID> &abnormal_queues);
+            const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval);
 
   void Init(const std::string &store_path, const std::vector<ObjectID> &input_ids,
-            int64_t timer_interval, bool is_rescale = false);
+            int64_t timer_interval);
   /*!
    * get latest message from input queues
    * @param timeout_ms
@@ -95,7 +86,7 @@ class StreamingReader : public StreamingCommon {
   virtual ~StreamingReader();
 
  private:
-  StreamingStatus InitChannel(std::vector<ObjectID> &abnormal_Channel);
+  StreamingStatus InitChannel();
 
   StreamingStatus InitChannelMerger();
 
@@ -106,8 +97,6 @@ class StreamingReader : public StreamingCommon {
 
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<StreamingReaderBundle> &message,
                                          bool &is_valid_break);
-
-  bool BarrierAlign(std::shared_ptr<StreamingReaderBundle> &message);
 };
 
 }  // namespace streaming

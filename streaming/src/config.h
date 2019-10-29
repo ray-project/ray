@@ -1,0 +1,87 @@
+#ifndef RAY_STREAMING_CONF_H
+#define RAY_STREAMING_CONF_H
+#include <boost/any.hpp>
+#include <unordered_map>
+
+#include "streaming_logging.h"
+
+namespace ray {
+namespace streaming {
+enum class ConfigEnum : uint32_t {
+  PLASMA_STORE_SOCKET_PATH = 0,
+  RAYLET_SOCKET_PATH,
+  RAYLET_CLIENT,
+  QUEUE_ID_VECTOR,
+  RECONSTRUCT_RETRY_TIMES,
+  RECONSTRUCT_TIMEOUT_PER_MB,
+  CURRENT_DRIVER_ID,
+  PLASMA_TRANSFER_MIN = PLASMA_STORE_SOCKET_PATH,
+  PLASMA_TRANSFER_MAX = CURRENT_DRIVER_ID
+};
+}
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<::ray::streaming::ConfigEnum> {
+  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
+    return static_cast<uint32_t>(config_enum_key);
+  }
+};
+
+template <>
+struct hash<const ::ray::streaming::ConfigEnum> {
+  size_t operator()(const ::ray::streaming::ConfigEnum &config_enum_key) const {
+    return static_cast<uint32_t>(config_enum_key);
+  }
+};
+}  // namespace std
+
+namespace ray {
+namespace streaming {
+
+class Config {
+ public:
+  template <typename ValueType>
+  inline void Set(ConfigEnum key, const ValueType &any) {
+    config_map_.emplace(key, any);
+  }
+
+  template <typename ValueType>
+  inline void Set(ConfigEnum key, ValueType &&any) {
+    config_map_.emplace(key, any);
+  }
+
+  template <typename ValueType>
+  inline boost::any &GetOrDefault(ConfigEnum key, ValueType &&any) {
+    auto item = config_map_.find(key);
+    if (item != config_map_.end()) {
+      return item->second;
+    }
+    Set(key, any);
+    return any;
+  }
+
+  boost::any &Get(ConfigEnum key) const;
+
+  inline uint32_t GetInt32(ConfigEnum key) { return boost::any_cast<uint32_t>(Get(key)); }
+
+  inline uint64_t GetInt64(ConfigEnum key) { return boost::any_cast<uint64_t>(Get(key)); }
+
+  inline double GetDouble(ConfigEnum key) { return boost::any_cast<double>(Get(key)); }
+
+  inline bool GetBool(ConfigEnum key) { return boost::any_cast<bool>(Get(key)); }
+
+  inline std::string GetString(ConfigEnum key) {
+    return boost::any_cast<std::string>(Get(key));
+  }
+
+  virtual ~Config() = default;
+
+ protected:
+  mutable std::unordered_map<ConfigEnum, boost::any> config_map_;
+};
+
+}  // namespace streaming
+}  // namespace ray
+#endif  // RAY_STREAMING_CONF_H

@@ -26,7 +26,6 @@ struct ProducerChannelInfo {
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
   int64_t message_pass_by_ts;
-
 };
 
 struct ConsumerChannelInfo {

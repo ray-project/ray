@@ -12,8 +12,8 @@
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/util/util.h"
 
-#include "streaming_asio.h"
 #include "streaming_channel.h"
 #include "streaming_config.h"
 #include "streaming_logging.h"

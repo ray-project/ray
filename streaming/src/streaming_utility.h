@@ -79,6 +79,14 @@ class AutoSpinLock {
  private:
   std::atomic_flag &lock_;
 };
+
+inline int64_t current_sys_time_ms() {
+  std::chrono::milliseconds ms_since_epoch =
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return ms_since_epoch.count();
+}
+
 }  // namespace streaming
 }  // namespace ray
 

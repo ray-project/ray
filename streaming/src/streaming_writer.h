@@ -48,8 +48,7 @@ class StreamingWriter : public StreamingCommon {
    * @param q_id, queue id
    * @param meta_ptr, it's resend empty bundle if meta pointer is non-null.
    */
-  StreamingStatus WriteEmptyMessage(
-      ProducerChannelInfo &channel_info);
+  StreamingStatus WriteEmptyMessage(ProducerChannelInfo &channel_info);
 
   StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo &channel_info);
 
@@ -78,19 +77,6 @@ class StreamingWriter : public StreamingCommon {
                        const std::vector<uint64_t> &channel_message_id_vec,
                        const std::vector<uint64_t> &queue_size_vec);
 
-  /*!
-   * @brief new writer client in raylet
-   * @param queue_id_vec
-   * @param plasma_store_path_vec
-   * @param channel_seq_id_vec
-   * @param raylet_client
-   * @param queue_size
-   */
-
-  StreamingStatus Init(const std::vector<ObjectID> &queue_id_vec,
-                       const std::string &plasma_store_path,
-                       const std::vector<uint64_t> &channel_seq_id_vec,
-                       const std::vector<uint64_t> &queue_size_vec);
   /*!
    * @brief To increase throughout, we employed an output buffer for message
    * transformation,

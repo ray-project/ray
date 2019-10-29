@@ -6,10 +6,6 @@
 #include "format/streaming_generated.h"
 #include "streaming.h"
 
-#include "ray/metrics/metrics_util.h"
-#include "ray/util/logging.h"
-#include "ray/util/util.h"
-
 namespace ray {
 namespace streaming {
 
@@ -59,7 +55,6 @@ void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_l
   }
 
   config_.SetStreaming_role(conf_fb_instance->role());
-  config_.SetStreaming_rollback_checkpoint_id(conf_fb_instance->checkpoint_id());
 
   ray::JobID task_job_id = ray::JobID::FromInt(-1);
   if (conf_fb_instance->task_job_id() &&
@@ -79,7 +74,6 @@ StreamingCommon::~StreamingCommon() {
   }
 }
 
-
 void StreamingCommon::CreateRayletClient(const JobID &job_id) {
   if (raylet_client_ != nullptr) {
     return;
@@ -90,10 +84,7 @@ void StreamingCommon::CreateRayletClient(const JobID &job_id) {
                         << config_.GetStreaming_raylet_socket_path();
     // object id can't be converted to driver id, so that create new instance
     // from object id
-    ray::JobID raylet_client_job_id = ray::JobID::FromBinary(job_id.Binary());
-    raylet_client_ = new RayletClient(config_.GetStreaming_raylet_socket_path(),
-                                      ray::WorkerID::FromRandom(), false,
-                                      raylet_client_job_id, rpc::Language::CPP, -1, true);
+    raylet_client_ = nullptr;
     if (raylet_client_) {
       STREAMING_LOG(INFO) << "new raylet client succ, "
                           << reinterpret_cast<long>(raylet_client_);
@@ -105,9 +96,7 @@ void StreamingCommon::CreateRayletClient(const JobID &job_id) {
 
 StreamingChannelState StreamingCommon::GetChannelState() { return channel_state_; }
 
-StreamingCommon::StreamingCommon()
-    : channel_state_(StreamingChannelState::Init) {}
-
+StreamingCommon::StreamingCommon() : channel_state_(StreamingChannelState::Init) {}
 
 }  // namespace streaming
 }  // namespace ray

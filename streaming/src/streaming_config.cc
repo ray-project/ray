@@ -10,8 +10,6 @@ uint64_t StreamingConfig::TIME_WAIT_UINT = 1;
 uint32_t StreamingConfig::DEFAULT_STREAMING_RING_BUFFER_CAPACITY = 500;
 uint32_t StreamingConfig::DEFAULT_STREAMING_BUFFER_POOL_SIZE = 1024 * 1024;  // 1M
 uint32_t StreamingConfig::DEFAULT_STREAMING_EMPTY_MESSAGE_TIME_INTERVAL = 20;
-uint32_t StreamingConfig::DEFAULT_STREAMING_RECONSTRUCT_OBJECTS_TIMEOUT_PER_MB = 100;
-uint32_t StreamingConfig::DEFAULT_STREAMING_RECONSTRUCT_OBJECTS_RETRY_TIMES = 2;
 // Time to force clean if barrier in queue, default 0ms
 const uint32_t StreamingConfig::STRAMING_MESSGAE_BUNDLE_MAX_SIZE = 2048;
 
@@ -57,9 +55,6 @@ void StreamingConfig::ReloadProperty(const streaming::fbs::StreamingConfigKey &k
   switch (key) {
   case streaming::fbs::StreamingConfigKey::StreamingEmptyMessageTimeInterval:
     SetStreaming_empty_message_time_interval(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingFullQueueTimeInterval:
-    SetStreaming_full_queue_time_interval(value);
     break;
   case streaming::fbs::StreamingConfigKey::StreamingRingBufferCapacity:
     SetStreaming_ring_buffer_capacity(value);
