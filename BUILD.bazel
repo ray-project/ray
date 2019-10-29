@@ -374,6 +374,7 @@ cc_library(
         ":worker_rpc",
         ":gcs",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
