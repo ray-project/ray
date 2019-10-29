@@ -9,11 +9,18 @@
 
 namespace ray {
 
+/// Work batcher that improves the submission performance of asio::thread_pool by
+/// over an order of magnitude. It reduces the submission latency of work items by
+/// (1) asynchronously posting work items to the pool, and (2) batching work items
+/// to reduce the number of post operations. It can also reduce the post latency
+/// of asio::io_service, but to a lesser extent (~2-3x).
 class WorkCombiner {
  public:
-  WorkCombiner(boost::asio::thread_pool &pool, int max_batch_size)
-      : executor_(pool.get_executor()), max_batch_size_(max_batch_size){};
+  WorkCombiner(boost::asio::executor executor, int max_batch_size)
+      : executor_(executor), max_batch_size_(max_batch_size){};
 
+  /// Post the given function asynchronously to the executor. It may be combined
+  /// with other work units in a batch post.
   void post(std::function<void()> fn) {
     absl::MutexLock lock(&mu_);
     pending_.push_back(fn);
@@ -32,6 +39,8 @@ class WorkCombiner {
     boost::asio::post(executor_, [this]() { CombineEvents(); });
   }
 
+  /// Combiner op that runs until the pending queue is exhausted. While there
+  /// are remaining work items, it posts batches of them to the executor.
   void CombineEvents() LOCKS_EXCLUDED(mu_) {
     while (true) {
       std::vector<std::function<void()>> event_batch;
@@ -55,10 +64,19 @@ class WorkCombiner {
     }
   }
 
-  int max_batch_size_;
+  /// The underlying executor that can run work items.
   boost::asio::executor executor_;
+
+  /// The max batch size of work to post to the executor.
+  int max_batch_size_;
+
+  /// Protects combiner state below.
   absl::Mutex mu_;
+
+  /// The list of work items that have been posted.
   std::deque<std::function<void()>> pending_ GUARDED_BY(mu_);
+
+  /// Whether the combiner op is currently running.
   bool combiner_active_ GUARDED_BY(mu_) = false;
 };
 }  // namespace ray
