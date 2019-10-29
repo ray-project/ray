@@ -32,20 +32,20 @@ class NodeStateAccessor {
   /// \return Status
   Status RegisterSelf(const GcsNodeInfo &local_node_info);
 
-  /// Cancel registration of local node to GCS synchronously.
+  /// Cancel registration of local node to GCS synchronously, and cancel subscription
+  /// to all nodes from GCS.
   ///
-  /// \Status
+  /// \return Status
   Status UnregisterSelf();
 
   /// This callback is used to receive node information when a node member changed.
   using NodeInfoCallback = std::function<void(const GcsNodeInfo &node_info)>;
 
-  /// Register callbacks to monitor the changes of node members. Repeated register
-  /// will cause crash.
+  /// Register callbacks to monitor the changes of node members.
   ///
   /// \param node_added_callback Callback that will be called if a new node is added.
   /// \param node_removed_callback Callback that will be called if a node is removed.
-  /// TODO(micafan) Begin subscription to all nodes.
+  /// TODO(micafan) Begin subscription to all nodes in this method.
   void RegisterWatcher(const NodeInfoCallback &node_added_callback,
                        const NodeInfoCallback &node_removed_callback);
 
@@ -63,11 +63,13 @@ class NodeStateAccessor {
   ///
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
+  /// \return Status
   Status AsyncUnregister(const ClientID &node_id, const StatusCallback &callback);
 
   /// Get information of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.
+  /// \return Status
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback);
 
   /// Get node information from local cache.
@@ -90,7 +92,7 @@ class NodeStateAccessor {
   /// \return The ids of all nodes.
   std::vector<ClientID> GetAllIdsFromCache() const;
 
-  /// Search local cache to find out if the given node is removed.
+  /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
   ///
   /// \param node_id The id of the node to check.
