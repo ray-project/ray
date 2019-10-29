@@ -1244,6 +1244,43 @@ def test_direct_actor_pass_by_ref(ray_start_regular):
     assert ray.get(fut) == [i * 2 for i in range(100)]
 
 
+def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            pass
+
+    a = Actor._remote(is_direct_call=True)
+
+    @ray.remote
+    def fast_value():
+        print("fast value")
+        pass
+
+    @ray.remote
+    def slow_value():
+        print("start sleep")
+        time.sleep(30)
+
+    @ray.remote
+    def runner(f):
+        print("runner", a, f)
+        return ray.get(a.f.remote(f.remote()))
+
+    x1 = runner.remote(slow_value)
+    time.sleep(1)
+    x2 = runner.remote(fast_value)
+    start = time.time()
+    ray.get(x2)
+    delta = time.time() - start
+    assert delta < 10, "did not skip slow value"
+
+
 def test_direct_actor_recursive(ray_start_regular):
     @ray.remote
     class Actor(object):
