@@ -29,9 +29,7 @@ class WorkCombiner {
     // Posts a combiner op. This op runs until there are no more events left
     // to process, which could be indefinitely if there is a continuous
     // stream of posts to this combiner.
-    boost::asio::post(executor_, [this]() {
-      CombineEvents();
-    });
+    boost::asio::post(executor_, [this]() { CombineEvents(); });
   }
 
   void CombineEvents() LOCKS_EXCLUDED(mu_) {

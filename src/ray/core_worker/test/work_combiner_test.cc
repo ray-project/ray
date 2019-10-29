@@ -4,6 +4,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/util/work_combiner.h"
+#include "ray/util/util.h"
 
 namespace ray {
 
