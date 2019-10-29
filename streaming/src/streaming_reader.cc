@@ -26,54 +26,43 @@ void StreamingReader::Init(const std::string &plasma_store_path,
                            const std::vector<ObjectID> &input_ids,
                            const std::vector<uint64_t> &plasma_queue_seq_ids,
                            const std::vector<uint64_t> &streaming_msg_ids,
-                           int64_t timer_interval, bool is_recreate,
-                           std::vector<ObjectID> &abnormal_queues) {
+                           int64_t timer_interval) {
   Init(plasma_store_path, input_ids, timer_interval);
   for (size_t i = 0; i < input_ids.size(); ++i) {
     auto &q_id = input_ids[i];
     // channel_info_map_[q_id].channel_id = q_id;
     channel_info_map_[q_id].current_seq_id = plasma_queue_seq_ids[i];
     channel_info_map_[q_id].current_message_id = streaming_msg_ids[i];
-    channel_info_map_[q_id].barrier_id = config_.GetStreaming_rollback_checkpoint_id();
-    channel_info_map_[q_id].partial_barrier_id = 0;
-  }
-  is_recreate_ = is_recreate;
-  if (is_recreate) {
-    InitChannel(abnormal_queues);
   }
 }
 
 void StreamingReader::Init(const std::string &plasma_store_path,
-                           const std::vector<ObjectID> &input_ids, int64_t timer_interval,
-                           bool is_rescale) {
-  if (!is_rescale) {
-    ray::JobID job_id = JobID::FromBinary(
-        StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
-    STREAMING_LOG(INFO) << "[Reader] plasma_store_path:" << plasma_store_path
-                        << ", driver id: " << job_id << ", raylet socket: "
-                        << config_.GetStreaming_raylet_socket_path() << ", "
-                        << input_ids.size() << " queue to init.";
+                           const std::vector<ObjectID> &input_ids,
+                           int64_t timer_interval) {
+  ray::JobID job_id =
+      JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
+  STREAMING_LOG(INFO) << "[Reader] plasma_store_path:" << plasma_store_path
+                      << ", driver id: " << job_id
+                      << ", raylet socket: " << config_.GetStreaming_raylet_socket_path()
+                      << ", " << input_ids.size() << " queue to init.";
 
-    std::shared_ptr<Config> transfer_config = std::make_shared<Config>();
-    transfer_config->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
-    transfer_config->Set(ConfigEnum::RAYLET_SOCKET_PATH,
-                         config_.GetStreaming_raylet_socket_path());
-    transfer_config->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
-    transfer_config->Set(ConfigEnum::RAYLET_CLIENT,
-                         reinterpret_cast<uint64_t>(raylet_client_));
-    transfer_config->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
+  std::shared_ptr<Config> transfer_config = std::make_shared<Config>();
+  transfer_config->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
+  transfer_config->Set(ConfigEnum::RAYLET_SOCKET_PATH,
+                       config_.GetStreaming_raylet_socket_path());
+  transfer_config->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
+  transfer_config->Set(ConfigEnum::RAYLET_CLIENT,
+                       reinterpret_cast<uint64_t>(raylet_client_));
+  transfer_config->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
 
-    // transfer_ = std::make_shared<PlasmaConsumer>(transfer_config);
+  transfer_ = std::make_shared<MockConsumer>(transfer_config);
 
-    last_fetched_queue_item_ = nullptr;
-    timer_interval_ = timer_interval;
-    last_message_ts_ = 0;
-    input_queue_ids_ = input_ids;
-    last_message_latency_ = 0;
-    last_bundle_unit_ = 0;
-  } else {
-    std::copy(input_ids.begin(), input_ids.end(), std::back_inserter(input_queue_ids_));
-  }
+  last_fetched_queue_item_ = nullptr;
+  timer_interval_ = timer_interval;
+  last_message_ts_ = 0;
+  input_queue_ids_ = input_ids;
+  last_message_latency_ = 0;
+  last_bundle_unit_ = 0;
 
   for (auto &q_id : input_ids) {
     STREAMING_LOG(INFO) << "[Reader] Init queue id: " << q_id;
@@ -91,33 +80,17 @@ void StreamingReader::Init(const std::string &plasma_store_path,
   std::copy(input_ids.begin(), input_ids.end(), std::back_inserter(unready_queue_ids_));
 }
 
-StreamingStatus StreamingReader::InitChannel(std::vector<ObjectID> &abnormal_queues) {
+StreamingStatus StreamingReader::InitChannel() {
   STREAMING_LOG(INFO) << "[Reader] Getting queues. total queue num "
                       << input_queue_ids_.size() << ", unready queue num => "
                       << unready_queue_ids_.size();
-  // It's deadlock since this thread holds lock that's needed for upstream operator
-  // when subscribing queue by local scheduler
-
-  // Wait for queues until queues exist in the cluster
-  transfer_->WaitChannelsReady(
-      unready_queue_ids_,
-      is_recreate_ ? config_.GetStreaming_waiting_queue_time_out() : -1, abnormal_queues);
-
-  if (!abnormal_queues.empty()) {
-    STREAMING_LOG(ERROR) << abnormal_queues.size() << " queues don't exist in cluster.";
-    return StreamingStatus::InitQueueFailed;
-  }
 
   for (const auto &input_channel : unready_queue_ids_) {
     auto &channel_info = channel_info_map_[input_channel];
     StreamingStatus status = transfer_->CreateTransferChannel(channel_info);
     if (StreamingStatus::OK != status) {
-      abnormal_queues.push_back(input_channel);
       STREAMING_LOG(ERROR) << "Initialize queue failed, id => " << input_channel;
     }
-  }
-  if (!abnormal_queues.empty()) {
-    return StreamingStatus::InitQueueFailed;
   }
   channel_state_ = StreamingChannelState::Running;
   STREAMING_LOG(INFO) << "[Reader] Reader construction done!";
@@ -126,9 +99,8 @@ StreamingStatus StreamingReader::InitChannel(std::vector<ObjectID> &abnormal_que
 
 StreamingStatus StreamingReader::InitChannelMerger() {
   STREAMING_LOG(INFO) << "[Reader] Initializing queue merger.";
-  StreamingReaderMsgPtrComparator comparator(this->GetConfig().GetStreaming_strategy_());
-
   // Init reader merger when it's first created
+  StreamingReaderMsgPtrComparator comparator;
   if (!reader_merger_) {
     reader_merger_.reset(
         new StreamingMessageMerger<std::shared_ptr<StreamingReaderBundle>,
@@ -139,7 +111,6 @@ StreamingStatus StreamingReader::InitChannelMerger() {
   // pushed.
   if (unready_queue_ids_.size() > 0 && last_fetched_queue_item_) {
     STREAMING_LOG(INFO) << "pop old item from => " << last_fetched_queue_item_->from;
-    NotifyConsumed(last_fetched_queue_item_);
     RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_));
     last_fetched_queue_item_.reset();
   }
@@ -169,7 +140,6 @@ StreamingStatus StreamingReader::GetMessageFromChannel(
       STREAMING_LOG(INFO) << "[Reader] Queue " << qid
                           << " get item timeout, resend notify "
                           << channel_info.current_seq_id;
-      NotifyConsumedItem(channel_info, channel_info.current_seq_id);
     }
   }
   if (StreamingChannelState::Interrupted == channel_state_) {
@@ -192,8 +162,6 @@ StreamingStatus StreamingReader::StashNextMessage(
   reader_merger_->pop();
   int64_t cur_time = current_sys_time_ms();
   RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info, new_msg));
-  new_msg->last_barrier_id = channel_info.barrier_id;
-  new_msg->last_partial_barrier_id = channel_info.partial_barrier_id;
   reader_merger_->push(new_msg);
   channel_info.last_queue_item_delay =
       new_msg->meta->GetMessageBundleTs() - message->meta->GetMessageBundleTs();
@@ -216,15 +184,10 @@ StreamingStatus StreamingReader::GetMergedMessageBundle(
                        << cur_queue_previous_msg_id << ", message list size"
                        << message->meta->GetMessageListSize() << ", lst message id =>"
                        << message->meta->GetLastMessageId() << ", q seq id => "
-                       << message->seq_id << ", last barrier id => "
-                       << message->last_barrier_id << ", data size =>"
-                       << message->data_size << ", "
-                       << message->meta->GetMessageBundleTs();
+                       << message->seq_id << ", last barrier id => " << message->data_size
+                       << ", " << message->meta->GetMessageBundleTs();
 
   if (message->meta->IsBundle()) {
-    last_message_ts_ = cur_time;
-    is_valid_break = true;
-  } else if (message->meta->IsBarrier() && BarrierAlign(message)) {
     last_message_ts_ = cur_time;
     is_valid_break = true;
   } else if (timer_interval_ != -1 && cur_time - last_message_ts_ > timer_interval_) {
@@ -248,7 +211,7 @@ StreamingStatus StreamingReader::GetMergedMessageBundle(
 StreamingStatus StreamingReader::GetBundle(
     const uint32_t timeout_ms, std::shared_ptr<StreamingReaderBundle> &message) {
   if (last_fetched_queue_item_) {
-    NotifyConsumed(last_fetched_queue_item_);
+    //  NotifyConsumed(last_fetched_queue_item_);
   }
 
   // Get latest message util it meets two conditions :
@@ -264,16 +227,12 @@ StreamingStatus StreamingReader::GetBundle(
     auto cur_time = current_sys_time_ms();
     auto dur = cur_time - start_time;
     if (dur > timeout_ms) {
-      ReportMetrics("reader.empty_bundle_cnt", empty_bundle_cnt);
       return StreamingStatus::GetBundleTimeOut;
     }
     if (unready_queue_ids_.size() > 0) {
-      std::vector<ObjectID> abnormal_queues;
-      StreamingStatus status = InitChannel(abnormal_queues);
+      StreamingStatus status = InitChannel();
       switch (status) {
       case StreamingStatus::InitQueueFailed:
-        STREAMING_LOG(ERROR) << " init queue failed, abnormal queue size => "
-                             << abnormal_queues.size();
         break;
       case StreamingStatus::WaitQueueTimeOut:
         STREAMING_LOG(ERROR)
@@ -295,7 +254,7 @@ StreamingStatus StreamingReader::GetBundle(
     RETURN_IF_NOT_OK(GetMergedMessageBundle(message, is_valid_break));
     if (!is_valid_break) {
       empty_bundle_cnt++;
-      NotifyConsumed(message);
+      // NotifyConsumed(message);
     }
   }
   last_message_latency_ += current_sys_time_ms() - start_time;
@@ -306,7 +265,6 @@ StreamingStatus StreamingReader::GetBundle(
 }
 
 StreamingReader::~StreamingReader() {
-  ShutdownTimer();
   STREAMING_LOG(INFO) << "Streaming reader deconstruct.";
 }
 
@@ -315,10 +273,6 @@ void StreamingReader::Stop() { channel_state_ = StreamingChannelState::Interrupt
 bool StreamingReaderMsgPtrComparator::operator()(
     const std::shared_ptr<StreamingReaderBundle> &a,
     const std::shared_ptr<StreamingReaderBundle> &b) {
-  if (comp_strategy == StreamingStrategy::EXACTLY_ONCE) {
-    if (a->last_barrier_id != b->last_barrier_id)
-      return a->last_barrier_id > b->last_barrier_id;
-  }
   STREAMING_CHECK(a->meta);
   // we proposed push id for stability of message in sorting
   if (a->meta->GetMessageBundleTs() == b->meta->GetMessageBundleTs()) {

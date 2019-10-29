@@ -15,9 +15,6 @@ class StreamingConfig {
   static uint32_t DEFAULT_STREAMING_RING_BUFFER_CAPACITY;
   static uint32_t DEFAULT_STREAMING_BUFFER_POOL_SIZE;
   static uint32_t DEFAULT_STREAMING_EMPTY_MESSAGE_TIME_INTERVAL;
-  static uint32_t DEFAULT_STREAMING_FULL_QUEUE_TIME_INTERVAL;
-  static uint32_t DEFAULT_STREAMING_RECONSTRUCT_OBJECTS_TIMEOUT_PER_MB;
-  static uint32_t DEFAULT_STREAMING_RECONSTRUCT_OBJECTS_RETRY_TIMES;
   static const uint32_t STRAMING_MESSGAE_BUNDLE_MAX_SIZE;
   static uint32_t DEFAULT_STREAMING_EVENT_DRIVEN_FLOWCONTROL_INTERVAL;
 
@@ -36,18 +33,7 @@ class StreamingConfig {
   uint32_t streaming_empty_message_time_interval =
       DEFAULT_STREAMING_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  uint32_t streaming_reconstruct_objects_timeout_per_mb =
-      DEFAULT_STREAMING_RECONSTRUCT_OBJECTS_TIMEOUT_PER_MB;
-
-  uint32_t streaming_reconstruct_objects_retry_times =
-      DEFAULT_STREAMING_RECONSTRUCT_OBJECTS_RETRY_TIMES;
-
-  uint32_t streaming_full_queue_time_interval =
-      DEFAULT_STREAMING_FULL_QUEUE_TIME_INTERVAL;
-
   streaming::fbs::StreamingRole streaming_role = streaming::fbs::StreamingRole::Operator;
-
-  uint64_t streaming_rollback_checkpoint_id = 0;
 
   std::string streaming_log_path = "/tmp/streaminglogs/";
 
