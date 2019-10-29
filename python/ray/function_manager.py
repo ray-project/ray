@@ -321,18 +321,9 @@ class FunctionActorManager(object):
         Args:
             remote_function: the RemoteFunction object.
         """
-        if self._worker.load_code_from_local:
-            return
-
         if self._worker.mode == ray.worker.LOCAL_MODE:
-            job_id = self._worker.current_job_id
-            function_id = remote_function._function_descriptor.function_id
-            self._function_execution_info[job_id][function_id] = (
-                FunctionExecutionInfo(
-                    function=remote_function._function,
-                    function_name=remote_function._function_name,
-                    max_calls=remote_function._max_calls))
-            self._num_task_executions[job_id][function_id] = 0
+            return
+        if self._worker.load_code_from_local:
             return
 
         function = remote_function._function
