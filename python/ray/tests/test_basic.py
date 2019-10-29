@@ -1184,6 +1184,73 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+def test_direct_actor_enabled(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote(1)
+    # it is not stored in plasma
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert ray.get(obj_id) == 2
+
+
+def test_direct_actor_errors(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return 1
+
+    a = Actor._remote(is_direct_call=True)
+
+    # cannot pass returns to other methods directly
+    with pytest.raises(Exception):
+        ray.get(f.remote(a.f.remote(2)))
+
+    # cannot pass returns to other methods even in a list
+    with pytest.raises(Exception):
+        ray.get(f.remote([a.f.remote(2)]))
+
+    # by ref args not implemented
+    with pytest.raises(ray.exceptions.RayletError):
+        a.f.remote(f.remote(2))
+
+
+def test_direct_actor_recursive(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self, delegate=None):
+            self.delegate = delegate
+
+        def f(self, x):
+            if self.delegate:
+                return ray.get(self.delegate.f.remote(x))
+            return x * 2
+
+    a = Actor._remote(is_direct_call=True)
+    b = Actor._remote(args=[a], is_direct_call=False)
+    c = Actor._remote(args=[b], is_direct_call=True)
+
+    result = ray.get([c.f.remote(i) for i in range(100)])
+    assert result == [x * 2 for x in range(100)]
+
+    result, _ = ray.wait([c.f.remote(i) for i in range(100)], num_returns=100)
+    result = ray.get(result)
+    assert result == [x * 2 for x in range(100)]
+
+
 def test_wait(ray_start_regular):
     @ray.remote
     def f(delay):

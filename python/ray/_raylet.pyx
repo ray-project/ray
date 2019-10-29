@@ -455,7 +455,18 @@ cdef deserialize_args(
     return ray.signature.recover_args(args)
 
 
-cdef _store_task_outputs(worker, return_ids, outputs):
+cdef _store_task_outputs(
+        worker, return_ids, outputs,
+        c_bool return_outputs_directly,
+        c_vector[shared_ptr[CRayObject]] *returns):
+
+    # Direct actor call returns are not placed in the object store directly,
+    # but returned to the core worker.
+    if return_outputs_directly:
+        return_buffer = []
+    else:
+        return_buffer = None
+
     for i in range(len(return_ids)):
         return_id, output = return_ids[i], outputs[i]
         if isinstance(output, ray.actor.ActorHandle):
@@ -468,7 +479,13 @@ cdef _store_task_outputs(worker, return_ids, outputs):
                     "from a remote function, but the corresponding "
                     "ObjectID does not exist in the local object store.")
         else:
-            worker.put_object(output, object_id=return_id)
+            worker.put_object(
+                output, object_id=return_id, return_buffer=return_buffer)
+
+    if return_outputs_directly:
+        assert len(return_ids) == len(return_buffer), \
+            (return_ids, return_buffer)
+        push_objects_into_return_vector(return_buffer, returns)
 
 
 cdef execute_task(
@@ -478,6 +495,7 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        c_bool return_outputs_directly,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
@@ -566,7 +584,9 @@ cdef execute_task(
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
-                _store_task_outputs(worker, return_ids, outputs)
+                _store_task_outputs(
+                    worker, return_ids, outputs, return_outputs_directly,
+                    returns)
         except Exception as error:
             if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
                 worker.mark_actor_init_failed(error)
@@ -581,7 +601,8 @@ cdef execute_task(
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.__class__)
             _store_task_outputs(
-                worker, return_ids, [failure_object] * len(return_ids))
+                worker, return_ids, [failure_object] * len(return_ids),
+                return_outputs_directly, returns)
             ray.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
@@ -621,6 +642,7 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
+        c_bool return_results_directly,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
@@ -628,7 +650,8 @@ cdef CRayStatus task_execution_handler(
             # The call to execute_task should never raise an exception. If it
             # does, that indicates that there was an unexpected internal error.
             execute_task(task_type, ray_function, c_resources, c_args,
-                         c_arg_reference_ids, c_return_ids, returns)
+                         c_arg_reference_ids, c_return_ids,
+                         return_results_directly, returns)
         except Exception:
             traceback_str = traceback.format_exc() + (
                 "An unexpected internal error occurred while the worker was"
@@ -653,6 +676,29 @@ cdef CRayStatus check_signals() nogil:
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
     return CRayStatus.OK()
+
+
+cdef void push_objects_into_return_vector(
+        py_objects,
+        c_vector[shared_ptr[CRayObject]] *returns):
+
+    cdef:
+        shared_ptr[CBuffer] data
+        shared_ptr[CBuffer] metadata
+        shared_ptr[CRayObject] ray_object
+        int64_t data_size
+
+    for serialized_object in py_objects:
+        data_size = serialized_object.total_bytes
+        data = dynamic_pointer_cast[
+            CBuffer, LocalMemoryBuffer](
+                make_shared[LocalMemoryBuffer](data_size))
+        stream = pyarrow.FixedSizeBufferWriter(
+            pyarrow.py_buffer(Buffer.make(data)))
+        serialized_object.write_to(stream)
+        ray_object = make_shared[CRayObject](data, metadata)
+        returns.push_back(ray_object)
+
 
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
@@ -901,7 +947,8 @@ cdef class CoreWorker:
                      args,
                      uint64_t max_reconstructions,
                      resources,
-                     placement_resources):
+                     placement_resources,
+                     c_bool is_direct_call):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -921,7 +968,7 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, False, c_resources,
+                        max_reconstructions, is_direct_call, c_resources,
                         c_placement_resources, dynamic_worker_options),
                     &c_actor_id))
 

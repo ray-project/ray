@@ -28,7 +28,7 @@ class CoreWorker {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids,
+      const std::vector<ObjectID> &return_ids, const bool return_results_directly,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
  public:
