@@ -14,6 +14,15 @@ from ray.tune import run, sample_from, Analysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
+class TrainableDescending(Trainable):
+    def _setup(self, config):
+        self.timestep = 0
+        self._scores = [5, 4, 3, 1, 2]
+
+    def _train(self):
+        return {"score": self._scores.pop(0)}
+
+
 class ExperimentAnalysisSuite(unittest.TestCase):
     def setUp(self):
         ray.init(local_mode=True)
