@@ -8,11 +8,7 @@ enum StreamingConfigKey : uint32 {
   StreamingLogPath = 9,
   StreamingLogLevel = 10,
   StreamingOpName = 11,
-  StreamingRayletSocketPath = 14,
-  StreamingWorkerName = 15,
-  PlasmaStoreSocketPath = 20,
-  StreamingBufferPoolSize = 21,
-  StreamingBufferPoolMinBufferSize = 22
+  StreamingWorkerName = 12
 }
 
 enum StreamingRole : uint32 {
