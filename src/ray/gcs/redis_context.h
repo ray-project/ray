@@ -62,6 +62,7 @@ class CallbackReply {
   void ReadAsStringArray(std::vector<std::string> *array) const;
 
  private:
+  /// Whether own the reply and responsible for managing its life cycle.
   bool own_reply_;
   redisReply *redis_reply_;
 };
@@ -131,12 +132,10 @@ class RedisContext {
   /// \param prefix The prefix of table key.
   /// \param pubsub_channel The channel that update operations to the table
   /// should be published on.
-  /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
   /// at which the data must be appended. For all other commands, set to
   /// -1 for unused. If set, then data must be provided.
-  /// \param reply The reply from redis.
-  /// \return Status.
+  /// \return The reply from redis.
   template <typename ID>
   std::unique_ptr<CallbackReply> RunSync(const std::string &command, const ID &id,
                                          const void *data, size_t length,
@@ -151,8 +150,9 @@ class RedisContext {
   /// \param id The table key to run the operation at.
   /// \param data The data to add to the table key, if any.
   /// \param length The length of the data to be added, if data is provided.
-  /// \param prefix
-  /// \param pubsub_channel
+  /// \param prefix The prefix of table key.
+  /// \param pubsub_channel The channel that update operations to the table
+  /// should be published on.
   /// \param redisCallback The Redis callback function.
   /// \param log_length The RAY.TABLE_APPEND command takes in an optional index
   /// at which the data must be appended. For all other commands, set to

@@ -173,14 +173,11 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Actors().AsyncSubscribe(actor_notification_callback, nullptr));
 
-  auto node_manager_client_added = [this](const GcsNodeInfo &data) { ClientAdded(data); };
-  auto node_manager_client_removed = [this](const GcsNodeInfo &data) {
-    ClientRemoved(data);
-  };
-  // Register a callback on the client table for new clients.
-  // Register a callback on the client table for removed clients.
-  gcs_client_->Nodes().RegisterWatcher(node_manager_client_added,
-                                       node_manager_client_removed);
+  auto node_manager_node_added = [this](const GcsNodeInfo &data) { NodeAdded(data); };
+  auto node_manager_node_removed = [this](const GcsNodeInfo &data) { NodeRemoved(data); };
+  // Register a callback to monitor new nodes and a callback to monitor removed nodes.
+  gcs_client_->Nodes().RegisterWatcher(node_manager_node_added,
+                                       node_manager_node_removed);
 
   // Subscribe to resource changes.
   const auto &resources_changed =
@@ -454,21 +451,21 @@ void NodeManager::GetObjectManagerProfileInfo() {
   }
 }
 
-void NodeManager::ClientAdded(const GcsNodeInfo &node_info) {
-  const ClientID client_id = ClientID::FromBinary(node_info.node_id());
+void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
+  const ClientID node_id = ClientID::FromBinary(node_info.node_id());
 
-  RAY_LOG(DEBUG) << "[ClientAdded] Received callback from client id " << client_id;
-  if (client_id == self_node_id_) {
+  RAY_LOG(DEBUG) << "[NodeAdded] Received callback from client id " << node_id;
+  if (node_id == self_node_id_) {
     // We got a notification for ourselves, so we are connected to the GCS now.
     // Save this NodeManager's resource information in the cluster resource map.
-    cluster_resource_map_[client_id] = initial_config_.resource_config;
+    cluster_resource_map_[node_id] = initial_config_.resource_config;
     return;
   }
 
-  auto entry = remote_node_manager_clients_.find(client_id);
+  auto entry = remote_node_manager_clients_.find(node_id);
   if (entry != remote_node_manager_clients_.end()) {
     RAY_LOG(DEBUG) << "Received notification of a new client that already exists: "
-                   << client_id;
+                   << node_id;
     return;
   }
 
@@ -476,12 +473,12 @@ void NodeManager::ClientAdded(const GcsNodeInfo &node_info) {
   std::unique_ptr<rpc::NodeManagerClient> client(
       new rpc::NodeManagerClient(node_info.node_manager_address(),
                                  node_info.node_manager_port(), client_call_manager_));
-  remote_node_manager_clients_.emplace(client_id, std::move(client));
+  remote_node_manager_clients_.emplace(node_id, std::move(client));
 
   // Fetch resource info for the remote client and update cluster resource map.
   RAY_CHECK_OK(gcs_client_->resource_table().Lookup(
-      JobID::Nil(), client_id,
-      [this](gcs::RedisGcsClient *client, const ClientID &client_id,
+      JobID::Nil(), node_id,
+      [this](gcs::RedisGcsClient *client, const ClientID &node_id,
              const std::unordered_map<std::string,
                                       std::shared_ptr<gcs::ResourceTableData>> &pairs) {
         ResourceSet resource_set;
@@ -489,44 +486,44 @@ void NodeManager::ClientAdded(const GcsNodeInfo &node_info) {
           resource_set.AddOrUpdateResource(resource_entry.first,
                                            resource_entry.second->resource_capacity());
         }
-        ResourceCreateUpdated(client_id, resource_set);
+        ResourceCreateUpdated(node_id, resource_set);
       }));
 }
 
-void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
+void NodeManager::NodeRemoved(const GcsNodeInfo &node_info) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
-  const ClientID client_id = ClientID::FromBinary(node_info.node_id());
-  RAY_LOG(DEBUG) << "[ClientRemoved] Received callback from client id " << client_id;
+  const ClientID node_id = ClientID::FromBinary(node_info.node_id());
+  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from client id " << node_id;
 
-  RAY_CHECK(client_id != self_node_id_)
+  RAY_CHECK(node_id != self_node_id_)
       << "Exiting because this node manager has mistakenly been marked dead by the "
       << "monitor.";
 
-  // Below, when we remove client_id from all of these data structures, we could
+  // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
 
   // Remove the client from the resource map.
-  cluster_resource_map_.erase(client_id);
+  cluster_resource_map_.erase(node_id);
 
   // Remove the node manager client.
-  const auto client_entry = remote_node_manager_clients_.find(client_id);
+  const auto client_entry = remote_node_manager_clients_.find(node_id);
   if (client_entry != remote_node_manager_clients_.end()) {
     remote_node_manager_clients_.erase(client_entry);
   } else {
-    RAY_LOG(WARNING) << "Received ClientRemoved callback for an unknown client "
-                     << client_id << ".";
+    RAY_LOG(WARNING) << "Received NodeRemoved callback for an unknown client " << node_id
+                     << ".";
   }
 
   // For any live actors that were on the dead node, broadcast a notification
   // about the actor's death
   // TODO(swang): This could be very slow if there are many actors.
   for (const auto &actor_entry : actor_registry_) {
-    if (actor_entry.second.GetNodeManagerId() == client_id &&
+    if (actor_entry.second.GetNodeManagerId() == node_id &&
         actor_entry.second.GetState() == ActorTableData::ALIVE) {
       RAY_LOG(INFO) << "Actor " << actor_entry.first
-                    << " is disconnected, because its node " << client_id
+                    << " is disconnected, because its node " << node_id
                     << " is removed from cluster. It may be reconstructed.";
       HandleDisconnectedActor(actor_entry.first, /*was_local=*/false,
                               /*intentional_disconnect=*/false);
@@ -534,7 +531,7 @@ void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
   }
   // Notify the object directory that the client has been removed so that it
   // can remove it from any cached locations.
-  object_directory_->HandleClientRemoved(client_id);
+  object_directory_->HandleClientRemoved(node_id);
 
   // Flush all uncommitted tasks from the local lineage cache. This is to
   // guarantee that all tasks get flushed eventually, in case one of the tasks
@@ -1406,8 +1403,8 @@ void NodeManager::ScheduleTasks(
   RAY_LOG(DEBUG) << "[NM ScheduleTasks] policy decision:";
   for (const auto &task_client_pair : policy_decision) {
     TaskID task_id = task_client_pair.first;
-    ClientID client_id = task_client_pair.second;
-    RAY_LOG(DEBUG) << task_id << " --> " << client_id;
+    ClientID node_id = task_client_pair.second;
+    RAY_LOG(DEBUG) << task_id << " --> " << node_id;
   }
 #endif
 
@@ -1416,8 +1413,8 @@ void NodeManager::ScheduleTasks(
   // Iterate over (taskid, clientid) pairs, extract tasks assigned to the local node.
   for (const auto &task_client_pair : policy_decision) {
     const TaskID &task_id = task_client_pair.first;
-    const ClientID &client_id = task_client_pair.second;
-    if (client_id == self_node_id_) {
+    const ClientID &node_id = task_client_pair.second;
+    if (node_id == self_node_id_) {
       local_task_ids.insert(task_id);
     } else {
       // TODO(atumanov): need a better interface for task exit on forward.
@@ -1426,7 +1423,7 @@ void NodeManager::ScheduleTasks(
       if (local_queues_.RemoveTask(task_id, &task)) {
         // Attempt to forward the task. If this fails to forward the task,
         // the task will be resubmit locally.
-        ForwardTaskOrResubmit(task, client_id);
+        ForwardTaskOrResubmit(task, node_id);
       }
     }
   }
@@ -2225,7 +2222,7 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
   }
 
   RAY_LOG(INFO) << "Resubmitting task " << task.GetTaskSpecification().TaskId()
-                << " on client " << self_node_id_;
+                << " on node " << self_node_id_;
   // The task may be reconstructed. Submit it with an empty lineage, since any
   // uncommitted lineage must already be in the lineage cache. At this point,
   // the task should not yet exist in the local scheduling queue. If it does,

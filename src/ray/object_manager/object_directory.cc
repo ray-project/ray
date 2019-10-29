@@ -119,9 +119,9 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
 
 std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
   std::vector<RemoteConnectionInfo> remote_connections;
-  const auto &node_ids = gcs_client_->Nodes().GetAllIdsFromCache();
-  for (const auto &node_id : node_ids) {
-    RemoteConnectionInfo info(node_id);
+  const auto &node_map = gcs_client_->Nodes().GetAllFromCache();
+  for (const auto &item : node_map) {
+    RemoteConnectionInfo info(item.first);
     LookupRemoteConnectionInfo(info);
     if (info.Connected() && info.client_id != gcs_client_->Nodes().GetSelfId()) {
       remote_connections.push_back(info);

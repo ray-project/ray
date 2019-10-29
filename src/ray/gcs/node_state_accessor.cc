@@ -21,7 +21,6 @@ Status NodeStateAccessor::UnregisterSelf() {
 
 void NodeStateAccessor::RegisterWatcher(const NodeInfoCallback &node_added_callback,
                                         const NodeInfoCallback &node_removed_callback) {
-  // TODO(micafan) Subscribe all and request notifications.
   ClientTable &client_table = client_impl_.client_table();
 
   if (node_added_callback != nullptr) {

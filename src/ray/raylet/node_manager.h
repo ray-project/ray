@@ -114,16 +114,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
  private:
   /// Methods for handling clients.
 
-  /// Handler for the addition of a new GCS client.
+  /// Handler for the addition of a new GCS node.
   ///
-  /// \param data Data associated with the new client.
+  /// \param data Data associated with the new node.
   /// \return Void.
-  void ClientAdded(const GcsNodeInfo &data);
+  void NodeAdded(const GcsNodeInfo &data);
 
-  /// Handler for the removal of a GCS client.
-  /// \param node_info Data associated with the removed client.
+  /// Handler for the removal of a GCS node.
+  /// \param node_info Data associated with the removed node.
   /// \return Void.
-  void ClientRemoved(const GcsNodeInfo &node_info);
+  void NodeRemoved(const GcsNodeInfo &node_info);
 
   /// Handler for the addition or updation of a resource in the GCS
   /// \param client_id ID of the node that created or updated resources.

@@ -162,17 +162,17 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
     return;
   }
 
-  auto &client_vector = it->second.client_locations;
+  auto &node_vector = it->second.client_locations;
 
   // The timer should never fire if there are no expected client locations.
-  if (client_vector.empty()) {
+  if (node_vector.empty()) {
     return;
   }
 
   RAY_CHECK(local_objects_.count(object_id) == 0);
   // Make sure that there is at least one client which is not the local client.
   // TODO(rkn): It may actually be possible for this check to fail.
-  if (client_vector.size() == 1 && client_vector[0] == self_node_id_) {
+  if (node_vector.size() == 1 && node_vector[0] == self_node_id_) {
     RAY_LOG(ERROR) << "The object manager with ID " << self_node_id_
                    << " is trying to pull object " << object_id
                    << " but the object table suggests that this object manager "
@@ -183,34 +183,34 @@ void ObjectManager::TryPull(const ObjectID &object_id) {
 
   // Choose a random client to pull the object from.
   // Generate a random index.
-  std::uniform_int_distribution<int> distribution(0, client_vector.size() - 1);
-  int client_index = distribution(gen_);
-  ClientID client_id = client_vector[client_index];
+  std::uniform_int_distribution<int> distribution(0, node_vector.size() - 1);
+  int node_index = distribution(gen_);
+  ClientID node_id = node_vector[node_index];
   // If the object manager somehow ended up choosing itself, choose a different
   // object manager.
-  if (client_id == self_node_id_) {
-    std::swap(client_vector[client_index], client_vector[client_vector.size() - 1]);
-    client_vector.pop_back();
+  if (node_id == self_node_id_) {
+    std::swap(node_vector[node_index], node_vector[node_vector.size() - 1]);
+    node_vector.pop_back();
     RAY_LOG(ERROR) << "The object manager with ID " << self_node_id_
                    << " is trying to pull object " << object_id
                    << " but the object table suggests that this object manager "
                    << "already has the object.";
-    client_id = client_vector[client_index % client_vector.size()];
-    RAY_CHECK(client_id != self_node_id_);
+    node_id = node_vector[node_index % node_vector.size()];
+    RAY_CHECK(node_id != self_node_id_);
   }
 
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << client_id
+  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_ << " to " << node_id
                  << " of object " << object_id;
 
-  auto rpc_client = GetRpcClient(client_id);
+  auto rpc_client = GetRpcClient(node_id);
   if (rpc_client) {
     // Try pulling from the client.
-    rpc_service_.post([this, object_id, client_id, rpc_client]() {
-      SendPullRequest(object_id, client_id, rpc_client);
+    rpc_service_.post([this, object_id, node_id, rpc_client]() {
+      SendPullRequest(object_id, node_id, rpc_client);
     });
   } else {
     RAY_LOG(ERROR) << "Couldn't send pull request from " << self_node_id_ << " to "
-                   << client_id << " of object " << object_id
+                   << node_id << " of object " << object_id
                    << " , setup rpc connection failed.";
   }
 
