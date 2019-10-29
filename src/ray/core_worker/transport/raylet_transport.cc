@@ -8,12 +8,11 @@ namespace ray {
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     boost::asio::io_service &io_service, rpc::GrpcServer &server,
-    const TaskHandler &task_handler, std::function<void(int64_t)> on_wait_complete)
+    const TaskHandler &task_handler)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       task_service_(io_service, *this),
-      task_handler_(task_handler),
-      on_wait_complete_(on_wait_complete) {
+      task_handler_(task_handler) {
   server.RegisterService(task_service_);
 }
 
@@ -82,15 +81,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   RAY_UNUSED(raylet_client_->TaskDone());
   // Send rpc reply.
   send_reply_callback(status, nullptr, nullptr);
-}
-
-void CoreWorkerRayletTaskReceiver::HandleDirectActorCallArgWaitComplete(
-    const rpc::DirectActorCallArgWaitCompleteRequest &request,
-    rpc::DirectActorCallArgWaitCompleteReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
-  on_wait_complete_(request.tag());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

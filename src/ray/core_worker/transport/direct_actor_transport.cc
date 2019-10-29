@@ -282,4 +282,13 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       dependencies);
 }
 
+void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
+    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+  waiter_->OnWaitComplete(request.tag());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 }  // namespace ray

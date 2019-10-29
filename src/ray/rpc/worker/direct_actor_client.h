@@ -34,6 +34,19 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     return std::shared_ptr<DirectActorClient>(instance);
   }
 
+  /// Constructor.
+  ///
+  /// \param[in] address Address of the direct actor server.
+  /// \param[in] port Port of the direct actor server.
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  DirectActorClient(const std::string &address, const int port,
+                    ClientCallManager &client_call_manager)
+      : client_call_manager_(client_call_manager) {
+    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
+        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
+    stub_ = DirectActorService::NewStub(channel);
+  };
+
   /// Push a task.
   ///
   /// \param[in] request The request message.
@@ -53,6 +66,22 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     }
     SendRequests();
     return ray::Status::OK();
+  }
+
+  /// Notify a wait has completed for direct actor call arguments.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  ray::Status DirectActorCallArgWaitComplete(
+      const DirectActorCallArgWaitCompleteRequest &request,
+      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
+    auto call = client_call_manager_.CreateCall<DirectActorService,
+                                                DirectActorCallArgWaitCompleteRequest,
+                                                DirectActorCallArgWaitCompleteReply>(
+        *stub_, &DirectActorService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
+        request, callback);
+    return call->GetStatus();
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.
@@ -98,19 +127,6 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   }
 
  private:
-  /// Constructor.
-  ///
-  /// \param[in] address Address of the direct actor server.
-  /// \param[in] port Port of the direct actor server.
-  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  DirectActorClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = DirectActorService::NewStub(channel);
-  };
-
   /// Protects against unsafe concurrent access from the callback thread.
   std::mutex mutex_;
 

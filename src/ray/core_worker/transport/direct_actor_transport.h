@@ -138,7 +138,7 @@ class InboundRequest {
 
   void Accept() { accept_callback_(); }
   void Cancel() { reject_callback_(); }
-  bool CanExecute() { return !has_pending_dependencies_; }
+  bool CanExecute() const { return !has_pending_dependencies_; }
   void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
 
  private:
@@ -295,17 +295,20 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   void Init(RayletClient &client);
 
   /// Handle a `PushTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
+  /// \param[in] send_replay_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Notify this transport that the wait for an argument has completed.
-  void OnWaitComplete(int64_t request_id) { waiter_->OnWaitComplete(request_id); }
+  /// Handle a `DirectActorCallArgWaitComplete` request.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_replay_callback The callback to be called when the request is done.
+  void HandleDirectActorCallArgWaitComplete(const rpc::DirectActorCallArgWaitCompleteRequest &request, rpc::DirectActorCallArgWaitCompleteReply *reply,
+                      rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   // Worker context.
