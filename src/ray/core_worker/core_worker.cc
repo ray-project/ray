@@ -629,17 +629,16 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
-  status = task_execution_callback_(task_type, func,
-                                    task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids,
-                                    worker_context_.CurrentActorUseDirectCall(), results);
+  bool direct_call = worker_context_.CurrentActorUseDirectCall();
+  status = task_execution_callback_(
+      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
+      arg_reference_ids, return_ids, direct_call, results);
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
 
-  // TODO(edoakes): also check if not direct actor call.
   // TODO(edoakes): this is only used by java.
-  if (results->size() != 0) {
+  if (results->size() != 0 && !direct_call) {
     for (size_t i = 0; i < results->size(); i++) {
       ObjectID id = ObjectID::ForTaskReturn(
           task_spec.TaskId(), /*index=*/i + 1,
