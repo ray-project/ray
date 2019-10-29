@@ -176,6 +176,9 @@ cdef class ObjectID(BaseID):
     def hex(self):
         return decode(self.data.Hex())
 
+    def is_direct_actor_type(self):
+        return self.data.IsDirectActorType()
+
     def is_nil(self):
         return self.data.IsNil()
 

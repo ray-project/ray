@@ -171,6 +171,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
+        LocalMemoryBuffer(size_t size)
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":

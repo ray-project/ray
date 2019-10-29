@@ -199,12 +199,12 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 }
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
-    WorkerContext &worker_context, boost::asio::io_service &io_service,
+    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
     rpc::GrpcServer &server, const TaskHandler &task_handler)
     : worker_context_(worker_context),
-      io_service_(io_service),
-      task_service_(io_service, *this),
-      task_handler_(task_handler) {
+      task_service_(main_io_service, *this),
+      task_handler_(task_handler),
+      task_main_io_service_(main_io_service) {
   server.RegisterService(task_service_);
 }
 
@@ -229,7 +229,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(io_service_)));
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(task_main_io_service_)));
     it = result.first;
   }
   it->second->Add(

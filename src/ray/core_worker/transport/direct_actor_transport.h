@@ -204,7 +204,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    boost::asio::io_service &io_service,
+                                    boost::asio::io_service &main_io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
@@ -221,12 +221,12 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The IO event loop for running tasks on.
+  boost::asio::io_service &task_main_io_service_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
