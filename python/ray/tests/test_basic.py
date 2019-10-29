@@ -1272,7 +1272,7 @@ def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
         print("runner", a, f)
         return ray.get(a.f.remote(f.remote()))
 
-    x1 = runner.remote(slow_value)
+    runner.remote(slow_value)
     time.sleep(1)
     x2 = runner.remote(fast_value)
     start = time.time()

@@ -126,7 +126,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   friend class CoreWorkerTest;
 };
 
-/// Holds state associated with an inbound request.
+/// Object dependency and RPC state of an inbound request.
 class InboundRequest {
  public:
   InboundRequest(){};
@@ -147,7 +147,7 @@ class InboundRequest {
   bool has_pending_dependencies_;
 };
 
-/// This class is abstract for testing.
+/// Waits for an object dependency to become available. Abstract for testing.
 class DependencyWaiter {
  public:
   /// Calls `callback` once the specified objects become available.
@@ -166,8 +166,9 @@ class DependencyWaiterImpl : public DependencyWaiter {
     raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
   }
 
-  void OnWaitComplete(int64_t request_id) {
-    auto it = requests_.find(request_id);
+  /// Fulfills the callback stored by Wait().
+  void OnWaitComplete(int64_t tag) {
+    auto it = requests_.find(tag);
     RAY_CHECK(it != requests_.end());
     it->second();
     requests_.erase(it);
@@ -190,7 +191,6 @@ class SchedulingQueue {
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()) {}
 
-  // This function must always be run on the main io service.
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<ObjectID> &dependencies = {}) {
