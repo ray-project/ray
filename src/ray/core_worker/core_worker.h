@@ -2,6 +2,7 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
@@ -390,7 +391,7 @@ class CoreWorker {
   absl::Mutex object_ref_mu_;
 
   /// Set of object IDs that are in scope in the language worker.
-  std::unordered_set<ObjectID> active_object_ids_ GUARDED_BY(object_ref_mu_);
+  absl::flat_hash_set<ObjectID> active_object_ids_ GUARDED_BY(object_ref_mu_);
 
   /// Indicates whether or not the active_object_ids map has changed since the
   /// last time it was sent to the raylet.

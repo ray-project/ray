@@ -244,7 +244,9 @@ void CoreWorker::ReportActiveObjectIDs() {
                        << "object IDs are currently in scope. "
                        << "This may lead to required objects being garbage collected.";
     }
-    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(active_object_ids_));
+    std::unordered_set<ObjectID> copy;
+    copy.insert(active_object_ids_.begin(), active_object_ids_.end());
+    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(copy));
   }
 
   // Reset the timer from the previous expiration time to avoid drift.
