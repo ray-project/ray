@@ -57,6 +57,7 @@ CONFIGS = {
     "ARS": {
         "num_rollouts": 10,
         "num_workers": 2,
+        "noise_size": 2500000,
         "observation_filter": "MeanStdFilter"
     }
 }
