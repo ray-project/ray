@@ -433,8 +433,8 @@ cc_test(
 )
 
 cc_test(
-    name = "event_combiner_test",
-    srcs = ["src/ray/core_worker/test/event_combiner_test.cc"],
+    name = "work_combiner_test",
+    srcs = ["src/ray/core_worker/test/work_combiner_test.cc"],
     copts = COPTS,
     deps = [
         ":ray_util",
