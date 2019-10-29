@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdio>
 #include "plasma/client.h"
+#include "ray/common/status.h"
 
 namespace arrow {
 class Buffer;
@@ -47,10 +48,11 @@ class LocalMemoryBuffer : public Buffer {
   /// \param data The data pointer to the passed-in buffer.
   /// \param size The size of the passed in buffer.
   /// \param copy_data If true, data will be copied and owned by this buffer,
-  /// otherwise the buffer only points to the given address.
+  ///                  otherwise the buffer only points to the given address.
   LocalMemoryBuffer(uint8_t *data, size_t size, bool copy_data = false)
       : has_data_copy_(copy_data) {
     if (copy_data) {
+      RAY_CHECK(data != nullptr);
       buffer_.insert(buffer_.end(), data, data + size);
       data_ = buffer_.data();
       size_ = buffer_.size();
@@ -58,6 +60,13 @@ class LocalMemoryBuffer : public Buffer {
       data_ = data;
       size_ = size;
     }
+  }
+
+  /// Construct a LocalMemoryBuffer of all zeros of the given size.
+  LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
+    buffer_.resize(size, 0);
+    data_ = buffer_.data();
+    size_ = buffer_.size();
   }
 
   uint8_t *Data() const override { return data_; }
