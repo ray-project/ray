@@ -119,7 +119,7 @@ namespace ray {
 
 class EventCombiner {
  public:
-  EventCombiner(boost::asio::thread_pool& pool) : executor_(pool.get_executor()) {};
+  EventCombiner(boost::asio::thread_pool& pool, int max_batch_size) : executor_(pool.get_executor()), max_batch_size_(max_batch_size) {};
 
   void post(std::function<void()> fn) {
     absl::MutexLock lock(&mu_);
@@ -138,7 +138,7 @@ class EventCombiner {
       while (true) {
         {
           absl::MutexLock lock(&mu_);
-          while (!pending_.empty()) {
+          while (!pending_.empty() && to_post.size() < max_batch_size_) {
             to_post.push_back(pending_.front());
             pending_.pop_front();
           }
@@ -157,6 +157,7 @@ class EventCombiner {
     });
   }
 
+  int max_batch_size_;
   boost::asio::executor executor_;
   absl::Mutex mu_;
   std::deque<std::function<void()>> pending_ GUARDED_BY(mu_);
