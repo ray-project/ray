@@ -1,8 +1,10 @@
 #ifndef RAY_UTIL_UTIL_H
 #define RAY_UTIL_UTIL_H
 
+#include <boost/asio.hpp>
 #include <boost/system/error_code.hpp>
 #include <chrono>
+#include <deque>
 #include <iterator>
 #include <mutex>
 #include <random>
@@ -10,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/status.h"
 
 /// Return the number of milliseconds since the steady clock epoch. NOTE: The
@@ -110,5 +114,54 @@ void FillRandom(T *data) {
     (*data)[i] = static_cast<uint8_t>(dist(generator));
   }
 }
+
+namespace ray {
+
+class EventCombiner {
+ public:
+  EventCombiner(boost::asio::thread_pool& pool) : executor_(pool.get_executor()) {};
+
+  void post(std::function<void()> fn) {
+    absl::MutexLock lock(&mu_);
+    pending_.push_back(fn);
+    TriggerBatchPost();
+  }
+
+ private:
+  void TriggerBatchPost() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (post_active_) {
+      return;
+    }
+    post_active_ = true;
+    boost::asio::post(executor_, [this]() {
+      std::vector<std::function<void()>> to_post;
+      while (true) {
+        {
+          absl::MutexLock lock(&mu_);
+          while (!pending_.empty()) {
+            to_post.push_back(pending_.front());
+            pending_.pop_front();
+          }
+          if (to_post.empty()) {
+            post_active_ = false;
+            break;
+          }
+        }
+        boost::asio::post(executor_, [this, to_post]() {
+          for (auto& fn : to_post) {
+            fn();
+          }
+        });
+        to_post.clear();
+      }
+    });
+  }
+
+  boost::asio::executor executor_;
+  absl::Mutex mu_;
+  std::deque<std::function<void()>> pending_ GUARDED_BY(mu_);
+  bool post_active_ GUARDED_BY(mu_) = false;
+};
+}  // namespace ray
 
 #endif  // RAY_UTIL_UTIL_H

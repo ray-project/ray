@@ -433,6 +433,17 @@ cc_test(
 )
 
 cc_test(
+    name = "event_combiner_test",
+    srcs = ["src/ray/core_worker/test/event_combiner_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_util",
+        "ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "lineage_cache_test",
     srcs = ["src/ray/raylet/lineage_cache_test.cc"],
     copts = COPTS,
@@ -600,9 +611,12 @@ cc_library(
     ],
     deps = [
         ":sha256",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@com_github_google_glog//:glog",
         "@com_google_absl//absl/time",
         "@plasma//:plasma_client",
+        "@boost//:asio",
     ],
 )
 
