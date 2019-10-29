@@ -1048,11 +1048,11 @@ cdef class CoreWorker:
     def add_active_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        # note: faster to not release GIL for short-running op
+        # Note: faster to not release GIL for short-running op.
         self.core_worker.get().AddActiveObjectID(c_object_id)
 
     def remove_active_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        # note: faster to not release GIL for short-running op
+        # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveActiveObjectID(c_object_id)
