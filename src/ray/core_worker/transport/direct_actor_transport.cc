@@ -246,7 +246,8 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         ResourceMappingType resource_ids;
         std::vector<std::shared_ptr<RayObject>> return_by_value;
         auto status = task_handler_(task_spec, resource_ids, &return_by_value);
-        RAY_CHECK(return_by_value.size() == num_returns) << return_by_value.size() << " " << num_returns;
+        RAY_CHECK(return_by_value.size() == num_returns)
+            << return_by_value.size() << " " << num_returns;
 
         for (size_t i = 0; i < return_by_value.size(); i++) {
           auto return_object = reply->add_return_objects();

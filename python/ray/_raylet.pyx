@@ -566,7 +566,8 @@ cdef execute_task(
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.__class__)
             core_worker.store_task_outputs(
-                worker, [failure_object] * c_return_ids.size(), c_return_ids, returns)
+                worker, [failure_object] * c_return_ids.size(),
+                c_return_ids, returns)
             ray.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
@@ -1001,8 +1002,8 @@ cdef class CoreWorker:
 
     # TODO: handle noreturn better
     cdef store_task_outputs(
-        self, worker, outputs, const c_vector[CObjectID] return_ids,
-        c_vector[shared_ptr[CRayObject]] *returns):
+            self, worker, outputs, const c_vector[CObjectID] return_ids,
+            c_vector[shared_ptr[CRayObject]] *returns):
         cdef:
             c_vector[size_t] data_sizes
             c_string metadata_str
@@ -1038,25 +1039,29 @@ cdef class CoreWorker:
                 data_sizes.push_back(serialized_object.total_bytes)
                 metadatas.push_back(empty_metadata)
 
-        check_status(self.core_worker.get().GetReturnObjects(return_ids, data_sizes, metadatas, returns))
+        check_status(self.core_worker.get().GetReturnObjects(
+            return_ids, data_sizes, metadatas, returns))
 
         # todo: handle object already exists
-        for i,serialized_object in enumerate(serialized_objects):
+        for i, serialized_object in enumerate(serialized_objects):
             # Returned if the object already exists.
             if returns[0][i].get() == NULL:
-               continue
+                continue
 
-            memcopy_threads = 6 # todo
+            memcopy_threads = 6  # todo
             if isinstance(serialized_object, bytes):
+                buffer = Buffer.make(returns[0][i].get().GetData())
                 stream = pyarrow.FixedSizeBufferWriter(
-                    pyarrow.py_buffer(Buffer.make(returns[0][i].get().GetData())))
+                    pyarrow.py_buffer(buffer))
                 stream.set_memcopy_threads(memcopy_threads)
                 stream.write(pyarrow.py_buffer(serialized_object))
             elif worker.use_pickle:
                 inband, writer = serialized_object
-                (<Pickle5Writer>writer).write_to(inband, returns[0][i].get().GetData(), memcopy_threads)
+                (<Pickle5Writer>writer).write_to(
+                    inband, returns[0][i].get().GetData(), memcopy_threads)
             else:
+                buffer = Buffer.make(returns[0][i].get().GetData())
                 stream = pyarrow.FixedSizeBufferWriter(
-                    pyarrow.py_buffer(Buffer.make(returns[0][i].get().GetData())))
+                    pyarrow.py_buffer(buffer))
                 stream.set_memcopy_threads(memcopy_threads)
                 serialized_object.write_to(stream)

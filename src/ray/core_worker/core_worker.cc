@@ -597,8 +597,7 @@ void CoreWorker::StartExecutingTasks() {
 }
 
 Status CoreWorker::GetReturnObjects(
-    const std::vector<ObjectID> object_ids,
-    const std::vector<size_t> data_sizes,
+    const std::vector<ObjectID> object_ids, const std::vector<size_t> data_sizes,
     const std::vector<std::shared_ptr<Buffer>> &metadatas,
     std::vector<std::shared_ptr<RayObject>> *return_objects) {
   RAY_CHECK(object_ids.size() == metadatas.size());
@@ -612,7 +611,7 @@ Status CoreWorker::GetReturnObjects(
         RAY_RETURN_NOT_OK(
             Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
       } else {
-          data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
+        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       }
     }
     return_objects->at(i) = std::make_shared<RayObject>(data_buffer, metadatas[i]);
@@ -668,8 +667,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
     if (return_objects[i]->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i]).ok()) {
-        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object " << return_ids[i]
-                       << " in store: " << status.message();
+        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
+                       << return_ids[i] << " in store: " << status.message();
       }
     } else {
       return_by_value->push_back(return_objects[i]);
