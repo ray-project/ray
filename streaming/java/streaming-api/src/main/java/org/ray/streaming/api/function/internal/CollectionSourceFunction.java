@@ -1,5 +1,6 @@
 package org.ray.streaming.api.function.internal;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import org.ray.streaming.api.function.impl.SourceFunction;
 
@@ -25,6 +26,8 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
     for (T value : values) {
       ctx.collect(value);
     }
+    // empty collection
+    values = new ArrayList<>();
   }
 
   @Override

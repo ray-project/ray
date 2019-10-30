@@ -6,23 +6,17 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.streaming.api.partition.impl.BroadcastPartition;
 import org.ray.streaming.cluster.ResourceManager;
 import org.ray.streaming.core.graph.ExecutionGraph;
 import org.ray.streaming.core.graph.ExecutionNode;
-import org.ray.streaming.core.graph.ExecutionNode.NodeType;
 import org.ray.streaming.core.graph.ExecutionTask;
-import org.ray.streaming.runtime.StreamWorker;
+import org.ray.streaming.runtime.JobMaster;
+import org.ray.streaming.runtime.JobWorker;
 import org.ray.streaming.runtime.context.WorkerContext;
-import org.ray.streaming.operator.impl.MasterOperator;
 import org.ray.streaming.plan.Plan;
-import org.ray.streaming.plan.PlanEdge;
 import org.ray.streaming.plan.PlanVertex;
-import org.ray.streaming.plan.VertexType;
-
 
 public class JobScheduleImpl implements IJobSchedule {
-
   private Plan plan;
   private Map<String, Object> jobConfig;
   private ResourceManager resourceManager;
@@ -41,52 +35,29 @@ public class JobScheduleImpl implements IJobSchedule {
     this.jobConfig = jobConfig;
     this.plan = plan;
     Ray.init();
-    addJobMaster(plan);
-    List<RayActor<StreamWorker>> workers = this.resourceManager.createWorker(getPlanWorker());
+
+    List<RayActor<JobWorker>> workers = this.resourceManager.createWorker(getPlanWorker());
     ExecutionGraph executionGraph = this.taskAssign.assign(this.plan, workers);
 
     List<ExecutionNode> executionNodes = executionGraph.getExecutionNodeList();
     List<RayObject<Boolean>> waits = new ArrayList<>();
-    ExecutionTask masterTask = null;
     for (ExecutionNode executionNode : executionNodes) {
-      List<ExecutionTask> executionTasks = executionNode.getExecutionTaskList();
+      List<ExecutionTask> executionTasks = executionNode.getExecutionTasks();
       for (ExecutionTask executionTask : executionTasks) {
-        if (executionNode.getNodeType() != NodeType.MASTER) {
-          Integer taskId = executionTask.getTaskId();
-          RayActor<StreamWorker> streamWorker = executionTask.getWorker();
-          waits.add(Ray.call(StreamWorker::init, streamWorker,
-              new WorkerContext(taskId, executionGraph, jobConfig)));
-        } else {
-          masterTask = executionTask;
-        }
+        int taskId = executionTask.getTaskId();
+        RayActor<JobWorker> streamWorker = executionTask.getWorker();
+        waits.add(Ray.call(JobWorker::init, streamWorker,
+            new WorkerContext(taskId, executionGraph, jobConfig)));
       }
     }
     Ray.wait(waits);
 
-    Integer masterId = masterTask.getTaskId();
-    RayActor<StreamWorker> masterWorker = masterTask.getWorker();
-    Ray.call(StreamWorker::init, masterWorker,
-        new WorkerContext(masterId, executionGraph, jobConfig)).get();
-  }
-
-  private void addJobMaster(Plan plan) {
-    int masterVertexId = 0;
-    int masterParallelism = 1;
-    PlanVertex masterVertex = new PlanVertex(masterVertexId, masterParallelism, VertexType.MASTER,
-        new MasterOperator());
-    plan.getPlanVertexList().add(masterVertex);
-    List<PlanVertex> planVertices = plan.getPlanVertexList();
-    for (PlanVertex planVertex : planVertices) {
-      if (planVertex.getVertexType() == VertexType.SOURCE) {
-        PlanEdge planEdge = new PlanEdge(masterVertexId, planVertex.getVertexId(),
-            new BroadcastPartition());
-        plan.getPlanEdgeList().add(planEdge);
-      }
-    }
+    RayActor<JobMaster> jobMaster = Ray.createActor(JobMaster::new);
+    Ray.call(JobMaster::init, jobMaster, executionGraph, jobConfig).get();
   }
 
   private int getPlanWorker() {
     List<PlanVertex> planVertexList = plan.getPlanVertexList();
-    return planVertexList.stream().map(vertex -> vertex.getParallelism()).reduce(0, Integer::sum);
+    return planVertexList.stream().map(PlanVertex::getParallelism).reduce(0, Integer::sum);
   }
 }

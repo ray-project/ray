@@ -1,26 +1,47 @@
 package org.ray.streaming.core.graph;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.ray.api.RayActor;
-import org.ray.streaming.runtime.StreamWorker;
+import org.ray.streaming.runtime.JobWorker;
 
 /**
  * Physical execution graph.
  */
 public class ExecutionGraph implements Serializable {
-
+  private long buildTime;
   private List<ExecutionNode> executionNodeList;
+  private List<RayActor<JobWorker>> sourceWorkers = new ArrayList<>();
+  private List<RayActor<JobWorker>> sinkWorkers = new ArrayList<>();
 
   public ExecutionGraph(List<ExecutionNode> executionNodes) {
     this.executionNodeList = executionNodes;
+    for (ExecutionNode executionNode : executionNodeList) {
+      if (executionNode.getNodeType() == ExecutionNode.NodeType.SOURCE) {
+        List<RayActor<JobWorker>> actors = executionNode.getExecutionTasks().stream()
+            .map(ExecutionTask::getWorker).collect(Collectors.toList());
+        sourceWorkers.addAll(actors);
+      }
+      if (executionNode.getNodeType() == ExecutionNode.NodeType.SINK) {
+        List<RayActor<JobWorker>> actors = executionNode.getExecutionTasks().stream()
+            .map(ExecutionTask::getWorker).collect(Collectors.toList());
+        sinkWorkers.addAll(actors);
+      }
+    }
+    buildTime = System.currentTimeMillis();
   }
 
-  public void addExectionNode(ExecutionNode executionNode) {
-    this.executionNodeList.add(executionNode);
+  public List<RayActor<JobWorker>> getSourceWorkers() {
+    return sourceWorkers;
+  }
+
+  public List<RayActor<JobWorker>> getSinkWorkers() {
+    return sinkWorkers;
   }
 
   public List<ExecutionNode> getExecutionNodeList() {
@@ -29,7 +50,7 @@ public class ExecutionGraph implements Serializable {
 
   public ExecutionTask getExecutionTaskByTaskId(int taskId) {
     for (ExecutionNode executionNode : executionNodeList) {
-      for (ExecutionTask executionTask : executionNode.getExecutionTaskList()) {
+      for (ExecutionTask executionTask : executionNode.getExecutionTasks()) {
         if (executionTask.getTaskId() == taskId) {
           return executionTask;
         }
@@ -49,7 +70,7 @@ public class ExecutionGraph implements Serializable {
 
   public ExecutionNode getExecutionNodeByTaskId(int taskId) {
     for (ExecutionNode executionNode : executionNodeList) {
-      for (ExecutionTask executionTask : executionNode.getExecutionTaskList()) {
+      for (ExecutionTask executionTask : executionNode.getExecutionTasks()) {
         if (executionTask.getTaskId() == taskId) {
           return executionNode;
         }
@@ -58,11 +79,11 @@ public class ExecutionGraph implements Serializable {
     throw new RuntimeException("Task " + taskId + " does not exist!");
   }
 
-  public Map<Integer, RayActor<StreamWorker>> getTaskId2WorkerByNodeId(int nodeId) {
+  public Map<Integer, RayActor<JobWorker>> getTaskId2WorkerByNodeId(int nodeId) {
     for (ExecutionNode executionNode : executionNodeList) {
       if (executionNode.getNodeId() == nodeId) {
-        Map<Integer, RayActor<StreamWorker>> taskId2Worker = new HashMap<>();
-        for (ExecutionTask executionTask : executionNode.getExecutionTaskList()) {
+        Map<Integer, RayActor<JobWorker>> taskId2Worker = new HashMap<>();
+        for (ExecutionTask executionTask : executionNode.getExecutionTasks()) {
           taskId2Worker.put(executionTask.getTaskId(), executionTask.getWorker());
         }
         return taskId2Worker;
@@ -71,4 +92,7 @@ public class ExecutionGraph implements Serializable {
     throw new RuntimeException("Node " + nodeId + " does not exist!");
   }
 
+  public long getBuildTime() {
+    return buildTime;
+  }
 }

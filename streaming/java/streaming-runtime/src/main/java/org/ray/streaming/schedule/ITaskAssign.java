@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.util.List;
 import org.ray.api.RayActor;
 import org.ray.streaming.core.graph.ExecutionGraph;
-import org.ray.streaming.runtime.StreamWorker;
+import org.ray.streaming.runtime.JobWorker;
 import org.ray.streaming.plan.Plan;
 
 /**
@@ -15,6 +15,6 @@ public interface ITaskAssign extends Serializable {
   /**
    * Assign logical plan to physical execution graph.
    */
-  ExecutionGraph assign(Plan plan, List<RayActor<StreamWorker>> workers);
+  ExecutionGraph assign(Plan plan, List<RayActor<JobWorker>> workers);
 
 }
