@@ -49,11 +49,14 @@ class StreamingReader : public StreamingCommon {
   int64_t last_message_ts_;
   int64_t last_message_latency_;
   int64_t last_bundle_unit_;
-  std::unordered_map<ObjectID, ConsumerChannelInfo> channel_info_map_;
-
+  
   ObjectID last_read_q_id_;
 
   static const uint32_t kReadItemTimeout;
+
+ protected:
+  std::unordered_map<ObjectID, ConsumerChannelInfo> channel_info_map_;
+  std::shared_ptr<Config> transfer_config_;
 
  public:
   /*!
@@ -81,6 +84,23 @@ class StreamingReader : public StreamingCommon {
   StreamingStatus GetBundle(const uint32_t timeout_ms,
                             std::shared_ptr<StreamingReaderBundle> &message);
 
+  /*!
+   * get offset infomation
+   * @param offset_seq_id, return offsets in plasma seq_id of each input queue, in
+   * unordered_map
+   * @param offset_msg_id, return offsets in streaming msg_id of each input queue, in
+   * unordered_map
+   */
+  void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
+
+    /*!
+   * notify input queues to clear data before the offset.
+   * used when checkpoint is done.
+   * @param qid
+   * @param offset
+   */
+  void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
+  
   void Stop();
 
   virtual ~StreamingReader();
@@ -97,6 +117,29 @@ class StreamingReader : public StreamingCommon {
 
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<StreamingReaderBundle> &message,
                                          bool &is_valid_break);
+};
+
+class StreamingReaderDirectCall : public StreamingReader {
+ public:
+  StreamingReaderDirectCall(CoreWorker *core_worker,
+                            const std::vector<ObjectID> &queue_ids,
+                            const std::vector<uint64_t> &actor_handles,
+                            RayFunction async_func, RayFunction sync_func)
+      : core_worker_(core_worker) {
+    transfer_config_->Set(ConfigEnum::CORE_WORKER,
+                          reinterpret_cast<uint64_t>(core_worker_));
+    transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);
+    transfer_config_->Set(ConfigEnum::SYNC_FUNCTION, sync_func);
+    for (size_t i = 0; i < queue_ids.size(); ++i) {
+      auto &q_id = queue_ids[i];
+      channel_info_map_[q_id].actor_handle = actor_handles[i];
+    }
+  }
+
+  virtual ~StreamingReaderDirectCall() { core_worker_ = nullptr; }
+
+ private:
+  CoreWorker *core_worker_;
 };
 
 }  // namespace streaming
