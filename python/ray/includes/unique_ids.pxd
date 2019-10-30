@@ -5,9 +5,6 @@ from libc.stdint cimport uint8_t, uint32_t, int64_t
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:
         @staticmethod
-        T from_random()
-
-        @staticmethod
         T FromBinary(const c_string &binary)
 
         @staticmethod
@@ -32,7 +29,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         size_t Size()
 
         @staticmethod
-        CUniqueID from_random()
+        CUniqueID FromRandom()
 
         @staticmethod
         CUniqueID FromBinary(const c_string &binary)
@@ -132,6 +129,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CObjectID FromBinary(const c_string &binary)
+
+        @staticmethod
+        CObjectID FromRandom()
 
         @staticmethod
         const CObjectID Nil()

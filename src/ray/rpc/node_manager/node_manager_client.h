@@ -42,6 +42,13 @@ class NodeManagerClient {
             callback);
   }
 
+  /// Get current node stats.
+  void GetNodeStats(const ClientCallback<NodeStatsReply> &callback) {
+    NodeStatsRequest request;
+    client_call_manager_.CreateCall<NodeManagerService, NodeStatsRequest, NodeStatsReply>(
+        *stub_, &NodeManagerService::Stub::PrepareAsyncGetNodeStats, request, callback);
+  }
+
  private:
   /// The gRPC-generated stub.
   std::unique_ptr<NodeManagerService::Stub> stub_;

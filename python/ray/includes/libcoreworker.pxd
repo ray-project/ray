@@ -35,11 +35,6 @@ from ray.includes.libraylet cimport CRayletClient
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
 
-cdef extern from "ray/core_worker/task_execution.h" namespace "ray" nogil:
-    cdef cppclass CTaskExecutionInterface "CoreWorkerTaskExecutionInterface":
-        void Run()
-        void Stop()
-
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -58,6 +53,9 @@ cdef extern from "ray/core_worker/object_interface.h" nogil:
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)
         CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, CObjectID *object_id,
+                          shared_ptr[CBuffer] *data)
         CRayStatus Create(const shared_ptr[CBuffer] &metadata,
                           const size_t data_size, const CObjectID &object_id,
                           shared_ptr[CBuffer] *data)
@@ -81,20 +79,18 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     CRayStatus (
                         CTaskType task_type,
                         const CRayFunction &ray_function,
-                        const CJobID &job_id,
-                        const CActorID &actor_id,
                         const unordered_map[c_string, double] &resources,
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &arg_reference_ids,
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
-                    CRayStatus() nogil,
-                    c_bool use_memory_store_)
+                    CRayStatus() nogil)
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
         CObjectInterface &Objects()
-        CTaskExecutionInterface &Execution()
+
+        void StartExecutingTasks()
 
         CRayStatus SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
@@ -113,12 +109,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
         CRayletClient &GetRayletClient()
-        # TODO(edoakes): remove these once the Python core worker uses the task
-        # interfaces
         CJobID GetCurrentJobId()
-        void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
-        void SetCurrentTaskId(const CTaskID &task_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const

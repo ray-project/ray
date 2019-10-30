@@ -25,7 +25,7 @@ void CoreWorkerObjectInterface::GroupObjectIdsByStoreProvider(
     //   and are only used locally.
     // Thus we need to check whether this object is a task return object in additional
     // to whether it's from direct actor call before we can choose memory store provider.
-    if (use_memory_store_ && object_id.IsReturnObject() &&
+    if (object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
             static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR)) {
       type = StoreProviderType::MEMORY;
@@ -37,12 +37,10 @@ void CoreWorkerObjectInterface::GroupObjectIdsByStoreProvider(
 
 CoreWorkerObjectInterface::CoreWorkerObjectInterface(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    const std::string &store_socket, bool use_memory_store,
-    std::function<Status()> check_signals)
+    const std::string &store_socket, std::function<Status()> check_signals)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       store_socket_(store_socket),
-      use_memory_store_(use_memory_store),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()) {
   check_signals_ = check_signals;
   AddStoreProvider(StoreProviderType::PLASMA);
@@ -56,11 +54,10 @@ Status CoreWorkerObjectInterface::SetClientOptions(std::string name,
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object, ObjectID *object_id) {
-  ObjectID put_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
-                                     worker_context_.GetNextPutIndex(),
-                                     static_cast<uint8_t>(TaskTransportType::RAYLET));
-  *object_id = put_id;
-  return Put(object, put_id);
+  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  return Put(object, *object_id);
 }
 
 Status CoreWorkerObjectInterface::Put(const RayObject &object,
@@ -69,6 +66,15 @@ Status CoreWorkerObjectInterface::Put(const RayObject &object,
             static_cast<uint8_t>(TaskTransportType::RAYLET))
       << "Invalid transport type flag in object ID: " << object_id.GetTransportType();
   return store_providers_[StoreProviderType::PLASMA]->Put(object, object_id);
+}
+
+Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,
+                                         const size_t data_size, ObjectID *object_id,
+                                         std::shared_ptr<Buffer> *data) {
+  *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
+                                worker_context_.GetNextPutIndex(),
+                                static_cast<uint8_t>(TaskTransportType::RAYLET));
+  return Create(metadata, data_size, *object_id, data);
 }
 
 Status CoreWorkerObjectInterface::Create(const std::shared_ptr<Buffer> &metadata,

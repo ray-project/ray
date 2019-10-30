@@ -331,7 +331,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(1, ray.ObjectID(running_oid))
         # Make the task wait till signalled by driver
         ray.get(ray.ObjectID(wait_oid))
 
@@ -351,7 +351,7 @@ def test_dynamic_res_concurrent_res_increment(ray_start_cluster):
     ray.get(set_res.remote(res_name, updated_capacity, target_node_id))
 
     # Signal task to complete
-    ray.worker.global_worker.put_object(ray.ObjectID(WAIT_OBJECT_ID_STR), 1)
+    ray.worker.global_worker.put_object(1, ray.ObjectID(WAIT_OBJECT_ID_STR))
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring
@@ -410,7 +410,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(1, ray.ObjectID(running_oid))
         # Make the task wait till signalled by driver
         ray.get(ray.ObjectID(wait_oid))
 
@@ -430,7 +430,7 @@ def test_dynamic_res_concurrent_res_decrement(ray_start_cluster):
     ray.get(set_res.remote(res_name, updated_capacity, target_node_id))
 
     # Signal task to complete
-    ray.worker.global_worker.put_object(ray.ObjectID(WAIT_OBJECT_ID_STR), 1)
+    ray.worker.global_worker.put_object(1, ray.ObjectID(WAIT_OBJECT_ID_STR))
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring
@@ -492,7 +492,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     @ray.remote
     def wait_func(running_oid, wait_oid):
         # Signal that the task is running
-        ray.worker.global_worker.put_object(ray.ObjectID(running_oid), 1)
+        ray.worker.global_worker.put_object(1, ray.ObjectID(running_oid))
         # Make the task wait till signalled by driver
         ray.get(ray.ObjectID(wait_oid))
 
@@ -512,7 +512,7 @@ def test_dynamic_res_concurrent_res_delete(ray_start_cluster):
     ray.get(delete_res.remote(res_name, target_node_id))
 
     # Signal task to complete
-    ray.worker.global_worker.put_object(ray.ObjectID(WAIT_OBJECT_ID_STR), 1)
+    ray.worker.global_worker.put_object(1, ray.ObjectID(WAIT_OBJECT_ID_STR))
     ray.get(task)
 
     # Check if scheduler state is consistent by launching a task requiring

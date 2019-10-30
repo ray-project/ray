@@ -867,12 +867,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::GetTask: {
-    RAY_CHECK(!registered_worker->UsePush());
-    HandleWorkerAvailable(client);
-  } break;
   case protocol::MessageType::TaskDone: {
-    RAY_CHECK(registered_worker->UsePush());
     HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
@@ -956,12 +951,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   Status status;
   if (message->is_worker()) {
     // Register the new worker.
-    bool use_push_task = worker->UsePush();
-    auto connection = worker->Connection();
-    status = worker_pool_.RegisterWorker(std::move(worker));
-    if (status.ok() && use_push_task) {
-      // only call `HandleWorkerAvailable` when push mode is used.
-      HandleWorkerAvailable(connection);
+    if (worker_pool_.RegisterWorker(std::move(worker)).ok()) {
+      HandleWorkerAvailable(worker->Connection());
     }
   } else {
     // Register the new driver.
@@ -1903,22 +1894,18 @@ bool NodeManager::AssignTask(const Task &task) {
 
   auto task_id = spec.TaskId();
   auto finish_assign_task_callback = [this, worker, task_id](Status status) {
-    if (worker->UsePush()) {
-      // NOTE: we cannot directly call `FinishAssignTask` here because
-      // it assumes the task is in SWAP queue, thus we need to delay invoking this
-      // function after the assigned tasks are moved from READY queue to SWAP queue
-      // in `DispatchTasks`.
-      // Another option is to move the tasks to SWAP queue here just before calling
-      // `FinishAssignTask` so we can save an io_service post, at the
-      // expense of calling `MoveTask` for each of the assigned tasks.
-      // TODO(zhijunfu): after all workers are fully migrated to push mode, the
-      // `post` below and swap queue can be removed.
-      io_service_.post([this, status, worker, task_id]() {
-        FinishAssignTask(task_id, *worker, status.ok());
-      });
-    } else {
+    // NOTE: we cannot directly call `FinishAssignTask` here because
+    // it assumes the task is in SWAP queue, thus we need to delay invoking this
+    // function after the assigned tasks are moved from READY queue to SWAP queue
+    // in `DispatchTasks`.
+    // Another option is to move the tasks to SWAP queue here just before calling
+    // `FinishAssignTask` so we can save an io_service post, at the
+    // expense of calling `MoveTask` for each of the assigned tasks.
+    // TODO(zhijunfu): after all workers are fully migrated to push mode, the
+    // `post` below and swap queue can be removed.
+    io_service_.post([this, status, worker, task_id]() {
       FinishAssignTask(task_id, *worker, status.ok());
-    }
+    });
   };
 
   ResourceIdSet resource_id_set =
@@ -2548,6 +2535,22 @@ std::string NodeManager::DebugString() const {
 
   result << "\nDebugString() time ms: " << (current_time_ms() - now_ms);
   return result.str();
+}
+
+void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
+                                         rpc::NodeStatsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  for (const auto &worker : worker_pool_.GetAllWorkers()) {
+    auto worker_stats = reply->add_workers_stats();
+    worker_stats->set_pid(worker->Pid());
+    worker_stats->set_is_driver(false);
+  }
+  for (const auto &driver : worker_pool_.GetAllDrivers()) {
+    auto worker_stats = reply->add_workers_stats();
+    worker_stats->set_pid(driver->Pid());
+    worker_stats->set_is_driver(true);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::RecordMetrics() const {
