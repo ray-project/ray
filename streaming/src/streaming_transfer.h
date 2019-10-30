@@ -10,7 +10,7 @@ namespace streaming {
 
 class ProducerTransfer {
  public:
-  ProducerTransfer(std::shared_ptr<Config> &transfer_config);
+  ProducerTransfer(std::shared_ptr<Config> &transfer_config) {}
   virtual ~ProducerTransfer() = default;
   virtual StreamingStatus CreateTransferChannel(ProducerChannelInfo &channel_info) = 0;
   virtual StreamingStatus DestroyTransferChannel(ProducerChannelInfo &channel_info) = 0;
@@ -32,7 +32,7 @@ class ProducerTransfer {
 
 class ConsumerTransfer {
  public:
-  ConsumerTransfer(std::shared_ptr<Config> &transfer_config);
+  ConsumerTransfer(std::shared_ptr<Config> &transfer_config) {}
   virtual ~ConsumerTransfer() = default;
   virtual StreamingStatus CreateTransferChannel(ConsumerChannelInfo &channel_info) = 0;
   virtual StreamingStatus DestroyTransferChannel(ConsumerChannelInfo &channel_info) = 0;

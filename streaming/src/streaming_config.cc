@@ -62,12 +62,6 @@ void StreamingConfig::ReloadProperty(const streaming::fbs::StreamingConfigKey &k
   case streaming::fbs::StreamingConfigKey::StreamingLogLevel:
     SetStreaming_log_level(value);
     break;
-  case streaming::fbs::StreamingConfigKey::StreamingBufferPoolSize:
-    SetStreaming_buffer_pool_size(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingBufferPoolMinBufferSize:
-    SetStreaming_buffer_pool_min_buffer_size(value);
-    break;
   case streaming::fbs::StreamingConfigKey::StreamingDefault:
     STREAMING_LOG(INFO) << "skip default key";
     break;
@@ -87,15 +81,8 @@ void StreamingConfig::ReloadProperty(const streaming::fbs::StreamingConfigKey &k
   case streaming::fbs::StreamingConfigKey::StreamingOpName:
     SetStreaming_op_name(value);
     break;
-  case streaming::fbs::StreamingConfigKey::StreamingRayletSocketPath:
-    SetStreaming_raylet_socket_path(value);
-    break;
   case streaming::fbs::StreamingConfigKey::StreamingWorkerName:
     SetStreaming_worker_name(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::PlasmaStoreSocketPath:
-    SetPlasma_store_socket_path(value);
-    STREAMING_LOG(INFO) << "set plasma store socket path " << value;
     break;
   case streaming::fbs::StreamingConfigKey::StreamingDefault:
     STREAMING_LOG(INFO) << "skip default key";
@@ -170,5 +157,10 @@ void StreamingConfig::SetPlasma_store_socket_path(
   StreamingConfig::plasma_store_socket_path = plasma_store_socket_path;
 }
 
+const std::string &StreamingConfig::GetQueue_type() const { return queue_type; }
+
+void StreamingConfig::SetQueue_type(const std::string &queue_type) {
+  StreamingConfig::queue_type = queue_type;
+}
 }  // namespace streaming
 }  // namespace ray

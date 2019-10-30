@@ -52,6 +52,8 @@ class StreamingConfig {
 
   std::string plasma_store_socket_path = "/tmp/ray/worker/sockets/plasma_store";
 
+  std::string queue_type = "streaming_queue";
+
  public:
   const std::string &GetStreaming_task_job_id() const;
 
@@ -111,6 +113,10 @@ class StreamingConfig {
   const std::string &GetPlasma_store_socket_path() const;
 
   void SetPlasma_store_socket_path(const std::string &plasma_store_socket_path);
+  
+  const std::string &GetQueue_type() const;
+
+  void SetQueue_type(const std::string &queue_type);
 };
 }  // namespace streaming
 }  // namespace ray

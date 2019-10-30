@@ -18,20 +18,29 @@ flatbuffer_cc_library(
     out_prefix = "format/",
 )
 
+flatbuffer_cc_library(
+    name = "streaming_queue_fbs",
+    srcs = ["queue/streaming_queue.fbs"],
+    flatc_args = FLATC_ARGS,
+    out_prefix = "queue/",
+)
+
 cc_library(
     name = "streaming_lib",
     srcs = glob([
-        "*.cc"
+        "*.cc", "queue/*.cc"
     ]),
     hdrs = glob([
-        "*.h",
+        "*.h", "queue/*.h"
     ]),
     includes = ["."],
     deps = [
         ":streaming_fbs",
+        ":streaming_queue_fbs",
         "//:ray_util",
         "//:raylet_lib",
         "//:ray_common",
+        "//:core_worker_lib",
         "@boost//:asio",
         "@boost//:any",
         "@boost//:circular_buffer",
@@ -53,6 +62,47 @@ cc_binary(
     ],
     linkshared = 1,
     linkstatic = 1,
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+cc_library(
+    name = "streaming_queue",
+    srcs = glob([
+        "queue/*.cc"
+    ]),
+    copts = ["-Wno-unused-function"],
+    linkstatic = 0,
+    deps = [
+        "//:core_worker_lib",
+    ],
+)
+
+cc_binary(
+    name = "streaming_test_worker",
+    srcs = [
+        "test/direct_call_workers.cc",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    copts = ["-Itest/"],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+cc_binary(
+    name = "streaming_writer_tests_with_streamingqueue",
+    srcs = [
+        "test/streaming_writer_tests_with_streamingqueue.cc",
+        "test/streaming_queue_tests_base.h",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    copts = ["-Itest/"],
     deps = [
         ":streaming_lib",
     ],

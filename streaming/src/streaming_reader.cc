@@ -264,6 +264,24 @@ StreamingStatus StreamingReader::GetBundle(
   return StreamingStatus::OK;
 }
 
+void StreamingReader::GetOffsetInfo(
+    std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map) {
+  offset_map = &channel_info_map_;
+  for (auto &offset_info : channel_info_map_) {
+    STREAMING_LOG(INFO) << "[Reader] [GetOffsetInfo], q id " << offset_info.first
+                        << ", seq id => " << offset_info.second.current_seq_id
+                        << ", message id => " << offset_info.second.current_message_id;
+  }
+}
+
+void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
+                                         uint64_t offset) {
+  transfer_->NotfiyChannelConsumed(channel_info, offset);
+  if (offset == channel_info.queue_info.last_seq_id) {
+    STREAMING_LOG(DEBUG) << "notify seq id equal to last seq id => " << offset;
+  }
+}
+
 StreamingReader::~StreamingReader() {
   STREAMING_LOG(INFO) << "Streaming reader deconstruct.";
 }

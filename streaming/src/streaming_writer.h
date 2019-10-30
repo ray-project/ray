@@ -7,7 +7,6 @@
 #include <thread>
 #include <vector>
 
-#include "buffer_pool.h"
 #include "streaming.h"
 #include "streaming_channel.h"
 #include "streaming_config.h"
@@ -25,13 +24,16 @@ class StreamingWriter : public StreamingCommon {
 
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;
-  std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
 
   // This property is for debug if transfering blocked.
   // The verbose log in timer will report and show which channel is active,
   // which helps us to find some useful channel informations.
   ObjectID last_write_q_id_;
   static constexpr uint32_t kQueueItemMaxBlocks = 10;
+
+ protected:
+  std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
+  std::shared_ptr<Config> transfer_config_;
 
  private:
   bool WriteAllToChannel(ProducerChannelInfo *channel_info);
@@ -98,8 +100,29 @@ class StreamingWriter : public StreamingCommon {
   void Run();
 
   void Stop();
+};
 
-  std::shared_ptr<BufferPool> GetBufferPool(const ObjectID &qid);
+class StreamingWriterDirectCall : public StreamingWriter {
+ public:
+  StreamingWriterDirectCall(CoreWorker *core_worker,
+                            const std::vector<ObjectID> &queue_ids,
+                            const std::vector<uint64_t> &actor_handles,
+                            RayFunction async_func, RayFunction sync_func)
+      : core_worker_(core_worker) {
+    transfer_config_->Set(ConfigEnum::CORE_WORKER,
+                          reinterpret_cast<uint64_t>(core_worker_));
+    transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);
+    transfer_config_->Set(ConfigEnum::SYNC_FUNCTION, sync_func);
+    for (size_t i = 0; i < queue_ids.size(); ++i) {
+      auto &q_id = queue_ids[i];
+      channel_info_map_[q_id].actor_handle = actor_handles[i];
+    }
+  }
+
+  virtual ~StreamingWriterDirectCall() { core_worker_ = nullptr; }
+
+ private:
+  CoreWorker *core_worker_;
 };
 
 }  // namespace streaming
