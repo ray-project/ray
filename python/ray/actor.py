@@ -58,9 +58,8 @@ def method(*args, **kwargs):
 class ActorMethod(object):
     """A class used to invoke an actor method.
 
-    Note: This class is instantiated only while the actor method is being
-    invoked (so that it doesn't keep a reference to the actor handle and
-    prevent it from going out of scope).
+    Note: This class only keeps a weak ref to the actor, unless it has been
+    passed to a remote function. This avoids delays in GC of the actor.
 
     Attributes:
         _actor: A handle to the actor.
