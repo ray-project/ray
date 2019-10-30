@@ -596,9 +596,34 @@ void CoreWorker::StartExecutingTasks() {
   task_execution_service_.run();
 }
 
+Status CoreWorker::GetReturnObjects(
+    const std::vector<ObjectID> object_ids,
+    const std::vector<size_t> data_sizes,
+    const std::vector<std::shared_ptr<Buffer>> &metadatas,
+    std::vector<std::shared_ptr<RayObject>> *return_objects) {
+  RAY_CHECK(object_ids.size() == metadatas.size());
+  RAY_CHECK(object_ids.size() == data_sizes.size());
+  return_objects->resize(object_ids.size(), nullptr);
+
+  for (size_t i = 0; i < object_ids.size(); i++) {
+    std::shared_ptr<Buffer> data_buffer;
+    if (data_sizes[i] > 0) {
+      if (!worker_context_.CurrentActorUseDirectCall()) {
+        RAY_RETURN_NOT_OK(
+            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+      } else {
+          data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
+      }
+    }
+    return_objects->at(i) = std::make_shared<RayObject>(data_buffer, metadatas[i]);
+  }
+
+  return Status::OK();
+}
+
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *results) {
+                               std::vector<std::shared_ptr<RayObject>> *return_by_value) {
   idle_profile_event_.reset();
   RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
 
@@ -630,30 +655,29 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
   bool direct_call = worker_context_.CurrentActorUseDirectCall();
+
+  std::vector<std::shared_ptr<RayObject>> return_objects;
   status = task_execution_callback_(
       task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
-      arg_reference_ids, return_ids, direct_call, results);
+      arg_reference_ids, return_ids, direct_call, &return_objects);
+
+  for (size_t i = 0; i < return_objects.size(); i++) {
+    // todo: is this right?
+    if (!return_objects[i]->GetData()) {
+      continue;
+    }
+    if (return_objects[i]->GetData()->IsPlasmaBuffer()) {
+      if (!Seal(return_ids[i]).ok()) {
+        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object " << return_ids[i]
+                       << " in store: " << status.message();
+      }
+    } else {
+      return_by_value->push_back(return_objects[i]);
+    }
+  }
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
-
-  // TODO(edoakes): this is only used by java.
-  if (results->size() != 0 && !direct_call) {
-    for (size_t i = 0; i < results->size(); i++) {
-      ObjectID id = ObjectID::ForTaskReturn(
-          task_spec.TaskId(), /*index=*/i + 1,
-          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
-      if (!Put(*results->at(i), id).ok()) {
-        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
-        // Put`, we treat other error types as fatal here.
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
-                       << " in store: " << status.message();
-      } else {
-        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
-                       << " in store.";
-      }
-    }
-  }
 
   // TODO(zhijunfu):
   // 1. Check and handle failure.

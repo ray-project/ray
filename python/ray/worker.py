@@ -318,17 +318,21 @@ class Worker(object):
             Exception: An exception is raised if the attempt to store the
                 object fails. This can happen if the object store is full.
         """
+        inband, writer = self._serialize_with_pickle5(value)
+        return self.core_worker.put_pickle5_buffers(
+            inband,
+            writer,
+            object_id=object_id,
+            memcopy_threads=self.memcopy_threads)
+
+    def _serialize_with_pickle5(self, value):
         writer = Pickle5Writer()
         if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
             inband = pickle.dumps(
                 value, protocol=5, buffer_callback=writer.buffer_callback)
         else:
             inband = pickle.dumps(value)
-        return self.core_worker.put_pickle5_buffers(
-            inband,
-            writer,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+        return inband, writer
 
     def _serialize_and_put_pyarrow(self,
                                    value,
@@ -343,8 +347,15 @@ class Worker(object):
             return_buffer: If specified, append returns to this list instead
                 of storing directly in the object store.
         """
+        serialized_value = self._serialize_with_pyarrow(value)
+        return self.core_worker.put_serialized_object(
+            serialized_value,
+            object_id=object_id,
+            memcopy_threads=self.memcopy_threads)
+
+    def _serialize_with_pyarrow(self, value):
         try:
-            serialized_value = self._serialize_with_pyarrow(value)
+            serialized_value = self._store_and_register_pyarrow(value)
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
@@ -353,17 +364,11 @@ class Worker(object):
             _register_custom_serializer(type(value), use_pickle=True)
             logger.warning("WARNING: Serializing the class {} failed, "
                            "falling back to cloudpickle.".format(type(value)))
-            serialized_value = self._serialize_with_pyarrow(value)
+            serialized_value = self._store_and_register_pyarrow(value)
 
-        if return_buffer is not None:
-            return_buffer.append(serialized_value)
-        else:
-            return self.core_worker.put_serialized_object(
-                serialized_value,
-                object_id=object_id,
-                memcopy_threads=self.memcopy_threads)
+        return serialized_value
 
-    def _serialize_with_pyarrow(self, value, depth=100):
+    def _store_and_register_pyarrow(self, value, depth=100):
         """Store an object and attempt to register its class if needed.
 
         Args:

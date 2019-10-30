@@ -14,7 +14,7 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *return_by_value)>;
 
   CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
                                std::unique_ptr<RayletClient> &raylet_client,

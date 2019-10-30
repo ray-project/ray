@@ -244,17 +244,17 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         // TODO(edoakes): resource IDs are currently kept track of in the raylet,
         // need to come up with a solution for this.
         ResourceMappingType resource_ids;
-        std::vector<std::shared_ptr<RayObject>> results;
-        auto status = task_handler_(task_spec, resource_ids, &results);
-        RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
+        std::vector<std::shared_ptr<RayObject>> return_by_value;
+        auto status = task_handler_(task_spec, resource_ids, &return_by_value);
+        RAY_CHECK(return_by_value.size() == num_returns) << return_by_value.size() << " " << num_returns;
 
-        for (size_t i = 0; i < results.size(); i++) {
+        for (size_t i = 0; i < return_by_value.size(); i++) {
           auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
           return_object->set_object_id(id.Binary());
-          const auto &result = results[i];
+          const auto &result = return_by_value[i];
           if (result->GetData() != nullptr) {
             return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
           }

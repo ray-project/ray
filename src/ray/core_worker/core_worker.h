@@ -274,6 +274,12 @@ class CoreWorker {
   /// \return void.
   void StartExecutingTasks();
 
+  Status GetReturnObjects(
+      const std::vector<ObjectID> object_ids,
+      const std::vector<size_t> data_sizes,
+      const std::vector<std::shared_ptr<Buffer>> &metadatas,
+      std::vector<std::shared_ptr<RayObject>> *return_objects);
+
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -313,7 +319,7 @@ class CoreWorker {
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const ResourceMappingType &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *results);
+                     std::vector<std::shared_ptr<RayObject>> *return_by_value);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
