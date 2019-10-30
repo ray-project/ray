@@ -114,6 +114,8 @@ include "includes/libcoreworker.pxi"
 
 logger = logging.getLogger(__name__)
 
+MEMCOPY_THREADS = 12
+
 
 if cpython.PY_MAJOR_VERSION >= 3:
     import pickle
@@ -735,8 +737,8 @@ cdef class CoreWorker:
         # and deal with it here.
         return data.get() == NULL
 
-    def put_serialized_object(self, serialized_object, ObjectID object_id=None,
-                              int memcopy_threads=6):
+    def put_serialized_object(self, serialized_object,
+                              ObjectID object_id=None):
         cdef:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
@@ -748,7 +750,7 @@ cdef class CoreWorker:
         if not object_already_exists:
             stream = pyarrow.FixedSizeBufferWriter(
                 pyarrow.py_buffer(Buffer.make(data)))
-            stream.set_memcopy_threads(memcopy_threads)
+            stream.set_memcopy_threads(MEMCOPY_THREADS)
             serialized_object.write_to(stream)
 
             with nogil:
@@ -757,8 +759,7 @@ cdef class CoreWorker:
 
         return ObjectID(c_object_id.Binary())
 
-    def put_raw_buffer(self, c_string value, ObjectID object_id=None,
-                       int memcopy_threads=6):
+    def put_raw_buffer(self, c_string value, ObjectID object_id=None):
         cdef:
             c_string metadata_str = RAW_BUFFER_METADATA
             CObjectID c_object_id
@@ -773,7 +774,7 @@ cdef class CoreWorker:
         if not object_already_exists:
             stream = pyarrow.FixedSizeBufferWriter(
                 pyarrow.py_buffer(Buffer.make(data)))
-            stream.set_memcopy_threads(memcopy_threads)
+            stream.set_memcopy_threads(MEMCOPY_THREADS)
             stream.write(pyarrow.py_buffer(value))
 
             with nogil:
@@ -783,8 +784,7 @@ cdef class CoreWorker:
         return ObjectID(c_object_id.Binary())
 
     def put_pickle5_buffers(self, c_string inband,
-                            Pickle5Writer writer, ObjectID object_id=None,
-                            int memcopy_threads=6):
+                            Pickle5Writer writer, ObjectID object_id=None):
         cdef:
             CObjectID c_object_id
             c_string metadata_str = PICKLE5_BUFFER_METADATA
@@ -798,7 +798,7 @@ cdef class CoreWorker:
             metadata, writer.get_total_bytes(inband),
             object_id, &c_object_id, &data)
         if not object_already_exists:
-            writer.write_to(inband, data, memcopy_threads)
+            writer.write_to(inband, data, MEMCOPY_THREADS)
             with nogil:
                 check_status(
                     self.core_worker.get().Seal(c_object_id))
@@ -1050,20 +1050,19 @@ cdef class CoreWorker:
             if returns[0][i].get() == NULL:
                 continue
 
-            memcopy_threads = 6  # todo
             if isinstance(serialized_object, bytes):
                 buffer = Buffer.make(returns[0][i].get().GetData())
                 stream = pyarrow.FixedSizeBufferWriter(
                     pyarrow.py_buffer(buffer))
-                stream.set_memcopy_threads(memcopy_threads)
+                stream.set_memcopy_threads(MEMCOPY_THREADS)
                 stream.write(pyarrow.py_buffer(serialized_object))
             elif worker.use_pickle:
                 inband, writer = serialized_object
                 (<Pickle5Writer>writer).write_to(
-                    inband, returns[0][i].get().GetData(), memcopy_threads)
+                    inband, returns[0][i].get().GetData(), MEMCOPY_THREADS)
             else:
                 buffer = Buffer.make(returns[0][i].get().GetData())
                 stream = pyarrow.FixedSizeBufferWriter(
                     pyarrow.py_buffer(buffer))
-                stream.set_memcopy_threads(memcopy_threads)
+                stream.set_memcopy_threads(MEMCOPY_THREADS)
                 serialized_object.write_to(stream)

@@ -128,9 +128,6 @@ class Worker(object):
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
         self.actor_task_counter = 0
-        # The number of threads Plasma should use when putting an object in the
-        # object store.
-        self.memcopy_threads = 12
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -292,10 +289,7 @@ class Worker(object):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
-            return self.core_worker.put_raw_buffer(
-                value,
-                object_id=object_id,
-                memcopy_threads=self.memcopy_threads)
+            return self.core_worker.put_raw_buffer(value, object_id=object_id)
 
         if self.use_pickle:
             if return_buffer is not None:
@@ -320,10 +314,7 @@ class Worker(object):
         """
         inband, writer = self._serialize_with_pickle5(value)
         return self.core_worker.put_pickle5_buffers(
-            inband,
-            writer,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+            inband, writer, object_id=object_id)
 
     def _serialize_with_pickle5(self, value):
         writer = Pickle5Writer()
@@ -349,9 +340,7 @@ class Worker(object):
         """
         serialized_value = self._serialize_with_pyarrow(value)
         return self.core_worker.put_serialized_object(
-            serialized_value,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+            serialized_value, object_id=object_id)
 
     def _serialize_with_pyarrow(self, value):
         try:
