@@ -1010,6 +1010,9 @@ cdef class CoreWorker:
             shared_ptr[CBuffer] empty_metadata
             c_vector[shared_ptr[CBuffer]] metadatas
 
+        if return_ids.size() == 0:
+            return
+
         serialized_objects = []
         for i in range(len(outputs)):
             return_id, output = return_ids[i], outputs[i]
@@ -1042,9 +1045,8 @@ cdef class CoreWorker:
         check_status(self.core_worker.get().GetReturnObjects(
             return_ids, data_sizes, metadatas, returns))
 
-        # todo: handle object already exists
         for i, serialized_object in enumerate(serialized_objects):
-            # Returned if the object already exists.
+            # A nullptr is returned if the object already exists.
             if returns[0][i].get() == NULL:
                 continue
 
