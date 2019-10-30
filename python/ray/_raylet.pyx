@@ -902,7 +902,7 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     is_persistent):
+                     c_bool is_detached):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -910,7 +910,6 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
-            c_bool c_is_persistent
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -918,7 +917,6 @@ cdef class CoreWorker:
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
-            c_is_persistent = is_persistent
 
             with nogil:
                 check_status(self.core_worker.get().CreateActor(
@@ -926,7 +924,7 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_reconstructions, False, c_resources,
                         c_placement_resources, dynamic_worker_options,
-                        c_is_persistent),
+                        is_detached),
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())

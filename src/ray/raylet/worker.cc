@@ -21,7 +21,7 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       dead_(false),
       blocked_(false),
       client_call_manager_(client_call_manager),
-      is_detached_(false) {
+      is_detached_actor_(false) {
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
@@ -77,9 +77,9 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-void Worker::MarkDetachedActor() { is_detached_ = true; }
+void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
 
-bool Worker::IsDetachedActor() const { return is_detached_; }
+bool Worker::IsDetachedActor() const { return is_detached_actor_; }
 
 const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;

@@ -102,8 +102,9 @@ class Worker {
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
-  /// Whether the worker is persistent.
-  bool is_detached_;
+  /// Whether the worker is detached. This is applies when the worker is actor.
+  /// Detached actor means the actor's creator can exit without killing this actor.
+  bool is_detached_actor_;
 };
 
 }  // namespace raylet

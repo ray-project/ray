@@ -281,8 +281,8 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
           // Mark the worker as dead so further messages from it are ignored
           // (except DisconnectClient).
           worker->MarkDead();
-          KillWorker(worker);
           // Then kill the worker process.
+          KillWorker(worker);
         }
       }
 

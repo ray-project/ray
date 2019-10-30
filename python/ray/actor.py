@@ -344,7 +344,7 @@ class ActorClass(object):
         meta = self.__ray_metadata__
 
         if detached and name is None:
-            raise Exception("Detached actors must have associated name. "
+            raise Exception("Detached actors must be named. "
                             "Please use Actor._remote(name='some_name') "
                             "to associate the name.")
 
