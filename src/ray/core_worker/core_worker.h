@@ -430,10 +430,6 @@ class CoreWorker {
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
 
-  /// Profile event for when the worker is idle. Should be reset when the worker
-  /// enters and exits an idle period.
-  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
-
   /// Task execution callback.
   TaskExecutionCallback task_execution_callback_;
 

@@ -597,17 +597,12 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 }
 
 void CoreWorker::StartExecutingTasks() {
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   task_execution_service_.run();
 }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *results) {
-  // TODO(ekl) make this thread safe... remove idle event?
-  //  idle_profile_event_.reset();
-  RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
-
   resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
@@ -660,11 +655,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       }
     }
   }
-
-  // TODO(zhijunfu):
-  // 1. Check and handle failure.
-  // 2. Save or load checkpoint.
-  //  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   return status;
 }
 
