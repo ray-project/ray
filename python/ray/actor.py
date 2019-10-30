@@ -307,6 +307,7 @@ class ActorClass(object):
                 memory=None,
                 object_store_memory=None,
                 resources=None,
+                is_direct_call=None,
                 name=None,
                 detached=False):
         """Create an actor.
@@ -325,6 +326,7 @@ class ActorClass(object):
                 this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
+            is_direct_call: Use direct actor calls.
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver exits
 
@@ -421,7 +423,7 @@ class ActorClass(object):
             actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, detached)
+                actor_placement_resources, is_direct_call, detached)
 
         actor_handle = ActorHandle(
             actor_id,
