@@ -252,9 +252,12 @@ void CoreWorker::ReportActiveObjectIDs() {
     RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
                      << "This may lead to required objects being garbage collected.";
   }
-  std::unordered_set<ObjectID> copy;
-  copy.insert(active_object_ids_.begin(), active_object_ids_.end());
+  std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
   RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(copy));
+  if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
+    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
+    Shutdown();
+  }
   // }
 
   // Reset the timer from the previous expiration time to avoid drift.
