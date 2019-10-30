@@ -1,9 +1,9 @@
-import traceback
 import time
+import traceback
 
 import ray
 from ray.experimental.serve import context as serve_context
-from ray.experimental.serve.context import TaskContext, FakeFlaskQuest
+from ray.experimental.serve.context import FakeFlaskQuest, TaskContext
 from ray.experimental.serve.http_util import build_flask_request
 
 
@@ -152,8 +152,6 @@ class TaskRunnerBackend(TaskRunner, RayServeMixin):
     This class is not used in the actual ray serve system. It exists
     for documentation purpose.
     """
-
-    pass
 
 
 @ray.remote

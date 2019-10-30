@@ -1,4 +1,5 @@
 from enum import IntEnum
+
 from ray.experimental.serve.exceptions import RayServeException
 
 

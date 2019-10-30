@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 import ray
-
 from ray.experimental.serve.metric import MetricMonitor
 
 
