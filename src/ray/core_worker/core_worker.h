@@ -1,6 +1,10 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
+
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
@@ -81,11 +85,11 @@ class CoreWorker {
 
   // Add this object ID to the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
-  void AddActiveObjectID(const ObjectID &object_id);
+  void AddActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
   // Remove this object ID from the set of active object IDs that is sent to the raylet
   // in the heartbeat messsage.
-  void RemoveActiveObjectID(const ObjectID &object_id);
+  void RemoveActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
   /* Public methods related to storing and retrieving objects. */
 
@@ -279,7 +283,7 @@ class CoreWorker {
   void RunIOService();
 
   /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs();
+  void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
 
   /* Private methods related to task submission. */
 
@@ -379,12 +383,19 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
+  /* Fields related to ref counting objects. */
+
+  /// Protects access to the set of active object ids. Since this set is updated
+  /// very frequently, it is faster to lock around accesses rather than serialize
+  /// accesses via the event loop.
+  absl::Mutex object_ref_mu_;
+
   /// Set of object IDs that are in scope in the language worker.
-  std::unordered_set<ObjectID> active_object_ids_;
+  absl::flat_hash_set<ObjectID> active_object_ids_ GUARDED_BY(object_ref_mu_);
 
   /// Indicates whether or not the active_object_ids map has changed since the
   /// last time it was sent to the raylet.
-  bool active_object_ids_updated_ = false;
+  bool active_object_ids_updated_ GUARDED_BY(object_ref_mu_) = false;
 
   /* Fields related to storing and retrieving objects. */
 
