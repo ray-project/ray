@@ -198,11 +198,13 @@ class TFPolicy(Policy):
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        if hasattr(self, "model") and self.model is not None:
+        if hasattr(self, "model") and isinstance(self.model, ModelV2):
             self._variables = ray.experimental.tf_utils.TensorFlowVariables(
                 [], self._sess, self.variables())
         else:
-            self._variables = None  # must manually define set/get weights
+            # TODO(ekl) deprecate support for v1 models
+            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
+                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
