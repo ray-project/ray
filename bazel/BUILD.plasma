@@ -22,6 +22,7 @@ cc_library(
         "cpp/src/arrow/io/interfaces.h",
         "cpp/src/arrow/io/util_internal.h",
         "cpp/src/arrow/memory_pool.h",
+        "cpp/src/arrow/result.h",
         "cpp/src/arrow/status.h",
         "cpp/src/arrow/type_fwd.h",
         "cpp/src/arrow/util/bit_util.h",
