@@ -121,9 +121,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
     std::string forked_serialized_str;
-    peer_actor_handle.Fork().Serialize(&forked_serialized_str);
+    // peer_actor_handle.Fork().Serialize(&forked_serialized_str);
+    peer_actor_handle.Serialize(&forked_serialized_str);
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;
-    TestInitMsg msg(role, self_actor_handle.ActorID(), peer_actor_handle.ActorID(),
+    TestInitMsg msg(role, self_actor_handle.GetActorID(), peer_actor_handle.GetActorID(),
                     forked_serialized_str, queue_ids, rescale_queue_ids, suite_name,
                     test_name, param);
 
@@ -135,7 +136,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"init"}};
 
-    RAY_CHECK_OK(driver.Tasks().SubmitActorTask(self_actor_handle, func, args, options,
+    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_handle.GetActorID(), func, args, options,
                                                 &return_ids));
   }
 
@@ -152,7 +153,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, {"execute_test", test}};
 
     RAY_CHECK_OK(
-        driver.Tasks().SubmitActorTask(actor_handle, func, args, options, &return_ids));
+        driver.SubmitActorTask(actor_handle.GetActorID(), func, args, options, &return_ids));
   }
 
   bool CheckCurTest(CoreWorker &driver, ActorHandle &actor_handle,
@@ -168,7 +169,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, {"check_current_test_status"}};
 
     RAY_CHECK_OK(
-        driver.Tasks().SubmitActorTask(actor_handle, func, args, options, &return_ids));
+        driver.SubmitActorTask(actor_handle.GetActorID(), func, args, options, &return_ids));
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
@@ -230,10 +231,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     ActorCreationOptions actor_options{
-        max_reconstructions, is_direct_call, resources, {}};
+        max_reconstructions, is_direct_call, resources, resources, {}};
 
     // Create an actor.
-    RAY_CHECK_OK(worker.Tasks().CreateActor(func, args, actor_options, &actor_handle));
+    ActorID actor_id = actor_handle->GetActorID();
+    RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, &actor_id));
     return actor_handle;
   }
 
@@ -263,7 +265,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
     CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", nullptr);
+                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "", nullptr);
 
     // Create writer and reader actors
     std::unordered_map<std::string, double> resources;
