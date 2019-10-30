@@ -102,10 +102,42 @@ public class JobWorker implements Serializable {
     return task;
   }
 
+
   public Boolean setBatchId(long batchId) {
     Preconditions.checkArgument(nodeType == NodeType.SOURCE);
     ((SourceStreamTask)this.task).setBatchId(batchId);
     return true;
+  }
+
+  /**
+   * Unified async interface for streaming data transfer, including data-flow and control-flow.
+   * This method is called in peer's streaming C++ layer through CoreWorker SubmitTask.
+   *
+   * @param buffer param in flatbuffer format
+   */
+  public void onStreamingTransfer(byte[] buffer) {
+    // LOG.info("onStreamingTransfer called, buffer size: {}", buffer.length);
+    if (task != null) {
+      task.onStreamingTransfer(buffer);
+    } else {
+      LOGGER.warn("onStreamingTransfer task is null");
+    }
+  }
+
+  /**
+   * Unified sync interface for streaming data transfer.
+   * This method is called in peer's streaming C++ layer through CoreWorker SubmitTask.
+   *
+   * @param buffer param in flatbuffer format
+   * @return return value in flatbuffer format
+   */
+  public byte[] onStreamingTransferSync(byte[] buffer) {
+    if (task != null) {
+      return task.onStreamingTransferSync(buffer);
+    } else {
+      // new byte[1] means not ready.
+      return new byte[1];
+    }
   }
 
 }

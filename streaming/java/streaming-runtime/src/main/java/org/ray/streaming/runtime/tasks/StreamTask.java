@@ -131,4 +131,13 @@ public abstract class StreamTask implements Runnable {
     LOG.info("started {}-{}", this.getClass().getSimpleName(), taskId);
   }
 
+  public void onStreamingTransfer(byte[] buffer) {
+    queueLink.onQueueTransfer(buffer);
+  }
+
+  public byte[] onStreamingTransferSync(byte[] buffer) {
+    return queueLink.onQueueTransferSync(buffer);
+  }
+
+
 }
