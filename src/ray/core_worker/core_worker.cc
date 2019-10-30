@@ -225,23 +225,22 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
-  io_service_.post([this, object_id]() -> void {
-    active_object_ids_.insert(object_id);
-    active_object_ids_updated_ = true;
-  });
+  absl::MutexLock lock(&object_ref_mu_);
+  active_object_ids_.insert(object_id);
+  active_object_ids_updated_ = true;
 }
 
 void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
-  io_service_.post([this, object_id]() -> void {
-    if (active_object_ids_.erase(object_id)) {
-      active_object_ids_updated_ = true;
-    } else {
-      RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
-    }
-  });
+  absl::MutexLock lock(&object_ref_mu_);
+  if (active_object_ids_.erase(object_id)) {
+    active_object_ids_updated_ = true;
+  } else {
+    RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
+  }
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
+  absl::MutexLock lock(&object_ref_mu_);
   // Only send a heartbeat when the set of active object IDs has changed because the
   // raylet only modifies the set of IDs when it receives a heartbeat.
   // TODO(edoakes): this is currently commented out because this heartbeat causes the
@@ -253,10 +252,9 @@ void CoreWorker::ReportActiveObjectIDs() {
     RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
                      << "This may lead to required objects being garbage collected.";
   }
-  if (!raylet_client_->ReportActiveObjectIDs(active_object_ids_).ok()) {
-    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
-    Shutdown();
-  }
+  std::unordered_set<ObjectID> copy;
+  copy.insert(active_object_ids_.begin(), active_object_ids_.end());
+  RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(copy));
   // }
 
   // Reset the timer from the previous expiration time to avoid drift.

@@ -23,4 +23,3 @@ flask
 uvicorn
 pygments
 werkzeug
-cloudpickle
