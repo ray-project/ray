@@ -23,6 +23,9 @@ struct ProducerChannelInfo {
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
   int64_t message_pass_by_ts;
+
+  // for Direct Call
+  uint64_t actor_handle;
 };
 
 struct ConsumerChannelInfo {
@@ -38,6 +41,9 @@ struct ConsumerChannelInfo {
   uint64_t last_queue_item_latency;
   uint64_t last_queue_target_diff;
   uint64_t get_queue_item_times;
+
+  // for Direct Call
+  uint64_t actor_handle;
 };
 }  // namespace streaming
 }  // namespace ray

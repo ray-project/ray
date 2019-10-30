@@ -79,6 +79,35 @@ cc_library(
     ],
 )
 
+cc_binary(
+    name = "streaming_test_worker",
+    srcs = [
+        "test/direct_call_workers.cc",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    copts = ["-Itest/"],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+cc_binary(
+    name = "streaming_writer_tests_with_streamingqueue",
+    srcs = [
+        "test/streaming_writer_tests_with_streamingqueue.cc",
+        "test/streaming_queue_tests_base.h",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    copts = ["-Itest/"],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
 genrule(
     name = "copy_jni_h",
     srcs = [

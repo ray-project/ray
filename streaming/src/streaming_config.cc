@@ -157,5 +157,10 @@ void StreamingConfig::SetPlasma_store_socket_path(
   StreamingConfig::plasma_store_socket_path = plasma_store_socket_path;
 }
 
+const std::string &StreamingConfig::GetQueue_type() const { return queue_type; }
+
+void StreamingConfig::SetQueue_type(const std::string &queue_type) {
+  StreamingConfig::queue_type = queue_type;
+}
 }  // namespace streaming
 }  // namespace ray
