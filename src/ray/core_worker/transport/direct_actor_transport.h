@@ -7,6 +7,7 @@
 #include <set>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -182,12 +183,46 @@ class DependencyWaiterImpl : public DependencyWaiter {
   RayletClient &raylet_client_;
 };
 
+/// Wraps a thread-pool to block posts until the pool has free slots. This is used
+/// by the SchedulingQueue to provide backpressure to clients.
+class BoundedExecutor {
+ public:
+  BoundedExecutor(int max_concurrency)
+      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
+
+  /// Posts work to the pool, blocking if no free threads are available.
+  void PostBlocking(std::function<void()> fn) {
+    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
+    num_running_ += 1;
+    mu_.Unlock();
+    boost::asio::post(pool_, [this, fn]() {
+      fn();
+      absl::MutexLock lock(&mu_);
+      num_running_ -= 1;
+    });
+  }
+
+ private:
+  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return num_running_ < max_concurrency_;
+  }
+
+  /// Protects access to the counters below.
+  absl::Mutex mu_;
+  /// The number of currently running tasks.
+  int num_running_ GUARDED_BY(mu_);
+  /// The max number of concurrently running tasks allowed.
+  int max_concurrency_ GUARDED_BY(mu_);
+  /// The underlying thread pool for running tasks.
+  boost::asio::thread_pool pool_;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  std::shared_ptr<boost::asio::thread_pool> pool = nullptr,
+                  std::shared_ptr<BoundedExecutor> pool = nullptr,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
@@ -235,7 +270,7 @@ class SchedulingQueue {
       auto head = pending_tasks_.begin();
       auto request = head->second;
       if (pool_ != nullptr) {
-        boost::asio::post(*pool_, [request]() mutable { request.Accept(); });
+        pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
         request.Accept();
       }
@@ -287,7 +322,7 @@ class SchedulingQueue {
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<boost::asio::thread_pool> pool_;
+  std::shared_ptr<BoundedExecutor> pool_;
 
   friend class SchedulingQueueTest;
 };
@@ -328,9 +363,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   void SetMaxConcurrency(int max_concurrency);
 
  private:
-  /// Mutex for concurrent task execution.
-  absl::Mutex mutex_;
-  /// Worker context.
+  // Worker context.
   WorkerContext &worker_context_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
@@ -346,7 +379,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// The max number of concurrent calls to allow.
   int max_concurrency_ = 1;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
-  std::shared_ptr<boost::asio::thread_pool> pool_;
+  std::shared_ptr<BoundedExecutor> pool_;
 };
 
 }  // namespace ray

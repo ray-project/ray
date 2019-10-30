@@ -216,7 +216,7 @@ void CoreWorkerDirectActorTaskReceiver::SetMaxConcurrency(int max_concurrency) {
   if (max_concurrency != max_concurrency_) {
     RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
     RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
-    pool_.reset(new boost::asio::thread_pool(max_concurrency));
+    pool_.reset(new BoundedExecutor(max_concurrency));
     max_concurrency_ = max_concurrency;
   }
 }
