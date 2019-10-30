@@ -7,6 +7,7 @@ import inspect
 import logging
 import six
 import sys
+import weakref
 
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
@@ -76,7 +77,7 @@ class ActorMethod(object):
     """
 
     def __init__(self, actor, method_name, num_return_vals, decorator=None):
-        self._actor = actor
+        self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_return_vals = num_return_vals
         # This is a decorator that is used to wrap the function invocation (as
@@ -96,15 +97,14 @@ class ActorMethod(object):
         return self._remote(args, kwargs)
 
     def _remote(self, args=None, kwargs=None, num_return_vals=None):
-        if args is None:
-            args = []
-        if kwargs is None:
-            kwargs = {}
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
 
         def invocation(args, kwargs):
-            return self._actor._actor_method_call(
+            actor = self._actor_ref()
+            if actor is None:
+                raise RuntimeError("Lost reference to actor")
+            return actor._actor_method_call(
                 self._method_name,
                 args=args,
                 kwargs=kwargs,
@@ -477,6 +477,14 @@ class ActorHandle(object):
             for method_name in self._ray_method_signatures.keys()
         }
 
+        for method_name in actor_method_names:
+            method = ActorMethod(
+                self,
+                method_name,
+                self._ray_method_num_return_vals[method_name],
+                decorator=self._ray_method_decorators.get(method_name))
+            setattr(self, method_name, method)
+
     def _actor_method_call(self,
                            method_name,
                            args=None,
@@ -501,13 +509,18 @@ class ActorHandle(object):
         """
         worker = ray.worker.get_global_worker()
 
-        worker.check_connected()
+        # TODO(ekl) do we need this?
+        #        worker.check_connected()
 
-        function_signature = self._ray_method_signatures[method_name]
         args = args or []
         kwargs = kwargs or {}
 
-        list_args = signature.flatten_args(function_signature, args, kwargs)
+        if not args and not kwargs:
+            list_args = []
+        else:
+            function_signature = self._ray_method_signatures[method_name]
+            list_args = signature.flatten_args(function_signature, args,
+                                               kwargs)
         if worker.mode == ray.LOCAL_MODE:
             function = getattr(worker.actors[self._actor_id], method_name)
             object_ids = worker.local_mode_manager.execute(
@@ -528,30 +541,6 @@ class ActorHandle(object):
     # Make tab completion work.
     def __dir__(self):
         return self._ray_actor_method_names
-
-    def __getattribute__(self, attr):
-        try:
-            # Check whether this is an actor method.
-            actor_method_names = object.__getattribute__(
-                self, "_ray_actor_method_names")
-            if attr in actor_method_names:
-                # We create the ActorMethod on the fly here so that the
-                # ActorHandle doesn't need a reference to the ActorMethod.
-                # The ActorMethod has a reference to the ActorHandle and
-                # this was causing cyclic references which were prevent
-                # object deallocation from behaving in a predictable
-                # manner.
-                return ActorMethod(
-                    self,
-                    attr,
-                    self._ray_method_num_return_vals[attr],
-                    decorator=self._ray_method_decorators.get(attr))
-        except AttributeError:
-            pass
-
-        # If the requested attribute is not a registered method, fall back
-        # to default __getattribute__.
-        return object.__getattribute__(self, attr)
 
     def __repr__(self):
         return "Actor({}, {})".format(self._ray_class_name,

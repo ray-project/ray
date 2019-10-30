@@ -1,6 +1,11 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
+
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
@@ -403,7 +408,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
   /// Map from actor ID to a handle to that actor.
-  std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
   /* Fields related to task execution. */
 
