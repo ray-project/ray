@@ -385,7 +385,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
         runner.step()
 
     assert all(t.status == Trial.TERMINATED for t in runner.get_trials())
-    ray.shutdown()
+    time.sleep(2)
     cluster.shutdown()
 
 
