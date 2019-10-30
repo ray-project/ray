@@ -15,14 +15,16 @@ public class ExecutionNode implements Serializable {
   private int parallelism;
   private NodeType nodeType;
   private StreamProcessor streamProcessor;
-  private List<ExecutionTask> executionTaskList;
-  private List<ExecutionEdge> executionEdgeList;
+  private List<ExecutionTask> executionTasks;
+  private List<ExecutionEdge> inputsEdges;
+  private List<ExecutionEdge> outputEdges;
 
   public ExecutionNode(int nodeId, int parallelism) {
     this.nodeId = nodeId;
     this.parallelism = parallelism;
-    this.executionTaskList = new ArrayList<>();
-    this.executionEdgeList = new ArrayList<>();
+    this.executionTasks = new ArrayList<>();
+    this.inputsEdges = new ArrayList<>();
+    this.outputEdges = new ArrayList<>();
   }
 
   public int getNodeId() {
@@ -41,24 +43,32 @@ public class ExecutionNode implements Serializable {
     this.parallelism = parallelism;
   }
 
-  public List<ExecutionTask> getExecutionTaskList() {
-    return executionTaskList;
+  public List<ExecutionTask> getExecutionTasks() {
+    return executionTasks;
   }
 
-  public void setExecutionTaskList(List<ExecutionTask> executionTaskList) {
-    this.executionTaskList = executionTaskList;
+  public void setExecutionTasks(List<ExecutionTask> executionTasks) {
+    this.executionTasks = executionTasks;
   }
 
-  public List<ExecutionEdge> getExecutionEdgeList() {
-    return executionEdgeList;
+  public List<ExecutionEdge> getOutputEdges() {
+    return outputEdges;
   }
 
-  public void setExecutionEdgeList(List<ExecutionEdge> executionEdgeList) {
-    this.executionEdgeList = executionEdgeList;
+  public void setOutputEdges(List<ExecutionEdge> outputEdges) {
+    this.outputEdges = outputEdges;
   }
 
   public void addExecutionEdge(ExecutionEdge executionEdge) {
-    this.executionEdgeList.add(executionEdge);
+    this.outputEdges.add(executionEdge);
+  }
+
+  public void addInputEdge(ExecutionEdge executionEdge) {
+    this.inputsEdges.add(executionEdge);
+  }
+
+  public List<ExecutionEdge> getInputsEdges() {
+    return inputsEdges;
   }
 
   public StreamProcessor getStreamProcessor() {
@@ -75,9 +85,6 @@ public class ExecutionNode implements Serializable {
 
   public void setNodeType(VertexType vertexType) {
     switch (vertexType) {
-      case MASTER:
-        this.nodeType = NodeType.MASTER;
-        break;
       case SOURCE:
         this.nodeType = NodeType.SOURCE;
         break;
@@ -89,8 +96,18 @@ public class ExecutionNode implements Serializable {
     }
   }
 
+  @Override
+  public String toString() {
+    final StringBuilder sb = new StringBuilder("ExecutionNode{");
+    sb.append("nodeId=").append(nodeId);
+    sb.append(", parallelism=").append(parallelism);
+    sb.append(", nodeType=").append(nodeType);
+    sb.append(", streamProcessor=").append(streamProcessor);
+    sb.append('}');
+    return sb.toString();
+  }
+
   public enum NodeType {
-    MASTER,
     SOURCE,
     PROCESS,
     SINK,

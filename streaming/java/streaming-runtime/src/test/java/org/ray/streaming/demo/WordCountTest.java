@@ -31,7 +31,7 @@ public class WordCountTest implements Serializable {
   public void testWordCount() {
     StreamingContext streamingContext = StreamingContext.buildContext();
     Map<String, Object> config = new HashMap<>();
-    config.put(ConfigKey.STREAMING_MAX_BATCH_COUNT, 1);
+    config.put(ConfigKey.STREAMING_BATCH_MAX_COUNT, 1);
     streamingContext.withConfig(config);
     List<String> text = new ArrayList<>();
     text.add("hello world eagle eagle eagle");
@@ -46,7 +46,8 @@ public class WordCountTest implements Serializable {
         .keyBy(pair -> pair.word)
         .reduce((ReduceFunction<WordAndCount>) (oldValue, newValue) ->
             new WordAndCount(oldValue.word, oldValue.count + newValue.count))
-        .sink((SinkFunction<WordAndCount>) result -> wordCount.put(result.word, result.count));
+        .sink((SinkFunction<WordAndCount>)
+            result -> wordCount.put(result.word, result.count));
 
     streamingContext.execute();
 
