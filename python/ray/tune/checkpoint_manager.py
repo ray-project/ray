@@ -47,7 +47,8 @@ class CheckpointManager(object):
                 checkpoints to keep.
         """
         self.keep_checkpoints_num = keep_checkpoints_num
-        self.best_checkpoint_dirs = []
+        self.best_checkpoints = []
+        self.best_checkpoints_set = set()
         self.newest_checkpoint = None
 
         self.checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
@@ -74,20 +75,29 @@ class CheckpointManager(object):
                 "not work. checkpoint_score_attr must be set to a key in the "
                 "result dict.".format(self.checkpoint_score_attr))
 
+        old_checkpoint = self.newest_checkpoint
         self.newest_checkpoint = checkpoint
 
         priority = -priority if self.checkpoint_score_desc else priority
         queue_item = (priority, checkpoint)
 
-        if len(self.best_checkpoint_dirs) < self.keep_checkpoints_num:
-            heapq.heappush(self.best_checkpoint_dirs, queue_item)
-        elif priority < self.best_checkpoint_dirs[0][0]:
-            # ???
+        if len(self.best_checkpoints) < self.keep_checkpoints_num:
+            heapq.heappush(self.best_checkpoints, queue_item)
+            self.best_checkpoints_set.add(checkpoint)
+        elif priority < self.best_checkpoints[0][0]:
             pass
         else:
-            _, worst = heapq.heappushpop(self.best_checkpoint_dirs, queue_item)
+            _, worst = heapq.heappushpop(self.best_checkpoints, queue_item)
+            self.best_checkpoints_set.add(checkpoint)
+            if worst in self.best_checkpoints_set:
+                self.best_checkpoints_set.remove(worst)
+
             if worst.storage == Checkpoint.DISK:
                 CheckpointManager.delete_checkpoint(worst.value)
+
+        # Remove the old checkpoint if it isn't one of the best ones.
+        if old_checkpoint not in self.best_checkpoints_set:
+            self.delete_checkpoint(old_checkpoint.value)
 
     @classmethod
     def delete_checkpoint(cls, checkpoint_dir):
