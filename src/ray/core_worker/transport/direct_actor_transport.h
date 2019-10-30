@@ -1,11 +1,13 @@
 #ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
+#include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
 #include <set>
 #include <utility>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -185,11 +187,13 @@ class DependencyWaiterImpl : public DependencyWaiter {
 class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
+                  std::shared_ptr<boost::asio::thread_pool> pool = nullptr,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
-        main_thread_id_(boost::this_thread::get_id()) {}
+        main_thread_id_(boost::this_thread::get_id()),
+        pool_(pool) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -229,7 +233,12 @@ class SchedulingQueue {
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_ &&
            pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
-      head->second.Accept();
+      auto request = head->second;
+      if (pool_ != nullptr) {
+        boost::asio::post(*pool_, [request]() mutable { request.Accept(); });
+      } else {
+        request.Accept();
+      }
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
@@ -270,12 +279,15 @@ class SchedulingQueue {
   std::map<int64_t, InboundRequest> pending_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
-  /// Timer for waiting on dependencies.
+  /// Timer for waiting on dependencies. Note that this is set on the task main
+  /// io service, which is fine since it only ever fires if no tasks are running.
   boost::asio::deadline_timer wait_timer_;
   /// The id of the thread that constructed this scheduling queue.
   boost::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
+  /// If concurrent calls are allowed, holds the pool for executing these tasks.
+  std::shared_ptr<boost::asio::thread_pool> pool_;
 
   friend class SchedulingQueueTest;
 };
@@ -312,8 +324,13 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Set the max concurrency at runtime. It cannot be changed once set.
+  void SetMaxConcurrency(int max_concurrency);
+
  private:
-  // Worker context.
+  /// Mutex for concurrent task execution.
+  absl::Mutex mutex_;
+  /// Worker context.
   WorkerContext &worker_context_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
@@ -326,6 +343,10 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
+  /// The max number of concurrent calls to allow.
+  int max_concurrency_ = 1;
+  /// If concurrent calls are allowed, holds the pool for executing these tasks.
+  std::shared_ptr<boost::asio::thread_pool> pool_;
 };
 
 }  // namespace ray

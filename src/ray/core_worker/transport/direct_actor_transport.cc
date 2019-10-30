@@ -146,7 +146,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
         if (!status.ok()) {
           // Note that this might be the __ray_terminate__ task, so we don't log
           // loudly with ERROR here.
-          RAY_LOG(DEBUG) << "Task failed with error: " << status;
+          RAY_LOG(INFO) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
@@ -212,6 +212,15 @@ void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
 }
 
+void CoreWorkerDirectActorTaskReceiver::SetMaxConcurrency(int max_concurrency) {
+  if (max_concurrency != max_concurrency_) {
+    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
+    RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
+    pool_.reset(new boost::asio::thread_pool(max_concurrency));
+    max_concurrency_ = max_concurrency;
+  }
+}
+
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -223,6 +232,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
                         nullptr, nullptr);
     return;
   }
+  SetMaxConcurrency(worker_context_.CurrentActorMaxConcurrency());
 
   // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
   // the raylet, which is a central bottleneck. In the future, we should inline
@@ -238,13 +248,14 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(
-                                  new SchedulingQueue(task_main_io_service_, *waiter_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                  task_main_io_service_, *waiter_, pool_)));
     it = result.first;
   }
   it->second->Add(
       request.sequence_number(), request.client_processed_up_to(),
       [this, reply, send_reply_callback, task_spec]() {
+        //        absl::MutexLock lock(&mutex_);  // read barrier
         auto num_returns = task_spec.NumReturns();
         RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
         RAY_CHECK(num_returns > 0);

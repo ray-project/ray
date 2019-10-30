@@ -142,6 +142,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDirectCall() const;
 
+  int MaxConcurrency() const;
+
   ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;

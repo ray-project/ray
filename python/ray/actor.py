@@ -299,6 +299,26 @@ class ActorClass(object):
         """
         return self._remote(args=args, kwargs=kwargs)
 
+    def options(self, **options):
+        """Convenience method for creating an actor with options.
+
+        Same arguments as Actor._remote(), but returns a modified actor handle
+        that Actor.remote() can be called on.
+
+        Examples:
+            # The following two calls are equivalent.
+            >>> Actor._remote(num_cpus=4, max_concurrency=8, args=[x, y])
+            >>> Actor.options(num_cpus=4, max_concurrency=8).remote(x, y)
+        """
+
+        actor_cls = self
+
+        class ActorOptionWrapper(object):
+            def remote(self, *args, **kwargs):
+                return actor_cls._remote(args=args, kwargs=kwargs, **options)
+
+        return ActorOptionWrapper()
+
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -307,7 +327,8 @@ class ActorClass(object):
                 memory=None,
                 object_store_memory=None,
                 resources=None,
-                is_direct_call=None):
+                is_direct_call=None,
+                max_concurrency=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -325,6 +346,8 @@ class ActorClass(object):
             resources: The custom resources required by the actor creation
                 task.
             is_direct_call: Use direct actor calls.
+            max_concurrency: The max number of concurrent calls to allow for
+                this actor. This only works with direct actor calls.
 
         Returns:
             A handle to the newly created actor.
@@ -333,6 +356,10 @@ class ActorClass(object):
             args = []
         if kwargs is None:
             kwargs = {}
+
+        if max_concurrency and not is_direct_call:
+            raise ValueError(
+                "setting max_concurrency requires is_direct_call=True")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
@@ -403,7 +430,7 @@ class ActorClass(object):
             actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, is_direct_call)
+                actor_placement_resources, is_direct_call, max_concurrency)
 
         actor_handle = ActorHandle(
             actor_id,

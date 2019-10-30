@@ -948,7 +948,8 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call):
+                     c_bool is_direct_call,
+                     int32_t max_concurrency):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -968,8 +969,9 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, c_resources,
-                        c_placement_resources, dynamic_worker_options),
+                        max_reconstructions, is_direct_call, max_concurrency,
+                        c_resources, c_placement_resources,
+                        dynamic_worker_options),
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
