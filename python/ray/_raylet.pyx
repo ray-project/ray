@@ -1007,7 +1007,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
-            c_resources[b"CPU"] = num_method_cpus
+            if num_method_cpus > 0:
+                c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
