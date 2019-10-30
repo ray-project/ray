@@ -2815,7 +2815,20 @@ def test_ray_wait_dead_actor(ray_start_cluster):
         failure_detected = ray.get(parent_actor.wait.remote())
 
 
-def test_actor_persistence(ray_start_regular):
+def test_detached_actor(ray_start_regular):
+    @ray.remote
+    class PersistentActor:
+        def ping(self):
+            return "pong"
+
+    with pytest.raises(
+            Exception, match="Detached actors must have associated name"):
+        PersistentActor._remote(detached=True)
+
+    with pytest.raises(Exception, match="Please use a different name"):
+        _ = PersistentActor._remote(name="p_actor")
+        PersistentActor._remote(name="p_actor")
+
     redis_address = ray_start_regular["redis_address"]
 
     actor_name = "PersistentActor"
@@ -2828,8 +2841,7 @@ class PersistentActor:
     def ping(self):
         return "pong"
 
-actor = PersistentActor._remote(is_persistent=True)
-ray.experimental.register_actor("{}", actor)
+actor = PersistentActor._remote(name="{}", detached=True)
 ray.get(actor.ping.remote())
 """.format(redis_address, actor_name)
 

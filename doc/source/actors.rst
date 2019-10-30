@@ -189,28 +189,3 @@ If we instantiate an actor, we can pass the handle around to various tasks.
   for _ in range(10):
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
-
-Keep Actor Alive After Driver Exits
------------------------------------
-
-When original actor handles goes out of scope or the driver that originally
-created the actor exits, ray will clean up the actor by default. If you want
-to make sure the actor is kept alive, you can use 
-``_remote(..., is_persistent=True)`` to keep the actor alive after the driver
-exits. You might want to use named actor as well so you can access the actor
-handle across different drivers. 
-
-For example, you can instantiate and register a persistent actor as follows:
-
-.. code-block:: python
-
-  counter = Counter._remote(is_persistent=True)
-  ray.experimental.register_actor("CounterActor", counter)
-
-The script runs the block above and terminate and the actor will be kept
-alive, so you can run the following block in a different driver:
-
-.. code-block:: python
-
-  counter = ray.experimental.get_actor("CounterActor")
-  print(ray.get(counter.get_counter.remote()))

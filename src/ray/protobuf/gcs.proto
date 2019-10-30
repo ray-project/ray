@@ -112,7 +112,7 @@ message ActorTableData {
   // Whether direct actor call is used.
   bool is_direct_call = 11;
   // Whether the actor is persistent.
-  bool is_persistent = 12;
+  bool is_detached = 12;
 }
 
 message ErrorTableData {

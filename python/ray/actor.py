@@ -307,7 +307,8 @@ class ActorClass(object):
                 memory=None,
                 object_store_memory=None,
                 resources=None,
-                is_persistent=False):
+                name=None,
+                detached=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -324,6 +325,8 @@ class ActorClass(object):
                 this actor when creating objects.
             resources: The custom resources required by the actor creation
                 task.
+            name: The globally unique name for the actor.
+            detached: Whether the actor should be kept alive after driver exits
 
         Returns:
             A handle to the newly created actor.
@@ -339,6 +342,22 @@ class ActorClass(object):
                             "has been called.")
 
         meta = self.__ray_metadata__
+
+        if detached and name is None:
+            raise Exception("Detached actors must have associated name. "
+                            "Please use Actor._remote(name='some_name') "
+                            "to associate the name.")
+
+        # Check whether the name is already taken.
+        if name is not None:
+            try:
+                ray.experimental.get_actor(name)
+                raise Exception(
+                    "The name {name} is already taken. Please use "
+                    "a different name or get existing actor using "
+                    "ray.experimental.get_actor('{name}')".format(name=name))
+            except ValueError:  # name is not taken, expected.
+                pass
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -402,7 +421,7 @@ class ActorClass(object):
             actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, is_persistent)
+                actor_placement_resources, detached)
 
         actor_handle = ActorHandle(
             actor_id,
@@ -415,6 +434,9 @@ class ActorClass(object):
             actor_method_cpu,
             worker.current_session_and_job,
             original_handle=True)
+
+        if name is not None:
+            ray.experimental.register_actor(name, actor_handle)
 
         return actor_handle
 

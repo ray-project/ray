@@ -104,13 +104,13 @@ struct ActorCreationOptions {
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_persistent)
+                       bool is_detached)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
-        is_persistent(is_persistent){};
+        is_detached(is_detached){};
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
@@ -127,7 +127,7 @@ struct ActorCreationOptions {
   const std::vector<std::string> dynamic_worker_options;
   /// Whether to keep the actor persistent after driver exit. If true, this will set
   /// the worker to not be destroyed after the driver shutdown.
-  const bool is_persistent = false;
+  const bool is_detached = false;
 };
 
 }  // namespace ray

@@ -45,8 +45,8 @@ class Worker {
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
-  void MarkPersistentActor();
-  bool IsPersistentActor() const;
+  void MarkDetachedActor();
+  bool IsDetachedActor() const;
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
@@ -103,7 +103,7 @@ class Worker {
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
   /// Whether the worker is persistent.
-  bool is_persistent_;
+  bool is_detached_;
 };
 
 }  // namespace raylet

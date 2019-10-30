@@ -189,9 +189,9 @@ bool TaskSpecification::IsDirectCall() const {
   return message_->actor_creation_task_spec().is_direct_call();
 }
 
-bool TaskSpecification::IsPersistentActor() const {
+bool TaskSpecification::IsDetachedActor() const {
   RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_persistent();
+  return message_->actor_creation_task_spec().is_detached();
 }
 
 std::string TaskSpecification::DebugString() const {
@@ -219,7 +219,7 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
            << ", is_direct_call=" << IsDirectCall()
-           << ", is_persistent=" << IsPersistentActor() << "}";
+           << ", is_detached=" << IsDetachedActor() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
