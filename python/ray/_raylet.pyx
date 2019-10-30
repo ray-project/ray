@@ -996,7 +996,7 @@ cdef class CoreWorker:
                           function_descriptor,
                           args,
                           int num_return_vals,
-                          resources):
+                          double num_method_cpus):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -1007,8 +1007,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
-            # TODO(ekl) unnecessary for DAC?
-            # prepare_resources(resources, &c_resources)
+            c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
