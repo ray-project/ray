@@ -509,9 +509,6 @@ class ActorHandle(object):
         """
         worker = ray.worker.get_global_worker()
 
-        # TODO(ekl) do we need this?
-        #        worker.check_connected()
-
         args = args or []
         kwargs = kwargs or {}
 
