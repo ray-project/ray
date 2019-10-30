@@ -76,7 +76,12 @@ class ActorMethod(object):
             "test_decorated_method" in "python/ray/tests/test_actor.py".
     """
 
-    def __init__(self, actor, method_name, num_return_vals, decorator=None):
+    def __init__(self,
+                 actor,
+                 method_name,
+                 num_return_vals,
+                 decorator=None,
+                 hardref=False):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
         self._num_return_vals = num_return_vals
@@ -86,6 +91,11 @@ class ActorMethod(object):
         # cases, it should call the function that was passed into the decorator
         # and return the resulting ObjectIDs.
         self._decorator = decorator
+
+        # Acquire a hard ref to the actor, this is useful mainly when passing
+        # actor method handles to remote functions.
+        if hardref:
+            self._actor_hard_ref = actor
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actor methods cannot be called directly. Instead "
@@ -115,6 +125,22 @@ class ActorMethod(object):
             invocation = self._decorator(invocation)
 
         return invocation(args, kwargs)
+
+    def __getstate__(self):
+        return {
+            "actor": self._actor_ref(),
+            "method_name": self._method_name,
+            "num_return_vals": self._num_return_vals,
+            "decorator": self._decorator,
+        }
+
+    def __setstate__(self, state):
+        self.__init__(
+            state["actor"],
+            state["method_name"],
+            state["num_return_vals"],
+            state["decorator"],
+            hardref=True)
 
 
 class ActorClassMetadata(object):
