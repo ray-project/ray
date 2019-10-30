@@ -2,7 +2,7 @@ import json
 import sqlite3
 from abc import ABC
 
-import cloudpickle as pickle
+from ray import cloudpickle as pickle
 
 import ray.experimental.internal_kv as ray_kv
 from ray.experimental.serve.utils import logger
