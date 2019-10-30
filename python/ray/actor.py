@@ -302,8 +302,8 @@ class ActorClass(object):
     def options(self, **options):
         """Convenience method for creating an actor with options.
 
-        Same arguments as Actor._remote(), but returns a modified actor handle
-        that Actor.remote() can be called on.
+        Same arguments as Actor._remote(), but returns a wrapped actor class
+        that a non-underscore .remote() can be called on.
 
         Examples:
             # The following two calls are equivalent.
