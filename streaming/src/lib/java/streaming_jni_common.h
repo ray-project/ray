@@ -3,7 +3,7 @@
 
 #include <jni.h>
 #include <string>
-
+#include "ray/core_worker/common.h"
 #include "streaming_writer.h"
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
@@ -121,6 +121,7 @@ jarray_to_plasma_object_id_vec(JNIEnv *env, jobjectArray jarr);
 jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector<ray::ObjectID> &abnormal_queues);
 jint throwQueueInterruptException(JNIEnv *env, const char *message);
+ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env, jobject functionDescriptor);
 
 #define GET_JCLASS(env, classname, clazz)                    \
   static jclass clazz = nullptr;                             \

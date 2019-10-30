@@ -18,6 +18,7 @@ import org.ray.streaming.queue.QueueConsumer;
 import org.ray.streaming.queue.QueueLink;
 import org.ray.streaming.queue.QueueProducer;
 import org.ray.streaming.queue.QueueUtils;
+import org.ray.streaming.runtime.JobWorker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,9 +45,9 @@ public class StreamingQueueLinkImpl implements QueueLink {
 
   public StreamingQueueLinkImpl() {
     // Use JobWorker defaultly.
-    streamingTransferFunction = new JavaFunctionDescriptor("com.alipay.streaming.runtime.worker.JobWorker",
+    streamingTransferFunction = new JavaFunctionDescriptor(JobWorker.class.getName(),
         "onStreamingTransfer", "([B)V");
-    streamingTransferSyncFunction = new JavaFunctionDescriptor("com.alipay.streaming.runtime.worker.JobWorker",
+    streamingTransferSyncFunction = new JavaFunctionDescriptor(JobWorker.class.getName(),
         "onStreamingTransferSync", "([B)[B");
   }
 
