@@ -433,10 +433,6 @@ class Worker(object):
         while i < len(object_ids):
             object_id = object_ids[i]
             data, metadata = data_metadata_pairs[i]
-            if metadata is not None:  # TODO(ekl) properly check for RAW
-                results.append(data)
-                i += 1
-                continue
             try:
                 results.append(
                     self._deserialize_object_from_arrow(

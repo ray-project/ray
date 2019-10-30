@@ -702,6 +702,8 @@ cdef void push_objects_into_return_vector(
                 CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
                         <uint8_t*>(metadata_str.data()), metadata_str.size()))
+            ray_object = make_shared[CRayObject](data, metadata, True)
+            returns.push_back(ray_object)
         else:
             data_size = serialized_object.total_bytes
             data = dynamic_pointer_cast[
@@ -711,9 +713,8 @@ cdef void push_objects_into_return_vector(
             stream = pyarrow.FixedSizeBufferWriter(
                 pyarrow.py_buffer(Buffer.make(data)))
             serialized_object.write_to(stream)
-
-        ray_object = make_shared[CRayObject](data, metadata)
-        returns.push_back(ray_object)
+            ray_object = make_shared[CRayObject](data, metadata)
+            returns.push_back(ray_object)
 
 
 cdef class CoreWorker:

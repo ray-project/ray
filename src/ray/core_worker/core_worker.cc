@@ -297,12 +297,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   bool got_exception = false;
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
                                                 worker_context_.GetCurrentTaskID(),
