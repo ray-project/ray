@@ -20,7 +20,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       connection_(connection),
       dead_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager) {
+      client_call_manager_(client_call_manager),
+      is_persistent_(false) {
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
