@@ -8,7 +8,6 @@ import subprocess
 import time
 
 import ray
-from ray.utils import _random_string
 from ray.tests.utils import (
     RayTestTimeoutException,
     run_string_as_driver,
@@ -170,6 +169,55 @@ print("success")
         out = run_string_as_driver(driver_script2)
         # Make sure the first driver ran to completion.
         assert "success" in out
+
+
+def test_drivers_named_actors(call_ray_start):
+    # This test will create some drivers that submit some tasks to the same
+    # named actor.
+    address = call_ray_start
+
+    ray.init(address=address)
+
+    # Define a driver that creates a named actor then sleeps for a while.
+    driver_script1 = """
+import ray
+import time
+ray.init(address="{}")
+@ray.remote
+class Counter(object):
+    def __init__(self):
+        self.count = 0
+    def increment(self):
+        self.count += 1
+        return self.count
+counter = Counter.remote()
+ray.experimental.register_actor("Counter", counter)
+time.sleep(100)
+""".format(address)
+
+    # Define a driver that submits to the named actor and exits.
+    driver_script2 = """
+import ray
+import time
+ray.init(address="{}")
+while True:
+    try:
+        counter = ray.experimental.get_actor("Counter")
+        break
+    except ValueError:
+        time.sleep(1)
+assert ray.get(counter.increment.remote()) == {}
+print("success")
+""".format(address, "{}")
+
+    process_handle = run_string_as_driver_nonblocking(driver_script1)
+
+    for i in range(3):
+        driver_script = driver_script2.format(i + 1)
+        out = run_string_as_driver(driver_script)
+        assert "success" in out
+
+    process_handle.kill()
 
 
 def test_receive_late_worker_logs():
@@ -507,14 +555,12 @@ print("success")
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id_bytes = _random_string()
-        nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
+        nonexistent_id = ray.ObjectID.from_random()
         driver_script = driver_script_template.format(address,
-                                                      nonexistent_id_hex)
+                                                      nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(nonexistent_id_bytes), None)
+        ray.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -534,14 +580,12 @@ print("success")
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id_bytes = _random_string()
-        nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
+        nonexistent_id = ray.ObjectID.from_random()
         driver_script = driver_script_template.format(address,
-                                                      nonexistent_id_hex)
+                                                      nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(nonexistent_id_bytes), None)
+        ray.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -551,3 +595,23 @@ print("success")
 
     # Make sure we can still talk with the raylet.
     ray.get(f.remote())
+
+
+@pytest.mark.parametrize(
+    "call_ray_start", ["ray start --head --num-cpus=1 --use-pickle"],
+    indirect=True)
+def test_use_pickle(call_ray_start):
+    address = call_ray_start
+
+    ray.init(address=address, use_pickle=True)
+
+    assert ray.worker.global_worker.use_pickle
+    x = (2, "hello")
+
+    @ray.remote
+    def f(x):
+        assert x == (2, "hello")
+        assert ray.worker.global_worker.use_pickle
+        return (3, "world")
+
+    assert ray.get(f.remote(x)) == (3, "world")

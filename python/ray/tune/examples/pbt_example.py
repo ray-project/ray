@@ -112,15 +112,13 @@ if __name__ == "__main__":
         scheduler=pbt,
         reuse_actors=True,
         verbose=False,
-        **{
-            "stop": {
-                "training_iteration": 2000,
-            },
-            "num_samples": 4,
-            "config": {
-                "lr": 0.0001,
-                # note: this parameter is perturbed but has no effect on
-                # the model training in this example
-                "some_other_factor": 1,
-            },
+        stop={
+            "training_iteration": 2000,
+        },
+        num_samples=4,
+        config={
+            "lr": 0.0001,
+            # note: this parameter is perturbed but has no effect on
+            # the model training in this example
+            "some_other_factor": 1,
         })

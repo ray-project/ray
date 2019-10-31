@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import click
-import collections
 from datetime import datetime
 import json
 import logging
@@ -327,7 +326,7 @@ class TrialRunner(object):
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin()
+            self.trial_executor.on_step_begin(self)
         next_trial = self._get_next_trial()  # blocking
         if next_trial is not None:
             with warn_if_slow("start_trial"):
@@ -347,7 +346,7 @@ class TrialRunner(object):
                              "up. {}").format(
                                  trial.resources.summary_string(),
                                  self.trial_executor.resource_string(),
-                                 trial._get_trainable_cls().resource_help(
+                                 trial.get_trainable_cls().resource_help(
                                      trial.config)))
                 elif trial.status == Trial.PAUSED:
                     raise TuneError(
@@ -368,7 +367,7 @@ class TrialRunner(object):
             if self.is_finished():
                 self._server.shutdown()
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end()
+            self.trial_executor.on_step_end(self)
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -396,88 +395,12 @@ class TrialRunner(object):
             self._scheduler_alg.on_trial_add(self, trial)
         self.trial_executor.try_checkpoint_metadata(trial)
 
-    def debug_string(self, max_debug=MAX_DEBUG_TRIALS):
-        """Returns a human readable message for printing to the console."""
-        messages = self._debug_messages()
-        states = collections.defaultdict(set)
-        limit_per_state = collections.Counter()
-        for t in self._trials:
-            states[t.status].add(t)
-
-        # Show at most max_debug total, but divide the limit fairly
-        while max_debug > 0:
-            start_num = max_debug
-            for s in states:
-                if limit_per_state[s] >= len(states[s]):
-                    continue
-                max_debug -= 1
-                limit_per_state[s] += 1
-            if max_debug == start_num:
-                break
-
-        for local_dir in sorted({t.local_dir for t in self._trials}):
-            messages.append("Result logdir: {}".format(local_dir))
-
-        num_trials_per_state = {
-            state: len(trials)
-            for state, trials in states.items()
-        }
-        total_number_of_trials = sum(num_trials_per_state.values())
-        if total_number_of_trials > 0:
-            messages.append("Number of trials: {} ({})"
-                            "".format(total_number_of_trials,
-                                      num_trials_per_state))
-
-        for state, trials in sorted(states.items()):
-            limit = limit_per_state[state]
-            messages.append("{} trials:".format(state))
-            sorted_trials = sorted(
-                trials, key=lambda t: _naturalize(t.experiment_tag))
-            if len(trials) > limit:
-                tail_length = limit // 2
-                first = sorted_trials[:tail_length]
-                for t in first:
-                    messages.append(" - {}:\t{}".format(
-                        t, t.progress_string()))
-                messages.append(
-                    "  ... {} not shown".format(len(trials) - tail_length * 2))
-                last = sorted_trials[-tail_length:]
-                for t in last:
-                    messages.append(" - {}:\t{}".format(
-                        t, t.progress_string()))
-            else:
-                for t in sorted_trials:
-                    messages.append(" - {}:\t{}".format(
-                        t, t.progress_string()))
-
-        return "\n".join(messages) + "\n"
-
-    def _debug_messages(self):
-        messages = ["== Status =="]
-        messages.append(self._scheduler_alg.debug_string())
-        messages.append(self.trial_executor.debug_string())
-        messages.append(self._memory_debug_string())
-        return messages
-
-    def _memory_debug_string(self):
-        try:
-            import psutil
-            total_gb = psutil.virtual_memory().total / (1024**3)
-            used_gb = total_gb - psutil.virtual_memory().available / (1024**3)
-            if used_gb > total_gb * 0.9:
-                warn = (": ***LOW MEMORY*** less than 10% of the memory on "
-                        "this node is available for use. This can cause "
-                        "unexpected crashes. Consider "
-                        "reducing the memory used by your application "
-                        "or reducing the Ray object store size by setting "
-                        "`object_store_memory` when calling `ray.init`.")
-            else:
-                warn = ""
-            return "Memory usage on this node: {}/{} GiB{}".format(
-                round(used_gb, 1), round(total_gb, 1), warn)
-        except ImportError:
-            return ("Unknown memory usage. Please run `pip install psutil` "
-                    "(or ray[debug]) to resolve)")
+    def debug_string(self, delim="\n"):
+        messages = [
+            self._scheduler_alg.debug_string(),
+            self.trial_executor.debug_string()
+        ]
+        return delim.join(messages)
 
     def has_resources(self, resources):
         """Returns whether this runner has at least the specified resources."""
@@ -497,9 +420,18 @@ class TrialRunner(object):
         return trial
 
     def _process_events(self):
-        trial = self.trial_executor.get_next_available_trial()  # blocking
-        with warn_if_slow("process_trial"):
-            self._process_trial(trial)
+        failed_trial = self.trial_executor.get_next_failed_trial()
+        if failed_trial:
+            with warn_if_slow("process_failed_trial"):
+                self._process_trial_failure(
+                    failed_trial,
+                    error_msg="{} (ip: {}) detected as stale. This is likely"
+                    "because the node was lost".format(failed_trial,
+                                                       failed_trial.node_ip))
+        else:
+            trial = self.trial_executor.get_next_available_trial()  # blocking
+            with warn_if_slow("process_trial"):
+                self._process_trial(trial)
 
     def _process_trial(self, trial):
         try:
@@ -558,16 +490,25 @@ class TrialRunner(object):
                     decision)
         except Exception:
             logger.exception("Error processing event.")
-            error_msg = traceback.format_exc()
-            if trial.status == Trial.RUNNING:
-                if trial.should_recover():
-                    self._try_recover(trial, error_msg)
-                else:
-                    self._scheduler_alg.on_trial_error(self, trial)
-                    self._search_alg.on_trial_complete(
-                        trial.trial_id, error=True)
-                    self.trial_executor.stop_trial(
-                        trial, error=True, error_msg=error_msg)
+            self._process_trial_failure(trial, traceback.format_exc())
+
+    def _process_trial_failure(self, trial, error_msg):
+        """Handle trial failure.
+
+        Attempt trial recovery if possible, clean up state otherwise.
+
+        Args:
+            trial (Trial): Failed trial.
+            error_msg (str): Error message prior to invoking this method.
+        """
+        if trial.status == Trial.RUNNING:
+            if trial.should_recover():
+                self._try_recover(trial, error_msg)
+            else:
+                self._scheduler_alg.on_trial_error(self, trial)
+                self._search_alg.on_trial_complete(trial.trial_id, error=True)
+                self.trial_executor.stop_trial(
+                    trial, error=True, error_msg=error_msg)
 
     def _checkpoint_trial_if_needed(self, trial, force=False):
         """Checkpoints trial based off trial.last_result."""

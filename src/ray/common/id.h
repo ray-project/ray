@@ -18,6 +18,8 @@
 
 namespace ray {
 
+enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
+
 class TaskID;
 class WorkerID;
 class UniqueID;
@@ -56,6 +58,7 @@ template <typename T>
 class BaseID {
  public:
   BaseID();
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static T FromRandom();
   static T FromBinary(const std::string &binary);
   static const T &Nil();
@@ -102,6 +105,7 @@ class JobID : public BaseID<JobID> {
 
   static size_t Size() { return kLength; }
 
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static JobID FromRandom() = delete;
 
   JobID() : BaseID() {}
@@ -140,6 +144,7 @@ class ActorID : public BaseID<ActorID> {
   /// \return The `ActorID` with unique bytes being nil.
   static ActorID NilFromJob(const JobID &job_id);
 
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static ActorID FromRandom() = delete;
 
   /// Constructor of `ActorID`.
@@ -167,6 +172,7 @@ class TaskID : public BaseID<TaskID> {
 
   static TaskID ComputeDriverTaskId(const WorkerID &driver_id);
 
+  // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static TaskID FromRandom() = delete;
 
   /// The ID generated for driver task.
@@ -281,6 +287,13 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return True if this object is a return value of a task.
   bool IsReturnObject() const;
 
+  /// Return if this is a direct actor call object.
+  ///
+  /// \return True if this is a direct actor object return.
+  bool IsDirectActorType() const {
+    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR);
+  }
+
   /// Get the transport type of this object.
   ///
   /// \return The type of the transport which is used to transfer this object.
@@ -309,6 +322,9 @@ class ObjectID : public BaseID<ObjectID> {
                                 uint8_t transport_type);
 
   /// Create an object id randomly.
+  ///
+  /// Warning: this can duplicate IDs after a fork() call. We assume this
+  /// never happens.
   ///
   /// \param transport_type Which type of the transport that is used to
   ///        transfer this object.
@@ -366,16 +382,8 @@ std::ostream &operator<<(std::ostream &os, const ObjectID &id);
 
 #undef DEFINE_UNIQUE_ID
 
-// Restore the compiler alignment to defult (8 bytes).
+// Restore the compiler alignment to default (8 bytes).
 #pragma pack(pop)
-
-/// Compute the next actor handle ID of a new actor handle during a fork operation.
-///
-/// \param actor_handle_id The actor handle ID of original actor.
-/// \param num_forks The count of forks of original actor.
-/// \return The next actor handle ID generated from the given info.
-const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
-                                             int64_t num_forks);
 
 template <typename T>
 BaseID<T>::BaseID() {

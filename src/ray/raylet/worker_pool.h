@@ -112,6 +112,16 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
       const JobID &job_id) const;
 
+  /// Get all the workers.
+  ///
+  /// \return A list containing all the workers.
+  const std::vector<std::shared_ptr<Worker>> GetAllWorkers() const;
+
+  /// Get all the drivers.
+  ///
+  /// \return A list containing all the drivers.
+  const std::vector<std::shared_ptr<Worker>> GetAllDrivers() const;
+
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
   /// And if the worker registered but isn't assigned a task,
@@ -120,6 +130,10 @@ class WorkerPool {
   /// \param language The required language.
   /// \param task_id The task that we want to query.
   bool HasPendingWorkerForTask(const Language &language, const TaskID &task_id);
+
+  /// Get the set of active object IDs from all workers in the worker pool.
+  /// \return A set containing the active object IDs.
+  std::unordered_set<ObjectID> GetActiveObjectIDs() const;
 
   /// Returns debug string for class.
   ///

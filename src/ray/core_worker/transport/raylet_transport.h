@@ -3,38 +3,21 @@
 
 #include <list>
 
-#include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
-/// In raylet task submitter and receiver, a task is submitted to raylet, and possibly
-/// gets forwarded to another raylet on which node the task should be executed, and
-/// then a worker on that node gets this task and starts executing it.
-
-class CoreWorkerRayletTaskSubmitter : public CoreWorkerTaskSubmitter {
+class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
  public:
-  CoreWorkerRayletTaskSubmitter(std::unique_ptr<RayletClient> &raylet_client);
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
 
-  /// Submit a task for execution to raylet.
-  ///
-  /// \param[in] task The task spec to submit.
-  /// \return Status.
-  virtual Status SubmitTask(const TaskSpecification &task_spec) override;
-
- private:
-  /// Raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
-};
-
-class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
-                                     public rpc::WorkerTaskHandler {
- public:
   CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
                                std::unique_ptr<RayletClient> &raylet_client,
-                               CoreWorkerObjectInterface &object_interface,
                                boost::asio::io_service &io_service,
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
 
@@ -54,8 +37,6 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   WorkerContext &worker_context_;
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.

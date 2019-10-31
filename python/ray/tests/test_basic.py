@@ -9,7 +9,6 @@ import glob
 import io
 import json
 import logging
-from multiprocessing import Process
 import os
 import random
 import re
@@ -29,6 +28,7 @@ import pickle
 import pytest
 
 import ray
+from ray import signature
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
@@ -105,7 +105,32 @@ def test_simple_serialization(ray_start_regular):
             assert type(obj) == type(new_obj_2)
 
 
-def test_complex_serialization(ray_start_regular):
+def test_fair_queueing(shutdown_only):
+    ray.init(
+        num_cpus=1, _internal_config=json.dumps({
+            "fair_queueing_enabled": 1
+        }))
+
+    @ray.remote
+    def h():
+        return 0
+
+    @ray.remote
+    def g():
+        return ray.get(h.remote())
+
+    @ray.remote
+    def f():
+        return ray.get(g.remote())
+
+    # This will never finish without fair queueing of {f, g, h}:
+    # https://github.com/ray-project/ray/issues/3644
+    ready, _ = ray.wait(
+        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+    assert len(ready) == 1000, len(ready)
+
+
+def complex_serialization(use_pickle):
     def assert_equal(obj1, obj2):
         module_numpy = (type(obj1).__module__ == np.__name__
                         or type(obj2).__module__ == np.__name__)
@@ -315,6 +340,15 @@ def test_complex_serialization(ray_start_regular):
     assert ray.get(ray.put(s)).readline() == line
 
 
+def test_complex_serialization(ray_start_regular):
+    complex_serialization(use_pickle=False)
+
+
+def test_complex_serialization_with_pickle(shutdown_only):
+    ray.init(use_pickle=True)
+    complex_serialization(use_pickle=True)
+
+
 def test_nested_functions(ray_start_regular):
     # Make sure that remote functions can use other values that are defined
     # after the remote function but before the first function invocation.
@@ -385,7 +419,7 @@ def test_ray_recursive_objects(ray_start_regular):
     # Create a list of recursive objects.
     recursive_objects = [lst, a1, a2, a3, d1]
 
-    if ray.worker.USE_NEW_SERIALIZER:
+    if ray.worker.global_worker.use_pickle:
         # Serialize the recursive objects.
         for obj in recursive_objects:
             ray.put(obj)
@@ -472,7 +506,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-def test_custom_serializers(ray_start_regular):
+def custom_serializers():
     class Foo(object):
         def __init__(self):
             self.x = 3
@@ -500,6 +534,30 @@ def test_custom_serializers(ray_start_regular):
         return Bar()
 
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
+
+
+def test_custom_serializers(ray_start_regular):
+    custom_serializers()
+
+
+def test_custom_serializers_with_pickle(shutdown_only):
+    ray.init(use_pickle=True)
+    custom_serializers()
+
+    class Foo(object):
+        def __init__(self):
+            self.x = 4
+
+    # Test the pickle serialization backend without serializer.
+    # NOTE: 'use_pickle' here is different from 'use_pickle' in
+    # ray.init
+    ray.register_custom_serializer(Foo, use_pickle=True)
+
+    @ray.remote
+    def f():
+        return Foo()
+
+    assert type(ray.get(f.remote())) == Foo
 
 
 def test_serialization_final_fallback(ray_start_regular):
@@ -747,6 +805,121 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
+def test_args_starkwargs(ray_start_regular):
+    def starkwargs(a, b, **kwargs):
+        return a, b, kwargs
+
+    class TestActor(object):
+        def starkwargs(self, a, b, **kwargs):
+            return a, b, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn(1, 2, x=3) == ray.get(remote_fn.remote(1, 2, x=3))
+        with pytest.raises(TypeError):
+            remote_fn.remote(3)
+
+    remote_test_function = ray.remote(test_function)
+
+    remote_starkwargs = ray.remote(starkwargs)
+    test_function(starkwargs, remote_starkwargs)
+    ray.get(remote_test_function.remote(starkwargs, remote_starkwargs))
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.starkwargs
+    local_actor = TestActor()
+    local_method = local_actor.starkwargs
+    test_function(local_method, actor_method)
+    ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
+def test_args_named_and_star(ray_start_regular):
+    def hello(a, x="hello", **kwargs):
+        return a, x, kwargs
+
+    class TestActor(object):
+        def hello(self, a, x="hello", **kwargs):
+            return a, x, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn(1, x=2, y=3) == ray.get(remote_fn.remote(1, x=2, y=3))
+        assert fn(1, 2, y=3) == ray.get(remote_fn.remote(1, 2, y=3))
+        assert fn(1, y=3) == ray.get(remote_fn.remote(1, y=3))
+
+        assert fn(1, ) == ray.get(remote_fn.remote(1, ))
+        assert fn(1) == ray.get(remote_fn.remote(1))
+
+        with pytest.raises(TypeError):
+            remote_fn.remote(1, 2, x=3)
+
+    remote_test_function = ray.remote(test_function)
+
+    remote_hello = ray.remote(hello)
+    test_function(hello, remote_hello)
+    ray.get(remote_test_function.remote(hello, remote_hello))
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.hello
+    local_actor = TestActor()
+    local_method = local_actor.hello
+    test_function(local_method, actor_method)
+    ray.get(remote_test_function.remote(local_method, actor_method))
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "local_mode": True
+    }, {
+        "local_mode": False
+    }],
+    indirect=True)
+def test_args_stars_after(ray_start_regular):
+    def star_args_after(a="hello", b="heo", *args, **kwargs):
+        return a, b, args, kwargs
+
+    class TestActor(object):
+        def star_args_after(self, a="hello", b="heo", *args, **kwargs):
+            return a, b, args, kwargs
+
+    def test_function(fn, remote_fn):
+        assert fn("hi", "hello", 2) == ray.get(
+            remote_fn.remote("hi", "hello", 2))
+        assert fn(
+            "hi", "hello", 2, hi="hi") == ray.get(
+                remote_fn.remote("hi", "hello", 2, hi="hi"))
+        assert fn(hi="hi") == ray.get(remote_fn.remote(hi="hi"))
+
+    remote_test_function = ray.remote(test_function)
+
+    remote_star_args_after = ray.remote(star_args_after)
+    test_function(star_args_after, remote_star_args_after)
+    ray.get(
+        remote_test_function.remote(star_args_after, remote_star_args_after))
+
+    remote_actor_class = ray.remote(TestActor)
+    remote_actor = remote_actor_class.remote()
+    actor_method = remote_actor.star_args_after
+    local_actor = TestActor()
+    local_method = local_actor.star_args_after
+    test_function(local_method, actor_method)
+    ray.get(remote_test_function.remote(local_method, actor_method))
+
+
 def test_variable_number_of_args(shutdown_only):
     @ray.remote
     def varargs_fct1(*a):
@@ -756,24 +929,12 @@ def test_variable_number_of_args(shutdown_only):
     def varargs_fct2(a, *b):
         return " ".join(map(str, b))
 
-    try:
-
-        @ray.remote
-        def kwargs_throw_exception(**c):
-            return ()
-
-        kwargs_exception_thrown = False
-    except Exception:
-        kwargs_exception_thrown = True
-
     ray.init(num_cpus=1)
 
     x = varargs_fct1.remote(0, 1, 2)
     assert ray.get(x) == "0 1 2"
     x = varargs_fct2.remote(0, 1, 2)
     assert ray.get(x) == "1 2"
-
-    assert kwargs_exception_thrown
 
     @ray.remote
     def f1(*args):
@@ -1021,6 +1182,73 @@ def test_get_dict(ray_start_regular):
     result = ray.experimental.get(d)
     expected = {str(i): i for i in range(10)}
     assert result == expected
+
+
+def test_direct_actor_enabled(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote(1)
+    # it is not stored in plasma
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert ray.get(obj_id) == 2
+
+
+def test_direct_actor_errors(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return 1
+
+    a = Actor._remote(is_direct_call=True)
+
+    # cannot pass returns to other methods directly
+    with pytest.raises(Exception):
+        ray.get(f.remote(a.f.remote(2)))
+
+    # cannot pass returns to other methods even in a list
+    with pytest.raises(Exception):
+        ray.get(f.remote([a.f.remote(2)]))
+
+    # by ref args not implemented
+    with pytest.raises(ray.exceptions.RayletError):
+        a.f.remote(f.remote(2))
+
+
+def test_direct_actor_recursive(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self, delegate=None):
+            self.delegate = delegate
+
+        def f(self, x):
+            if self.delegate:
+                return ray.get(self.delegate.f.remote(x))
+            return x * 2
+
+    a = Actor._remote(is_direct_call=True)
+    b = Actor._remote(args=[a], is_direct_call=False)
+    c = Actor._remote(args=[b], is_direct_call=True)
+
+    result = ray.get([c.f.remote(i) for i in range(100)])
+    assert result == [x * 2 for x in range(100)]
+
+    result, _ = ray.wait([c.f.remote(i) for i in range(100)], num_returns=100)
+    result = ray.get(result)
+    assert result == [x * 2 for x in range(100)]
 
 
 def test_wait(ray_start_regular):
@@ -1422,13 +1650,13 @@ def test_multithreading(ray_start_2_cpus):
             time.sleep(delay_ms / 1000.0)
         return value
 
-    @ray.remote
-    class Echo(object):
-        def echo(self, value):
-            return value
-
     def test_api_in_multi_threads():
         """Test using Ray api in multiple threads."""
+
+        @ray.remote
+        class Echo(object):
+            def echo(self, value):
+                return value
 
         # Test calling remote functions in multiple threads.
         def test_remote_call():
@@ -1765,6 +1993,28 @@ def test_local_mode(shutdown_only):
         ray.get(obj1)
     with pytest.raises(Exception, match=exception_str):
         ray.get(obj2)
+
+    # Check that Actors are not overwritten by remote calls from different
+    # classes.
+    @ray.remote
+    class RemoteActor1(object):
+        def __init__(self):
+            pass
+
+        def function1(self):
+            return 0
+
+    @ray.remote
+    class RemoteActor2(object):
+        def __init__(self):
+            pass
+
+        def function2(self):
+            return 1
+
+    actor1 = RemoteActor1.remote()
+    _ = RemoteActor2.remote()
+    assert ray.get(actor1.function1.remote()) == 0
 
 
 def test_resource_constraints(shutdown_only):
@@ -2243,6 +2493,26 @@ def test_custom_resources(ray_start_cluster):
     ray.get([h.remote() for _ in range(5)])
 
 
+def test_node_id_resource(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=3)
+    ray.init(address=cluster.address)
+
+    local_node = ray.state.current_node_id()
+
+    # Note that these will have the same IP in the test cluster
+    assert len(ray.state.node_ids()) == 2
+    assert local_node in ray.state.node_ids()
+
+    @ray.remote(resources={local_node: 1})
+    def f():
+        return ray.state.current_node_id()
+
+    # Check the node id resource is automatically usable for scheduling.
+    assert ray.get(f.remote()) == ray.state.current_node_id()
+
+
 def test_two_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -2346,6 +2616,9 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         del resources["memory"]
         del resources["object_store_memory"]
+        for key in list(resources.keys()):
+            if key.startswith("node:"):
+                del resources[key]
 
         while resources and retry_count < MAX_RETRY_ATTEMPTS:
             time.sleep(0.1)
@@ -2354,7 +2627,7 @@ def test_zero_capacity_deletion_semantics(shutdown_only):
 
         if retry_count >= MAX_RETRY_ATTEMPTS:
             raise RuntimeError(
-                "Resources were available even after five retries.")
+                "Resources were available even after five retries.", resources)
 
         return resources
 
@@ -2609,7 +2882,10 @@ def test_global_state_api(shutdown_only):
 
     task_spec = task_table[task_id]["TaskSpec"]
     assert task_spec["ActorID"] == nil_actor_id_hex
-    assert task_spec["Args"] == [1, "hi", x_id]
+    assert task_spec["Args"] == [
+        signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "hi",
+        signature.DUMMY_TYPE, x_id
+    ]
     assert task_spec["JobID"] == job_id.hex()
     assert task_spec["ReturnObjectIDs"] == [result_id]
 
@@ -2788,27 +3064,6 @@ def test_object_id_properties():
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
-    file_prefix = "test_object_id_properties"
-
-    # Make sure the ids are fork safe.
-    def write(index):
-        str = ray.ObjectID.from_random().hex()
-        with open("{}{}".format(file_prefix, index), "w") as fo:
-            fo.write(str)
-
-    def read(index):
-        with open("{}{}".format(file_prefix, index), "r") as fi:
-            for line in fi:
-                return line
-
-    processes = [Process(target=write, args=(_, )) for _ in range(4)]
-    for process in processes:
-        process.start()
-    for process in processes:
-        process.join()
-    hexes = {read(i) for i in range(4)}
-    [os.remove("{}{}".format(file_prefix, i)) for i in range(4)]
-    assert len(hexes) == 4
 
 
 @pytest.fixture

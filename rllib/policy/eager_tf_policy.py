@@ -31,7 +31,8 @@ def _convert_to_tf(x):
         return x
 
     if x is not None:
-        x = tf.nest.map_structure(tf.convert_to_tensor, x)
+        x = tf.nest.map_structure(
+            lambda f: tf.convert_to_tensor(f) if f is not None else None, x)
     return x
 
 
@@ -236,7 +237,7 @@ def build_eager_tf_policy(name,
                     [_flatten_action(action_space.sample())]),
                 SampleBatch.PREV_REWARDS: tf.convert_to_tensor([0.]),
             }, [
-                tf.convert_to_tensor([s])
+                tf.convert_to_tensor(np.array([s]))
                 for s in self.model.get_initial_state()
             ], tf.convert_to_tensor([1]))
 

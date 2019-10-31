@@ -6,8 +6,9 @@
 #include <utility>
 
 #include "ray/common/id.h"
-#include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
@@ -32,22 +33,26 @@ struct ActorStateData {
   std::pair<std::string, int> location_;
 };
 
-class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
+// This class is thread-safe.
+class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client,
-      std::unique_ptr<CoreWorkerStoreProvider> store_provider);
+      boost::asio::io_service &io_service,
+      std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
-  /// \return Status.
-  Status SubmitTask(const TaskSpecification &task_spec) override;
+  /// \return Status::Invalid if the task is not yet supported.
+  Status SubmitTask(const TaskSpecification &task_spec);
+
+  /// Handle an update about an actor.
+  ///
+  /// \param[in] actor_id The ID of the actor whose status has changed.
+  /// \param[in] actor_data The actor's new status information.
+  void HandleActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
 
  private:
-  /// Subscribe to updates of an actor.
-  Status SubscribeActorUpdates(const ActorID &actor_id);
-
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
   /// sending the request, this task will be treated as failed.
@@ -86,13 +91,10 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   ///
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id);
+  bool IsActorAlive(const ActorID &actor_id) const;
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
-
-  /// Gcs client.
-  gcs::RedisGcsClient &gcs_client_;
 
   /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
   rpc::ClientCallManager client_call_manager_;
@@ -117,11 +119,8 @@ class CoreWorkerDirectActorTaskSubmitter : public CoreWorkerTaskSubmitter {
   /// Map from actor id to the tasks that are waiting for reply.
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
-  /// The set of actors which are subscribed for further updates.
-  std::unordered_set<ActorID> subscribed_actors_;
-
   /// The store provider.
-  std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
 
   friend class CoreWorkerTest;
 };
@@ -198,12 +197,14 @@ class SchedulingQueue {
   friend class SchedulingQueueTest;
 };
 
-class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
-                                          public rpc::DirectActorHandler {
+class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  public:
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
+
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
+                                    boost::asio::io_service &main_io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
@@ -220,17 +221,15 @@ class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The IO event loop for running tasks on.
+  boost::asio::io_service &task_main_io_service_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
-  std::unordered_map<ActorHandleID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
+  std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
 };
 
 }  // namespace ray

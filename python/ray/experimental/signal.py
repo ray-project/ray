@@ -50,7 +50,7 @@ def _get_task_id(source):
         - If source is a task id, return same task id.
     """
     if type(source) is ray.actor.ActorHandle:
-        return source._ray_actor_id
+        return source._actor_id
     else:
         if type(source) is ray.TaskID:
             return source
@@ -69,11 +69,10 @@ def send(signal):
     Args:
         signal: Signal to be sent.
     """
-    if hasattr(ray.worker.global_worker, "actor_creation_task_id"):
-        source_key = ray.worker.global_worker.actor_id.hex()
-    else:
-        # No actors; this function must have been called from a task
+    if ray.worker.global_worker.actor_id.is_nil():
         source_key = ray.worker.global_worker.current_task_id.hex()
+    else:
+        source_key = ray.worker.global_worker.actor_id.hex()
 
     encoded_signal = ray.utils.binary_to_hex(cloudpickle.dumps(signal))
     ray.worker.global_worker.redis_client.execute_command(

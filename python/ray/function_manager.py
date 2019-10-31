@@ -301,6 +301,7 @@ class FunctionActorManager(object):
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
         self.lock = threading.Lock()
+        self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
         function_id = function_descriptor.function_id
@@ -314,46 +315,17 @@ class FunctionActorManager(object):
             job_id = ray.JobID.nil()
         return self._num_task_executions[job_id][function_id]
 
-    def export_cached(self):
-        """Export cached remote functions
-
-        Note: this should be called only once when worker is connected.
-        """
-        for remote_function in self._functions_to_export:
-            self._do_export(remote_function)
-        self._functions_to_export = None
-        for info in self._actors_to_export:
-            (key, actor_class_info) = info
-            self._publish_actor_class_to_key(key, actor_class_info)
-
-    def reset_cache(self):
-        self._functions_to_export = []
-        self._actors_to_export = []
-
     def export(self, remote_function):
-        """Export a remote function.
-
-        Args:
-            remote_function: the RemoteFunction object.
-        """
-        if self._worker.mode is None:
-            # If the worker isn't connected, cache the function
-            # and export it later.
-            self._functions_to_export.append(remote_function)
-            return
-        if self._worker.mode == ray.worker.LOCAL_MODE:
-            # Don't need to export if the worker is not a driver.
-            return
-        self._do_export(remote_function)
-
-    def _do_export(self, remote_function):
         """Pickle a remote function and export it to redis.
 
         Args:
             remote_function: the RemoteFunction object.
         """
+        if self._worker.mode == ray.worker.LOCAL_MODE:
+            return
         if self._worker.load_code_from_local:
             return
+
         function = remote_function._function
         pickled_function = pickle.dumps(function)
 
@@ -584,21 +556,10 @@ class FunctionActorManager(object):
                                actor_class_info["class_name"], "actor",
                                self._worker)
 
-        if self._worker.mode is None:
-            # This means that 'ray.init()' has not been called yet and so we
-            # must cache the actor class definition and export it when
-            # 'ray.init()' is called.
-            assert self._actors_to_export is not None
-            self._actors_to_export.append((key, actor_class_info))
-            # This caching code path is currently not used because we only
-            # export actor class definitions lazily when we instantiate the
-            # actor for the first time.
-            assert False, "This should be unreachable."
-        else:
-            self._publish_actor_class_to_key(key, actor_class_info)
-            # TODO(rkn): Currently we allow actor classes to be defined
-            # within tasks. I tried to disable this, but it may be necessary
-            # because of https://github.com/ray-project/ray/issues/1146.
+        self._publish_actor_class_to_key(key, actor_class_info)
+        # TODO(rkn): Currently we allow actor classes to be defined
+        # within tasks. I tried to disable this, but it may be necessary
+        # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor_class(self, job_id, function_descriptor):
         """Load the actor class.
@@ -660,7 +621,7 @@ class FunctionActorManager(object):
             module = importlib.import_module(module_name)
             actor_class = getattr(module, class_name)
             if isinstance(actor_class, ray.actor.ActorClass):
-                return actor_class._modified_class
+                return actor_class.__ray_metadata__.modified_class
             else:
                 return actor_class
         except Exception:
@@ -763,7 +724,7 @@ class FunctionActorManager(object):
                 worker's internal state to record the executed method.
         """
 
-        def actor_method_executor(dummy_return_id, actor, *args):
+        def actor_method_executor(actor, *args, **kwargs):
             # Update the actor's task counter to reflect the task we're about
             # to execute.
             self._worker.actor_task_counter += 1
@@ -771,9 +732,9 @@ class FunctionActorManager(object):
             # Execute the assigned method and save a checkpoint if necessary.
             try:
                 if is_class_method(method):
-                    method_returns = method(*args)
+                    method_returns = method(*args, **kwargs)
                 else:
-                    method_returns = method(actor, *args)
+                    method_returns = method(actor, *args, **kwargs)
             except Exception as e:
                 # Save the checkpoint before allowing the method exception
                 # to be thrown, but don't save the checkpoint for actor

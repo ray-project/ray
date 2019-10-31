@@ -2,14 +2,15 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/object_interface.h"
 #include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, std::unique_ptr<RayletClient> &raylet_client)
+    const std::string &store_socket, const std::unique_ptr<RayletClient> &raylet_client,
+    std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
+  check_signals_ = check_signals;
   RAY_ARROW_CHECK_OK(store_client_.Connect(store_socket));
 }
 
@@ -183,6 +184,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       unsuccessful_attempts++;
       WarnIfAttemptedTooManyTimes(unsuccessful_attempts, remaining);
     }
+    if (check_signals_) {
+      Status status = check_signals_();
+      if (!status.ok()) {
+        // TODO(edoakes): in this case which status should we return?
+        RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
+        return status;
+      }
+    }
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with
@@ -201,22 +210,40 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
                                            int num_objects, int64_t timeout_ms,
                                            const TaskID &task_id,
                                            std::unordered_set<ObjectID> *ready) {
-  WaitResultPair result_pair;
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
-  RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, timeout_ms, false,
-                                         task_id, &result_pair));
 
-  for (const auto &entry : result_pair.first) {
-    ready->insert(entry);
+  bool should_break = false;
+  int64_t remaining_timeout = timeout_ms;
+  while (!should_break) {
+    WaitResultPair result_pair;
+    int64_t call_timeout = RayConfig::instance().get_timeout_milliseconds();
+    if (remaining_timeout >= 0) {
+      call_timeout = std::min(remaining_timeout, call_timeout);
+      remaining_timeout -= call_timeout;
+      should_break = remaining_timeout <= 0;
+    }
+
+    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, call_timeout, false,
+                                           task_id, &result_pair));
+
+    if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
+      should_break = true;
+    }
+    for (const auto &entry : result_pair.first) {
+      ready->insert(entry);
+    }
+    if (check_signals_) {
+      RAY_RETURN_NOT_OK(check_signals_());
+    }
   }
-
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
-  return raylet_client_->FreeObjects(object_ids, local_only, delete_creating_tasks);
+Status CoreWorkerPlasmaStoreProvider::Delete(
+    const std::unordered_set<ObjectID> &object_ids, bool local_only,
+    bool delete_creating_tasks) {
+  std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
+  return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {

@@ -3,7 +3,6 @@ from ray.includes.task cimport (
     CTaskExecutionSpec,
     CTaskSpec,
     RpcTaskExecutionSpec,
-    TaskSpecBuilder,
     TaskTableData,
 )
 from ray.ray_constants import RAW_BUFFER_METADATA
@@ -14,93 +13,6 @@ cdef class TaskSpec:
     """Cython wrapper class of C++ `ray::TaskSpecification`."""
     cdef:
         unique_ptr[CTaskSpec] task_spec
-
-    def __init__(self, TaskID task_id, JobID job_id, function_descriptor,
-                 arguments,
-                 int num_returns, TaskID parent_task_id, int parent_counter,
-                 ActorID actor_creation_id,
-                 ObjectID actor_creation_dummy_object_id,
-                 ObjectID previous_actor_task_dummy_object_id,
-                 int32_t max_actor_reconstructions, ActorID actor_id,
-                 ActorHandleID actor_handle_id, int actor_counter,
-                 new_actor_handles, resource_map, placement_resource_map):
-        cdef:
-            TaskSpecBuilder builder
-            unordered_map[c_string, double] required_resources
-            unordered_map[c_string, double] required_placement_resources
-            c_vector[c_string] c_function_descriptor
-            c_string pickled_str
-            c_vector[CActorHandleID] c_new_actor_handles
-
-        # Convert function descriptor to C++ vector.
-        for item in function_descriptor:
-            if not isinstance(item, bytes):
-                raise TypeError(
-                    "'function_descriptor' takes a list of byte strings.")
-            c_function_descriptor.push_back(item)
-
-        # Convert resource map to C++ unordered_map.
-        if resource_map is not None:
-            required_resources = resource_map_from_dict(resource_map)
-        if placement_resource_map is not None:
-            required_placement_resources = (
-                resource_map_from_dict(placement_resource_map))
-
-        # Build common task spec.
-        builder.SetCommonTaskSpec(
-            task_id.native(),
-            LANGUAGE_PYTHON,
-            c_function_descriptor,
-            job_id.native(),
-            parent_task_id.native(),
-            parent_counter,
-            num_returns,
-            required_resources,
-            required_placement_resources,
-        )
-
-        # Build arguments.
-        for arg in arguments:
-            if isinstance(arg, ObjectID):
-                builder.AddByRefArg((<ObjectID>arg).native())
-            elif isinstance(arg, bytes):
-                builder.AddByValueArg(arg, RAW_BUFFER_METADATA)
-            else:
-                pickled_str = pickle.dumps(
-                    arg, protocol=pickle.HIGHEST_PROTOCOL)
-                builder.AddByValueArg(pickled_str, b'')
-
-        if not actor_creation_id.is_nil():
-            # Actor creation task.
-            builder.SetActorCreationTaskSpec(
-                actor_creation_id.native(),
-                max_actor_reconstructions,
-                [],
-                False,
-            )
-        elif not actor_id.is_nil():
-            # Actor task.
-            for new_actor_handle in new_actor_handles:
-                c_new_actor_handles.push_back(
-                    (<ActorHandleID?>new_actor_handle).native())
-            builder.SetActorTaskSpec(
-                actor_id.native(),
-                actor_handle_id.native(),
-                actor_creation_dummy_object_id.native(),
-                previous_actor_task_dummy_object_id.native(),
-                actor_counter,
-                c_new_actor_handles,
-            )
-        else:
-            # Normal task.
-            pass
-        self.task_spec.reset(new CTaskSpec(builder.GetMessage()))
-
-    @staticmethod
-    cdef make(unique_ptr[CTaskSpec]& task_spec):
-        cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
-        self.task_spec.reset(task_spec.release())
-        return self
 
     @staticmethod
     def from_string(const c_string& task_spec_str):
@@ -164,23 +76,23 @@ cdef class TaskSpec:
     def arguments(self):
         """Return the arguments for the task."""
         cdef:
-            CTaskSpec*task_spec = self.task_spec.get()
-            int64_t num_args = task_spec.NumArgs()
-            int32_t lang = <int32_t>task_spec.GetLanguage()
+            int64_t num_args = self.task_spec.get().NumArgs()
+            int32_t lang = <int32_t>self.task_spec.get().GetLanguage()
             int count
         arg_list = []
 
         if lang == <int32_t>LANGUAGE_PYTHON:
             for i in range(num_args):
-                count = task_spec.ArgIdCount(i)
+                count = self.task_spec.get().ArgIdCount(i)
                 if count > 0:
                     assert count == 1
                     arg_list.append(
-                        ObjectID(task_spec.ArgId(i, 0).Binary()))
+                        ObjectID(self.task_spec.get().ArgId(i, 0).Binary()))
                 else:
-                    data = task_spec.ArgData(i)[:task_spec.ArgDataSize(i)]
-                    metadata = task_spec.ArgMetadata(i)[
-                        :task_spec.ArgMetadataSize(i)]
+                    data = self.task_spec.get().ArgData(i)[
+                        :self.task_spec.get().ArgDataSize(i)]
+                    metadata = self.task_spec.get().ArgMetadata(i)[
+                        :self.task_spec.get().ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
                     else:
@@ -193,10 +105,10 @@ cdef class TaskSpec:
 
     def returns(self):
         """Return the object IDs for the return values of the task."""
-        cdef CTaskSpec *task_spec = self.task_spec.get()
         return_id_list = []
-        for i in range(task_spec.NumReturns()):
-            return_id_list.append(ObjectID(task_spec.ReturnId(i).Binary()))
+        for i in range(self.task_spec.get().NumReturns()):
+            return_id_list.append(
+                ObjectID(self.task_spec.get().ReturnId(i).Binary()))
         return return_id_list
 
     def required_resources(self):

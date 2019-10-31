@@ -9,6 +9,9 @@ This script will demonstrate how to use two important parts of the Ray API:
 using ``ray.remote`` to define remote functions and ``ray.wait`` to wait for
 their results to be ready.
 
+.. image:: ../images/hyperparameter.png
+    :align: center
+
 .. important:: For a production-grade implementation of distributed
     hyperparameter tuning, use `Tune`_, a scalable hyperparameter
     tuning library built using Ray's Actor API.
@@ -78,6 +81,14 @@ def get_data_loaders(batch_size):
 # we created methods to train and test this neural network 
 
 
+#######################################################################
+# Setup: Defining the Neural Network
+# ----------------------------------
+#
+# We define a small neural network to use in training. In addition,
+# we created methods to train and test this neural network.
+
+
 class ConvNet(nn.Module):
     """Simple two layer Convolutional Neural Network."""
 
@@ -141,6 +152,18 @@ def test(model, test_loader, device=torch.device("cpu")):
 #
 # The ``@ray.remote`` decorator defines a remote process.
 
+#######################################################################
+# Evaluating the Hyperparameters
+# -------------------------------
+#
+# For a given configuration, the neural network created previously
+# will be trained and return the accuracy of the model. These trained
+# networks will then be tested for accuracy to find the best set of
+# hyperparameters.
+#
+# The ``@ray.remote`` decorator defines a remote process.
+
+
 @ray.remote
 def evaluate_hyperparameters(config):
     model = ConvNet()
@@ -160,6 +183,13 @@ def evaluate_hyperparameters(config):
 # network that will be evaluated in parallel.
 
 
+#######################################################################
+# Synchronous Evaluation of Randomly Generated Hyperparameters
+# ------------------------------------------------------------
+#
+# We will create multiple sets of random hyperparameters for our neural
+# network that will be evaluated in parallel.
+
 # Keep track of the best hyperparameters and the best accuracy.
 best_hyperparameters = None
 best_accuracy = 0
@@ -171,12 +201,12 @@ remaining_ids = []
 hyperparameters_mapping = {}
 
 ###########################################################################
-# Launch asynchronous parallel tasks for evaluating different 
-# hyperparameters. accuracy_id is an ObjectID that acts as a handle to 
-# the remote task. It is used later to fetch the result of the task 
+# Launch asynchronous parallel tasks for evaluating different
+# hyperparameters. ``accuracy_id`` is an ObjectID that acts as a handle to
+# the remote task. It is used later to fetch the result of the task
 # when the task finishes.
 
-# Randomly generate sets of hyperparameters and launch a task to test each set.
+# Randomly generate sets of hyperparameters and launch a task to evaluate it.
 for i in range(num_evaluations):
     hyperparameters = generate_hyperparameters()
     accuracy_id = evaluate_hyperparameters.remote(hyperparameters)
@@ -184,7 +214,7 @@ for i in range(num_evaluations):
     hyperparameters_mapping[accuracy_id] = hyperparameters
 
 ###########################################################################
-# Process each hyperparameter and corresponding accuracy in the order that 
+# Process each hyperparameter and corresponding accuracy in the order that
 # they finish to store the hyperparameters with the best accuracy.
 
 # Fetch and print the results of the tasks in the order that they complete.

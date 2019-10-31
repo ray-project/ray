@@ -27,7 +27,7 @@ void ProcessCallback(int64_t callback_index,
   auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
   if (!callback_item.is_subscription) {
     // Record the redis latency for non-subscription redis operations.
-    auto end_time = current_sys_time_us();
+    auto end_time = absl::GetCurrentTimeNanos() / 1000;
     ray::stats::RedisLatency().Record(end_time - callback_item.start_time);
   }
   // Invoke the callback.
@@ -134,7 +134,7 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
 }
 
 int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscription) {
-  auto start_time = current_sys_time_us();
+  auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
   std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.emplace(num_callbacks_,

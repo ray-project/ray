@@ -57,7 +57,9 @@ class Worker {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
-  bool UsePush() const;
+  const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
+  void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
+
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                   const std::function<void(Status)> finish_assign_callback);
 
@@ -91,6 +93,8 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
+  /// The set of object IDs that are currently in use on the worker.
+  std::unordered_set<ObjectID> active_object_ids_;
   /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
