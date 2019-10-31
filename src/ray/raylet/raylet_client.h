@@ -118,6 +118,15 @@ class RayletClient {
                    int64_t timeout_milliseconds, bool wait_local,
                    const TaskID &current_task_id, WaitResultPair *result);
 
+  /// Wait for the given objects, asynchronously. The core worker is notified when
+  /// the wait completes.
+  ///
+  /// \param object_ids The objects to wait for.
+  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \return ray::Status.
+  ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+                                         int64_t tag);
+
   /// Push an error to the relevant driver.
   ///
   /// \param The ID of the job_id that the error is for.

@@ -4,6 +4,8 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
+#include "src/ray/protobuf/direct_actor.grpc.pb.h"
+#include "src/ray/protobuf/direct_actor.pb.h"
 
 namespace ray {
 
@@ -24,6 +26,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
+    direct_rpc_client_ = std::unique_ptr<rpc::DirectActorClient>(
+        new rpc::DirectActorClient("127.0.0.1", port_, client_call_manager_));
   }
 }
 
@@ -147,6 +151,21 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
   } else {
     RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
                    << " to worker " << worker_id_;
+  }
+}
+
+void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+  RAY_CHECK(port_ > 0);
+  rpc::DirectActorCallArgWaitCompleteRequest request;
+  request.set_tag(tag);
+  auto status = direct_rpc_client_->DirectActorCallArgWaitComplete(
+      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
   }
 }
 

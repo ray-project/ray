@@ -316,12 +316,6 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
-    if (is_direct_call) {
-      // For direct actor call, submitting a task with by-reference arguments
-      // would fail.
-      ASSERT_TRUE(!status.ok());
-      return;
-    }
     ASSERT_TRUE(status.ok());
 
     ASSERT_EQ(return_ids.size(), 1);
