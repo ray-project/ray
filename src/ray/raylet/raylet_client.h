@@ -80,9 +80,10 @@ class RayletClient {
 
   /// Submit a task using the raylet code path.
   ///
-  /// \param The task specification.
+  /// \param task_spec The task specification.
+  /// \param num_submissions Number of times that this task has been submitted before.
   /// \return ray::Status.
-  ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
+  ray::Status SubmitTask(const ray::TaskSpecification &task_spec, uint64_t num_submissions = 0);
 
   /// Tell the raylet that the client has finished executing a task.
   ///

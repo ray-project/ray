@@ -219,10 +219,10 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
 }
 
-ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
+ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec, uint64_t num_submissions) {
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, fbb.CreateString(task_spec.Serialize()));
+      fbb, fbb.CreateString(task_spec.Serialize()), num_submissions);
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
