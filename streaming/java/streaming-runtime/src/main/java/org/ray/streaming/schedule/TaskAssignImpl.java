@@ -13,7 +13,7 @@ import org.ray.streaming.core.graph.ExecutionNode;
 import org.ray.streaming.core.graph.ExecutionTask;
 import org.ray.streaming.core.processor.ProcessBuilder;
 import org.ray.streaming.core.processor.StreamProcessor;
-import org.ray.streaming.runtime.StreamWorker;
+import org.ray.streaming.runtime.JobWorker;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanEdge;
 import org.ray.streaming.plan.PlanVertex;
@@ -28,7 +28,7 @@ public class TaskAssignImpl implements ITaskAssign {
    * @return The physical execution graph.
    */
   @Override
-  public ExecutionGraph assign(Plan plan, List<RayActor<StreamWorker>> workers) {
+  public ExecutionGraph assign(Plan plan, List<RayActor<JobWorker>> workers) {
     List<PlanVertex> planVertices = plan.getPlanVertexList();
     List<PlanEdge> planEdges = plan.getPlanEdgeList();
 
@@ -45,7 +45,7 @@ public class TaskAssignImpl implements ITaskAssign {
       }
       StreamProcessor streamProcessor = ProcessBuilder
           .buildProcessor(planVertex.getStreamOperator());
-      executionNode.setExecutionTaskList(vertexTasks);
+      executionNode.setExecutionTasks(vertexTasks);
       executionNode.setStreamProcessor(streamProcessor);
       idToExecutionNode.put(executionNode.getNodeId(), executionNode);
     }
@@ -57,6 +57,7 @@ public class TaskAssignImpl implements ITaskAssign {
       ExecutionEdge executionEdge = new ExecutionEdge(srcNodeId, targetNodeId,
           planEdge.getPartition());
       idToExecutionNode.get(srcNodeId).addExecutionEdge(executionEdge);
+      idToExecutionNode.get(targetNodeId).addInputEdge(executionEdge);
     }
 
     List<ExecutionNode> executionNodes = idToExecutionNode.values().stream()

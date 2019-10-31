@@ -2,7 +2,7 @@ package org.ray.streaming.core.graph;
 
 import java.io.Serializable;
 import org.ray.api.RayActor;
-import org.ray.streaming.runtime.StreamWorker;
+import org.ray.streaming.runtime.JobWorker;
 
 /**
  * ExecutionTask is minimal execution unit.
@@ -13,9 +13,9 @@ public class ExecutionTask implements Serializable {
 
   private int taskId;
   private int taskIndex;
-  private RayActor<StreamWorker> worker;
+  private RayActor<JobWorker> worker;
 
-  public ExecutionTask(int taskId, int taskIndex, RayActor<StreamWorker> worker) {
+  public ExecutionTask(int taskId, int taskIndex, RayActor<JobWorker> worker) {
     this.taskId = taskId;
     this.taskIndex = taskIndex;
     this.worker = worker;
@@ -37,11 +37,11 @@ public class ExecutionTask implements Serializable {
     this.taskIndex = taskIndex;
   }
 
-  public RayActor<StreamWorker> getWorker() {
+  public RayActor<JobWorker> getWorker() {
     return worker;
   }
 
-  public void setWorker(RayActor<StreamWorker> worker) {
+  public void setWorker(RayActor<JobWorker> worker) {
     this.worker = worker;
   }
 }

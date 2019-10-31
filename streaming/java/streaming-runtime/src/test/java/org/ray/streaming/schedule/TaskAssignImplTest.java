@@ -17,7 +17,7 @@ import org.ray.streaming.core.graph.ExecutionEdge;
 import org.ray.streaming.core.graph.ExecutionGraph;
 import org.ray.streaming.core.graph.ExecutionNode;
 import org.ray.streaming.core.graph.ExecutionNode.NodeType;
-import org.ray.streaming.runtime.StreamWorker;
+import org.ray.streaming.runtime.JobWorker;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanBuilder;
 import org.slf4j.Logger;
@@ -33,7 +33,7 @@ public class TaskAssignImplTest {
   public void testTaskAssignImpl() {
     Plan plan = buildDataSyncPlan();
 
-    List<RayActor<StreamWorker>> workers = new ArrayList<>();
+    List<RayActor<JobWorker>> workers = new ArrayList<>();
     for(int i = 0; i < plan.getPlanVertexList().size(); i++) {
       workers.add(new LocalModeRayActor(ActorId.fromRandom(), ObjectId.fromRandom()));
     }
@@ -46,10 +46,10 @@ public class TaskAssignImplTest {
     Assert.assertEquals(executionNodeList.size(), 2);
     ExecutionNode sourceNode = executionNodeList.get(0);
     Assert.assertEquals(sourceNode.getNodeType(), NodeType.SOURCE);
-    Assert.assertEquals(sourceNode.getExecutionTaskList().size(), 1);
-    Assert.assertEquals(sourceNode.getExecutionEdgeList().size(), 1);
+    Assert.assertEquals(sourceNode.getExecutionTasks().size(), 1);
+    Assert.assertEquals(sourceNode.getOutputEdges().size(), 1);
 
-    List<ExecutionEdge> sourceExecutionEdges = sourceNode.getExecutionEdgeList();
+    List<ExecutionEdge> sourceExecutionEdges = sourceNode.getOutputEdges();
 
     Assert.assertEquals(sourceExecutionEdges.size(), 1);
     ExecutionEdge source2Sink = sourceExecutionEdges.get(0);
@@ -58,8 +58,8 @@ public class TaskAssignImplTest {
 
     ExecutionNode sinkNode = executionNodeList.get(1);
     Assert.assertEquals(sinkNode.getNodeType(), NodeType.SINK);
-    Assert.assertEquals(sinkNode.getExecutionTaskList().size(), 1);
-    Assert.assertEquals(sinkNode.getExecutionEdgeList().size(), 0);
+    Assert.assertEquals(sinkNode.getExecutionTasks().size(), 1);
+    Assert.assertEquals(sinkNode.getOutputEdges().size(), 0);
   }
 
   public Plan buildDataSyncPlan() {

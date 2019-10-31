@@ -10,12 +10,12 @@ import org.ray.streaming.api.function.Function;
 public interface Partition<T> extends Function {
 
   /**
-   * Given a record and downstream tasks, determine which task(s) should receive the record.
+   * Given a record and downstream partitions, determine which partition(s) should receive the record.
    *
    * @param record The record.
-   * @param taskIds IDs of all downstream tasks.
-   * @return IDs of the downstream tasks that should receive the record.
+   * @param numPartition num of partitions
+   * @return IDs of the downstream partitions that should receive the record.
    */
-  int[] partition(T record, int[] taskIds);
+  int[] partition(T record, int numPartition);
 
 }

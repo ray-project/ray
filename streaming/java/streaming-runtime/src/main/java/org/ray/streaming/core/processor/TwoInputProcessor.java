@@ -6,12 +6,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class TwoInputProcessor<T, O> extends StreamProcessor<Record, TwoInputOperator<T, O>> {
-
   private static final Logger LOGGER = LoggerFactory.getLogger(TwoInputProcessor.class);
 
-  // TODO(zhenxuanpan): Set leftStream and rightStream.
   private String leftStream;
-  private String rigthStream;
+  private String rightStream;
 
   public TwoInputProcessor(TwoInputOperator<T, O> operator) {
     super(operator);
@@ -33,5 +31,21 @@ public class TwoInputProcessor<T, O> extends StreamProcessor<Record, TwoInputOpe
   @Override
   public void close() {
     this.operator.close();
+  }
+
+  public String getLeftStream() {
+    return leftStream;
+  }
+
+  public void setLeftStream(String leftStream) {
+    this.leftStream = leftStream;
+  }
+
+  public String getRightStream() {
+    return rightStream;
+  }
+
+  public void setRightStream(String rightStream) {
+    this.rightStream = rightStream;
   }
 }

@@ -18,8 +18,6 @@ public class ProcessBuilder {
     LOGGER.info("Building StreamProcessor, operator type = {}, operator = {}.", type,
         streamOperator.getClass().getSimpleName().toString());
     switch (type) {
-      case MASTER:
-        return new MasterProcessor(null);
       case SOURCE:
         return new SourceProcessor<>((SourceOperator) streamOperator);
       case ONE_INPUT:
