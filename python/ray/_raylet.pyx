@@ -84,6 +84,7 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError
 )
+from ray.experimental.no_return import NoReturn
 from ray.function_manager import FunctionDescriptor
 from ray.utils import decode
 from ray.ray_constants import (
@@ -545,9 +546,13 @@ cdef execute_task(
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
-                    task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
+                    assert len(outputs) == c_return_ids.size(), (
+                        "Incorrect number of return values from function."
+                        "Got {} but expected {}.".format(
+                            len(outputs), c_return_ids.size()))
+                    task_exception = False
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
@@ -1016,6 +1021,10 @@ cdef class CoreWorker:
             if isinstance(output, ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
+            elif output == NoReturn:
+                serialized_objects.append(output)
+                data_sizes.push_back(0)
+                metadatas.push_back(empty_metadata)
             elif isinstance(output, bytes):
                 serialized_objects.append(output)
                 data_sizes.push_back(len(output))
@@ -1047,7 +1056,9 @@ cdef class CoreWorker:
             if returns[0][i].get() == NULL:
                 continue
 
-            if isinstance(serialized_object, bytes):
+            if serialized_object == NoReturn:
+                returns[0][i].reset()
+            elif isinstance(serialized_object, bytes):
                 buffer = Buffer.make(returns[0][i].get().GetData())
                 stream = pyarrow.FixedSizeBufferWriter(
                     pyarrow.py_buffer(buffer))

@@ -617,7 +617,10 @@ Status CoreWorker::GetReturnObjects(
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       }
     }
-    if (!object_already_exists) {
+    // Leave the return object as a nullptr if there is no data or metadata.
+    // This allows the caller to prevent the core worker from storing an output
+    // (e.g., to support ray.experimental.no_return.NoReturn).
+    if (!object_already_exists && (data_buffer || metadatas[i])) {
       return_objects->at(i) = std::make_shared<RayObject>(data_buffer, metadatas[i]);
     }
   }

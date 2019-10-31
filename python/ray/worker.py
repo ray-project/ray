@@ -25,7 +25,6 @@ import random
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
-import ray.experimental.no_return
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
