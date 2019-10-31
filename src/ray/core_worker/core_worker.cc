@@ -606,16 +606,20 @@ Status CoreWorker::GetReturnObjects(
   return_objects->resize(object_ids.size(), nullptr);
 
   for (size_t i = 0; i < object_ids.size(); i++) {
+    bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
       if (!worker_context_.CurrentActorUseDirectCall()) {
         RAY_RETURN_NOT_OK(
             Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+        object_already_exists = !data_buffer;
       } else {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       }
     }
-    return_objects->at(i) = std::make_shared<RayObject>(data_buffer, metadatas[i]);
+    if (!object_already_exists) {
+      return_objects->at(i) = std::make_shared<RayObject>(data_buffer, metadatas[i]);
+    }
   }
 
   return Status::OK();
@@ -662,8 +666,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       arg_reference_ids, return_ids, direct_call, &return_objects);
 
   for (size_t i = 0; i < return_objects.size(); i++) {
-    // todo: is this right?
-    if (!return_objects[i]->GetData()) {
+    // The object is nullptr if it already existed in the object store.
+    if (!return_objects[i]) {
       continue;
     }
     if (return_objects[i]->GetData()->IsPlasmaBuffer()) {
