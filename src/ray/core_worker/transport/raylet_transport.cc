@@ -56,6 +56,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, resource_ids, &results);
+  RAY_CHECK(results.size() == 0);
 
   auto num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
