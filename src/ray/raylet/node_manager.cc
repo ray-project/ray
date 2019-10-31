@@ -768,12 +768,6 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
   } else {
     RAY_CHECK(actor_registration.GetState() == ActorTableData::RECONSTRUCTING);
     RAY_LOG(DEBUG) << "Actor is being reconstructed: " << actor_id;
-    // The actor is dead and needs reconstruction. Attempting to reconstruct its
-    // creation task.
-    // TODO(swang): Remove this and have the owner do it instead when first
-    // creating the actor.
-    reconstruction_policy_.ListenAndMaybeReconstruct(
-        actor_registration.GetActorCreationDependency());
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
     // creation.
