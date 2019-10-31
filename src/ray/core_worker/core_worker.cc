@@ -658,12 +658,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     return_ids.pop_back();
     task_type = TaskType::ACTOR_TASK;
   }
-  bool direct_call = worker_context_.CurrentActorUseDirectCall();
 
   std::vector<std::shared_ptr<RayObject>> return_objects;
-  status = task_execution_callback_(
-      task_type, func, task_spec.GetRequiredResources().GetResourceMap(), args,
-      arg_reference_ids, return_ids, direct_call, &return_objects);
+  status = task_execution_callback_(task_type, func,
+                                    task_spec.GetRequiredResources().GetResourceMap(),
+                                    args, arg_reference_ids, return_ids, &return_objects);
 
   for (size_t i = 0; i < return_objects.size(); i++) {
     // The object is nullptr if it already existed in the object store.

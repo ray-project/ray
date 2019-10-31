@@ -464,7 +464,6 @@ cdef execute_task(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_bool return_outputs_directly,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     worker = ray.worker.global_worker
@@ -609,7 +608,6 @@ cdef CRayStatus task_execution_handler(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &c_arg_reference_ids,
         const c_vector[CObjectID] &c_return_ids,
-        c_bool return_results_directly,
         c_vector[shared_ptr[CRayObject]] *returns) nogil:
 
     with gil:
@@ -617,8 +615,7 @@ cdef CRayStatus task_execution_handler(
             # The call to execute_task should never raise an exception. If it
             # does, that indicates that there was an unexpected internal error.
             execute_task(task_type, ray_function, c_resources, c_args,
-                         c_arg_reference_ids, c_return_ids,
-                         return_results_directly, returns)
+                         c_arg_reference_ids, c_return_ids, returns)
         except Exception:
             traceback_str = traceback.format_exc() + (
                 "An unexpected internal error occurred while the worker was"
