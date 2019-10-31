@@ -475,8 +475,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
 
-  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(builder.Build()));
-  *return_actor_id = actor_id;
+  const ray::TaskSpecification spec = builder.Build();
+  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(spec));
+   *return_actor_id = actor_id;
+  children_actors_.insert({*return_actor_id, ChildActor(spec)});
   return Status::OK();
 }
 

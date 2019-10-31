@@ -275,6 +275,16 @@ class CoreWorker {
   void StartExecutingTasks();
 
  private:
+  /// Metadata for an actor that we created.
+  struct ChildActor {
+    ChildActor(const ray::TaskSpecification &spec) : actor_creation_spec(spec) {}
+    /// The actor creation task spec. This is used to populate the actor table
+    /// entry and restart the actor if the actor fails.
+    const ray::TaskSpecification actor_creation_spec;
+    /// How many times this actor has been alive before.
+    uint64_t num_lifetimes = 0;
+  };
+
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
@@ -402,6 +412,8 @@ class CoreWorker {
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
+  /// Map of actors that we created.
+  std::unordered_map<ActorID, ChildActor> children_actors_;
   /// Map from actor ID to a handle to that actor.
   std::unordered_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
