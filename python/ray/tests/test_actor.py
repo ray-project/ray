@@ -2824,7 +2824,7 @@ def test_detached_actor(ray_start_regular):
     with pytest.raises(Exception, match="Detached actors must be named"):
         PersistentActor._remote(detached=True)
 
-    with pytest.raises(Exception, match="Please use a different name"):
+    with pytest.raises(ValueError, match="Please use a different name"):
         _ = PersistentActor._remote(name="p_actor")
         PersistentActor._remote(name="p_actor")
 

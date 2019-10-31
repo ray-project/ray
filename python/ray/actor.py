@@ -328,7 +328,8 @@ class ActorClass(object):
                 task.
             is_direct_call: Use direct actor calls.
             name: The globally unique name for the actor.
-            detached: Whether the actor should be kept alive after driver exits
+            detached: Whether the actor should be kept alive after driver
+                exits.
 
         Returns:
             A handle to the newly created actor.
@@ -354,12 +355,13 @@ class ActorClass(object):
         if name is not None:
             try:
                 ray.experimental.get_actor(name)
-                raise Exception(
+            except ValueError:  # name is not taken, expected.
+                pass
+            else:
+                raise ValueError(
                     "The name {name} is already taken. Please use "
                     "a different name or get existing actor using "
                     "ray.experimental.get_actor('{name}')".format(name=name))
-            except ValueError:  # name is not taken, expected.
-                pass
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
