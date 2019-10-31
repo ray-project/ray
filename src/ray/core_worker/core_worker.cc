@@ -677,6 +677,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
+    } else if (!worker_context_.CurrentActorUseDirectCall()) {
+      if (!Put(*return_objects[i], return_ids[i]).ok()) {
+        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
+                       << return_ids[i] << " in store: " << status.message();
+      }
     } else {
       return_by_value->push_back(return_objects[i]);
     }

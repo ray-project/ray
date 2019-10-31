@@ -1030,7 +1030,8 @@ cdef class CoreWorker:
                 metadatas.push_back(dynamic_pointer_cast[
                     CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size())))
+                        <uint8_t*>(metadata_str.data()),
+                        metadata_str.size(), True)))
             elif worker.use_pickle:
                 inband, writer = worker._serialize_with_pickle5(output)
                 serialized_objects.append((inband, writer))
@@ -1039,7 +1040,8 @@ cdef class CoreWorker:
                 metadatas.push_back(dynamic_pointer_cast[
                     CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size())))
+                        <uint8_t*>(metadata_str.data()),
+                        metadata_str.size(), True)))
             else:
                 serialized_object = worker._serialize_with_pyarrow(output)
                 serialized_objects.append(serialized_object)
