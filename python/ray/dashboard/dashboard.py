@@ -357,7 +357,6 @@ if __name__ == "__main__":
         "--host",
         required=True,
         type=str,
-        choices=["localhost", "0.0.0.0"],
         help="The host to use for the HTTP server.")
     parser.add_argument(
         "--port",

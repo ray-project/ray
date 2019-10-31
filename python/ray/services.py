@@ -1035,7 +1035,7 @@ def start_dashboard(host,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
     dashboard_url = "{}:{}".format(
-        host if host == "localhost" else get_node_ip_address(), port)
+        host if host != "0.0.0.0" else get_node_ip_address(), port)
     logger.info("View the Ray dashboard at {}{}{}{}{}.".format(
         colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
         colorama.Fore.RESET, colorama.Style.NORMAL))
