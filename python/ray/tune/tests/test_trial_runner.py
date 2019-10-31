@@ -26,6 +26,7 @@ from ray.tune.result import (
     EPISODES_TOTAL, TRAINING_ITERATION, TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
     TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
+from ray.tune.syncer import CommandBasedClient
 from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
@@ -1124,9 +1125,8 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 }).trials
 
-        with patch("ray.tune.syncer.CommandSyncer.sync_function"
-                   ) as mock_fn, patch(
-                       "ray.services.get_node_ip_address") as mock_sync:
+        with patch.object(CommandBasedClient, "execute") as mock_fn, \
+             patch("ray.services.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
             [trial] = tune.run(
                 "__fake",
@@ -1166,7 +1166,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterSyncFunction(self):
         def sync_func_driver(source, target):
-            assert ":" in source, "Source not a remote path."
+            assert ":" in source, "Source {} not a remote path.".format(source)
             assert ":" not in target, "Target is supposed to be local."
             with open(os.path.join(target, "test.log2"), "w") as f:
                 print("writing to", f.name)
@@ -1203,7 +1203,7 @@ class TestSyncFunctionality(unittest.TestCase):
         def sync_func(source, target):
             pass
 
-        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_sync:
+        with patch.object(CommandBasedClient, "execute") as mock_sync:
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -1948,13 +1948,14 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
-                "training_iteration": 1
+                "training_iteration": 2
             },
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
+        runner.step()
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
@@ -1983,6 +1984,7 @@ class TrialRunnerTest(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
+        runner.step()
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
@@ -2051,13 +2053,14 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
-                "training_iteration": 2
+                "training_iteration": 3
             },
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
+        runner.step()
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.get_info.remote()), None)

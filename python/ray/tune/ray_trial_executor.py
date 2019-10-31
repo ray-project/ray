@@ -569,12 +569,14 @@ class RayTrialExecutor(TrialExecutor):
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, trial.last_result)
 
-        with warn_if_slow("commit_checkpoint"):
+        with warn_if_slow("on_checkpoint"):
             try:
-                trial.commit_checkpoint(checkpoint)
+                trial.on_checkpoint(checkpoint)
             except Exception:
-                logger.exception("Error committing checkpoint for Trial %s",
+                logger.exception("Error handling checkpoint for Trial %s",
                                  trial)
+                return None
+        return checkpoint.value
 
     def restore(self, trial, checkpoint=None):
         """Restores training state from a given model checkpoint.

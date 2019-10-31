@@ -235,7 +235,6 @@ class Trainable(object):
         if monitor_data:
             result.update(monitor_data)
 
-        self._last_result = result
         self._log_result(result)
 
         return result

@@ -3,6 +3,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import namedtuple
+
 import heapq
 import os
 import shutil
@@ -29,89 +31,92 @@ class Checkpoint(object):
         self.value = value
         self.last_result = last_result or {}
 
+    def delete(self):
+        """Deletes checkpoint data if disk checkpoint."""
+        if self.storage == Checkpoint.DISK and self.value:
+            # TODO(ujvl): Consider asynchronous deletion.
+            checkpoint_dir = self.value
+            if not os.path.exists(checkpoint_dir):
+                raise FileNotFoundError(
+                    "Attempted to delete checkpoint at {} but "
+                    "path was not found.".format(checkpoint_dir))
+            elif os.path.isfile(checkpoint_dir):
+                shutil.rmtree(os.path.dirname(checkpoint_dir))
+            else:
+                shutil.rmtree(checkpoint_dir)
+
     @staticmethod
     def from_object(value=None):
         """Creates a checkpoint from a Python object."""
         return Checkpoint(Checkpoint.MEMORY, value)
 
 
+QueueItem = namedtuple("QueueItem", ["priority", "value"])
+
+
 class CheckpointManager(object):
     """Manages checkpoints on the driver for a trial."""
 
     def __init__(self, keep_checkpoints_num, checkpoint_score_attr):
-        """Initializes a new TrialCheckpointManager.
+        """Initializes a new CheckpointManager.
 
         Args:
             keep_checkpoints_num (int): Keep at least this many checkpoints.
             checkpoint_score_attr (str): Attribute to use to determine which
                 checkpoints to keep.
         """
-        self.keep_checkpoints_num = keep_checkpoints_num
-        self.best_checkpoints = []
-        self.best_checkpoints_set = set()
-        self.newest_checkpoint = None
-
-        self.checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
-        if self.checkpoint_score_desc:
-            self.checkpoint_score_attr = checkpoint_score_attr[4:]
-            self.best_checkpoint_score = float("inf")
+        self.keep_checkpoints_num = keep_checkpoints_num or float("inf")
+        assert self.keep_checkpoints_num > 0, (
+            "keep_checkpoints_num must be greater than 0.")
+        self._checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
+        if self._checkpoint_score_desc:
+            self._checkpoint_score_attr = checkpoint_score_attr[4:]
         else:
-            self.checkpoint_score_attr = checkpoint_score_attr
-            self.best_checkpoint_score = float("-inf")
+            self._checkpoint_score_attr = checkpoint_score_attr
+        self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
 
-    def add_checkpoint(self, checkpoint):
-        """Adds checkpoint metadata.
+        self._best_checkpoints = []
+        self._membership = set()
 
-        Deletes worst checkpoint when at capacity.
+    def on_checkpoint(self, checkpoint):
+        """Starts tracking checkpoint metadata on checkpoint.
+
+        Sets newest checkpoint. Deletes previous checkpoint as long as it isn't
+        one of the best ones. Also deletes the worst checkpoint if at capacity.
 
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
-        """
-        try:
-            priority = checkpoint.last_result[self.checkpoint_score_attr]
-        except KeyError:
-            raise TuneError(
-                "Result dict has no key: {}. keep_checkpoints_num flag will "
-                "not work. checkpoint_score_attr must be set to a key in the "
-                "result dict.".format(self.checkpoint_score_attr))
 
+        Raises:
+            KeyError if checkpoint_score_attr not in last_result of checkpoint.
+        """
         old_checkpoint = self.newest_checkpoint
         self.newest_checkpoint = checkpoint
 
-        priority = -priority if self.checkpoint_score_desc else priority
-        queue_item = (priority, checkpoint)
+        try:
+            queue_item = QueueItem(self._priority(checkpoint), checkpoint)
+        except KeyError:
+            if old_checkpoint not in self._membership:
+                old_checkpoint.delete()
+            raise ValueError(
+                "Result dict has no key: {}. checkpoint_score_attr must be "
+                "set to a key in the result dict.".format(
+                    self._checkpoint_score_attr))
 
-        if len(self.best_checkpoints) < self.keep_checkpoints_num:
-            heapq.heappush(self.best_checkpoints, queue_item)
-            self.best_checkpoints_set.add(checkpoint)
-        elif priority < self.best_checkpoints[0][0]:
-            pass
-        else:
-            _, worst = heapq.heappushpop(self.best_checkpoints, queue_item)
-            self.best_checkpoints_set.add(checkpoint)
-            if worst in self.best_checkpoints_set:
-                self.best_checkpoints_set.remove(worst)
-
-            if worst.storage == Checkpoint.DISK:
-                CheckpointManager.delete_checkpoint(worst.value)
+        if len(self._best_checkpoints) < self.keep_checkpoints_num:
+            heapq.heappush(self._best_checkpoints, queue_item)
+            self._membership.add(checkpoint)
+        elif queue_item.priority >= self._best_checkpoints[0][0]:
+            _, worst = heapq.heappushpop(self._best_checkpoints, queue_item)
+            self._membership.add(checkpoint)
+            if worst in self._membership:
+                self._membership.remove(worst)
+            worst.delete()
 
         # Remove the old checkpoint if it isn't one of the best ones.
-        if old_checkpoint not in self.best_checkpoints_set:
-            self.delete_checkpoint(old_checkpoint.value)
+        if old_checkpoint not in self._membership:
+            old_checkpoint.delete()
 
-    @classmethod
-    def delete_checkpoint(cls, checkpoint_dir):
-        """Removes subdirectory within the checkpoint folder.
-
-        Args:
-            checkpoint_dir (str): path to checkpoint
-        """
-        if not os.path.exists(checkpoint_dir):
-            raise FileNotFoundError(
-                "Attempted to delete checkpoint at {} but "
-                "path was not found.".format(checkpoint_dir))
-        elif os.path.isfile(checkpoint_dir):
-            shutil.rmtree(os.path.dirname(checkpoint_dir))
-        else:
-            shutil.rmtree(checkpoint_dir)
-
+    def _priority(self, checkpoint):
+        priority = checkpoint.last_result[self._checkpoint_score_attr]
+        return -priority if self._checkpoint_score_desc else priority

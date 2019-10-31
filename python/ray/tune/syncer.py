@@ -34,7 +34,6 @@ def wait_for_sync():
 
 
 class SyncClient(object):
-
     def sync_up(self, source, target):
         """Sync up from source to target.
 
@@ -63,7 +62,6 @@ class SyncClient(object):
 
 
 class FunctionBasedClient(SyncClient):
-
     def __init__(self, sync_up_func, sync_down_func):
         self.sync_up_func = sync_up_func
         self.sync_down_func = sync_down_func
@@ -93,12 +91,17 @@ class CommandBasedClient(SyncClient):
         self._validate_sync_string(sync_down_template)
         self.sync_up_template = sync_up_template
         self.sync_down_template = sync_down_template
-        self.logfile = tempfile.NamedTemporaryFile(
-            prefix="log_sync",
-            dir=self._local_dir,
-            suffix=".log",
-            delete=False)
+        self.logfile = None
         self.sync_process = None
+
+    def set_logdir(self, logdir):
+        """Sets the directory to log sync execution output in.
+
+        Args:
+            logdir: Log directory.
+        """
+        self.logfile = tempfile.NamedTemporaryFile(
+            prefix="log_sync", dir=logdir, suffix=".log", delete=False)
 
     def sync_up(self, source, target):
         self.execute(self.sync_up_template, source, target)
@@ -139,23 +142,22 @@ NOOP = FunctionBasedClient(lambda s, t: None, lambda s, t: None)
 
 
 class Syncer(NodeSyncMixin):
-
     def __init__(self, local_dir, remote_dir, sync_client=NOOP):
         """Syncs between two directories with the sync_function.
 
         Arguments:
             local_dir (str): Directory to sync. Uniquely identifies the syncer.
             remote_dir (str): Remote directory to sync with.
-            sync_client (Any): Client for syncing between local_dir and
+            sync_client (SyncClient): Client for syncing between local_dir and
                 remote_dir. Defaults to a Noop.
         """
-        super().__init__()
         self._local_dir = (os.path.join(local_dir, "")
                            if local_dir else local_dir)
         self._remote_dir = remote_dir
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
+        super().__init__()
 
     def sync_up_if_needed(self):
         if time.time() - self.last_sync_up_time > SYNC_PERIOD:
@@ -166,17 +168,17 @@ class Syncer(NodeSyncMixin):
             self.sync_down()
 
     def sync_up(self):
-        if self.validate_hosts(self._local_dir, self._remote_dir):
+        if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                self.sync_client.sync_up(self._local_dir, self._remote_dir)
+                self.sync_client.sync_up(self._local_dir, self._remote_path)
                 self.last_sync_up_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
 
     def sync_down(self):
-        if self.validate_hosts(self._local_dir, self._remote_dir):
+        if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                self.sync_client.sync_down(self._remote_dir, self._local_dir)
+                self.sync_client.sync_down(self._remote_path, self._local_dir)
                 self.last_sync_down_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -196,14 +198,6 @@ class Syncer(NodeSyncMixin):
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
         self.sync_client.reset()
-
-    @property
-    def _remote_path(self):
-        """Protected method for accessing remote_dir.
-
-        Can be overridden in subclass for custom path.
-        """
-        return self._remote_dir
 
 
 def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
@@ -232,7 +226,7 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
     client = _get_sync_client(sync_function)
 
     if client:
-        _syncers[key] = client
+        _syncers[key] = Syncer(local_dir, remote_dir, client)
         return _syncers[key]
 
     if remote_dir.startswith(S3_PREFIX):
@@ -269,6 +263,7 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults rsync.
     """
+    print(local_dir, remote_dir)
     key = (local_dir, remote_dir)
     if key in _syncers:
         return _syncers[key]
@@ -277,9 +272,13 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
     elif sync_function:
         sync_client = _get_sync_client(sync_function)
     else:
-        sync_client = CommandBasedClient(
-            log_sync_template(),
-            log_sync_template(options="--remove-source-files"))
+        sync_up = log_sync_template()
+        sync_down = log_sync_template(options="--remove-source-files")
+        if sync_up and sync_down:
+            sync_client = CommandBasedClient(sync_up, sync_down)
+            sync_client.set_logdir(local_dir)
+        else:
+            sync_client = NOOP
     _syncers[key] = Syncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
