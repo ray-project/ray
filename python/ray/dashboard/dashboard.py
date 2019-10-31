@@ -382,8 +382,7 @@ class RayletStats(threading.Thread):
 
             for node in self.nodes:
                 channel = grpc.insecure_channel("{}:{}".format(
-                    node["NodeManagerAddress"],
-                    node["NodeManagerPort"]))
+                    node["NodeManagerAddress"], node["NodeManagerPort"]))
                 stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
                 self.stubs.append(stub)
 
@@ -397,8 +396,10 @@ class RayletStats(threading.Thread):
             time.sleep(1.0)
             with self._raylet_stats_lock:
                 for node, stub in zip(self.nodes, self.stubs):
-                    reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
-                    self._raylet_stats[node["NodeManagerAddress"]] = MessageToDict(reply)
+                    reply = stub.GetNodeStats(
+                        node_manager_pb2.NodeStatsRequest())
+                    self._raylet_stats[node[
+                        "NodeManagerAddress"]] = MessageToDict(reply)
             counter += 1
             # From time to time, check if new nodes have joined the cluster
             # and update self.nodes
