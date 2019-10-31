@@ -107,6 +107,7 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
   // Write message id stands for current lastest message id and differs from
   // channel.current_message_id if it's barrier message.
   uint64_t &write_message_id = channel_info.current_message_id;
+  write_message_id++;
   auto &ring_buffer_ptr = channel_info.writer_ring_buffer;
   while (ring_buffer_ptr->IsFull() && channel_state_ == StreamingChannelState::Running) {
     std::this_thread::sleep_for(std::chrono::milliseconds(config_.TIME_WAIT_UINT));
@@ -162,16 +163,15 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
                       << ", unified map";
 
   output_queue_ids_ = queue_id_vec;
-  std::shared_ptr<Config> transfer_config = std::make_shared<Config>();
-  transfer_config->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
-  transfer_config->Set(ConfigEnum::RAYLET_SOCKET_PATH,
+  transfer_config_->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
+  transfer_config_->Set(ConfigEnum::RAYLET_SOCKET_PATH,
                        config_.GetStreaming_raylet_socket_path());
-  transfer_config->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
-  transfer_config->Set(ConfigEnum::RAYLET_CLIENT,
+  transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
+  transfer_config_->Set(ConfigEnum::RAYLET_CLIENT,
                        reinterpret_cast<uint64_t>(raylet_client_));
-  transfer_config->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
+  transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
-  transfer_.reset(new MockProducer(transfer_config));
+  transfer_.reset(new StreamingQueueProducer(transfer_config_));
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     // init channelIdGenerator or create it
@@ -184,6 +184,8 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   channel_state_ = StreamingChannelState::Running;
   return StreamingStatus::OK;
 }
+
+StreamingWriter::StreamingWriter() { transfer_config_ = std::make_shared<Config>(); }
 
 StreamingWriter::~StreamingWriter() {
   // Return if fail to init streaming writer

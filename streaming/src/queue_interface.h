@@ -16,6 +16,19 @@ namespace ray {
 
 const uint64_t QUEUE_INTERFACE_INVALID = std::numeric_limits<uint64_t>::max();
 
+class QueueWriterInterface;
+class QueueReaderInterface;
+
+std::shared_ptr<QueueWriterInterface> CreateQueueWriter(
+    const JobID &job_id,
+    const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
+    ray::RayFunction &async_func, ray::RayFunction &sync_func);
+
+std::shared_ptr<QueueReaderInterface> CreateQueueReader(
+    const JobID &job_id,
+    const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
+    ray::RayFunction &async_func, ray::RayFunction &sync_func);
+
 // convert plasma status to ray status
 ray::Status ConvertStatus(const arrow::Status &status);
 
@@ -29,7 +42,7 @@ class QueueWriterInterface {
  public:
   QueueWriterInterface() {}
   virtual ~QueueWriterInterface() {}
-  virtual Status CreateQueue(const ObjectID &queue_id, int64_t data_size, uint64_t actor_handle,
+  virtual Status CreateQueue(const ObjectID &queue_id, int64_t data_size, ActorID &actor_handle,
                              bool reconstruct_queue = false, bool clear = false) = 0;
   virtual Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                                uint32_t data_size, uint64_t timestamp) = 0;
@@ -58,7 +71,7 @@ class QueueReaderInterface {
   QueueReaderInterface() {}
   virtual ~QueueReaderInterface() {}
   virtual bool GetQueue(const ObjectID &queue_id, int64_t timeout_ms,
-                        uint64_t start_seq_id, uint64_t actor_handle) = 0;
+                        uint64_t start_seq_id, ActorID &actor_id) = 0;
   virtual Status GetQueueItem(const ObjectID &object_id, uint8_t *&data,
                               uint32_t &data_size, uint64_t &seq_id,
                               uint64_t timeout_ms = -1) = 0;
@@ -81,7 +94,7 @@ class StreamingQueueWriter : public QueueWriterInterface {
   ~StreamingQueueWriter() {}
 
   Status CreateQueue(const ObjectID &queue_id, int64_t data_size,
-                     uint64_t actor_handle,
+                     ActorID &actor_handle,
                      bool reconstruct_queue = false, bool clear = false);
   bool IsQueueFoundInLocal(const ObjectID &queue_id, const int64_t timeout_ms);
   Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit);
@@ -118,7 +131,7 @@ class StreamingQueueReader : public QueueReaderInterface {
   ~StreamingQueueReader() {}
 
   bool GetQueue(const ObjectID &queue_id, int64_t timeout_ms, uint64_t start_seq_id,
-                uint64_t actor_handle);
+                ActorID &actor_handle);
   Status GetQueueItem(const ObjectID &object_id, uint8_t *&data, uint32_t &data_size,
                       uint64_t &seq_id, uint64_t timeout_ms = -1);
   void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id);

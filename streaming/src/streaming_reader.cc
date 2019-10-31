@@ -46,16 +46,15 @@ void StreamingReader::Init(const std::string &plasma_store_path,
                       << ", raylet socket: " << config_.GetStreaming_raylet_socket_path()
                       << ", " << input_ids.size() << " queue to init.";
 
-  std::shared_ptr<Config> transfer_config = std::make_shared<Config>();
-  transfer_config->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
-  transfer_config->Set(ConfigEnum::RAYLET_SOCKET_PATH,
+  transfer_config_->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
+  transfer_config_->Set(ConfigEnum::RAYLET_SOCKET_PATH,
                        config_.GetStreaming_raylet_socket_path());
-  transfer_config->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
-  transfer_config->Set(ConfigEnum::RAYLET_CLIENT,
+  transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
+  transfer_config_->Set(ConfigEnum::RAYLET_CLIENT,
                        reinterpret_cast<uint64_t>(raylet_client_));
-  transfer_config->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
+  transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
 
-  transfer_ = std::make_shared<MockConsumer>(transfer_config);
+  transfer_ = std::make_shared<StreamingQueueConsumer>(transfer_config_);
 
   last_fetched_queue_item_ = nullptr;
   timer_interval_ = timer_interval;
@@ -281,6 +280,8 @@ void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
     STREAMING_LOG(DEBUG) << "notify seq id equal to last seq id => " << offset;
   }
 }
+
+StreamingReader::StreamingReader() { transfer_config_ = std::make_shared<Config>(); }
 
 StreamingReader::~StreamingReader() {
   STREAMING_LOG(INFO) << "Streaming reader deconstruct.";

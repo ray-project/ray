@@ -114,17 +114,21 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
   }
 
-  void InitWorker(CoreWorker &driver, ActorHandle &self_actor_handle,
-                  ActorHandle &peer_actor_handle,
+  void InitWorker(CoreWorker &driver, ActorID &self_actor_id,
+                  ActorID &peer_actor_id,
                   const queue::flatbuf::StreamingQueueTestRole role,
                   const std::vector<ObjectID> &queue_ids,
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
     std::string forked_serialized_str;
     // peer_actor_handle.Fork().Serialize(&forked_serialized_str);
-    peer_actor_handle.Serialize(&forked_serialized_str);
+    // ActorHandle* peer_actor_handle = nullptr;
+    // driver.GetActorHandle(peer_actor_id, &peer_actor_handle);
+    // peer_actor_handle->Serialize(&forked_serialized_str);
+    Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str);
+    STREAMING_CHECK(st.ok());
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;
-    TestInitMsg msg(role, self_actor_handle.GetActorID(), peer_actor_handle.GetActorID(),
+    TestInitMsg msg(role, self_actor_id, peer_actor_id,
                     forked_serialized_str, queue_ids, rescale_queue_ids, suite_name,
                     test_name, param);
 
@@ -136,11 +140,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"init"}};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_handle.GetActorID(), func, args, options,
+    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options,
                                                 &return_ids));
   }
 
-  void SubmitTestToActor(CoreWorker &driver, ActorHandle &actor_handle,
+  void SubmitTestToActor(CoreWorker &driver, ActorID &actor_id,
                          const std::string test) {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
@@ -153,10 +157,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, {"execute_test", test}};
 
     RAY_CHECK_OK(
-        driver.SubmitActorTask(actor_handle.GetActorID(), func, args, options, &return_ids));
+        driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
   }
 
-  bool CheckCurTest(CoreWorker &driver, ActorHandle &actor_handle,
+  bool CheckCurTest(CoreWorker &driver, ActorID &actor_id,
                     const std::string test_name) {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
@@ -169,7 +173,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     RayFunction func{ray::Language::PYTHON, {"check_current_test_status"}};
 
     RAY_CHECK_OK(
-        driver.SubmitActorTask(actor_handle.GetActorID(), func, args, options, &return_ids));
+        driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
@@ -217,7 +221,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     return message->Status();
   }
 
-  std::unique_ptr<ActorHandle> CreateActorHelper(
+  ActorID CreateActorHelper(
       CoreWorker &worker, const std::unordered_map<std::string, double> &resources,
       bool is_direct_call, uint64_t max_reconstructions) {
     std::unique_ptr<ActorHandle> actor_handle;
@@ -234,9 +238,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         max_reconstructions, is_direct_call, resources, resources, {}};
 
     // Create an actor.
-    ActorID actor_id = actor_handle->GetActorID();
+    ActorID actor_id;
     RAY_CHECK_OK(worker.CreateActor(func, args, actor_options, &actor_id));
-    return actor_handle;
+    return actor_id;
   }
 
   void SubmitTest(uint32_t queue_num, std::string suite_name, std::string test_name,
@@ -269,27 +273,27 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     // Create writer and reader actors
     std::unordered_map<std::string, double> resources;
-    auto actor_handle_writer = CreateActorHelper(driver, resources, true, 0);
-    auto actor_handle_reader = CreateActorHelper(driver, resources, true, 0);
+    auto actor_id_writer = CreateActorHelper(driver, resources, true, 0);
+    auto actor_id_reader = CreateActorHelper(driver, resources, true, 0);
 
-    InitWorker(driver, *actor_handle_writer, *actor_handle_reader,
+    InitWorker(driver, actor_id_writer, actor_id_reader,
                queue::flatbuf::StreamingQueueTestRole::WRITER, queue_id_vec,
                rescale_queue_id_vec, suite_name, test_name, GetParam());
-    InitWorker(driver, *actor_handle_reader, *actor_handle_writer,
+    InitWorker(driver, actor_id_reader, actor_id_writer,
                queue::flatbuf::StreamingQueueTestRole::READER, queue_id_vec,
                rescale_queue_id_vec, suite_name, test_name, GetParam());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
-    SubmitTestToActor(driver, *actor_handle_writer, test_name);
-    SubmitTestToActor(driver, *actor_handle_reader, test_name);
+    SubmitTestToActor(driver, actor_id_writer, test_name);
+    SubmitTestToActor(driver, actor_id_reader, test_name);
 
     uint64_t slept_time_ms = 0;
     while (slept_time_ms < timeout_ms) {
       std::this_thread::sleep_for(std::chrono::milliseconds(5*1000));
       STREAMING_LOG(INFO) << "Check test status.";
-      if (CheckCurTest(driver, *actor_handle_writer, test_name) &&
-          CheckCurTest(driver, *actor_handle_reader, test_name)) {
+      if (CheckCurTest(driver, actor_id_writer, test_name) &&
+          CheckCurTest(driver, actor_id_reader, test_name)) {
         STREAMING_LOG(INFO) << "Test Success, Exit.";
         return;
       }

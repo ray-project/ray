@@ -25,12 +25,11 @@ namespace streaming {
 
 class StreamingQueueTestSuite {
  public:
-  StreamingQueueTestSuite(std::shared_ptr<CoreWorker> core_worker,
-                          std::shared_ptr<ActorHandle> peer_actor_handle,
+  StreamingQueueTestSuite(std::shared_ptr<CoreWorker> core_worker, ActorID &peer_actor_id,
                           std::vector<ObjectID> queue_ids,
                           std::vector<ObjectID> rescale_queue_ids)
       : core_worker_(core_worker),
-        peer_actor_handle_(peer_actor_handle),
+        peer_actor_id_(peer_actor_id),
         queue_ids_(queue_ids),
         rescale_queue_ids_(rescale_queue_ids) {}
 
@@ -59,7 +58,7 @@ class StreamingQueueTestSuite {
   bool status_;
   std::shared_ptr<std::thread> executor_thread_;
   std::shared_ptr<CoreWorker> core_worker_;
-  std::shared_ptr<ActorHandle> peer_actor_handle_;
+  ActorID peer_actor_id_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
 };
@@ -67,14 +66,14 @@ class StreamingQueueTestSuite {
 class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
  public:
   StreamingQueueWriterTestSuite(std::shared_ptr<CoreWorker> core_worker,
-                                std::shared_ptr<ActorHandle> peer_actor_handle,
-                                std::vector<ObjectID> queue_ids,
+                                ActorID &peer_actor_id, std::vector<ObjectID> queue_ids,
                                 std::vector<ObjectID> rescale_queue_ids)
-      : StreamingQueueTestSuite(core_worker, peer_actor_handle, queue_ids,
+      : StreamingQueueTestSuite(core_worker, peer_actor_id, queue_ids,
                                 rescale_queue_ids) {
     test_func_map_ = {
         {"streaming_writer_exactly_once_test",
-         std::bind(&StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest, this)}};
+         std::bind(&StreamingQueueWriterTestSuite::StreamingWriterExactlyOnceTest,
+                   this)}};
   }
 
  private:
@@ -110,14 +109,13 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     for (auto &queue_id : queue_ids_) {
       STREAMING_LOG(INFO) << "queue_id: " << queue_id;
     }
-    std::vector<uint64_t> actor_handles(queue_ids_.size(),
-                                        (uint64_t)peer_actor_handle_.get());
-    STREAMING_LOG(INFO) << "actor_handles size: " << actor_handles.size()
-                        << " handle: " << (uint64_t)peer_actor_handle_.get();
+    std::vector<ActorID> actor_ids(queue_ids_.size(), peer_actor_id_);
+    STREAMING_LOG(INFO) << "writer actor_ids size: " << actor_ids.size()
+                        << " actor_id: " << peer_actor_id_;
     RayFunction async_call_func{ray::Language::PYTHON, {"async_call_func"}};
     RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
     std::shared_ptr<StreamingWriter> streaming_writer_client(
-        new StreamingWriterDirectCall(core_worker_.get(), queue_ids_, actor_handles,
+        new StreamingWriterDirectCall(core_worker_.get(), queue_ids_, actor_ids,
                                       async_call_func, sync_call_func));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
@@ -153,14 +151,14 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
  public:
   StreamingQueueReaderTestSuite(std::shared_ptr<CoreWorker> core_worker,
-                                std::shared_ptr<ActorHandle> peer_actor_handle,
-                                std::vector<ObjectID> queue_ids,
+                                ActorID peer_actor_id, std::vector<ObjectID> queue_ids,
                                 std::vector<ObjectID> rescale_queue_ids)
-      : StreamingQueueTestSuite(core_worker, peer_actor_handle, queue_ids,
+      : StreamingQueueTestSuite(core_worker, peer_actor_id, queue_ids,
                                 rescale_queue_ids) {
     test_func_map_ = {
         {"streaming_writer_exactly_once_test",
-         std::bind(&StreamingQueueReaderTestSuite::StreamingWriterExactlyOnceTest, this)}};
+         std::bind(&StreamingQueueReaderTestSuite::StreamingWriterExactlyOnceTest,
+                   this)}};
   }
 
  private:
@@ -209,7 +207,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
       bundlePtr = StreamingMessageBundle::FromBytes(msg->data);
       std::list<StreamingMessagePtr> message_list;
       bundlePtr->GetMessageList(message_list);
-      STREAMING_LOG(DEBUG) << "message size => " << message_list.size()
+      STREAMING_LOG(INFO) << "message size => " << message_list.size()
                            << " from queue id => " << msg->from.Hex()
                            << " last message id => " << msg->meta->GetLastMessageId();
 
@@ -255,12 +253,13 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
   }
 
   void StreamingReaderStrategyTest(StreamingConfig &config) {
-    std::vector<uint64_t> actor_handles(queue_ids_.size(),
-                                        (uint64_t)peer_actor_handle_.get());
+    std::vector<ActorID> actor_ids(queue_ids_.size(), peer_actor_id_);
+    STREAMING_LOG(INFO) << "reader actor_ids size: " << actor_ids.size()
+                        << " actor_id: " << peer_actor_id_;
     RayFunction async_call_func{ray::Language::PYTHON, {"async_call_func"}};
     RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
     std::shared_ptr<StreamingReader> reader(new StreamingReaderDirectCall(
-        core_worker_.get(), queue_ids_, actor_handles, async_call_func, sync_call_func));
+        core_worker_.get(), queue_ids_, actor_ids, async_call_func, sync_call_func));
 
     reader->SetConfig(config);
     reader->Init("", queue_ids_, -1);
@@ -284,25 +283,25 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 class TestSuiteFactory {
  public:
   static std::shared_ptr<StreamingQueueTestSuite> CreateTestSuite(
-      std::shared_ptr<CoreWorker> worker, std::shared_ptr<ActorHandle> peer_actor_handle,
-      std::shared_ptr<TestInitMsg> message) {
+      std::shared_ptr<CoreWorker> worker, std::shared_ptr<TestInitMsg> message) {
     std::shared_ptr<StreamingQueueTestSuite> test_suite = nullptr;
     std::string suite_name = message->TestSuiteName();
     queue::flatbuf::StreamingQueueTestRole role = message->Role();
     const std::vector<ObjectID> &queue_ids = message->QueueIds();
     const std::vector<ObjectID> &rescale_queue_ids = message->RescaleQueueIds();
+    ActorID peer_actor_id = message->PeerActorId();
 
     if (role == queue::flatbuf::StreamingQueueTestRole::WRITER) {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueWriterTestSuite>(
-            worker, peer_actor_handle, queue_ids, rescale_queue_ids);
+            worker, peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
         STREAMING_CHECK(false) << "unsurported suite_name: " << suite_name;
       }
     } else {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueReaderTestSuite>(
-            worker, peer_actor_handle, queue_ids, rescale_queue_ids);
+            worker, peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
         STREAMING_CHECK(false) << "unsurported suite_name: " << suite_name;
       }
@@ -316,14 +315,12 @@ class StreamingWorker {
  public:
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
                   const gcs::GcsClientOptions &gcs_options)
-      : 
-        test_suite_(nullptr),
-        peer_actor_handle_(nullptr) {
-          worker_ = std::make_shared<CoreWorker>(
-            WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-            JobID::FromInt(1), gcs_options, "", "127.0.0.1",
-            std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8,
-                          _9));
+      : test_suite_(nullptr), peer_actor_handle_(nullptr) {
+    worker_ = std::make_shared<CoreWorker>(WorkerType::WORKER, Language::PYTHON,
+                                           store_socket, raylet_socket, JobID::FromInt(1),
+                                           gcs_options, "", "127.0.0.1",
+                                           std::bind(&StreamingWorker::ExecuteTask, this,
+                                                     _1, _2, _3, _4, _5, _6, _7, _8, _9));
 
     ActorID actor_id = worker_->GetWorkerContext().GetCurrentActorID();
     std::shared_ptr<ray::streaming::QueueManager> queue_manager =
@@ -338,13 +335,6 @@ class StreamingWorker {
   }
 
  private:
-  //  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
-  //                    const JobID &job_id, const ActorID &actor_id,
-  //                    const std::unordered_map<std::string, double> &required_resources,
-  //                    const std::vector<std::shared_ptr<RayObject>> &args,
-  //                    const std::vector<ObjectID> &arg_reference_ids,
-  //                    const std::vector<ObjectID> &return_ids,
-  //                    std::vector<std::shared_ptr<RayObject>> *results)
   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
                      const JobID &job_id, const ActorID &actor_id,
                      const std::unordered_map<std::string, double> &required_resources,
@@ -352,13 +342,11 @@ class StreamingWorker {
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
-
     // Only one arg param used in streaming.
     STREAMING_CHECK(args.size() == 1);
 
     std::vector<std::string> function_descriptor = ray_function.GetFunctionDescriptor();
-    STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask "
-                        << function_descriptor[0];
+    STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask " << function_descriptor[0];
     auto &data = args[0]->GetData();
     std::shared_ptr<LocalMemoryBuffer> local_buffer =
         std::make_shared<LocalMemoryBuffer>(data->Data(), data->Size(), true);
@@ -406,10 +394,14 @@ class StreamingWorker {
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();
+    worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized);
+    std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
+    STREAMING_CHECK(actor_handle != nullptr);
+    STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();;
 
-    STREAMING_LOG(INFO) << "actor_handle_serialized: " << actor_handle_serialized;
-    peer_actor_handle_ =
-        std::make_shared<ActorHandle>(actor_handle_serialized);
+    // STREAMING_LOG(INFO) << "actor_handle_serialized: " << actor_handle_serialized;
+    // peer_actor_handle_ =
+    //     std::make_shared<ActorHandle>(actor_handle_serialized);
 
     STREAMING_LOG(INFO) << "HandleInitTask queues:";
     for (auto qid : message->QueueIds()) {
@@ -419,7 +411,7 @@ class StreamingWorker {
       STREAMING_LOG(INFO) << "rescale queue: " << qid;
     }
 
-    test_suite_ = TestSuiteFactory::CreateTestSuite(worker_, peer_actor_handle_, message);
+    test_suite_ = TestSuiteFactory::CreateTestSuite(worker_, message);
     STREAMING_CHECK(test_suite_ != nullptr);
   }
 

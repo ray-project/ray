@@ -69,6 +69,8 @@ class Config {
 
   boost::any &Get(ConfigEnum key) const;
 
+  boost::any Get(ConfigEnum key, boost::any default_value) const;
+
   inline uint32_t GetInt32(ConfigEnum key) { return boost::any_cast<uint32_t>(Get(key)); }
 
   inline uint64_t GetInt64(ConfigEnum key) { return boost::any_cast<uint64_t>(Get(key)); }

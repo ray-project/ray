@@ -63,6 +63,7 @@ class StreamingWriter : public StreamingCommon {
                               const std::string &plasma_store_path, uint64_t queue_size);
 
  public:
+  StreamingWriter();
   virtual ~StreamingWriter();
 
   /*!
@@ -106,7 +107,7 @@ class StreamingWriterDirectCall : public StreamingWriter {
  public:
   StreamingWriterDirectCall(CoreWorker *core_worker,
                             const std::vector<ObjectID> &queue_ids,
-                            const std::vector<uint64_t> &actor_handles,
+                            const std::vector<ActorID> &actor_ids,
                             RayFunction async_func, RayFunction sync_func)
       : core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
@@ -115,7 +116,7 @@ class StreamingWriterDirectCall : public StreamingWriter {
     transfer_config_->Set(ConfigEnum::SYNC_FUNCTION, sync_func);
     for (size_t i = 0; i < queue_ids.size(); ++i) {
       auto &q_id = queue_ids[i];
-      channel_info_map_[q_id].actor_handle = actor_handles[i];
+      channel_info_map_[q_id].actor_id = actor_ids[i];
     }
   }
 
