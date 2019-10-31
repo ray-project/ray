@@ -5,7 +5,7 @@ jfieldID java_direct_buffer_address;
 jfieldID java_direct_buffer_capacity;
 
 std::vector<ray::ObjectID>
-jarray_to_plasma_object_id_vec(JNIEnv *env, jobjectArray jarr) {
+jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr) {
   int stringCount = env->GetArrayLength(jarr);
   std::vector<ray::ObjectID> object_id_vec;
   for (int i = 0; i < stringCount; i++) {
@@ -30,12 +30,12 @@ jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector
   jobject array_list = env->NewObject(array_list_class, array_list_constructor);
 
   for (auto &q_id : abnormal_queues) {
-    jbyteArray jbyte_array = env->NewByteArray(plasma::kUniqueIDSize);
-    env->SetByteArrayRegion(jbyte_array, 0, plasma::kUniqueIDSize, reinterpret_cast<const jbyte *>(q_id.Data()));
+    jbyteArray jbyte_array = env->NewByteArray(kUniqueIDSize);
+    env->SetByteArrayRegion(jbyte_array, 0, kUniqueIDSize, reinterpret_cast<const jbyte *>(q_id.Data()));
     env->CallBooleanMethod(array_list, array_list_add, jbyte_array);
   }
 
-  jclass ex_class = env->FindClass("com/alipay/streaming/runtime/queue/impl/plasma/exception/QueueInitException");
+  jclass ex_class = env->FindClass("org/ray/streaming/queue/impl/QueueInitException");
   jmethodID ex_constructor = env->GetMethodID(ex_class, "<init>", "(Ljava/lang/String;Ljava/util/List;)V");
   jstring message_jstr = env->NewStringUTF(message);
   jobject ex_obj = env->NewObject(ex_class, ex_constructor, message_jstr, array_list);
@@ -44,7 +44,7 @@ jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector
 }
 
 jint throwQueueInterruptException(JNIEnv *env, const char *message) {
-  jclass ex_class = env->FindClass("com/alipay/streaming/runtime/queue/impl/plasma/exception/QueueInterruptException");
+  jclass ex_class = env->FindClass("org/ray/streaming/queue/impl/QueueInterruptException");
   return env->ThrowNew(ex_class, message);
 }
 

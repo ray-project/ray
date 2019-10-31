@@ -41,7 +41,7 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_getBu
   // bundle header written by writer
   std::memcpy(meta, msg->data, kMessageBundleHeaderSize);
   // append qid
-  std::memcpy(meta + kMessageBundleHeaderSize, msg->from.Data(), plasma::kUniqueIDSize);
+  std::memcpy(meta + kMessageBundleHeaderSize, msg->from.Data(), kUniqueIDSize);
 }
 
 JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_stopConsumerNative
@@ -50,7 +50,7 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_stopC
   reader->Stop();
 }
 
-JNIEXPORT void JNICALL Java_com_alipay_streaming_runtime_queue_impl_plasma_QueueConsumerImpl_closeConsumerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_closeConsumerNative
     (JNIEnv *env, jobject thisObj, jlong ptr) {
   delete reinterpret_cast<StreamingReader *>(ptr);
 }

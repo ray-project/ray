@@ -60,7 +60,7 @@ class StreamingWriter : public StreamingCommon {
                                       bool *is_empty_message);
 
   StreamingStatus InitChannel(const ObjectID &q_id, uint64_t channel_message_id,
-                              const std::string &plasma_store_path, uint64_t queue_size);
+                              uint64_t queue_size);
 
  public:
   StreamingWriter();
@@ -69,14 +69,11 @@ class StreamingWriter : public StreamingCommon {
   /*!
    * @brief streaming writer client initialization without raylet/local sheduler
    * @param queue_id_vec queue id vector
-   * @param plasma_store_path_vec plasma store path vector, it's bitwise mapping with
    * queueid
    * @param channel_message_id_vec channel seq id is related with message checkpoint
    * @param queue_size queue size (memory size not length)
-   * @param abnormal_queues reamaining queue id vector
    */
   StreamingStatus Init(const std::vector<ObjectID> &queue_id_vec,
-                       const std::string &plasma_store_path,
                        const std::vector<uint64_t> &channel_message_id_vec,
                        const std::vector<uint64_t> &queue_size_vec);
 

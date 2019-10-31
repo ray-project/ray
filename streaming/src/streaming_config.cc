@@ -149,14 +149,6 @@ void StreamingConfig::SetStreaming_task_job_id(const std::string &streaming_task
   StreamingConfig::streaming_task_job_id = streaming_task_job_id;
 }
 
-const std::string &StreamingConfig::GetPlasma_store_socket_path() const {
-  return plasma_store_socket_path;
-}
-void StreamingConfig::SetPlasma_store_socket_path(
-    const std::string &plasma_store_socket_path) {
-  StreamingConfig::plasma_store_socket_path = plasma_store_socket_path;
-}
-
 const std::string &StreamingConfig::GetQueue_type() const { return queue_type; }
 
 void StreamingConfig::SetQueue_type(const std::string &queue_type) {

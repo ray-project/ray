@@ -150,7 +150,6 @@ class StreamingQueueProducer : public ProducerTransfer {
    * item and set this last message id as new offset id value before this queue is
    * subscribed by upstream.
    * @param q_id : queue obejct id
-   * @param plasma_store_path : plasma store path in local
    * @return last message id in queue
    */
   uint64_t FetchLastMessageIdFromQueue(const ObjectID &queue_id,

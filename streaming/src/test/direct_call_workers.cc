@@ -120,7 +120,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
     streaming_writer_client->SetConfig(config);
-    streaming_writer_client->Init(queue_ids_, "", channel_seq_id_vec,
+    streaming_writer_client->Init(queue_ids_, channel_seq_id_vec,
                                   std::vector<uint64_t>(queue_ids_.size(), queue_size));
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
 
@@ -262,7 +262,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
         core_worker_.get(), queue_ids_, actor_ids, async_call_func, sync_call_func));
 
     reader->SetConfig(config);
-    reader->Init("", queue_ids_, -1);
+    reader->Init(queue_ids_, -1);
     ReaderLoopForward(reader, nullptr, queue_ids_);
 
     STREAMING_LOG(INFO) << "Reader exit";

@@ -129,7 +129,6 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
 
 StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
                                              uint64_t channel_message_id,
-                                             const std::string &plasma_store_path,
                                              uint64_t queue_size) {
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   channel_info.current_message_id = channel_message_id;
@@ -145,7 +144,6 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
 }
 
 StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
-                                      const std::string &plasma_store_path,
                                       const std::vector<uint64_t> &channel_message_id_vec,
                                       const std::vector<uint64_t> &queue_size_vec) {
   STREAMING_CHECK(queue_id_vec.size() && channel_message_id_vec.size());
@@ -163,12 +161,7 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
                       << ", unified map";
 
   output_queue_ids_ = queue_id_vec;
-  transfer_config_->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
-  transfer_config_->Set(ConfigEnum::RAYLET_SOCKET_PATH,
-                       config_.GetStreaming_raylet_socket_path());
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
-  transfer_config_->Set(ConfigEnum::RAYLET_CLIENT,
-                       reinterpret_cast<uint64_t>(raylet_client_));
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
   transfer_.reset(new StreamingQueueProducer(transfer_config_));
@@ -176,7 +169,7 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     // init channelIdGenerator or create it
     StreamingStatus status = InitChannel(queue_id_vec[i], channel_message_id_vec[i],
-                                         plasma_store_path, queue_size_vec[i]);
+                                         queue_size_vec[i]);
     if (status != StreamingStatus::OK) {
       return status;
     }
