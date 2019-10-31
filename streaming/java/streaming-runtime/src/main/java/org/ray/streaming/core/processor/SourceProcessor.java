@@ -1,5 +1,6 @@
 package org.ray.streaming.core.processor;
 
+import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.impl.SourceOperator;
 
 /**
@@ -7,15 +8,19 @@ import org.ray.streaming.operator.impl.SourceOperator;
  *
  * @param <T> The type of source data.
  */
-public class SourceProcessor<T> extends StreamProcessor<Long, SourceOperator<T>> {
+public class SourceProcessor<T> extends StreamProcessor<Record, SourceOperator<T>> {
 
   public SourceProcessor(SourceOperator<T> operator) {
     super(operator);
   }
 
   @Override
-  public void process(Long batchId) {
-    this.operator.process(batchId);
+  public void process(Record record) {
+    throw new UnsupportedOperationException("SourceProcessor should not process record");
+  }
+
+  public void run() {
+    operator.run();
   }
 
   @Override

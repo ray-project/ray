@@ -141,6 +141,9 @@ java/**/.settings
 java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
+streaming/java/**/.settings
+streaming/java/**/.project
+streaming/java/**/.classpath
 
 # python virtual env
 venv

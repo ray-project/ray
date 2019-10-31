@@ -24,15 +24,13 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
     this.function.init(runtimeContext.getParallelism(), runtimeContext.getTaskIndex());
   }
 
-  public void process(Long batchId) {
+  public void run() {
     try {
-      this.sourceContext.setBatchId(batchId);
-      this.function.fetch(batchId, this.sourceContext);
+      this.function.run(this.sourceContext);
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
   }
-
 
   @Override
   public OperatorType getOpType() {
@@ -40,8 +38,6 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
   }
 
   class SourceContextImpl implements SourceContext<T> {
-
-    private long batchId;
     private List<Collector> collectors;
 
     public SourceContextImpl(List<Collector> collectors) {
@@ -51,12 +47,9 @@ public class SourceOperator<T> extends StreamOperator<SourceFunction<T>> {
     @Override
     public void collect(T t) throws Exception {
       for (Collector collector : collectors) {
-        collector.collect(new Record(batchId, t));
+        collector.collect(new Record(t));
       }
     }
 
-    private void setBatchId(long batchId) {
-      this.batchId = batchId;
-    }
   }
 }

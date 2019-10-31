@@ -22,7 +22,7 @@ public class CollectionSourceFunction<T> implements SourceFunction<T> {
   }
 
   @Override
-  public void fetch(long batchId, SourceContext<T> ctx) throws Exception {
+  public void run(SourceContext<T> ctx) throws Exception {
     for (T value : values) {
       ctx.collect(value);
     }
