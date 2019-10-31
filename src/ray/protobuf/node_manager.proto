@@ -27,15 +27,13 @@ message WorkerStats {
 
 message ViewData {
   message Measure {
-    // A short string that describes the tags for this mesaure.
+    // A short string that describes the tags for this mesaure, e.g.,
+    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
     string tags = 1;
-
     // Int64 type value (if present).
     int64 int_value = 2;
-
     // Double type value (if present).
     double double_value = 3;
-
     // Distribution type value (if present).
     double distribution_min = 4;
     double distribution_mean = 5;
