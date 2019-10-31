@@ -536,11 +536,11 @@ class ActorHandle(object):
 
         args = args or []
         kwargs = kwargs or {}
+        function_signature = self._ray_method_signatures[method_name]
 
-        if not args and not kwargs:
+        if not args and not kwargs and not function_signature:
             list_args = []
         else:
-            function_signature = self._ray_method_signatures[method_name]
             list_args = signature.flatten_args(function_signature, args,
                                                kwargs)
         if worker.mode == ray.LOCAL_MODE:
