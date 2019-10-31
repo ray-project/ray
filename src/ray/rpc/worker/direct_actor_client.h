@@ -34,6 +34,19 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     return std::shared_ptr<DirectActorClient>(instance);
   }
 
+  /// Constructor.
+  ///
+  /// \param[in] address Address of the direct actor server.
+  /// \param[in] port Port of the direct actor server.
+  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
+  DirectActorClient(const std::string &address, const int port,
+                    ClientCallManager &client_call_manager)
+      : client_call_manager_(client_call_manager) {
+    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
+        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
+    stub_ = DirectActorService::NewStub(channel);
+  };
+
   /// Push a task.
   ///
   /// \param[in] request The request message.
@@ -44,10 +57,31 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     {
       std::lock_guard<std::mutex> lock(mutex_);
+      if (request->task_spec().caller_id() != cur_caller_id_) {
+        // We are running a new task, reset the seq no counter.
+        max_finished_seq_no_ = -1;
+        cur_caller_id_ = request->task_spec().caller_id();
+      }
       send_queue_.push_back(std::make_pair(std::move(request), callback));
     }
     SendRequests();
     return ray::Status::OK();
+  }
+
+  /// Notify a wait has completed for direct actor call arguments.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  ray::Status DirectActorCallArgWaitComplete(
+      const DirectActorCallArgWaitCompleteRequest &request,
+      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
+    auto call = client_call_manager_.CreateCall<DirectActorService,
+                                                DirectActorCallArgWaitCompleteRequest,
+                                                DirectActorCallArgWaitCompleteReply>(
+        *stub_, &DirectActorService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
+        request, callback);
+    return call->GetStatus();
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.
@@ -93,19 +127,6 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
   }
 
  private:
-  /// Constructor.
-  ///
-  /// \param[in] address Address of the direct actor server.
-  /// \param[in] port Port of the direct actor server.
-  /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  DirectActorClient(const std::string &address, const int port,
-                    ClientCallManager &client_call_manager)
-      : client_call_manager_(client_call_manager) {
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = DirectActorService::NewStub(channel);
-  };
-
   /// Protects against unsafe concurrent access from the callback thread.
   std::mutex mutex_;
 
@@ -124,6 +145,10 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
 
   /// The max sequence number we have processed responses for.
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
+
+  /// The task id we are currently sending requests for. When this changes,
+  /// the max finished seq no counter is reset.
+  std::string cur_caller_id_;
 };
 
 }  // namespace rpc

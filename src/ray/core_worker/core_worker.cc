@@ -131,6 +131,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
+  // Unfortunately the raylet client has to be constructed after the receivers.
+  if (direct_actor_task_receiver_ != nullptr) {
+    direct_actor_task_receiver_->Init(*raylet_client_);
+  }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
