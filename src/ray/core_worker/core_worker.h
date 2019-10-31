@@ -51,6 +51,8 @@ class CoreWorker {
   /// \parma[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
+  /// \parma[in] exit_handler Language worker function to orderly shutdown the worker.
+  ///            We guarantee this will be run on the main thread of the worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const Language language,
@@ -58,7 +60,8 @@ class CoreWorker {
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
              const TaskExecutionCallback &task_execution_callback,
-             std::function<Status()> check_signals = nullptr);
+             std::function<Status()> check_signals = nullptr,
+             std::function<void()> exit_handler = nullptr);
 
   ~CoreWorker();
 

@@ -73,7 +73,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals)
+                       std::function<Status()> check_signals,
+                       const std::function<void()> exit_handler)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -116,7 +117,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              worker_server_, execute_task));
+                                              worker_server_, execute_task,
+                                              exit_handler));
   }
 
   // Start RPC server after all the task receivers are properly initialized.

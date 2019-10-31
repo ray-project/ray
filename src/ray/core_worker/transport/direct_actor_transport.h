@@ -336,7 +336,8 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     boost::asio::io_service &main_io_service,
                                     rpc::GrpcServer &server,
-                                    const TaskHandler &task_handler);
+                                    const TaskHandler &task_handler,
+                                    const std::function<void()> &exit_handler);
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
@@ -369,6 +370,8 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The callback function to exit the worker.
+  std::function<void()> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
   /// Shared waiter for dependencies required by incoming tasks.

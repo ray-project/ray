@@ -200,10 +200,12 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    rpc::GrpcServer &server, const TaskHandler &task_handler,
+    const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
       task_service_(main_io_service, *this),
       task_handler_(task_handler),
+      exit_handler_(exit_handler),
       task_main_io_service_(main_io_service) {
   server.RegisterService(task_service_);
 }
@@ -266,6 +268,13 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         ResourceMappingType resource_ids;
         std::vector<std::shared_ptr<RayObject>> results;
         auto status = task_handler_(task_spec, resource_ids, &results);
+        if (status.IsSystemExit()) {
+          // In Python, SystemExit cannot be raised except on the main thread. To work
+          // around this when we are executing tasks on worker threads, we re-post the
+          // exit event explicitly on the main thread.
+          task_main_io_service_.post([this]() { exit_handler_(); });
+          return;
+        }
         RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
         for (size_t i = 0; i < results.size(); i++) {
