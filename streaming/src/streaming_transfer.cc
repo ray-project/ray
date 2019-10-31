@@ -10,7 +10,7 @@ ConsumerTransfer::ConsumerTransfer(std::shared_ptr<Config> &transfer_config)
 
 StreamingQueueProducer::StreamingQueueProducer(std::shared_ptr<Config> &transfer_config)
     : ProducerTransfer(transfer_config) {
-  STREAMING_LOG(INFO) << "Plasma Producer Init";
+  STREAMING_LOG(INFO) << "Producer Init";
 
   CoreWorker *core_worker = reinterpret_cast<CoreWorker *>(boost::any_cast<uint64_t>(
       transfer_config_->Get(ConfigEnum::CORE_WORKER, (uint64_t)0)));
@@ -27,7 +27,7 @@ StreamingQueueProducer::StreamingQueueProducer(std::shared_ptr<Config> &transfer
   STREAMING_CHECK(queue_writer_ != nullptr) << "Create queue writer failed.";
 }
 
-StreamingQueueProducer::~StreamingQueueProducer() { STREAMING_LOG(INFO) << "Plasma Producer Destory"; }
+StreamingQueueProducer::~StreamingQueueProducer() { STREAMING_LOG(INFO) << "Producer Destory"; }
 
 StreamingStatus StreamingQueueProducer::CreateTransferChannel(ProducerChannelInfo &channel_info) {
   auto status = CreateQueue(channel_info);
@@ -71,7 +71,7 @@ StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel
   auto &channel_id = channel_info.channel_id;
   bool is_queue_found = queue_writer_->IsQueueFoundInLocal(channel_id);
   STREAMING_LOG(INFO) << "Queue [" << channel_id
-                      << "], queue exists in plasma store: " << is_queue_found;
+                      << "], queue exists: " << is_queue_found;
 
   ray::Status status;
 
@@ -140,7 +140,7 @@ StreamingStatus StreamingQueueProducer::NotfiyChannelConsumed(ProducerChannelInf
   Status st =
       queue_writer_->SetQueueEvictionLimit(channel_info.channel_id, channel_offset);
   STREAMING_CHECK(st.code() == StatusCode::OK)
-      << " exception in clear barrier in writerwith plasma client returned => "
+      << " exception in clear barrier in writerwith client returned => "
       << st.message();
   return StreamingStatus::OK;
 }
@@ -156,7 +156,7 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(ProducerChannelInfo
                          << " meesage => " << status.message();
 
     // Assume that only status OutOfMemory and OK are acceptable.
-    // OutOfMemory means plasma-queue is full at that moment.
+    // OutOfMemory means queue is full at that moment.
     STREAMING_CHECK(status.code() == StatusCode::OutOfMemory)
         << "status => " << status.message()
         << ", perhaps data block is so large that it can't be stored in"
@@ -179,7 +179,7 @@ StreamingStatus StreamingQueueProducer::WaitChannelsReady(
 
 StreamingQueueConsumer::StreamingQueueConsumer(std::shared_ptr<Config> &transfer_config)
     : ConsumerTransfer(transfer_config) {
-  STREAMING_LOG(INFO) << "Plasma Consumer Init";
+  STREAMING_LOG(INFO) << "Consumer Init";
 
   CoreWorker *core_worker = reinterpret_cast<CoreWorker *>(boost::any_cast<uint64_t>(
       transfer_config_->Get(ConfigEnum::CORE_WORKER, (uint64_t)0)));
@@ -196,7 +196,7 @@ StreamingQueueConsumer::StreamingQueueConsumer(std::shared_ptr<Config> &transfer
   STREAMING_CHECK(queue_reader_ != nullptr) << "Create queue reader failed.";
 }
 
-StreamingQueueConsumer::~StreamingQueueConsumer() { STREAMING_LOG(INFO) << "Plasma Consumer Destroy"; }
+StreamingQueueConsumer::~StreamingQueueConsumer() { STREAMING_LOG(INFO) << "Consumer Destroy"; }
 
 StreamingStatus StreamingQueueConsumer::CreateTransferChannel(ConsumerChannelInfo &channel_info) {
   // subscribe next seq id from checkpoint id

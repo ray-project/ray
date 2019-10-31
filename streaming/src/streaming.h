@@ -6,8 +6,6 @@
 #include <sstream>
 #include <string>
 
-#include "plasma/client.h"
-#include "plasma/common.h"
 #include "queue_interface.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
@@ -25,7 +23,6 @@ namespace streaming {
 enum class StreamingStatus : uint32_t {
   OK = 0,
   ReconstructTimeOut = 1,
-  FullPlasmaStore = 2,
   QueueIdNotFound = 3,
   ResubscribeFailed = 4,
   EmptyRingBuffer = 5,
@@ -71,9 +68,6 @@ class StreamingCommon {
   virtual StreamingConfig GetConfig() const;
   virtual void SetConfig(const StreamingConfig &config);
   virtual void SetConfig(const uint8_t *, uint32_t buffer_len);
-  // Streaming raylet client reuse actor driver id that may necessary to
-  // feature of ray queue cleanup queue.
-  virtual void CreateRayletClient(const ray::JobID &job_id);
   StreamingChannelState GetChannelState();
 
   friend std::ostream &operator<<(std::ostream &os, const StreamingCommon &common);
@@ -81,7 +75,6 @@ class StreamingCommon {
  protected:
   StreamingConfig config_;
   StreamingChannelState channel_state_;
-  RayletClient *raylet_client_ = nullptr;
 };
 
 }  // namespace streaming

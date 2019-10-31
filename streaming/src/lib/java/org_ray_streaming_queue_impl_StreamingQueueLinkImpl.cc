@@ -15,23 +15,28 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
     jlong core_worker, jlongArray actor_handles_array,
     jobject async_func, jobject sync_func,
     jobjectArray input_queue_id_array,  // byte[][]
-    jlongArray plasma_seq_id_array, jlongArray streaming_msg_id_array,
+    jlongArray seq_id_array, jlongArray streaming_msg_id_array,
     jlong timer_interval, jboolean is_recreate,
     jbyteArray fbs_conf_byte_array) {
   STREAMING_LOG(INFO) << "[JNI]: newConsumer.";
   std::vector<ray::ObjectID> input_queue_ids =
-      jarray_to_plasma_object_id_vec(env, input_queue_id_array);
-  std::vector<uint64_t> plasma_queue_seq_ids =
-      LongVectorFromJLongArray(env, plasma_seq_id_array).data;
+      jarray_to_object_id_vec(env, input_queue_id_array);
+  std::vector<uint64_t> queue_seq_ids =
+      LongVectorFromJLongArray(env, seq_id_array).data;
   std::vector<uint64_t> streaming_msg_ids =
       LongVectorFromJLongArray(env, streaming_msg_id_array).data;
   std::vector<uint64_t> actor_handles = 
       LongVectorFromJLongArray(env, actor_handles_array).data;
 
-  std::vector<ray::ObjectID> abnormal_queues;
+  std::vector<ray::ActorID> actor_ids;
+  for (auto &handle : actor_handles) {
+    ray::ActorHandle *handle_ptr = reinterpret_cast<ray::ActorHandle*>(handle);
+    actor_ids.push_back(handle_ptr->GetActorID());
+  }
+  // std::vector<ray::ObjectID> abnormal_queues;
   auto *streaming_reader = new StreamingReaderDirectCall(
       reinterpret_cast<ray::CoreWorker *>(core_worker), 
-      input_queue_ids, actor_handles,
+      input_queue_ids, actor_ids,
       FunctionDescriptorToRayFunction(env, async_func),
       FunctionDescriptorToRayFunction(env, sync_func));
   const jbyte *fbs_conf_bytes = env->GetByteArrayElements(fbs_conf_byte_array, 0);
@@ -41,15 +46,9 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
     streaming_reader->SetConfig(reinterpret_cast<const uint8_t *>(fbs_conf_bytes),
                                 fbs_len);
   }
-  streaming_reader->Init("", input_queue_ids, plasma_queue_seq_ids,
-                         streaming_msg_ids, timer_interval, is_recreate, 
-                         abnormal_queues);
-  if (abnormal_queues.size()) {
-    STREAMING_LOG(INFO) << "[JNI]: QueueInitException thrown.";
-    throwQueueInitException(env, "Consumer init failed.", abnormal_queues);
-    delete streaming_reader;
-    return -1;
-  }
+  streaming_reader->Init(input_queue_ids, queue_seq_ids,
+                         streaming_msg_ids, timer_interval);
+
   return reinterpret_cast<jlong>(streaming_reader);
 }
 
@@ -64,7 +63,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
   STREAMING_LOG(INFO) << "[JNI]: newProducer.";
 
   std::vector<ray::ObjectID> queue_id_vec =
-      jarray_to_plasma_object_id_vec(env, output_queue_ids);
+      jarray_to_object_id_vec(env, output_queue_ids);
   for (auto qid : queue_id_vec) {
     STREAMING_LOG(INFO) << "output qid: " << qid.Hex();
   }
@@ -78,14 +77,16 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
 
   LongVectorFromJLongArray create_types_vec(env, creator_type);
   std::vector<uint64_t> actor_handle_vec = LongVectorFromJLongArray(env, actor_handles).data;
-  std::vector<StreamingQueueCreationType> creator_vec;
-  for (auto &it : create_types_vec.data) {
-    creator_vec.push_back(static_cast<StreamingQueueCreationType>(it));
+
+  std::vector<ray::ActorID> actor_ids;
+  for (auto &handle : actor_handle_vec) {
+    ray::ActorHandle *handle_ptr = reinterpret_cast<ray::ActorHandle*>(handle);
+    actor_ids.push_back(handle_ptr->GetActorID());
   }
 
   auto *streaming_writer = new StreamingWriterDirectCall(
       reinterpret_cast<ray::CoreWorker *>(core_worker), 
-      queue_id_vec, actor_handle_vec,
+      queue_id_vec, actor_ids,
       FunctionDescriptorToRayFunction(env, async_func),
       FunctionDescriptorToRayFunction(env, sync_func));
   const jbyte *fbs_conf_bytes = env->GetByteArrayElements(fsb_conf_byte_array, 0);
@@ -96,8 +97,8 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
                                 fbs_len);
   }
   StreamingStatus status =
-      streaming_writer->Init(queue_id_vec, "", long_array_obj.data,
-                             queue_size_vec, remain_id_vec, creator_vec);
+      streaming_writer->Init(queue_id_vec, long_array_obj.data,
+                             queue_size_vec);
   if (!remain_id_vec.empty()) {
     STREAMING_LOG(WARNING) << "create remaining queue size => " << remain_id_vec.size();
   }

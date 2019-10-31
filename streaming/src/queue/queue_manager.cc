@@ -674,9 +674,9 @@ void QueueManager::GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_que
   STREAMING_CHECK(get_rsp_msg->PeerActorId() == actor_id_);
 
   if (queue::flatbuf::StreamingQueueError::OK != get_rsp_msg->Error()) {
-    // return 0 because PlasmaProducer::FetchLastMessageIdFromQueue return 0 defaultly.
+    // return 0 because Producer::FetchLastMessageIdFromQueue return 0 defaultly.
     last_queue_msg_id = 0;
-    // set to QUEUE_INVALID_SEQ_ID because PlasmaProducer::FetchLastMessageIdFromQueue 'queue_last_seq_id == static_cast<uint64_t>(-1)'
+    // set to QUEUE_INVALID_SEQ_ID because Producer::FetchLastMessageIdFromQueue 'queue_last_seq_id == static_cast<uint64_t>(-1)'
     last_queue_seq_id = QUEUE_INVALID_SEQ_ID;
     return;
   }

@@ -63,33 +63,25 @@ class StreamingReader : public StreamingCommon {
    * init Streaming reader
    * @param store_path
    * @param input_ids
-   * @param plasma_queue_seq_ids
+   * @param queue_seq_ids
    * @param raylet_client
    */
-  void Init(const std::string &store_path, const std::vector<ObjectID> &input_ids,
-            const std::vector<uint64_t> &plasma_queue_seq_ids,
+  void Init(const std::vector<ObjectID> &input_ids,
+            const std::vector<uint64_t> &queue_seq_ids,
             const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval);
 
-  void Init(const std::string &store_path, const std::vector<ObjectID> &input_ids,
+  void Init(const std::vector<ObjectID> &input_ids,
             int64_t timer_interval);
   /*!
    * get latest message from input queues
    * @param timeout_ms
-   * @param offset_seq_id, return offsets in plasma seq_id of each input queue, in
-   * unordered_map
-   * @param offset_msg_id, return offsets in streaming msg_id of each input queue, in
-   * unordered_map
-   * @param msg, return the latest message
+   * @param message, return the latest message
    */
   StreamingStatus GetBundle(const uint32_t timeout_ms,
                             std::shared_ptr<StreamingReaderBundle> &message);
 
   /*!
    * get offset infomation
-   * @param offset_seq_id, return offsets in plasma seq_id of each input queue, in
-   * unordered_map
-   * @param offset_msg_id, return offsets in streaming msg_id of each input queue, in
-   * unordered_map
    */
   void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
 

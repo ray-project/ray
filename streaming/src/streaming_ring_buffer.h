@@ -18,9 +18,9 @@ namespace ray {
 namespace streaming {
 
 /*!
- * @brief Since limitation of plasma-store/plasma-queue, we mayn't sent
+ * @brief Since limitation of streaming-queue, we mayn't sent
  * queue item successful once, so streaming transient buffer is token for
- * transient memory util messages are accpeted by plasma-queue.
+ * transient memory util messages are accpeted by streaming-queue.
  */
 
 class StreamingTransientBuffer {
