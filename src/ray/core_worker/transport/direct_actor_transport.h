@@ -342,6 +342,9 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
 
+  /// Initialize this receiver. This must be called prior to use.
+  void Init(RayletClient &client);
+
   /// Handle a `PushTask` request.
   ///
   /// \param[in] request The request message.
