@@ -278,8 +278,8 @@ class CoreWorker {
   /// \return void.
   void StartExecutingTasks();
 
-  Status GetReturnObjects(const std::vector<ObjectID> object_ids,
-                          const std::vector<size_t> data_sizes,
+  Status GetReturnObjects(const std::vector<ObjectID> &object_ids,
+                          const std::vector<size_t> &data_sizes,
                           const std::vector<std::shared_ptr<Buffer>> &metadatas,
                           std::vector<std::shared_ptr<RayObject>> *return_objects);
 
