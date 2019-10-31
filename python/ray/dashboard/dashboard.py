@@ -192,50 +192,6 @@ class Dashboard(object):
         aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 
-class RayletStats(threading.Thread):
-    def __init__(self, redis_address, redis_password=None):
-        self.nodes_lock = threading.Lock()
-        self.nodes = []
-        self.stubs = []
-
-        self._raylet_stats_lock = threading.Lock()
-        self._raylet_stats = {}
-
-        self.update_nodes()
-
-        super().__init__()
-
-    def update_nodes(self):
-        with self.nodes_lock:
-            self.nodes = ray.nodes()
-            self.stubs = []
-
-            for node in self.nodes:
-                channel = grpc.insecure_channel("{}:{}".format(
-                    node["NodeManagerAddress"],
-                    node["NodeManagerPort"]))
-                stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-                self.stubs.append(stub)
-
-    def get_raylet_stats(self) -> Dict:
-        with self._raylet_stats_lock:
-            return copy.deepcopy(self._raylet_stats)
-
-    def run(self):
-        counter = 0
-        while True:
-            time.sleep(1.0)
-            with self._raylet_stats_lock:
-                for node, stub in zip(self.nodes, self.stubs):
-                    reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
-                    self._raylet_stats[node["NodeManagerAddress"]] = MessageToDict(reply)
-            counter += 1
-            # From time to time, check if new nodes have joined the cluster
-            # and update self.nodes
-            if counter % 10:
-                self.update_nodes()
-
-
 class NodeStats(threading.Thread):
     def __init__(self, redis_address, redis_password=None):
         self.redis_key = "{}.*".format(ray.gcs_utils.REPORTER_CHANNEL)
@@ -404,6 +360,50 @@ class NodeStats(threading.Thread):
             except Exception:
                 logger.exception(traceback.format_exc())
                 continue
+
+
+class RayletStats(threading.Thread):
+    def __init__(self, redis_address, redis_password=None):
+        self.nodes_lock = threading.Lock()
+        self.nodes = []
+        self.stubs = []
+
+        self._raylet_stats_lock = threading.Lock()
+        self._raylet_stats = {}
+
+        self.update_nodes()
+
+        super().__init__()
+
+    def update_nodes(self):
+        with self.nodes_lock:
+            self.nodes = ray.nodes()
+            self.stubs = []
+
+            for node in self.nodes:
+                channel = grpc.insecure_channel("{}:{}".format(
+                    node["NodeManagerAddress"],
+                    node["NodeManagerPort"]))
+                stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+                self.stubs.append(stub)
+
+    def get_raylet_stats(self) -> Dict:
+        with self._raylet_stats_lock:
+            return copy.deepcopy(self._raylet_stats)
+
+    def run(self):
+        counter = 0
+        while True:
+            time.sleep(1.0)
+            with self._raylet_stats_lock:
+                for node, stub in zip(self.nodes, self.stubs):
+                    reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+                    self._raylet_stats[node["NodeManagerAddress"]] = MessageToDict(reply)
+            counter += 1
+            # From time to time, check if new nodes have joined the cluster
+            # and update self.nodes
+            if counter % 10:
+                self.update_nodes()
 
 
 if __name__ == "__main__":
