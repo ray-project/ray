@@ -546,13 +546,9 @@ cdef execute_task(
                 with core_worker.profile_event(b"task:execute"):
                     task_exception = True
                     outputs = function_executor(*args, **kwargs)
+                    task_exception = False
                     if c_return_ids.size() == 1:
                         outputs = (outputs,)
-                    assert len(outputs) == c_return_ids.size(), (
-                        "Incorrect number of return values from function."
-                        "Got {} but expected {}.".format(
-                            len(outputs), c_return_ids.size()))
-                    task_exception = False
 
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
