@@ -567,9 +567,11 @@ cdef execute_task(
             else:
                 failure_object = RayTaskError(function_name, backtrace,
                                               error.__class__)
+            errors = []
+            for _ in range(c_return_ids.size()):
+                errors.append(failure_object)
             core_worker.store_task_outputs(
-                worker, [failure_object for _ in range(c_return_ids.size())],
-                c_return_ids, returns)
+                worker, errors, c_return_ids, returns)
             ray.utils.push_error_to_driver(
                 worker,
                 ray_constants.TASK_PUSH_ERROR,
