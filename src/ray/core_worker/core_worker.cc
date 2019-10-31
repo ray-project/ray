@@ -253,7 +253,6 @@ void CoreWorker::ReportActiveObjectIDs() {
                      << "This may lead to required objects being garbage collected.";
   }
   std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
-  RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(copy));
   if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
