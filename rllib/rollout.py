@@ -10,7 +10,6 @@ import json
 import os
 import pickle
 import shelve
-import torch
 from pathlib import Path
 
 import gym
@@ -37,6 +36,7 @@ Example Usage via executable:
 # ModelCatalog.register_custom_model("pa_model", ParametricActionsModel)
 # register_env("pa_cartpole", lambda _: ParametricActionCartpole(10))
 
+
 class RolloutSaver:
     """Utility class for storing rollouts.
 
@@ -56,7 +56,13 @@ class RolloutSaver:
     If outfile is None, this class does nothing.
     """
 
-    def __init__(self, outfile=None, use_shelve=False, write_update_file=False, target_steps=None, target_episodes=None, save_info=False):
+    def __init__(self,
+                 outfile=None,
+                 use_shelve=False,
+                 write_update_file=False,
+                 target_steps=None,
+                 target_episodes=None,
+                 save_info=False):
         self._outfile = outfile
         self._update_file = None
         self._use_shelve = use_shelve
@@ -89,16 +95,18 @@ class RolloutSaver:
                 # But check we can actually write to the outfile before going
                 # through the effort of generating the rollouts:
                 try:
-                    with open(self._outfile, "wb") as test_file:
+                    with open(self._outfile, "wb") as _:
                         pass
                 except IOError as x:
-                    print("Can not open {} for writing - cancelling rollout generation.".format(self._outfile))
+                    print("Can not open {} for writing - cancelling rollouts.".
+                          format(self._outfile))
                     raise x
             if self._write_update_file:
                 # Open a file to track rollout progress:
-                self._update_file = self._get_tmp_progress_filename().open(mode='w')
+                self._update_file = self._get_tmp_progress_filename().open(
+                    mode="w")
         return self
- 
+
     def __exit__(self, type, value, traceback):
         if self._shelf:
             # Close the shelf file, and store the number of episodes for ease
@@ -114,9 +122,11 @@ class RolloutSaver:
 
     def _get_progress(self):
         if self._target_episodes:
-            return "{} / {} episodes completed".format(self._num_episodes, self._target_episodes)
+            return "{} / {} episodes completed".format(self._num_episodes,
+                                                       self._target_episodes)
         elif self._target_steps:
-            return "{} / {} steps completed".format(self._total_steps, self._target_steps)
+            return "{} / {} steps completed".format(self._total_steps,
+                                                    self._target_steps)
         else:
             return "{} episodes completed".format(self._num_episodes)
 
@@ -142,10 +152,13 @@ class RolloutSaver:
         """Add a step to the current rollout, if we are saving them"""
         if self._outfile:
             if self._save_info:
-                self._current_rollout.append([obs, action, next_obs, reward, done, info])
+                self._current_rollout.append(
+                    [obs, action, next_obs, reward, done, info])
             else:
-                self._current_rollout.append([obs, action, next_obs, reward, done])
+                self._current_rollout.append(
+                    [obs, action, next_obs, reward, done])
         self._total_steps += 1
+
 
 def create_parser(parser_creator=None):
     parser_creator = parser_creator or argparse.ArgumentParser
@@ -203,14 +216,15 @@ def create_parser(parser_creator=None):
         "--use-shelve",
         default=False,
         action="store_true",
-        help="Save rollouts into a python shelf file (will save each episode as it is generated). "
-        "An output filename must be set using --out.")
+        help="Save rollouts into a python shelf file (will save each episode "
+        "as it is generated). An output filename must be set using --out.")
     parser.add_argument(
         "--track-progress",
         default=False,
         action="store_true",
-        help="Write progress to a temporary file (updated after each episode). "
-        "An output filename must be set using --out; the progress file will live in the same folder.")
+        help="Write progress to a temporary file (updated "
+        "after each episode). An output filename must be set using --out; "
+        "the progress file will live in the same folder.")
     return parser
 
 
@@ -244,8 +258,15 @@ def run(args, parser):
     agent.restore(args.checkpoint)
     num_steps = int(args.steps)
     num_episodes = int(args.episodes)
-    with RolloutSaver(args.out, args.use_shelve, write_update_file=args.track_progress, target_steps=num_steps, target_episodes=num_episodes, save_info=args.save_info) as saver:
-        rollout(agent, args.env, num_steps, num_episodes, saver, args.no_render, args.monitor)
+    with RolloutSaver(
+            args.out,
+            args.use_shelve,
+            write_update_file=args.track_progress,
+            target_steps=num_steps,
+            target_episodes=num_episodes,
+            save_info=args.save_info) as saver:
+        rollout(agent, args.env, num_steps, num_episodes, saver,
+                args.no_render, args.monitor)
 
 
 class DefaultMapping(collections.defaultdict):
@@ -259,6 +280,7 @@ class DefaultMapping(collections.defaultdict):
 def default_policy_agent_mapping(unused_agent_id):
     return DEFAULT_POLICY_ID
 
+
 def keep_going(steps, num_steps, episodes, num_episodes):
     """Determine whether we've collected enough data"""
     # if num_episodes is set, this overrides num_steps
@@ -270,7 +292,14 @@ def keep_going(steps, num_steps, episodes, num_episodes):
     # otherwise keep going forever
     return True
 
-def rollout(agent, env_name, num_steps, num_episodes=0, saver=RolloutSaver(), no_render=True, monitor=False):
+
+def rollout(agent,
+            env_name,
+            num_steps,
+            num_episodes=0,
+            saver=RolloutSaver(),
+            no_render=True,
+            monitor=False):
     policy_agent_mapping = default_policy_agent_mapping
 
     if hasattr(agent, "workers"):
@@ -293,9 +322,12 @@ def rollout(agent, env_name, num_steps, num_episodes=0, saver=RolloutSaver(), no
         use_lstm = {DEFAULT_POLICY_ID: False}
 
     if monitor and not no_render and saver and saver.outfile is not None:
-        # If monitoring has been requested, manually wrap our environment with a gym monitor which
-        # is set to record every episode.
-        env = gym.wrappers.Monitor(env, os.path.join(os.path.dirname(saver.outfile), "monitor"), lambda x: True)
+        # If monitoring has been requested,
+        # manually wrap our environment with a gym monitor
+        # which is set to record every episode.
+        env = gym.wrappers.Monitor(
+            env, os.path.join(os.path.dirname(saver.outfile), "monitor"),
+            lambda x: True)
 
     steps = 0
     episodes = 0
@@ -310,7 +342,8 @@ def rollout(agent, env_name, num_steps, num_episodes=0, saver=RolloutSaver(), no
         prev_rewards = collections.defaultdict(lambda: 0.)
         done = False
         reward_total = 0.0
-        while not done and keep_going(steps, num_steps, episodes, num_episodes):
+        while not done and keep_going(steps, num_steps, episodes,
+                                      num_episodes):
             multi_obs = obs if multiagent else {_DUMMY_AGENT_ID: obs}
             action_dict = {}
             for agent_id, a_obs in multi_obs.items():
