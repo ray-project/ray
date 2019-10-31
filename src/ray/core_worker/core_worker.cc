@@ -477,7 +477,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   const ray::TaskSpecification spec = builder.Build();
   RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(spec));
-   *return_actor_id = actor_id;
+  *return_actor_id = actor_id;
   children_actors_.insert({*return_actor_id, ChildActor(spec)});
   return Status::OK();
 }
@@ -562,7 +562,10 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         if (child_it != children_actors_.end()) {
           child_it->second.num_lifetimes++;
           // Restart the actor.
-          if (!raylet_client_->SubmitTask(child_it->second.actor_creation_spec, child_it->second.num_lifetimes).ok()) {
+          if (!raylet_client_
+                   ->SubmitTask(child_it->second.actor_creation_spec,
+                                child_it->second.num_lifetimes)
+                   .ok()) {
             RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
           }
         }

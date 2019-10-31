@@ -15,7 +15,8 @@ ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data)
   dummy_objects_[GetActorCreationDependency()]++;
 }
 
-void ActorRegistration::SetFrontierFromCheckpointData(const ActorCheckpointData &checkpoint_data) {
+void ActorRegistration::SetFrontierFromCheckpointData(
+    const ActorCheckpointData &checkpoint_data) {
   execution_dependency_ = ObjectID::FromBinary(checkpoint_data.execution_dependency());
   // Restore `frontier_`.
   for (int64_t i = 0; i < checkpoint_data.handle_ids_size(); i++) {

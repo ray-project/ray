@@ -54,8 +54,7 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
   // reconstructions. This is followed optionally by a DEAD entry.
-  int log_length =
-      2 * (data_ptr->num_lifetimes());
+  int log_length = 2 * (data_ptr->num_lifetimes());
   if (data_ptr->state() != ActorTableData::ALIVE) {
     // RECONSTRUCTING or DEAD entries have an odd index.
     log_length += 1;

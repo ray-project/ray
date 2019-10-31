@@ -1170,7 +1170,8 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   rpc::Task task_message;
   RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
       fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
-  task_message.mutable_task_execution_spec()->set_num_submissions(fbs_message->num_submissions());
+  task_message.mutable_task_execution_spec()->set_num_submissions(
+      fbs_message->num_submissions());
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
@@ -2012,7 +2013,9 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
     // TODO(swang): Set num_lifetimes
-    auto new_actor_info = CreateActorTableDataFromCreationTask(task_spec, worker.Port(), task.GetTaskExecutionSpec().GetMessage().num_submissions());
+    auto new_actor_info = CreateActorTableDataFromCreationTask(
+        task_spec, worker.Port(),
+        task.GetTaskExecutionSpec().GetMessage().num_submissions());
     auto update_callback = [actor_id](Status status) {
       if (!status.ok()) {
         // Only one node at a time should succeed at creating or updating the actor.
@@ -2041,14 +2044,15 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
                      << actor_id;
       RAY_CHECK_OK(gcs_client_->actor_checkpoint_table().Lookup(
           JobID::Nil(), checkpoint_id,
-          [this, actor_id, new_actor_info](
-              ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id,
-              const ActorCheckpointData &checkpoint_data) {
+          [this, actor_id, new_actor_info](ray::gcs::RedisGcsClient *client,
+                                           const UniqueID &checkpoint_id,
+                                           const ActorCheckpointData &checkpoint_data) {
             RAY_LOG(INFO) << "Restoring registration for actor " << actor_id
                           << " from checkpoint " << checkpoint_id;
             auto it = actor_registry_.find(actor_id);
             if (it == actor_registry_.end()) {
-              RAY_LOG(WARNING) << "No actor " << actor_id << " found for restored checkpoint";
+              RAY_LOG(WARNING) << "No actor " << actor_id
+                               << " found for restored checkpoint";
             } else {
               it->second.SetFrontierFromCheckpointData(checkpoint_data);
               // Mark the unreleased dummy objects in the checkpoint frontier as local.
@@ -2058,8 +2062,8 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
             }
           },
           [actor_id](ray::gcs::RedisGcsClient *client, const UniqueID &checkpoint_id) {
-            RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id << " for actor "
-                           << actor_id << " in GCS.";
+            RAY_LOG(FATAL) << "Couldn't find checkpoint " << checkpoint_id
+                           << " for actor " << actor_id << " in GCS.";
           }));
     } else {
       // The actor was not resumed from a checkpoint. Store the
