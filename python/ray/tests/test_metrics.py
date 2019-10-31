@@ -41,7 +41,11 @@ def test_worker_stats(ray_start_regular):
             continue
 
         # Check that the rest of the processes are workers, 1 for each CPU.
+        print(reply)
         assert len(reply.workers_stats) == num_cpus + 1
+        views = [view.view_name for view in reply.view_data]
+        assert "redis_latency" in views
+        assert "local_available_resource" in views
         # Check that all processes are Python.
         pids = [worker.pid for worker in reply.workers_stats]
         processes = [
