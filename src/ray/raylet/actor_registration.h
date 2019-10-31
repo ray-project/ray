@@ -29,12 +29,6 @@ class ActorRegistration {
   /// this actor. This includes the actor's node manager location.
   explicit ActorRegistration(const ActorTableData &actor_table_data);
 
-  /// Recreate an actor's registration from a checkpoint.
-  ///
-  /// \param checkpoint_data The checkpoint used to restore the actor.
-  ActorRegistration(const ActorTableData &actor_table_data,
-                    const ActorCheckpointData &checkpoint_data);
-
   /// Each actor may have multiple callers, or "handles". A frontier leaf
   /// represents the execution state of the actor with respect to a single
   /// handle.
@@ -118,6 +112,8 @@ class ActorRegistration {
   ///
   /// \return int.
   int NumHandles() const;
+
+  void SetFrontierFromCheckpointData(const ActorCheckpointData &checkpoint_data);
 
   /// Generate checkpoint data based on actor's current state.
   ///

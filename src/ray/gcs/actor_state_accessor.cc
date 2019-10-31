@@ -55,7 +55,7 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
   // reconstructions. This is followed optionally by a DEAD entry.
   int log_length =
-      2 * (data_ptr->max_reconstructions() - data_ptr->remaining_reconstructions());
+      2 * (data_ptr->num_lifetimes());
   if (data_ptr->state() != ActorTableData::ALIVE) {
     // RECONSTRUCTING or DEAD entries have an odd index.
     log_length += 1;

@@ -89,8 +89,8 @@ message ActorTableData {
   }
   // The ID of the actor that was created.
   bytes actor_id = 1;
-  // The ID of the actor that created it, null if created by non-actor task.
-  bytes parent_actor_id = 2;
+  // The ID of the task or actor that created it.
+  bytes parent_id = 2;
   // The dummy object ID returned by the actor creation task. If the actor
   // dies, then this is the object that should be reconstructed for the actor
   // to be recreated.
@@ -103,8 +103,8 @@ message ActorTableData {
   ActorState state = 6;
   // Max number of times this actor should be reconstructed.
   uint64 max_reconstructions = 7;
-  // Remaining number of reconstructions.
-  uint64 remaining_reconstructions = 8;
+  // How many times this actor has been started before.
+  uint64 num_lifetimes = 8;
   // The IP address of the node that the actor is running on.
   string ip_address = 9;
   // The port that the actor is listening on.

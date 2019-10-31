@@ -15,11 +15,8 @@ ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data)
   dummy_objects_[GetActorCreationDependency()]++;
 }
 
-ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
-                                     const ActorCheckpointData &checkpoint_data)
-    : actor_table_data_(actor_table_data),
-      execution_dependency_(
-          ObjectID::FromBinary(checkpoint_data.execution_dependency())) {
+void ActorRegistration::SetFrontierFromCheckpointData(const ActorCheckpointData &checkpoint_data) {
+  execution_dependency_ = ObjectID::FromBinary(checkpoint_data.execution_dependency());
   // Restore `frontier_`.
   for (int64_t i = 0; i < checkpoint_data.handle_ids_size(); i++) {
     auto caller_id = TaskID::FromBinary(checkpoint_data.handle_ids(i));
@@ -56,7 +53,7 @@ const int64_t ActorRegistration::GetMaxReconstructions() const {
 }
 
 const int64_t ActorRegistration::GetRemainingReconstructions() const {
-  return actor_table_data_.remaining_reconstructions();
+  return actor_table_data_.max_reconstructions() - actor_table_data_.num_lifetimes();
 }
 
 const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>
