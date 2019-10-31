@@ -255,7 +255,6 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   it->second->Add(
       request.sequence_number(), request.client_processed_up_to(),
       [this, reply, send_reply_callback, task_spec]() {
-        //        absl::MutexLock lock(&mutex_);  // read barrier
         auto num_returns = task_spec.NumReturns();
         RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
         RAY_CHECK(num_returns > 0);

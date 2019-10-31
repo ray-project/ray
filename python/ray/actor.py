@@ -356,10 +356,16 @@ class ActorClass(object):
             args = []
         if kwargs is None:
             kwargs = {}
+        if is_direct_call is None:
+            is_direct_call = False
+        if max_concurrency is None:
+            max_concurrency = 1
 
-        if max_concurrency and not is_direct_call:
+        if max_concurrency > 1 and not is_direct_call:
             raise ValueError(
                 "setting max_concurrency requires is_direct_call=True")
+        if max_concurrency < 1:
+            raise ValueError("max_concurrency must be >= 1")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:

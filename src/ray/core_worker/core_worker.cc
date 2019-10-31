@@ -596,9 +596,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
       new worker::ProfileEvent(profiler_, event_type));
 }
 
-void CoreWorker::StartExecutingTasks() {
-  task_execution_service_.run();
-}
+void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,

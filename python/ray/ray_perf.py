@@ -151,6 +151,13 @@ def main():
 
     timeit("single client actor calls async", actor_async, 1000)
 
+    a = Actor.options(is_direct_call=True, max_concurrency=16).remote()
+
+    def actor_concurrent():
+        ray.get([a.small_value.remote() for _ in range(1000)])
+
+    timeit("single client actor calls concurrent", actor_concurrent, 1000)
+
     n_cpu = multiprocessing.cpu_count() // 2
     a = [Actor.remote() for _ in range(n_cpu)]
 
