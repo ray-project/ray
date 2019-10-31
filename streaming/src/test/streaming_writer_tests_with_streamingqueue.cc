@@ -38,47 +38,11 @@ class StreamingExactlySameTest : public StreamingQueueTestBase {
 TEST_P(StreamingWriterTest, streaming_writer_exactly_once_test) {
   STREAMING_LOG(INFO) << "StreamingWriterTest.streaming_writer_exactly_once_test";
 
-  uint32_t queue_num = 5;
+  uint32_t queue_num = 1;
 
   STREAMING_LOG(INFO) << "Streaming Strategy => EXACTLY ONCE";
   SubmitTest(queue_num, "StreamingWriterTest", "streaming_writer_exactly_once_test",
              60 * 1000);
-}
-
-TEST_P(StreamingWriterTest, streaming_writer_at_least_once_test) {
-  uint32_t queue_num = 5;
-
-  STREAMING_LOG(INFO) << "Streaming Strategy => AT_LEAST_ONCE";
-  SubmitTest(queue_num, "StreamingWriterTest", "streaming_writer_at_least_once_test",
-             60 * 1000);
-}
-
-TEST_P(StreamingWriterTest, streaming_recreate_test) {
-  uint32_t queue_num = 1;
-  SubmitTest(queue_num, "StreamingWriterTest", "streaming_recreate_test", 60 * 1000);
-}
-
-TEST_P(StreamingWriterTest, no_skip_source_barrier) {
-  uint32_t queue_num = 1;
-  SubmitTest(queue_num, "StreamingWriterTest", "no_skip_source_barrier", 60 * 1000);
-}
-
-TEST_P(StreamingWriterTest, streaming_rescale_exactly_once_test) {
-  uint32_t queue_num = 3;
-  SubmitTest(queue_num, "StreamingRescaleTest", "streaming_rescale_exactly_once_test",
-  60*1000);
-}
-
-TEST_P(StreamingExactlySameTest, streaming_exactly_same_source_test) {
-  uint32_t queue_num = 2;
-  SubmitTest(queue_num, "StreamingExactlySameTest", "streaming_exactly_same_source_test",
-             60 * 1000);
-}
-
-TEST_P(StreamingExactlySameTest, streaming_exactly_same_operator_test) {
-  uint32_t queue_num = 2;
-  SubmitTest(queue_num, "StreamingExactlySameTest",
-             "streaming_exactly_same_operator_test", 60 * 1000);
 }
 
 INSTANTIATE_TEST_CASE_P(StreamingTest, StreamingWriterTest, testing::Values(0));

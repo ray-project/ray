@@ -279,6 +279,8 @@ class TestInitMsg : public Message {
   std::string ToString() {
     std::ostringstream os;
     os << "actor_handle_serialized: " << actor_handle_serialized_;
+    os << " actor_id: " << ActorId();
+    os << " peer_actor_id: " << PeerActorId();
     os << " queue_ids:[";
     for (auto &qid : queue_ids_) {
       os << qid << ",";
@@ -504,10 +506,10 @@ class MemoryTransport : public Transport {
 class DirectCallTransport : public Transport {
  public:
   DirectCallTransport(CoreWorker* worker,
-                      ActorHandle* actor_handle, RayFunction &async_func,
+                      ActorID &actor_id, RayFunction &async_func,
                       RayFunction &sync_func)
       : core_worker_(worker),
-        peer_actor_handle_(actor_handle),
+        peer_actor_id_(actor_id),
         async_func_(async_func),
         sync_func_(sync_func) {
     STREAMING_LOG(DEBUG) << "DirectCallTransport constructor:";
@@ -543,7 +545,7 @@ class DirectCallTransport : public Transport {
 
  private:
   CoreWorker* core_worker_;
-  ActorHandle* peer_actor_handle_;
+  ActorID peer_actor_id_;
   RayFunction async_func_;
   RayFunction sync_func_;
 };

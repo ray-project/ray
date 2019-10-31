@@ -460,17 +460,16 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
 
   STREAMING_CHECK(core_worker_ != nullptr);
-  STREAMING_CHECK(peer_actor_handle_ != nullptr);
+  // STREAMING_CHECK(peer_actor_handle_ != nullptr);
   std::vector<ObjectID> return_ids;
-  STREAMING_LOG(DEBUG) << "DirectCallTransport::Send before";
-  STREAMING_LOG(DEBUG) << "is direct call actor: "
-                       << peer_actor_handle_->IsDirectCallActor();
-  ray::Status st = core_worker_->SubmitActorTask(peer_actor_handle_->GetActorID(), async_func_, args,
+  STREAMING_LOG(INFO) << "DirectCallTransport::Send before peer_actor_id_" << peer_actor_id_;
+  STREAMING_LOG(INFO) << "is direct call actor";
+  ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, async_func_, args,
                                                          options, &return_ids);
   if (st.ok()) {
-    STREAMING_LOG(DEBUG) << "SubmitActorTask success.";
+    STREAMING_LOG(INFO) << "SubmitActorTask success.";
   } else {
-    STREAMING_LOG(DEBUG) << "SubmitActorTask fail.";
+    STREAMING_LOG(INFO) << "SubmitActorTask fail. " << st;
   }
 }
 
@@ -492,12 +491,11 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
       TaskArg::PassByValue(std::make_shared<RayObject>(buffer, meta, true)));
 
   STREAMING_CHECK(core_worker_ != nullptr);
-  STREAMING_CHECK(peer_actor_handle_ != nullptr);
+  // STREAMING_CHECK(peer_actor_handle_ != nullptr);
   std::vector<ObjectID> return_ids;
   STREAMING_LOG(DEBUG) << "DirectCallTransport::SendForResult before";
-  STREAMING_LOG(DEBUG) << "is direct call actor: "
-                       << peer_actor_handle_->IsDirectCallActor();
-  ray::Status st = core_worker_->SubmitActorTask(peer_actor_handle_->GetActorID(), sync_func_, args,
+  STREAMING_LOG(DEBUG) << "is direct call actor";
+  ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, sync_func_, args,
                                                          options, &return_ids);
   if (st.ok()) {
     STREAMING_LOG(DEBUG) << "SubmitActorTask success.";

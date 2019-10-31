@@ -5,6 +5,31 @@
 
 namespace ray {
 
+// Queue factory of writer and reader
+std::shared_ptr<QueueWriterInterface> CreateQueueWriter(
+    const JobID &job_id,
+    const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
+    ray::RayFunction &async_func, ray::RayFunction &sync_func) {
+  std::shared_ptr<QueueWriterInterface> instance;
+
+  instance = std::make_shared<StreamingQueueWriter>(core_worker, async_func, sync_func);
+  RAY_LOG(INFO) << "Create queue writer with STREAMING QUEUE.";
+
+  return instance;
+}
+
+std::shared_ptr<QueueReaderInterface> CreateQueueReader(
+    const JobID &job_id,
+    const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
+    ray::RayFunction &async_func, ray::RayFunction &sync_func) {
+  std::shared_ptr<QueueReaderInterface> instance;
+
+  instance = std::make_shared<StreamingQueueReader>(core_worker, async_func, sync_func);
+  RAY_LOG(INFO) << "[CreateQueueReader]Create queue reader with STREAMING QUEUE.";
+
+  return instance;
+}
+
 inline ray::Status ConvertStatus(const arrow::Status &status) {
   if (status.ok()) {
     return Status::OK();
@@ -26,23 +51,23 @@ StreamingQueueWriter::StreamingQueueWriter(CoreWorker *core_worker,
 }
 
 Status StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_size,
-                                         uint64_t actor_handle, /*StreamingQueue only*/
+                                         ActorID &actor_id, /*StreamingQueue only*/
                                          bool reconstruct_queue, bool clear) {
   STREAMING_LOG(INFO) << "CreateQueue qid: " << queue_id << " data_size: " << data_size
-                      << " actor_handle: " << actor_handle
+                      // << " actor_handle: " << actor_handle
                       << " reconstruct_queue: " << reconstruct_queue
                       << " clear: " << clear;
   if (queue_manager_->IsUpQueueExist(queue_id)) {
     RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
     return Status::OK();
   }
-  ActorHandle *actor_handle_ptr = reinterpret_cast<ActorHandle *>(actor_handle);
+  // ActorHandle *actor_handle_ptr = reinterpret_cast<ActorHandle *>(actor_handle);
   queue_manager_->AddOutTransport(
       queue_id, std::make_shared<ray::streaming::DirectCallTransport>(
-                    core_worker_, actor_handle_ptr, async_func_, sync_func_));
-  STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue"
+                    core_worker_, actor_id, async_func_, sync_func_));
+  STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue "
                       << (queue_writer_ == nullptr);
-  queue_writer_->CreateQueue(queue_id, actor_id_, actor_handle_ptr->GetActorID(), data_size,
+  queue_writer_->CreateQueue(queue_id, actor_id_, actor_id, data_size,
                              clear);
 
   STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue done";
@@ -125,20 +150,19 @@ StreamingQueueReader::StreamingQueueReader(CoreWorker *core_worker,
 
 /// Create queue and pull queue (if needed), synchronously.
 bool StreamingQueueReader::GetQueue(const ObjectID &queue_id, int64_t timeout_ms,
-                                    uint64_t start_seq_id, uint64_t actor_handle) {
-  STREAMING_LOG(INFO) << "GetQueue qid: " << queue_id << " start_seq_id: " << start_seq_id
-                      << " actor_handle: " << actor_handle;
+                                    uint64_t start_seq_id, ActorID &actor_id) {
+  STREAMING_LOG(INFO) << "GetQueue qid: " << queue_id << " start_seq_id: " << start_seq_id;
   if (queue_manager_->IsDownQueueExist(queue_id)) {
     RAY_LOG(INFO) << "StreamingQueueReader::GetQueue duplicate!!!";
     return true;
   }
-  ActorHandle *actor_handle_ptr = reinterpret_cast<ActorHandle *>(actor_handle);
+  // ActorHandle *actor_handle_ptr = reinterpret_cast<ActorHandle *>(actor_handle);
   queue_manager_->AddOutTransport(
       queue_id, std::make_shared<ray::streaming::DirectCallTransport>(
-                    core_worker_, actor_handle_ptr, async_func_, sync_func_));
-  queue_manager_->UpdateUpActor(queue_id, actor_handle_ptr->GetActorID());
+                    core_worker_, actor_id, async_func_, sync_func_));
+  queue_manager_->UpdateUpActor(queue_id, actor_id);
   queue_manager_->UpdateDownActor(queue_id, actor_id_);
-  return queue_reader_->CreateQueue(queue_id, actor_id_, actor_handle_ptr->GetActorID(),
+  return queue_reader_->CreateQueue(queue_id, actor_id_, actor_id,
                                     start_seq_id);
 }
 

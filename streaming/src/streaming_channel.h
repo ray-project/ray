@@ -12,6 +12,7 @@ struct StreamingQueueInfo {
   uint64_t first_seq_id = 0;
   uint64_t last_seq_id = 0;
   uint64_t target_seq_id = 0;
+  uint64_t consumed_seq_id = 0;
 };
 
 struct ProducerChannelInfo {
@@ -26,6 +27,7 @@ struct ProducerChannelInfo {
 
   // for Direct Call
   uint64_t actor_handle;
+  ActorID actor_id;
 };
 
 struct ConsumerChannelInfo {
@@ -44,6 +46,7 @@ struct ConsumerChannelInfo {
 
   // for Direct Call
   uint64_t actor_handle;
+  ActorID actor_id;
 };
 }  // namespace streaming
 }  // namespace ray

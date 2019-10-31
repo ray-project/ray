@@ -351,7 +351,7 @@ void ReaderQueue::OnData(QueueItem &item) {
   last_recv_seq_id_ = item.SeqId();
   /// TODO: Should not parse
   last_recv_msg_id_ = item.MaxMsgId();
-  STREAMING_LOG(DEBUG) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_
+  STREAMING_LOG(INFO) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_
                        << " msg_id: " << last_recv_msg_id_;
   Push(item);
   expect_seq_id_++;
