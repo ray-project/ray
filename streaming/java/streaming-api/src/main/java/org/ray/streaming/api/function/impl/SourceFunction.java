@@ -11,7 +11,7 @@ public interface SourceFunction<T> extends Function {
 
   void init(int parallel, int index);
 
-  void fetch(long batchId, SourceContext<T> ctx) throws Exception;
+  void run(SourceContext<T> ctx) throws Exception;
 
   void close();
 

@@ -102,13 +102,6 @@ public class JobWorker implements Serializable {
     return task;
   }
 
-
-  public Boolean setBatchId(long batchId) {
-    Preconditions.checkArgument(nodeType == NodeType.SOURCE);
-    ((SourceStreamTask)this.task).setBatchId(batchId);
-    return true;
-  }
-
   /**
    * Unified async interface for streaming data transfer, including data-flow and control-flow.
    * This method is called in peer's streaming C++ layer through CoreWorker SubmitTask.

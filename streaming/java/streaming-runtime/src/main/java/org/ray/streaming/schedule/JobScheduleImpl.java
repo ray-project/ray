@@ -3,6 +3,7 @@ package org.ray.streaming.schedule;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
@@ -10,11 +11,10 @@ import org.ray.streaming.cluster.ResourceManager;
 import org.ray.streaming.core.graph.ExecutionGraph;
 import org.ray.streaming.core.graph.ExecutionNode;
 import org.ray.streaming.core.graph.ExecutionTask;
-import org.ray.streaming.runtime.JobMaster;
-import org.ray.streaming.runtime.JobWorker;
-import org.ray.streaming.runtime.context.WorkerContext;
 import org.ray.streaming.plan.Plan;
 import org.ray.streaming.plan.PlanVertex;
+import org.ray.streaming.runtime.JobWorker;
+import org.ray.streaming.runtime.context.WorkerContext;
 
 public class JobScheduleImpl implements IJobSchedule {
   private Plan plan;
@@ -51,9 +51,6 @@ public class JobScheduleImpl implements IJobSchedule {
       }
     }
     Ray.wait(waits);
-
-    RayActor<JobMaster> jobMaster = Ray.createActor(JobMaster::new);
-    Ray.call(JobMaster::init, jobMaster, executionGraph, jobConfig).get();
   }
 
   private int getPlanWorker() {
