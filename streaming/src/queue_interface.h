@@ -2,8 +2,6 @@
 #ifndef QUEUE_INTERFACE_H
 #define QUEUE_INTERFACE_H
 
-#include "plasma/client.h"
-#include "plasma/common.h"
 #include "ray/common/status.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/util.h"
@@ -28,9 +26,6 @@ std::shared_ptr<QueueReaderInterface> CreateQueueReader(
     const JobID &job_id,
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func);
-
-// convert plasma status to ray status
-ray::Status ConvertStatus(const arrow::Status &status);
 
 inline void ConvertToValidQueueId(const ObjectID &queue_id) {
   auto addr = const_cast<ObjectID *>(&queue_id);

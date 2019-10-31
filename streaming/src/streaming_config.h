@@ -50,8 +50,6 @@ class StreamingConfig {
 
   std::string streaming_task_job_id = "ffffffff";
 
-  std::string plasma_store_socket_path = "/tmp/ray/worker/sockets/plasma_store";
-
   std::string queue_type = "streaming_queue";
 
  public:
@@ -109,10 +107,6 @@ class StreamingConfig {
   uint32_t GetStreaming_log_level() const;
 
   void SetStreaming_log_level(uint32_t streaming_log_level);
-
-  const std::string &GetPlasma_store_socket_path() const;
-
-  void SetPlasma_store_socket_path(const std::string &plasma_store_socket_path);
   
   const std::string &GetQueue_type() const;
 

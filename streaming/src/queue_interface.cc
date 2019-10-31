@@ -30,13 +30,6 @@ std::shared_ptr<QueueReaderInterface> CreateQueueReader(
   return instance;
 }
 
-inline ray::Status ConvertStatus(const arrow::Status &status) {
-  if (status.ok()) {
-    return Status::OK();
-  }
-  return ray::Status(static_cast<ray::StatusCode>(status.code()), status.message());
-}
-
 /***
  * code below is interface implementation of streaming queue
  ***/

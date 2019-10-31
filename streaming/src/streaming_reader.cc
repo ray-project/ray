@@ -7,9 +7,6 @@
 
 #include "ray/raylet/raylet_client.h"
 
-#include "plasma/client.h"
-#include "plasma/common.h"
-
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
@@ -22,36 +19,28 @@ namespace streaming {
 
 const uint32_t StreamingReader::kReadItemTimeout = 1000;
 
-void StreamingReader::Init(const std::string &plasma_store_path,
-                           const std::vector<ObjectID> &input_ids,
-                           const std::vector<uint64_t> &plasma_queue_seq_ids,
+void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
+                           const std::vector<uint64_t> &queue_seq_ids,
                            const std::vector<uint64_t> &streaming_msg_ids,
                            int64_t timer_interval) {
-  Init(plasma_store_path, input_ids, timer_interval);
+  Init(input_ids, timer_interval);
   for (size_t i = 0; i < input_ids.size(); ++i) {
     auto &q_id = input_ids[i];
     // channel_info_map_[q_id].channel_id = q_id;
-    channel_info_map_[q_id].current_seq_id = plasma_queue_seq_ids[i];
+    channel_info_map_[q_id].current_seq_id = queue_seq_ids[i];
     channel_info_map_[q_id].current_message_id = streaming_msg_ids[i];
   }
 }
 
-void StreamingReader::Init(const std::string &plasma_store_path,
-                           const std::vector<ObjectID> &input_ids,
+void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   ray::JobID job_id =
       JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
-  STREAMING_LOG(INFO) << "[Reader] plasma_store_path:" << plasma_store_path
-                      << ", driver id: " << job_id
+  STREAMING_LOG(INFO) << "[Reader] driver id: " << job_id
                       << ", raylet socket: " << config_.GetStreaming_raylet_socket_path()
                       << ", " << input_ids.size() << " queue to init.";
 
-  transfer_config_->Set(ConfigEnum::PLASMA_STORE_SOCKET_PATH, plasma_store_path);
-  transfer_config_->Set(ConfigEnum::RAYLET_SOCKET_PATH,
-                       config_.GetStreaming_raylet_socket_path());
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
-  transfer_config_->Set(ConfigEnum::RAYLET_CLIENT,
-                       reinterpret_cast<uint64_t>(raylet_client_));
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
 
   transfer_ = std::make_shared<StreamingQueueConsumer>(transfer_config_);

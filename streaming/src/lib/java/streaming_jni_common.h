@@ -116,7 +116,7 @@ class LongVectorFromJLongArray {
 };
 
 std::vector<ray::ObjectID>
-jarray_to_plasma_object_id_vec(JNIEnv *env, jobjectArray jarr);
+jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr);
 
 jint throwRuntimeException(JNIEnv *env, const char *message);
 jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector<ray::ObjectID> &abnormal_queues);

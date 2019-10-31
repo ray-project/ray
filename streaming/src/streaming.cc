@@ -1,4 +1,3 @@
-#include <plasma/common.h>
 #include <atomic>
 #include <cstdlib>
 #include <mutex>
@@ -15,12 +14,6 @@ void StreamingCommon::SetConfig(const StreamingConfig &streaming_config) {
   STREAMING_CHECK(channel_state_ == StreamingChannelState::Init)
       << "set config must be at beginning";
   config_ = streaming_config;
-  if (config_.GetStreaming_task_job_id().size() == 2 * kUniqueIDSize) {
-    CreateRayletClient(ray::JobID::FromBinary(
-        StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id())));
-  } else {
-    CreateRayletClient(ray::JobID::FromInt(-1));
-  }
 }
 
 void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_len) {
@@ -64,34 +57,9 @@ void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_l
         StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
     STREAMING_LOG(INFO) << "str = > " << task_job_id << ", hex " << task_job_id.Hex();
   }
-  CreateRayletClient(task_job_id);
 }
 
 StreamingCommon::~StreamingCommon() {
-  if (raylet_client_ != nullptr) {
-    delete raylet_client_;
-    STREAMING_LOG(INFO) << "free new raylet client instance";
-  }
-}
-
-void StreamingCommon::CreateRayletClient(const JobID &job_id) {
-  if (raylet_client_ != nullptr) {
-    return;
-  }
-  if (config_.GetStreaming_raylet_socket_path().size()) {
-    // only java and python lang are supported
-    STREAMING_LOG(INFO) << "Raylet socket name: "
-                        << config_.GetStreaming_raylet_socket_path();
-    // object id can't be converted to driver id, so that create new instance
-    // from object id
-    raylet_client_ = nullptr;
-    if (raylet_client_) {
-      STREAMING_LOG(INFO) << "new raylet client succ, "
-                          << reinterpret_cast<long>(raylet_client_);
-    } else {
-      STREAMING_LOG(WARNING) << "new raylet client failed, use old client";
-    }
-  }
 }
 
 StreamingChannelState StreamingCommon::GetChannelState() { return channel_state_; }
