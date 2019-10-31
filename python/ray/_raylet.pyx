@@ -1021,7 +1021,7 @@ cdef class CoreWorker:
             if isinstance(output, ray.actor.ActorHandle):
                 raise Exception("Returning an actor handle from a remote "
                                 "function is not allowed).")
-            elif output == NoReturn:
+            elif output is NoReturn:
                 serialized_objects.append(output)
                 data_sizes.push_back(0)
                 metadatas.push_back(empty_metadata)
@@ -1056,7 +1056,7 @@ cdef class CoreWorker:
             if returns[0][i].get() == NULL:
                 continue
 
-            if serialized_object == NoReturn:
+            if serialized_object is NoReturn:
                 returns[0][i].reset()
             elif isinstance(serialized_object, bytes):
                 buffer = Buffer.make(returns[0][i].get().GetData())
