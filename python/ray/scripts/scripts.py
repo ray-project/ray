@@ -165,11 +165,10 @@ def cli(logging_level, logging_format):
 @click.option(
     "--webui-host",
     required=False,
-    type=click.Choice(["127.0.0.1", "0.0.0.0"]),
-    default="127.0.0.1",
-    help="The host to bind the web UI server to. Can either be 127.0.0.1 "
-    "(localhost) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is set to 127.0.0.1 to prevent access from external machines.")
+    default="localhost",
+    help="The host to bind the web UI server to. Can either be localhost "
+    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is set to localhost to prevent access from external machines.")
 @click.option(
     "--block",
     is_flag=True,
