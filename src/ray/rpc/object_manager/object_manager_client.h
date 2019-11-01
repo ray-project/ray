@@ -33,6 +33,7 @@ class ObjectManagerClient {
         grpc::ResourceQuota quota;
         quota.SetMaxThreads(num_connections_);
         grpc::ChannelArguments argument;
+	argument.SetResourceQuota(quota);
     std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials(), argument);
       stubs_.push_back(ObjectManagerService::NewStub(channel));
