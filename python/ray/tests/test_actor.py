@@ -494,11 +494,16 @@ def test_actor_deletion(ray_start_regular):
     actors = None
     [ray.tests.utils.wait_for_pid_to_exit(pid) for pid in pids]
 
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_actor_method_deletion(ray_start_regular):
     @ray.remote
     class Actor(object):
         def method(self):
             return 1
 
+    # TODO(ekl) this doesn't work in Python 2 after the weak ref method change.
     # Make sure that if we create an actor and call a method on it
     # immediately, the actor doesn't get killed before the method is
     # called.

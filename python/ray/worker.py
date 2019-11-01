@@ -292,8 +292,8 @@ class Worker(object):
 
         if isinstance(value, bytes):
             if return_buffer is not None:
-                raise NotImplementedError(
-                    "returning raw buffers from direct actor calls")
+                return_buffer.append(value)
+                return
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
