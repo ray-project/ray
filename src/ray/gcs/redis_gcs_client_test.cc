@@ -1166,6 +1166,14 @@ void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client
 
 void TestClientTableConnect(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
+  // Connect and disconnect to client table. We should receive notifications
+  // for the addition and removal of our own entry.
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
+
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
@@ -1174,13 +1182,6 @@ void TestClientTableConnect(const JobID &job_id,
         test->Stop();
       });
 
-  // Connect and disconnect to client table. We should receive notifications
-  // for the addition and removal of our own entry.
-  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
-  local_node_info.set_node_manager_address("127.0.0.1");
-  local_node_info.set_node_manager_port(0);
-  local_node_info.set_object_manager_port(0);
-  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
   test->Start();
 }
 
@@ -1191,6 +1192,14 @@ TEST_F(TestGcsWithAsio, TestClientTableConnect) {
 
 void TestClientTableDisconnect(const JobID &job_id,
                                std::shared_ptr<gcs::RedisGcsClient> client) {
+  // Connect to the client table. We should receive notification for the
+  // addition of our own entry.
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
+
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
@@ -1205,13 +1214,6 @@ void TestClientTableDisconnect(const JobID &job_id,
         ClientTableNotification(client, id, data, /*is_insertion=*/false);
         test->Stop();
       });
-  // Connect to the client table. We should receive notification for the
-  // addition of our own entry.
-  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
-  local_node_info.set_node_manager_address("127.0.0.1");
-  local_node_info.set_node_manager_port(0);
-  local_node_info.set_object_manager_port(0);
-  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
   test->Start();
 }
 
@@ -1222,6 +1224,15 @@ TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
 
 void TestClientTableImmediateDisconnect(const JobID &job_id,
                                         std::shared_ptr<gcs::RedisGcsClient> client) {
+  // Connect to then immediately disconnect from the client table. We should
+  // receive notifications for the addition and removal of our own entry.
+  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
+  local_node_info.set_node_manager_address("127.0.0.1");
+  local_node_info.set_node_manager_port(0);
+  local_node_info.set_object_manager_port(0);
+  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
+  RAY_CHECK_OK(client->client_table().Disconnect());
+
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
   client->client_table().RegisterClientAddedCallback(
@@ -1233,14 +1244,6 @@ void TestClientTableImmediateDisconnect(const JobID &job_id,
         ClientTableNotification(client, id, data, false);
         test->Stop();
       });
-  // Connect to then immediately disconnect from the client table. We should
-  // receive notifications for the addition and removal of our own entry.
-  GcsNodeInfo local_node_info = client->client_table().GetLocalClient();
-  local_node_info.set_node_manager_address("127.0.0.1");
-  local_node_info.set_node_manager_port(0);
-  local_node_info.set_object_manager_port(0);
-  RAY_CHECK_OK(client->client_table().Connect(local_node_info));
-  RAY_CHECK_OK(client->client_table().Disconnect());
   test->Start();
 }
 

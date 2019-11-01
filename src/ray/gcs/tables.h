@@ -854,6 +854,11 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status Connect(const GcsNodeInfo &local_node_info);
 
+  /// Subscribe to client table notifications. This should be called by clients
+  /// that are not registered in the client table but that want to receive
+  /// client table notifications.
+  ray::Status Subscribe();
+
   /// Disconnect the client from the GCS. The client ID assigned during
   /// registration should never be reused after disconnecting.
   ///
