@@ -80,6 +80,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
+      client_call_manager_(io_service_),
       heartbeat_timer_(io_service_),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
@@ -514,10 +515,18 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   // Submit task.
   Status status;
-  if (is_direct_call) {
-    status = direct_actor_submitter_->SubmitTask(builder.Build());
+  const auto spec = builder.Build();
+  auto state = actor_handle->ActorState();
+  if (state.has_value() && *state == gcs::ActorTableData::DEAD) {
+    direct_actor_submitter_->TreatTaskAsFailed(spec.TaskId(), spec.NumReturns(),
+                                               rpc::ErrorType::ACTOR_DIED);
   } else {
-    status = raylet_client_->SubmitTask(builder.Build());
+    if (is_direct_call) {
+      status = direct_actor_submitter_->SubmitTask(builder.Build(),
+                                                   actor_handle->GetRpcClient());
+    } else {
+      status = raylet_client_->SubmitTask(builder.Build());
+    }
   }
   return status;
 }
@@ -546,36 +555,41 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
-        auto it = actor_handles_.find(actor_id);
-        RAY_CHECK(it != actor_handles_.end());
-        if (it->second->IsDirectCallActor()) {
-          // We have to reset the actor handle since the next instance of the
-          // actor will not have the last sequence number that we sent.
-          // TODO: Remove the check for direct calls. We do not reset for the
-          // raylet codepath because it tries to replay all tasks since the
-          // last actor checkpoint.
-          it->second->Reset();
-        }
+      auto it = actor_handles_.find(actor_id);
+      RAY_CHECK(it != actor_handles_.end());
+      if (actor_data.state() == gcs::ActorTableData::ALIVE) {
+        it->second->Connect(actor_data, client_call_manager_);
+        direct_actor_submitter_->SendPendingTasks(actor_id, it->second->GetRpcClient());
+      } else {
+        // We have to reset the actor handle since the next instance of the
+        // actor will not have the last sequence number that we sent.
+        // TODO: Remove the flag for direct calls. We do not reset for the
+        // raylet codepath because it tries to replay all tasks since the last
+        // actor checkpoint.
+        it->second->Reset(actor_data,
+                          /*reset_task_counter=*/it->second->IsDirectCallActor());
+        direct_actor_submitter_->FailPendingTasks(actor_id);
 
-        auto child_it = children_actors_.find(actor_id);
-        if (child_it != children_actors_.end()) {
-          child_it->second.num_lifetimes++;
-          // Restart the actor.
-          if (!raylet_client_
-                   ->SubmitTask(child_it->second.actor_creation_spec,
-                                child_it->second.num_lifetimes)
-                   .ok()) {
-            RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
+        if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+          // If we are the actor's creator, restart it.
+          auto child_it = children_actors_.find(actor_id);
+          if (child_it != children_actors_.end()) {
+            child_it->second.num_lifetimes++;
+            // Restart the actor.
+            if (!raylet_client_
+                     ->SubmitTask(child_it->second.actor_creation_spec,
+                                  child_it->second.num_lifetimes)
+                     .ok()) {
+              RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
+            }
           }
+        } else {
+          // The actor is dead.
+          RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
+          // We cannot erase the actor handle here because clients can still
+          // submit tasks to dead actors.
         }
-      } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
-        // We cannot erase the actor handle here because clients can still
-        // submit tasks to dead actors.
       }
-
-      direct_actor_submitter_->HandleActorUpdate(actor_id, actor_data);
 
       RAY_LOG(INFO) << "received notification on actor, state="
                     << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id

@@ -369,6 +369,7 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "@com_google_absl//absl/types:optional",
         ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",

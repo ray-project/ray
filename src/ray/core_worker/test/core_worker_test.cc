@@ -200,7 +200,12 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
                                                  const ActorID &actor_id, bool wait_alive,
                                                  int timeout_ms) {
   auto condition_func = [&worker, actor_id, wait_alive]() -> bool {
-    bool actor_alive = worker.direct_actor_submitter_->IsActorAlive(actor_id);
+    ActorHandle *handle = nullptr;
+    auto status = worker.GetActorHandle(actor_id, &handle);
+    if (!status.ok()) {
+      return false;
+    }
+    bool actor_alive = handle->ActorState() == gcs::ActorTableData::ALIVE;
     return wait_alive ? actor_alive : !actor_alive;
   };
 

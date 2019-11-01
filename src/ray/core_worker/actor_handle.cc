@@ -58,10 +58,25 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
-void ActorHandle::Reset() {
-  std::unique_lock<std::mutex> guard(mutex_);
-  task_counter_ = 0;
-  actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
+void ActorHandle::Connect(const gcs::ActorTableData &data,
+                          rpc::ClientCallManager &client_call_manager) {
+  RAY_CHECK(data.state() == gcs::ActorTableData::ALIVE);
+  data_.reset(new gcs::ActorTableData(data));
+  rpc_client_ = rpc::DirectActorClient::make(data_->ip_address(), data_->port(),
+                                             client_call_manager);
+}
+
+void ActorHandle::Reset(const gcs::ActorTableData &data, bool reset_task_counter) {
+  RAY_CHECK(data.state() != gcs::ActorTableData::ALIVE);
+  data_.reset(new gcs::ActorTableData(data));
+  // Disconnect from the RPC client.
+  rpc_client_.reset();
+
+  if (reset_task_counter) {
+    std::unique_lock<std::mutex> guard(mutex_);
+    task_counter_ = 0;
+    actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
+  }
 }
 
 }  // namespace ray
