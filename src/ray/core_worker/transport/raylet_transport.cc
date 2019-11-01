@@ -56,8 +56,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, resource_ids, &results);
-  // Raylet transport doesn't currently support returning objects inline.
-  RAY_CHECK(results.size() == 0);
 
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId() << " finished execution.";
 

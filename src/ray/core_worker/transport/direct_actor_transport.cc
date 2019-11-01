@@ -153,22 +153,31 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
         for (int i = 0; i < reply.return_objects_size(); i++) {
           const auto &return_object = reply.return_objects(i);
           ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-          std::shared_ptr<LocalMemoryBuffer> data_buffer;
-          if (return_object.data().size() > 0) {
-            data_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.data().data())),
-                return_object.data().size());
+
+          if (return_object.in_plasma()) {
+            // Mark it as in plasma with a dummy object.
+            std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+            auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+            auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+            RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+          } else {
+            std::shared_ptr<LocalMemoryBuffer> data_buffer;
+            if (return_object.data().size() > 0) {
+              data_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.data().data())),
+                  return_object.data().size());
+            }
+            std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+            if (return_object.metadata().size() > 0) {
+              metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
+                  return_object.metadata().size());
+            }
+            RAY_CHECK_OK(
+                store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
           }
-          std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-          if (return_object.metadata().size() > 0) {
-            metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-                return_object.metadata().size());
-          }
-          RAY_CHECK_OK(
-              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   if (!status.ok()) {
@@ -265,13 +274,19 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
           return_object->set_object_id(id.Binary());
+
+          // The object is nullptr if it already existed in the object store.
           const auto &result = return_by_value[i];
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
+          if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+            return_object->set_in_plasma(true);
+          } else {
+            if (result->GetData() != nullptr) {
+              return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+            }
+            if (result->GetMetadata() != nullptr) {
+              return_object->set_metadata(result->GetMetadata()->Data(),
+                                          result->GetMetadata()->Size());
+            }
           }
         }
 

@@ -7,10 +7,12 @@ import "src/ray/protobuf/common.proto";
 message ReturnObject {
   // Object ID.
   bytes object_id = 1;
+  // If set, indicates the data is in plasma instead of inline.
+  bool in_plasma = 2;
   // Data of the object.
-  bytes data = 2;
+  bytes data = 3;
   // Metaata of the object.
-  bytes metadata = 3;
+  bytes metadata = 4;
 }
 
 message PushTaskRequest {

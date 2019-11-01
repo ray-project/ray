@@ -624,12 +624,12 @@ Status CoreWorker::GetReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (!worker_context_.CurrentActorUseDirectCall()) {
+      if (worker_context_.CurrentActorUseDirectCall() && data_sizes[i] < 100000) {
+        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
+      } else {
         RAY_RETURN_NOT_OK(
             Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
-      } else {
-        data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       }
     }
     // Leave the return object as a nullptr if there is no data or metadata.
@@ -677,12 +677,14 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
+  // TODO(ekl) unify return_by_value and return_objects
   std::vector<std::shared_ptr<RayObject>> return_objects;
   status = task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, &return_objects);
 
   for (size_t i = 0; i < return_objects.size(); i++) {
+    return_by_value->push_back(return_objects[i]);
     // The object is nullptr if it already existed in the object store.
     if (!return_objects[i]) {
       continue;
@@ -697,8 +699,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
-    } else {
-      return_by_value->push_back(return_objects[i]);
     }
   }
 
