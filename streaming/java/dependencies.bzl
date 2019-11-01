@@ -1,17 +1,18 @@
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 
-def gen_java_deps():
+def gen_streaming_java_deps():
     maven_install(
+        name = "ray_streaming_maven",
         artifacts = [
             "com.google.guava:guava:27.0.1-jre",
             "de.ruedigermoeller:fst:2.57",
-            "org.apache.logging.log4j:log4j-slf4j-impl:2.8.2",
-            "org.apache.logging.log4j:log4j-api:2.8.2",
+            "org.slf4j:slf4j-api:1.7.12",
+            "org.slf4j:slf4j-log4j12:1.7.25",
             "org.apache.logging.log4j:log4j-core:2.8.2",
             "org.testng:testng:6.9.10",
         ],
         repositories = [
-            "https://repo1.maven.org/maven2",
+            "http://mvn.dev.alipay.net:8080/artifactory/repo/",
         ],
         # Fetch srcjars. Defaults to False.
         fetch_sources = False,

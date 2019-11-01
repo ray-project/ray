@@ -13,5 +13,6 @@
 * run `mvn clean install -Dmaven.test.skip=true`
 
 3.build ray streaming
-* go to folder ray/streaming
+* go to folder ray/streaming/java
+* run `bazel build all_modules`
 * run `mvn clean install -Dmaven.test.skip=true`
