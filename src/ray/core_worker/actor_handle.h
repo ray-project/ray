@@ -37,7 +37,15 @@ class ActorHandle {
     }
   }
 
-  std::shared_ptr<rpc::DirectActorClient> &GetRpcClient() { return rpc_client_; }
+  ClientID NodeId() const {
+    if (data_ == nullptr) {
+      return ClientID::Nil();
+    } else {
+      return ClientID::FromBinary(data_->node_manager_id());
+    }
+  }
+
+  std::shared_ptr<rpc::DirectActorClient> &RpcClient() { return rpc_client_; }
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 

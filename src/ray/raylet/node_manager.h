@@ -218,13 +218,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker The worker that finished the task.
   /// \return Void.
   void FinishAssignedTask(Worker &worker);
-  /// Helper function to produce actor table data for a newly created actor.
-  ///
-  /// \param task_spec Task specification of the actor creation task that created the
-  /// actor.
-  /// \param worker The port that the actor is listening on.
-  std::shared_ptr<ActorTableData> CreateActorTableDataFromCreationTask(
-      const TaskSpecification &task_spec, int port, uint32_t num_lifetimes);
   /// Handle a worker finishing an assigned actor task or actor creation task.
   /// \param worker The worker that finished the task.
   /// \param task The actor task or actor creation task.
@@ -454,16 +447,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessSetResourceRequest(const std::shared_ptr<LocalClientConnection> &client,
                                  const uint8_t *message_data);
 
-  /// Handle the case where an actor is disconnected, determine whether this
-  /// actor needs to be reconstructed and then update actor table.
-  /// This function needs to be called either when actor process dies or when
-  /// a node dies.
+  /// Handle an actor process failure. Determine whether this actor needs to be
+  /// reconstructed and then update actor table.
   ///
   /// \param actor_id Id of this actor.
-  /// \param was_local Whether the disconnected was on this local node.
   /// \param intentional_disconnect Wether the client was intentionally disconnected.
   /// \return Void.
-  void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
+  void HandleDisconnectedActor(const ActorID &actor_id,
                                bool intentional_disconnect);
 
   /// Finish assigning a task to a worker.

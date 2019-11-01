@@ -99,6 +99,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   // Initialize gcs client.
   RAY_CHECK_OK(gcs_client_.Connect(io_service_));
+  // Register a callback on the client table for dead clients. This is used to
+  // mark actors that we started as dead in case of node failure.
+  auto node_manager_removed = [this](gcs::RedisGcsClient *client,
+                                            const UniqueID &id, const gcs::GcsNodeInfo &data) {
+    const ClientID node_id = ClientID::FromBinary(data.node_id());
+    HandleNodeRemoved(node_id);
+  };
+  RAY_CHECK_OK(gcs_client_.client_table().Subscribe());
+  gcs_client_.client_table().RegisterClientRemovedCallback(node_manager_removed);
 
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
@@ -523,7 +532,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   } else {
     if (is_direct_call) {
       status = direct_actor_submitter_->SubmitTask(builder.Build(),
-                                                   actor_handle->GetRpcClient());
+                                                   actor_handle->RpcClient());
     } else {
       status = raylet_client_->SubmitTask(builder.Build());
     }
@@ -559,7 +568,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
       RAY_CHECK(it != actor_handles_.end());
       if (actor_data.state() == gcs::ActorTableData::ALIVE) {
         it->second->Connect(actor_data, client_call_manager_);
-        direct_actor_submitter_->SendPendingTasks(actor_id, it->second->GetRpcClient());
+        direct_actor_submitter_->SendPendingTasks(actor_id, it->second->RpcClient());
       } else {
         // We have to reset the actor handle since the next instance of the
         // actor will not have the last sequence number that we sent.
@@ -734,6 +743,30 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   return status;
+}
+
+void CoreWorker::HandleNodeRemoved(const ClientID &node_id) {
+  // TODO(swang): For orphaned actors, move failure detection to the raylet monitor.
+  for (const auto &handle : actor_handles_) {
+    // TODO: Handle out-of-order messages.
+    if (handle.second->NodeId() == node_id) {
+      const auto &actor_id = handle.first;
+      auto child_it = children_actors_.find(actor_id);
+      if (child_it != children_actors_.end()) {
+        // Mark the child as failed in the GCS.
+        auto new_state = child_it->second.CanRestart() ? gcs::ActorTableData::RECONSTRUCTING : gcs::ActorTableData::DEAD;
+        std::shared_ptr<gcs::ActorTableData> data = gcs::CreateActorTableData(child_it->second.actor_creation_spec, "", 0, ClientID::Nil(), new_state, child_it->second.num_lifetimes);
+        auto done = [actor_id](Status status) {
+          if (!status.ok()) {
+            // Only the owner should update the actor as failed.
+            RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id << ". This may be because the node crashed soon after the actor process failed.";
+          }
+        };
+        RAY_CHECK_OK(gcs_client_.Actors().AsyncUpdate(
+            actor_id, data, done));
+      }
+    }
+  }
 }
 
 }  // namespace ray

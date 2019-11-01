@@ -7,6 +7,32 @@ namespace ray {
 
 namespace gcs {
 
+std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
+    const TaskSpecification &task_spec, const std::string &ip_address, int port, const ClientID &node_id, gcs::ActorTableData::ActorState state, uint32_t num_lifetimes) {
+  RAY_CHECK(task_spec.IsActorCreationTask());
+  auto actor_id = task_spec.ActorCreationId();
+  auto actor_info_ptr = std::make_shared<ray::gcs::ActorTableData>();
+  // Set all of the static fields for the actor. These fields will not change
+  // even if the actor fails or is reconstructed.
+  actor_info_ptr->set_actor_id(actor_id.Binary());
+  actor_info_ptr->set_parent_id(task_spec.CallerId().Binary());
+  actor_info_ptr->set_actor_creation_dummy_object_id(
+      task_spec.ActorDummyObject().Binary());
+  actor_info_ptr->set_job_id(task_spec.JobId().Binary());
+  actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
+  // Set the fields that change when the actor is restarted.
+  actor_info_ptr->set_num_lifetimes(num_lifetimes);
+  actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+  // Set the ip address & port, which could change after reconstruction.
+  actor_info_ptr->set_ip_address(ip_address);
+  actor_info_ptr->set_port(port);
+  // Set the new fields for the actor's state to indicate that the actor is
+  // now alive on this node manager.
+  actor_info_ptr->set_node_manager_id(node_id.Binary());
+  actor_info_ptr->set_state(state);
+  return actor_info_ptr;
+}
+
 ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
     : client_impl_(client_impl), actor_sub_executor_(client_impl_.actor_table()) {}
 

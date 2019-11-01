@@ -283,6 +283,10 @@ class CoreWorker {
     const ray::TaskSpecification actor_creation_spec;
     /// How many times this actor has been alive before.
     uint64_t num_lifetimes = 0;
+
+    bool CanRestart() const {
+      return actor_creation_spec.MaxActorReconstructions() - num_lifetimes > 0;
+    }
   };
 
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -342,6 +346,8 @@ class CoreWorker {
   Status BuildArgsForExecutor(const TaskSpecification &task,
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
+
+  void HandleNodeRemoved(const ClientID &node_id);
 
   /// Type of this worker (i.e., DRIVER or WORKER).
   const WorkerType worker_type_;

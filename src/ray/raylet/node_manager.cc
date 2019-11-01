@@ -527,21 +527,6 @@ void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
                      << client_id << ".";
   }
 
-  // For any live actors that were on the dead node, broadcast a notification
-  // about the actor's death
-  // TODO(swang): This could be very slow if there are many actors.
-  // TODO(swang): Move this to the owner.
-  // TODO(swang): For orphaned actors, move this to the raylet monitor.
-  for (const auto &actor_entry : actor_registry_) {
-    if (actor_entry.second.GetNodeManagerId() == client_id &&
-        actor_entry.second.GetState() == ActorTableData::ALIVE) {
-      RAY_LOG(INFO) << "Actor " << actor_entry.first
-                    << " is disconnected, because its node " << client_id
-                    << " is removed from cluster. It may be reconstructed.";
-      HandleDisconnectedActor(actor_entry.first, /*was_local=*/false,
-                              /*intentional_disconnect=*/false);
-    }
-  }
   // Notify the object directory that the client has been removed so that it
   // can remove it from any cached locations.
   object_directory_->HandleClientRemoved(client_id);
@@ -970,7 +955,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   }
 }
 
-void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
+void NodeManager::HandleDisconnectedActor(const ActorID &actor_id,
                                           bool intentional_disconnect) {
   auto actor_entry = actor_registry_.find(actor_id);
   RAY_CHECK(actor_entry != actor_registry_.end());
@@ -985,29 +970,24 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
       actor_registration.GetRemainingReconstructions() > 0 && !intentional_disconnect
           ? ActorTableData::RECONSTRUCTING
           : ActorTableData::DEAD;
-  if (was_local) {
-    // Clean up the dummy objects from this actor.
-    RAY_LOG(DEBUG) << "Removing dummy objects for actor: " << actor_id;
-    for (auto &dummy_object_pair : actor_entry->second.GetDummyObjects()) {
-      HandleObjectMissing(dummy_object_pair.first);
-    }
+  // Clean up the dummy objects from this actor.
+  RAY_LOG(DEBUG) << "Removing dummy objects for actor: " << actor_id;
+  for (auto &dummy_object_pair : actor_entry->second.GetDummyObjects()) {
+    HandleObjectMissing(dummy_object_pair.first);
   }
   // Update the actor's state.
   ActorTableData new_actor_info = actor_entry->second.GetTableData();
   new_actor_info.set_state(new_state);
-  if (was_local) {
-    // If the actor was local, immediately update the state in actor registry.
-    // So if we receive any actor tasks before we receive GCS notification,
-    // these tasks can be correctly routed to the `MethodsWaitingForActorCreation`
-    // queue, instead of being assigned to the dead actor.
-    HandleActorStateTransition(actor_id, ActorRegistration(new_actor_info));
-  }
-
-  auto done = [was_local, actor_id](Status status) {
-    if (was_local && !status.ok()) {
-      // If the disconnected actor was local, only this node will try to update actor
-      // state. So the update shouldn't fail.
-      RAY_LOG(FATAL) << "Failed to update state for actor " << actor_id;
+  // If the actor was local, immediately update the state in actor registry.
+  // So if we receive any actor tasks before we receive GCS notification,
+  // these tasks can be correctly routed to the `MethodsWaitingForActorCreation`
+  // queue, instead of being assigned to the dead actor.
+  HandleActorStateTransition(actor_id, ActorRegistration(new_actor_info));
+  auto done = [actor_id](Status status) {
+    if (!status.ok()) {
+      // The disconnected actor was local, so only this node should try to
+      // update actor state.
+      RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id << ". This may be because the node crashed soon after the actor process failed.";
     }
   };
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
@@ -1084,7 +1064,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     if (!actor_id.IsNil()) {
       // If the worker was an actor, update actor state, reconstruct the actor if needed,
       // and clean up actor's tasks if the actor is permanently dead.
-      HandleDisconnectedActor(actor_id, true, intentional_disconnect);
+      HandleDisconnectedActor(actor_id, intentional_disconnect);
     }
 
     const TaskID &task_id = worker->GetAssignedTaskId();
@@ -1959,34 +1939,6 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   }
 }
 
-std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
-    const TaskSpecification &task_spec, int port, uint32_t num_lifetimes) {
-  RAY_CHECK(task_spec.IsActorCreationTask());
-  auto actor_id = task_spec.ActorCreationId();
-  auto actor_info_ptr = std::make_shared<ray::gcs::ActorTableData>();
-  // Set all of the static fields for the actor. These fields will not change
-  // even if the actor fails or is reconstructed.
-  actor_info_ptr->set_actor_id(actor_id.Binary());
-  actor_info_ptr->set_parent_id(task_spec.CallerId().Binary());
-  actor_info_ptr->set_actor_creation_dummy_object_id(
-      task_spec.ActorDummyObject().Binary());
-  actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
-  // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_num_lifetimes(num_lifetimes);
-  actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
-  // Set the ip address & port, which could change after reconstruction.
-  actor_info_ptr->set_ip_address(
-      gcs_client_->client_table().GetLocalClient().node_manager_address());
-  actor_info_ptr->set_port(port);
-  // Set the new fields for the actor's state to indicate that the actor is
-  // now alive on this node manager.
-  actor_info_ptr->set_node_manager_id(
-      gcs_client_->client_table().GetLocalClientId().Binary());
-  actor_info_ptr->set_state(ActorTableData::ALIVE);
-  return actor_info_ptr;
-}
-
 void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   ActorID actor_id;
   TaskID caller_id;
@@ -2006,9 +1958,13 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   if (task_spec.IsActorCreationTask()) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
-    // TODO(swang): Set num_lifetimes
-    auto new_actor_info = CreateActorTableDataFromCreationTask(
-        task_spec, worker.Port(),
+    auto new_actor_info = gcs::CreateActorTableData(
+        task_spec,
+        gcs_client_->client_table().GetLocalClient().node_manager_address(),
+        worker.Port(),
+
+        gcs_client_->client_table().GetLocalClientId(),
+        gcs::ActorTableData::ALIVE,
         task.GetTaskExecutionSpec().GetMessage().num_submissions());
     auto update_callback = [actor_id](Status status) {
       if (!status.ok()) {
@@ -2129,6 +2085,7 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
+    // TODO: Fail this.
     const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
     const auto it = actor_registry_.find(actor_id);
     if (it != actor_registry_.end() && it->second.GetState() == ActorTableData::ALIVE) {

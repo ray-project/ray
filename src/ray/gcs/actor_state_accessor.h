@@ -2,6 +2,7 @@
 #define RAY_GCS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
@@ -9,6 +10,9 @@
 namespace ray {
 
 namespace gcs {
+
+std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
+    const TaskSpecification &task_spec, const std::string &ip_address, int port, const ClientID &node_id, gcs::ActorTableData::ActorState state, uint32_t num_lifetimes);
 
 class RedisGcsClient;
 
