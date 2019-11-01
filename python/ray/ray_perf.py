@@ -182,6 +182,16 @@ def main():
     timeit("multi client direct actor calls async", actor_multi2_direct,
            n * len(clients))
 
+    n = 1000
+    actors = [Actor._remote(is_direct_call=True) for _ in range(n_cpu)]
+    clients = [Client.remote(a) for a in actors]
+
+    def actor_multi2_direct_arg():
+        ray.get([c.small_value_batch_arg.remote(n) for c in clients])
+
+    timeit("multi client direct actor calls with arg async",
+           actor_multi2_direct_arg, n * len(clients))
+
 
 if __name__ == "__main__":
     main()

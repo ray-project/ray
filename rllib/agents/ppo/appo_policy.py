@@ -19,9 +19,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.utils import try_import_tf
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.policy.tf_policy import LearningRateSchedule
+from ray.rllib.policy.tf_policy import LearningRateSchedule, TFPolicy
 from ray.rllib.agents.ppo.ppo_policy import KLCoeffMixin, ValueNetworkMixin
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.explained_variance import explained_variance
 from ray.rllib.utils.tf_ops import make_tf_callable
 
@@ -424,6 +425,10 @@ class TargetNetworkMixin(object):
             return tf.group(*assign_ops)
 
         self.update_target = do_update
+
+    @override(TFPolicy)
+    def variables(self):
+        return self.model_vars + self.target_model_vars
 
 
 def setup_mixins(policy, obs_space, action_space, config):

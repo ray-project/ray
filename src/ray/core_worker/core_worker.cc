@@ -131,6 +131,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
+  // Unfortunately the raylet client has to be constructed after the receivers.
+  if (direct_actor_task_receiver_ != nullptr) {
+    direct_actor_task_receiver_->Init(*raylet_client_);
+  }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -176,14 +180,21 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
-  io_service_.stop();
+  Shutdown();
   io_thread_.join();
-  if (worker_type_ == WorkerType::WORKER) {
-    task_execution_service_.stop();
+}
+
+void CoreWorker::Shutdown() {
+  if (!shutdown_) {
+    io_service_.stop();
+    if (worker_type_ == WorkerType::WORKER) {
+      task_execution_service_.stop();
+    }
+    if (log_dir_ != "") {
+      RayLog::ShutDownRayLog();
+    }
   }
-  if (log_dir_ != "") {
-    RayLog::ShutDownRayLog();
-  }
+  shutdown_ = true;
 }
 
 void CoreWorker::Disconnect() {
@@ -236,18 +247,21 @@ void CoreWorker::ReportActiveObjectIDs() {
   absl::MutexLock lock(&object_ref_mu_);
   // Only send a heartbeat when the set of active object IDs has changed because the
   // raylet only modifies the set of IDs when it receives a heartbeat.
-  if (active_object_ids_updated_) {
-    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-    if (active_object_ids_.size() >
-        RayConfig::instance().raylet_max_active_object_ids()) {
-      RAY_LOG(WARNING) << active_object_ids_.size()
-                       << "object IDs are currently in scope. "
-                       << "This may lead to required objects being garbage collected.";
-    }
-    std::unordered_set<ObjectID> copy;
-    copy.insert(active_object_ids_.begin(), active_object_ids_.end());
-    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(copy));
+  // TODO(edoakes): this is currently commented out because this heartbeat causes the
+  // workers to die when the raylet crashes unexpectedly. Without this, they could
+  // hang idle forever because they wait for the raylet to push tasks via gRPC.
+  // if (active_object_ids_updated_) {
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+  if (active_object_ids_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+                     << "This may lead to required objects being garbage collected.";
   }
+  std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
+  if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
+    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
+    Shutdown();
+  }
+  // }
 
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
