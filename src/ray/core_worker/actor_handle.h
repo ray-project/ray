@@ -7,7 +7,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
-#include "ray/protobuf/core_worker.pb.h"
+#include "ray/protobuf/worker.pb.h"
 
 namespace ray {
 
