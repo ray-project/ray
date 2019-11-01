@@ -482,7 +482,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.is_direct_call);
+                                   actor_creation_options.is_direct_call,
+                                   actor_creation_options.is_detached);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
