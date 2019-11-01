@@ -6,8 +6,8 @@ import hashlib
 import logging
 import sys
 
-from ray.experimental.streaming.operator import PStrategy
-from ray.experimental.streaming.batched_queue import BatchedQueue
+from ray.streaming.operator import PStrategy
+from ray.streaming.batched_queue import BatchedQueue
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
