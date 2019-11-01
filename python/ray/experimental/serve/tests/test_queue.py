@@ -10,8 +10,8 @@ def task_runner_mock_actor():
         def __init__(self):
             self.result = None
 
-        def _ray_serve_call(self, inp):
-            self.result = inp
+        def _ray_serve_call(self, request_item):
+            self.result = request_item
 
         def get_recent_call(self):
             return self.result
