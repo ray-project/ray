@@ -144,6 +144,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int MaxConcurrency() const;
 
+  bool IsDetachedActor() const;
+
   ObjectID ActorDummyObject() const;
 
   std::string DebugString() const;

@@ -211,7 +211,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
-            const c_vector[c_string] &dynamic_worker_options)
+            const c_vector[c_string] &dynamic_worker_options,
+            c_bool is_detached)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

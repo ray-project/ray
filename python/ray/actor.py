@@ -328,7 +328,9 @@ class ActorClass(object):
                 object_store_memory=None,
                 resources=None,
                 is_direct_call=None,
-                max_concurrency=None):
+                max_concurrency=None,
+                name=None,
+                detached=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -348,6 +350,9 @@ class ActorClass(object):
             is_direct_call: Use direct actor calls.
             max_concurrency: The max number of concurrent calls to allow for
                 this actor. This only works with direct actor calls.
+            name: The globally unique name for the actor.
+            detached: Whether the actor should be kept alive after driver
+                exits.
 
         Returns:
             A handle to the newly created actor.
@@ -373,6 +378,23 @@ class ActorClass(object):
                             "has been called.")
 
         meta = self.__ray_metadata__
+
+        if detached and name is None:
+            raise Exception("Detached actors must be named. "
+                            "Please use Actor._remote(name='some_name') "
+                            "to associate the name.")
+
+        # Check whether the name is already taken.
+        if name is not None:
+            try:
+                ray.experimental.get_actor(name)
+            except ValueError:  # name is not taken, expected.
+                pass
+            else:
+                raise ValueError(
+                    "The name {name} is already taken. Please use "
+                    "a different name or get existing actor using "
+                    "ray.experimental.get_actor('{name}')".format(name=name))
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -436,7 +458,8 @@ class ActorClass(object):
             actor_id = worker.core_worker.create_actor(
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
-                actor_placement_resources, is_direct_call, max_concurrency)
+                actor_placement_resources, is_direct_call, max_concurrency,
+                detached)
 
         actor_handle = ActorHandle(
             actor_id,
@@ -449,6 +472,9 @@ class ActorClass(object):
             actor_method_cpu,
             worker.current_session_and_job,
             original_handle=True)
+
+        if name is not None:
+            ray.experimental.register_actor(name, actor_handle)
 
         return actor_handle
 
