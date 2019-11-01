@@ -515,7 +515,8 @@ Status JobTable::AppendJobData(const JobID &job_id, bool is_dead, int64_t timest
 }
 
 void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callback) {
-  RAY_CHECK(subscribe_callback_index_ != -1) << "Callback must be registered after ClientTable::Subscribe() is called";
+  RAY_CHECK(subscribe_callback_index_ != -1)
+      << "Callback must be registered after ClientTable::Subscribe() is called";
   client_added_callback_ = callback;
   // Call the callback for any added clients that are cached.
   for (const auto &entry : node_cache_) {
@@ -526,7 +527,8 @@ void ClientTable::RegisterClientAddedCallback(const ClientTableCallback &callbac
 }
 
 void ClientTable::RegisterClientRemovedCallback(const ClientTableCallback &callback) {
-  RAY_CHECK(subscribe_callback_index_ != -1) << "Callback must be registered after ClientTable::Subscribe() is called";
+  RAY_CHECK(subscribe_callback_index_ != -1)
+      << "Callback must be registered after ClientTable::Subscribe() is called";
   client_removed_callback_ = callback;
   // Call the callback for any removed clients that are cached.
   for (const auto &entry : node_cache_) {
@@ -650,11 +652,13 @@ Status ClientTable::Subscribe() {
     }
   };
   auto subscription_callback = [this, notification_callback](RedisGcsClient *client) {
-    auto status = Log<ClientID, GcsNodeInfo>::Lookup(JobID::Nil(), client_log_key_, notification_callback);
+    auto status = Log<ClientID, GcsNodeInfo>::Lookup(JobID::Nil(), client_log_key_,
+                                                     notification_callback);
     RAY_CHECK_OK(status);
   };
   // Subscribe to the client table.
-  return Log<ClientID, GcsNodeInfo>::Subscribe(JobID::Nil(), ClientID::Nil(), notification_callback, subscription_callback);
+  return Log<ClientID, GcsNodeInfo>::Subscribe(
+      JobID::Nil(), ClientID::Nil(), notification_callback, subscription_callback);
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {

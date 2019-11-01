@@ -12,7 +12,9 @@ namespace ray {
 namespace gcs {
 
 std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec, const std::string &ip_address, int port, const ClientID &node_id, gcs::ActorTableData::ActorState state, uint32_t num_lifetimes);
+    const TaskSpecification &task_spec, const std::string &ip_address, int port,
+    const ClientID &node_id, gcs::ActorTableData::ActorState state,
+    uint32_t num_lifetimes);
 
 class RedisGcsClient;
 

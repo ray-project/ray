@@ -101,8 +101,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   RAY_CHECK_OK(gcs_client_.Connect(io_service_));
   // Register a callback on the client table for dead clients. This is used to
   // mark actors that we started as dead in case of node failure.
-  auto node_manager_removed = [this](gcs::RedisGcsClient *client,
-                                            const UniqueID &id, const gcs::GcsNodeInfo &data) {
+  auto node_manager_removed = [this](gcs::RedisGcsClient *client, const UniqueID &id,
+                                     const gcs::GcsNodeInfo &data) {
     const ClientID node_id = ClientID::FromBinary(data.node_id());
     HandleNodeRemoved(node_id);
   };
@@ -531,8 +531,8 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
                                                rpc::ErrorType::ACTOR_DIED);
   } else {
     if (is_direct_call) {
-      status = direct_actor_submitter_->SubmitTask(builder.Build(),
-                                                   actor_handle->RpcClient());
+      status =
+          direct_actor_submitter_->SubmitTask(builder.Build(), actor_handle->RpcClient());
     } else {
       status = raylet_client_->SubmitTask(builder.Build());
     }
@@ -754,16 +754,21 @@ void CoreWorker::HandleNodeRemoved(const ClientID &node_id) {
       auto child_it = children_actors_.find(actor_id);
       if (child_it != children_actors_.end()) {
         // Mark the child as failed in the GCS.
-        auto new_state = child_it->second.CanRestart() ? gcs::ActorTableData::RECONSTRUCTING : gcs::ActorTableData::DEAD;
-        std::shared_ptr<gcs::ActorTableData> data = gcs::CreateActorTableData(child_it->second.actor_creation_spec, "", 0, ClientID::Nil(), new_state, child_it->second.num_lifetimes);
+        auto new_state = child_it->second.CanRestart()
+                             ? gcs::ActorTableData::RECONSTRUCTING
+                             : gcs::ActorTableData::DEAD;
+        std::shared_ptr<gcs::ActorTableData> data = gcs::CreateActorTableData(
+            child_it->second.actor_creation_spec, "", 0, ClientID::Nil(), new_state,
+            child_it->second.num_lifetimes);
         auto done = [actor_id](Status status) {
           if (!status.ok()) {
             // Only the owner should update the actor as failed.
-            RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id << ". This may be because the node crashed soon after the actor process failed.";
+            RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id
+                             << ". This may be because the node crashed soon after the "
+                                "actor process failed.";
           }
         };
-        RAY_CHECK_OK(gcs_client_.Actors().AsyncUpdate(
-            actor_id, data, done));
+        RAY_CHECK_OK(gcs_client_.Actors().AsyncUpdate(actor_id, data, done));
       }
     }
   }

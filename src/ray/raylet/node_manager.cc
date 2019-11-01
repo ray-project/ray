@@ -987,7 +987,9 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id,
     if (!status.ok()) {
       // The disconnected actor was local, so only this node should try to
       // update actor state.
-      RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id << ". This may be because the node crashed soon after the actor process failed.";
+      RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id
+                       << ". This may be because the node crashed soon after the actor "
+                          "process failed.";
     }
   };
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
@@ -1959,12 +1961,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
     auto new_actor_info = gcs::CreateActorTableData(
-        task_spec,
-        gcs_client_->client_table().GetLocalClient().node_manager_address(),
+        task_spec, gcs_client_->client_table().GetLocalClient().node_manager_address(),
         worker.Port(),
 
-        gcs_client_->client_table().GetLocalClientId(),
-        gcs::ActorTableData::ALIVE,
+        gcs_client_->client_table().GetLocalClientId(), gcs::ActorTableData::ALIVE,
         task.GetTaskExecutionSpec().GetMessage().num_submissions());
     auto update_callback = [actor_id](Status status) {
       if (!status.ok()) {

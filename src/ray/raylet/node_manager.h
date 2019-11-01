@@ -453,8 +453,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param actor_id Id of this actor.
   /// \param intentional_disconnect Wether the client was intentionally disconnected.
   /// \return Void.
-  void HandleDisconnectedActor(const ActorID &actor_id,
-                               bool intentional_disconnect);
+  void HandleDisconnectedActor(const ActorID &actor_id, bool intentional_disconnect);
 
   /// Finish assigning a task to a worker.
   ///
