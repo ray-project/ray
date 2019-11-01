@@ -224,18 +224,28 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   }
 }
 
-void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
+void CoreWorker::AddObjectIDReference(const ObjectID &object_id) {
   absl::MutexLock lock(&object_ref_mu_);
-  active_object_ids_.insert(object_id);
-  active_object_ids_updated_ = true;
+  auto entry = object_id_refs_.find(object_id);
+  if (entry == object_id_refs_.end()) {
+    object_id_refs_[object_id] = 1;
+  } else {
+    entry->second++;
+  }
+  object_id_refs_updated_ = true;
 }
 
-void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
+void CoreWorker::RemoveObjectIDReference(const ObjectID &object_id) {
   absl::MutexLock lock(&object_ref_mu_);
-  if (active_object_ids_.erase(object_id)) {
-    active_object_ids_updated_ = true;
+  auto entry = object_id_refs_.find(object_id);
+  if (entry == object_id_refs_.end()) {
+    RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
+                     << object_id;
   } else {
-    RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
+    if (--entry->second == 0) {
+      object_id_refs_.erase(object_id);
+    }
+    object_id_refs_updated_ = true;
   }
 }
 
@@ -246,13 +256,18 @@ void CoreWorker::ReportActiveObjectIDs() {
   // TODO(edoakes): this is currently commented out because this heartbeat causes the
   // workers to die when the raylet crashes unexpectedly. Without this, they could
   // hang idle forever because they wait for the raylet to push tasks via gRPC.
-  // if (active_object_ids_updated_) {
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-  if (active_object_ids_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
-    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+  // if (object_id_refs_updated_) {
+  RAY_LOG(DEBUG) << "Sending " << object_id_refs_.size() << " object IDs to raylet.";
+  if (object_id_refs_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << object_id_refs_.size() << "object IDs are currently in scope. "
                      << "This may lead to required objects being garbage collected.";
   }
-  std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
+  std::unordered_set<ObjectID> copy;
+  copy.reserve(object_id_refs_.size());
+  for (auto it : object_id_refs_) {
+    copy.insert(it.first);
+  }
+
   if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
@@ -265,7 +280,7 @@ void CoreWorker::ReportActiveObjectIDs() {
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
-  active_object_ids_updated_ = false;
+  object_id_refs_updated_ = false;
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {

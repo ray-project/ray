@@ -2,7 +2,7 @@
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
@@ -83,13 +83,11 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  // Add this object ID to the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void AddActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  // Increase the reference count for this object ID.
+  void AddObjectIDReference(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
-  // Remove this object ID from the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void RemoveActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  // Decrease the reference count for this object ID.
+  void RemoveObjectIDReference(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
   /* Public methods related to storing and retrieving objects. */
 
@@ -397,12 +395,13 @@ class CoreWorker {
   /// accesses via the event loop.
   absl::Mutex object_ref_mu_;
 
-  /// Set of object IDs that are in scope in the language worker.
-  absl::flat_hash_set<ObjectID> active_object_ids_ GUARDED_BY(object_ref_mu_);
+  /// Reference counts for object IDs that are in scope in the language worker or
+  /// used by pending task dependencies.
+  absl::flat_hash_map<ObjectID, int> object_id_refs_ GUARDED_BY(object_ref_mu_);
 
-  /// Indicates whether or not the active_object_ids map has changed since the
+  /// Indicates whether or not the object_ids_refs_ map has changed since the
   /// last time it was sent to the raylet.
-  bool active_object_ids_updated_ GUARDED_BY(object_ref_mu_) = false;
+  bool object_id_refs_updated_ GUARDED_BY(object_ref_mu_) = false;
 
   /* Fields related to storing and retrieving objects. */
 
