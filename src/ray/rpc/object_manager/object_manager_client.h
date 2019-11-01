@@ -27,14 +27,15 @@ class ObjectManagerClient {
   ObjectManagerClient(const std::string &address, const int port,
                       ClientCallManager &client_call_manager, int num_connections = 4)
       : client_call_manager_(client_call_manager), num_connections_(num_connections) {
-        stubs_.reserve(num_connections);
-    for (int i =0; i < num_connections_; i++) {
-        grpc::ResourceQuota quota;
-        quota.SetMaxThreads(num_connections_);
-        grpc::ChannelArguments argument;
-	argument.SetResourceQuota(quota);
-    std::shared_ptr<grpc::Channel> channel = grpc::CreateCustomChannel(
-        address + ":" + std::to_string(port), grpc::InsecureChannelCredentials(), argument);
+    stubs_.reserve(num_connections);
+    for (int i = 0; i < num_connections_; i++) {
+      grpc::ResourceQuota quota;
+      quota.SetMaxThreads(num_connections_);
+      grpc::ChannelArguments argument;
+      argument.SetResourceQuota(quota);
+      std::shared_ptr<grpc::Channel> channel =
+          grpc::CreateCustomChannel(address + ":" + std::to_string(port),
+                                    grpc::InsecureChannelCredentials(), argument);
       stubs_.push_back(ObjectManagerService::NewStub(channel));
     }
   };
@@ -45,7 +46,8 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
-        *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPush, request, callback);
+        *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPush,
+        request, callback);
   }
 
   /// Pull object from remote object manager
@@ -54,7 +56,8 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
-        *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPull, request, callback);
+        *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPull,
+        request, callback);
   }
 
   /// Tell remote object manager to free objects
@@ -65,8 +68,8 @@ class ObjectManagerClient {
                    const ClientCallback<FreeObjectsReply> &callback) {
     client_call_manager_
         .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(
-            *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request,
-            callback);
+            *stubs_[rand() % num_connections_],
+            &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request, callback);
   }
 
  private:

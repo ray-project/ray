@@ -127,18 +127,18 @@ class ClientCallManager {
       : main_service_(main_service), num_threads_(num_threads) {
     // Start the polling thread.
     cqs_.reserve(num_threads_);
-    for (int i =0; i<num_threads_;i++) {
-    cqs_.emplace_back();
-    polling_threads_.emplace_back(
-        &ClientCallManager::PollEventsFromCompletionQueue, this, i);
-      }
+    for (int i = 0; i < num_threads_; i++) {
+      cqs_.emplace_back();
+      polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
+                                    this, i);
     }
+  }
 
   ~ClientCallManager() {
     for (auto &cq : cqs_) {
       cq.Shutdown();
     }
-    for (auto &polling_thread: polling_threads_) {
+    for (auto &polling_thread : polling_threads_) {
       polling_thread.join();
     }
   }
@@ -164,8 +164,8 @@ class ClientCallManager {
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
     // Send request.
     // Find a random completion queue to wait for response.
-    call->response_reader_ =
-        (stub.*prepare_async_function)(&call->context_, request, &cqs_[rand() % num_threads_]);
+    call->response_reader_ = (stub.*prepare_async_function)(&call->context_, request,
+                                                            &cqs_[rand() % num_threads_]);
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.

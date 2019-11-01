@@ -43,10 +43,10 @@ class GrpcServer {
   void Shutdown() {
     if (!is_closed_) {
       server_->Shutdown();
-      for (const auto& cq : cqs_) {
+      for (const auto &cq : cqs_) {
         cq->Shutdown();
       }
-      for (auto& polling_thread : polling_threads_) {
+      for (auto &polling_thread : polling_threads_) {
         polling_thread.join();
       }
       is_closed_ = true;
