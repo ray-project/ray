@@ -56,21 +56,14 @@ void GrpcServer::RegisterService(GrpcService &service) {
 }
 
 void GrpcServer::PollEventsFromCompletionQueue(int index) {
-  RAY_LOG(WARNING) << "server start polling from completion queue " << index;
   void *tag;
   bool ok;
 
-  long count = 0;
   // Keep reading events from the `CompletionQueue` until it's shutdown.
   while (cqs_[index]->Next(&tag, &ok)) {
 	  RAY_LOG(WARNING) << std::this_thread::get_id();
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
-
-    count ++;
-    if (count % 10 == 0) {
-	    RAY_LOG(WARNING) << index << ": " << count;
-    }
 
     if (ok) {
       switch (server_call->GetState()) {

@@ -27,7 +27,6 @@ class ObjectManagerClient {
   ObjectManagerClient(const std::string &address, const int port,
                       ClientCallManager &client_call_manager, int num_connections = 4)
       : client_call_manager_(client_call_manager), num_connections_(num_connections) {
-   RAY_LOG(WARNING) << "Client creates channel with " << num_connections << " tcp connections";
         stubs_.reserve(num_connections);
     for (int i =0; i < num_connections_; i++) {
         grpc::ResourceQuota quota;

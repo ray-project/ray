@@ -184,7 +184,6 @@ class ClientCallManager {
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
   void PollEventsFromCompletionQueue(int index) {
-    RAY_LOG(WARNING) << "client start listening on completionqueue " << index;
     void *got_tag;
     bool ok = false;
     auto deadline = gpr_inf_future(GPR_CLOCK_REALTIME);
