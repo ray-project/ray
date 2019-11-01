@@ -683,21 +683,38 @@ cdef void push_objects_into_return_vector(
         c_vector[shared_ptr[CRayObject]] *returns):
 
     cdef:
+        c_string metadata_str = RAW_BUFFER_METADATA
+        c_string raw_data_str
         shared_ptr[CBuffer] data
         shared_ptr[CBuffer] metadata
         shared_ptr[CRayObject] ray_object
         int64_t data_size
 
     for serialized_object in py_objects:
-        data_size = serialized_object.total_bytes
-        data = dynamic_pointer_cast[
-            CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](data_size))
-        stream = pyarrow.FixedSizeBufferWriter(
-            pyarrow.py_buffer(Buffer.make(data)))
-        serialized_object.write_to(stream)
-        ray_object = make_shared[CRayObject](data, metadata)
-        returns.push_back(ray_object)
+        if isinstance(serialized_object, bytes):
+            data_size = len(serialized_object)
+            raw_data_str = serialized_object
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(raw_data_str.data()), raw_data_str.size()))
+            metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
+            ray_object = make_shared[CRayObject](data, metadata, True)
+            returns.push_back(ray_object)
+        else:
+            data_size = serialized_object.total_bytes
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](data_size))
+            metadata.reset()
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            serialized_object.write_to(stream)
+            ray_object = make_shared[CRayObject](data, metadata)
+            returns.push_back(ray_object)
 
 
 cdef class CoreWorker:
@@ -948,7 +965,8 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call):
+                     c_bool is_direct_call,
+                     c_bool is_detached):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -969,7 +987,8 @@ cdef class CoreWorker:
                     ray_function, args_vector,
                     CActorCreationOptions(
                         max_reconstructions, is_direct_call, c_resources,
-                        c_placement_resources, dynamic_worker_options),
+                        c_placement_resources, dynamic_worker_options,
+                        is_detached),
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
@@ -979,7 +998,7 @@ cdef class CoreWorker:
                           function_descriptor,
                           args,
                           int num_return_vals,
-                          resources):
+                          double num_method_cpus):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -990,7 +1009,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
-            prepare_resources(resources, &c_resources)
+            if num_method_cpus > 0:
+                c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
@@ -1048,11 +1068,11 @@ cdef class CoreWorker:
     def add_active_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        with nogil:
-            self.core_worker.get().AddActiveObjectID(c_object_id)
+        # Note: faster to not release GIL for short-running op.
+        self.core_worker.get().AddActiveObjectID(c_object_id)
 
     def remove_active_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        with nogil:
-            self.core_worker.get().RemoveActiveObjectID(c_object_id)
+        # Note: faster to not release GIL for short-running op.
+        self.core_worker.get().RemoveActiveObjectID(c_object_id)

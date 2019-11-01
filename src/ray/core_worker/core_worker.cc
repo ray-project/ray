@@ -39,8 +39,8 @@ void BuildCommonTaskSpec(
 
 // Group object ids according the the corresponding store providers.
 void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
-                                   std::unordered_set<ObjectID> *plasma_object_ids,
-                                   std::unordered_set<ObjectID> *memory_object_ids) {
+                                   absl::flat_hash_set<ObjectID> *plasma_object_ids,
+                                   absl::flat_hash_set<ObjectID> *memory_object_ids) {
   // There are two cases:
   // - for task return objects from direct actor call, use memory store provider;
   // - all the others use plasma store provider.
@@ -141,6 +141,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
+  // Unfortunately the raylet client has to be constructed after the receivers.
+  if (direct_actor_task_receiver_ != nullptr) {
+    direct_actor_task_receiver_->Init(*raylet_client_);
+  }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -186,14 +190,21 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 }
 
 CoreWorker::~CoreWorker() {
-  io_service_.stop();
+  Shutdown();
   io_thread_.join();
-  if (worker_type_ == WorkerType::WORKER) {
-    task_execution_service_.stop();
+}
+
+void CoreWorker::Shutdown() {
+  if (!shutdown_) {
+    io_service_.stop();
+    if (worker_type_ == WorkerType::WORKER) {
+      task_execution_service_.stop();
+    }
+    if (log_dir_ != "") {
+      RayLog::ShutDownRayLog();
+    }
   }
-  if (log_dir_ != "") {
-    RayLog::ShutDownRayLog();
-  }
+  shutdown_ = true;
 }
 
 void CoreWorker::Disconnect() {
@@ -233,35 +244,39 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
-  io_service_.post([this, object_id]() -> void {
-    active_object_ids_.insert(object_id);
-    active_object_ids_updated_ = true;
-  });
+  absl::MutexLock lock(&object_ref_mu_);
+  active_object_ids_.insert(object_id);
+  active_object_ids_updated_ = true;
 }
 
 void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
-  io_service_.post([this, object_id]() -> void {
-    if (active_object_ids_.erase(object_id)) {
-      active_object_ids_updated_ = true;
-    } else {
-      RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
-    }
-  });
+  absl::MutexLock lock(&object_ref_mu_);
+  if (active_object_ids_.erase(object_id)) {
+    active_object_ids_updated_ = true;
+  } else {
+    RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
+  }
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
+  absl::MutexLock lock(&object_ref_mu_);
   // Only send a heartbeat when the set of active object IDs has changed because the
   // raylet only modifies the set of IDs when it receives a heartbeat.
-  if (active_object_ids_updated_) {
-    RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-    if (active_object_ids_.size() >
-        RayConfig::instance().raylet_max_active_object_ids()) {
-      RAY_LOG(WARNING) << active_object_ids_.size()
-                       << "object IDs are currently in scope. "
-                       << "This may lead to required objects being garbage collected.";
-    }
-    RAY_CHECK_OK(raylet_client_->ReportActiveObjectIDs(active_object_ids_));
+  // TODO(edoakes): this is currently commented out because this heartbeat causes the
+  // workers to die when the raylet crashes unexpectedly. Without this, they could
+  // hang idle forever because they wait for the raylet to push tasks via gRPC.
+  // if (active_object_ids_updated_) {
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
+  if (active_object_ids_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+                     << "This may lead to required objects being garbage collected.";
   }
+  std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
+  if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
+    RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
+    Shutdown();
+  }
+  // }
 
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
@@ -312,12 +327,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   bool got_exception = false;
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
                                                 worker_context_.GetCurrentTaskID(),
@@ -360,8 +375,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   if (plasma_object_ids.size() + memory_object_ids.size() != ids.size()) {
@@ -377,7 +392,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // a timeout of 0, but that does not address the situation where objects
   // become available on the second store provider while waiting on the first.
 
-  std::unordered_set<ObjectID> ready;
+  absl::flat_hash_set<ObjectID> ready;
   // Wait from both store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
@@ -421,8 +436,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
@@ -482,7 +497,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.is_direct_call);
+                                   actor_creation_options.is_direct_call,
+                                   actor_creation_options.is_detached);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),

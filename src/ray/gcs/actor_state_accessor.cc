@@ -22,6 +22,7 @@ std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
       task_spec.ActorDummyObject().Binary());
   actor_info_ptr->set_job_id(task_spec.JobId().Binary());
   actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
+  actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
   actor_info_ptr->set_num_lifetimes(num_lifetimes);
   actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());

@@ -23,9 +23,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec,
     std::shared_ptr<rpc::DirectActorClient> &rpc_client) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    return Status::Invalid("Direct actor call only supports by-value arguments");
-  }
 
   RAY_CHECK(task_spec.IsActorTask());
   const auto &actor_id = task_spec.ActorId();
@@ -109,6 +106,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
           waiting_reply_tasks_[actor_id].erase(task_id);
         }
         if (!status.ok()) {
+          // Note that this might be the __ray_terminate__ task, so we don't log
+          // loudly with ERROR here.
+          RAY_LOG(DEBUG) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
@@ -163,28 +163,38 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
   server.RegisterService(task_service_);
 }
 
+void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
+  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+}
+
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    send_reply_callback(
-        Status::Invalid("Direct actor call only supports by value arguments"), nullptr,
-        nullptr);
-    return;
-  }
   if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
   }
 
+  // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
+  // the raylet, which is a central bottleneck. In the future, we should inline
+  // dependencies that are small and already known to be local to the client.
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
+    int count = task_spec.ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(task_spec.ArgId(i, j));
+    }
+  }
+
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(task_main_io_service_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(
+                                  new SchedulingQueue(task_main_io_service_, *waiter_)));
     it = result.first;
   }
   it->second->Add(
@@ -223,7 +233,17 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       },
       [send_reply_callback]() {
         send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
-      });
+      },
+      dependencies);
+}
+
+void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
+    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+  waiter_->OnWaitComplete(request.tag());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

@@ -213,6 +213,7 @@ cc_library(
         ":ray_common",
         ":worker_cc_grpc",
         "@boost//:asio",
+        "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -337,6 +338,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -369,6 +371,8 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:optional",
         ":core_worker_cc_proto",
         ":ray_common",
@@ -411,6 +415,8 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -23,9 +23,9 @@ Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(
-    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
@@ -43,10 +43,9 @@ Status CoreWorkerMemoryStoreProvider::Get(
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
-                                           int num_objects, int64_t timeout_ms,
-                                           const TaskID &task_id,
-                                           std::unordered_set<ObjectID> *ready) {
+Status CoreWorkerMemoryStoreProvider::Wait(
+    const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
+    const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
@@ -63,7 +62,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &o
 }
 
 Status CoreWorkerMemoryStoreProvider::Delete(
-    const std::unordered_set<ObjectID> &object_ids) {
+    const absl::flat_hash_set<ObjectID> &object_ids) {
   std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
   store_->Delete(object_id_vector);
   return Status::OK();

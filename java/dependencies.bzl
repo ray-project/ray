@@ -22,6 +22,4 @@ def gen_java_deps():
         repositories = [
             "https://repo1.maven.org/maven2",
         ],
-        # Fetch srcjars. Defaults to False.
-        fetch_sources = True,
     )

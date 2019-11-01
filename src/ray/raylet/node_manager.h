@@ -103,7 +103,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::string DebugString() const;
 
   /// Record metrics.
-  void RecordMetrics() const;
+  void RecordMetrics();
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
@@ -408,6 +408,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessWaitRequestMessage(const std::shared_ptr<LocalClientConnection> &client,
                                  const uint8_t *message_data);
 
+  /// Process client message of WaitForDirectActorCallArgsRequest
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessWaitForDirectActorCallArgsRequestMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
   /// Process client message of PushErrorRequest
   ///
   /// \param message_data A pointer to the message data.
@@ -499,6 +507,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   bool fair_queueing_enabled_;
   /// Whether we have printed out a resource deadlock warning.
   bool resource_deadlock_warned_ = false;
+  /// Whether we have recorded any metrics yet.
+  bool recorded_metrics_ = false;
   /// The path to the ray temp dir.
   std::string temp_dir_;
   /// The timer used to get profiling information from the object manager and
