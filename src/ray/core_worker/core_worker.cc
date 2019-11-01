@@ -235,18 +235,30 @@ void CoreWorker::AddObjectIDReference(const ObjectID &object_id) {
   object_id_refs_updated_ = true;
 }
 
-void CoreWorker::RemoveObjectIDReference(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  auto entry = object_id_refs_.find(object_id);
-  if (entry == object_id_refs_.end()) {
+void CoreWorker::DecrementObjectIDReference(const ObjectID &object_id) {
+  auto object_id_entry = object_id_refs_.find(object_id);
+  if (object_id_entry == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
                      << object_id;
   } else {
-    if (--entry->second == 0) {
+    if (--object_id_entry->second == 0) {
       object_id_refs_.erase(object_id);
     }
-    object_id_refs_updated_ = true;
   }
+}
+
+void CoreWorker::RemoveObjectIDReference(const ObjectID &object_id) {
+  absl::MutexLock lock(&object_ref_mu_);
+  DecrementObjectIDReference(object_id);
+
+  auto pending_task_entry = pending_task_deps_.find(object_id);
+  if (pending_task_entry != pending_task_deps_.end()) {
+    for (auto &dep_object_id : *pending_task_entry->second) {
+      DecrementObjectIDReference(dep_object_id);
+    }
+    pending_task_deps_.erase(object_id);
+  }
+  object_id_refs_updated_ = true;
 }
 
 void CoreWorker::ReportActiveObjectIDs() {
@@ -459,6 +471,34 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
+Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
+  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(task_spec));
+
+  absl::MutexLock lock(&object_ref_mu_);
+  std::shared_ptr<std::vector<ObjectID>> task_deps =
+      std::make_shared<std::vector<ObjectID>>();
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        ObjectID arg_id = task_spec.ArgId(i, j);
+        task_deps->push_back(arg_id);
+        auto entry = object_id_refs_.find(arg_id);
+        if (entry == object_id_refs_.end()) {
+          object_id_refs_[arg_id] = task_spec.NumReturns();
+        } else {
+          entry->second += task_spec.NumReturns();
+        }
+      }
+    }
+  }
+
+  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
+    pending_task_deps_[task_spec.ReturnId(i)] = task_deps;
+  }
+
+  return Status::OK();
+}
+
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
@@ -472,7 +512,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
                       {}, TaskTransportType::RAYLET, return_ids);
-  return raylet_client_->SubmitTask(builder.Build());
+  return SubmitTaskToRaylet(builder.Build());
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -503,7 +543,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(builder.Build()));
   *return_actor_id = actor_id;
-  return Status::OK();
+  return SubmitTaskToRaylet(builder.Build());
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -541,7 +581,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   if (is_direct_call) {
     status = direct_actor_submitter_->SubmitTask(builder.Build());
   } else {
-    status = raylet_client_->SubmitTask(builder.Build());
+    status = SubmitTaskToRaylet(builder.Build());
   }
   return status;
 }

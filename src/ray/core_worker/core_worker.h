@@ -288,6 +288,11 @@ class CoreWorker {
   void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
 
   /* Private methods related to task submission. */
+  /// TODO
+  Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
+
+  void DecrementObjectIDReference(const ObjectID &object_id)
+      EXCLUSIVE_LOCKS_REQUIRED(object_ref_mu_);
 
   /// Give this worker a handle to an actor.
   ///
@@ -397,7 +402,12 @@ class CoreWorker {
 
   /// Reference counts for object IDs that are in scope in the language worker or
   /// used by pending task dependencies.
-  absl::flat_hash_map<ObjectID, int> object_id_refs_ GUARDED_BY(object_ref_mu_);
+  absl::flat_hash_map<ObjectID, size_t> object_id_refs_ GUARDED_BY(object_ref_mu_);
+
+  /// Dependencies for pending tasks.
+  /// TODO
+  absl::flat_hash_map<ObjectID, std::shared_ptr<std::vector<ObjectID>>> pending_task_deps_
+      GUARDED_BY(object_ref_mu_);
 
   /// Indicates whether or not the object_ids_refs_ map has changed since the
   /// last time it was sent to the raylet.
