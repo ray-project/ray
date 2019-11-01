@@ -264,6 +264,13 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
+  Status ActorLanguage(const ActorID &actor_id, Language *language) const;
+
+  Status ActorCreationTaskFunctionDescriptor(
+      const ActorID &actor_id, std::vector<std::string> *function_descriptor) const;
+
+  Status IsDirectCallActor(const ActorID &actor_id, bool *is_direct) const;
+
   /* Public methods related to task execution. Should not be used by driver processes. */
 
   const ActorID &GetActorId() const { return actor_id_; }

@@ -2,11 +2,11 @@
 #include <jni.h>
 #include "ray/common/id.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
-#include "ray/core_worker/task_interface.h"
 
-inline ray::ActorHandle &GetActorHandle(jlong nativeActorHandle) {
-  return *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));
+inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
+  return *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
 }
 
 #ifdef __cplusplus
@@ -15,45 +15,17 @@ extern "C" {
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeFork
- * Signature: (J)J
- */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return reinterpret_cast<jlong>(GetActorHandle(nativeActorHandle).Fork().release());
-}
-
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeGetActorId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorId(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return IdToJavaByteArray<ray::ActorID>(env,
-                                         GetActorHandle(nativeActorHandle).GetActorID());
-}
-
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeGetActorHandleId
- * Signature: (J)[B
- */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorHandleId(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return IdToJavaByteArray<ray::ActorHandleID>(
-      env, GetActorHandle(nativeActorHandle).GetActorHandleID());
-}
-
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeGetLanguage
  * Signature: (J)I
  */
 JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return (jint)GetActorHandle(nativeActorHandle).ActorLanguage();
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
+  
+  ray::Language language;
+  auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
+  auto status = GetCoreWorker(nativeCoreWorkerPointer).ActorLanguage(actor_id, &language);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
+  return (jint)language;
 }
 
 /*
@@ -63,8 +35,12 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
  */
 JNIEXPORT jboolean JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return GetActorHandle(nativeActorHandle).IsDirectCallActor();
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
+  bool is_direct_call = false;
+  auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
+  auto status = GetCoreWorker(nativeCoreWorkerPointer).IsDirectCallActor(actor_id, &is_direct_call);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, false);
+  return is_direct_call;
 }
 
 /*
@@ -74,9 +50,13 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
  */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  return NativeStringVectorToJavaStringList(
-      env, GetActorHandle(nativeActorHandle).ActorCreationTaskFunctionDescriptor());
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
+  std::vector<std::string> function_descriptor;
+  auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
+  auto status = GetCoreWorker(nativeCoreWorkerPointer)
+      .ActorCreationTaskFunctionDescriptor(actor_id, &function_descriptor);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  return NativeStringVectorToJavaStringList(env, function_descriptor);
 }
 
 /*
@@ -85,9 +65,11 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
+  auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   std::string output;
-  GetActorHandle(nativeActorHandle).Serialize(&output);
+  ray::Status status = GetCoreWorker(nativeCoreWorkerPointer)
+      .SerializeActorHandle(actor_id, &output);  
   jbyteArray bytes = env->NewByteArray(output.size());
   env->SetByteArrayRegion(bytes, 0, output.size(),
                           reinterpret_cast<const jbyte *>(output.c_str()));
@@ -99,22 +81,15 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSer
  * Method:    nativeDeserialize
  * Signature: ([B)J
  */
-JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(
-    JNIEnv *env, jclass o, jbyteArray data) {
+JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(
+    JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
-  auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
-  return reinterpret_cast<jlong>(new ray::ActorHandle(binary, TaskID::Nil()));
-}
+  auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());  
+  auto actor_id = GetCoreWorker(nativeCoreWorkerPointer)
+      .DeserializeAndRegisterActorHandle(binary);
 
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeFree
- * Signature: (J)V
- */
-JNIEXPORT void JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFree(
-    JNIEnv *env, jclass o, jlong nativeActorHandle) {
-  delete &GetActorHandle(nativeActorHandle);
+  return IdToJavaByteArray<ray::ActorID>(env, actor_id);
 }
 
 #ifdef __cplusplus
