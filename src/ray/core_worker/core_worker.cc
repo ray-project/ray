@@ -224,6 +224,11 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
       RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
     actor_handles_.clear();
+
+    if (!children_actors_.empty()) {
+      RAY_LOG(WARNING) << "Task is exiting but it created some actors. They will not be restarted.";
+      children_actors_.clear();
+    }
   }
 }
 
@@ -589,6 +594,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
                      ->SubmitTask(child_it->second.actor_creation_spec,
                                   child_it->second.num_lifetimes)
                      .ok()) {
+              // TODO: Mark the actor as DEAD in the GCS. This is currently
+              // hard to do because the GCS first expects an ALIVE entry in the
+              // actor's log before we add the DEAD entry.
               RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
             }
           }
@@ -763,6 +771,9 @@ void CoreWorker::HandleNodeRemoved(const ClientID &node_id) {
         auto done = [actor_id](Status status) {
           if (!status.ok()) {
             // Only the owner should update the actor as failed.
+            // TODO: If an actor process fails, its raylet should forward the
+            // message to us and let us update the actor table so that there is
+            // no race condition.
             RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id
                              << ". This may be because the node crashed soon after the "
                                 "actor process failed.";
