@@ -93,8 +93,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id, uint64_t max_reconstructions = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
-      bool is_direct_call = false, int max_concurrency = 1,
-      bool is_detached = false) {
+      bool is_direct_call = false, int max_concurrency = 1, bool is_detached = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
