@@ -154,7 +154,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
 
-@@pytest.mark.flaky(reruns=4)
+@pytest.mark.flaky(reruns=4)
 def test_heartbeats_cluster(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
