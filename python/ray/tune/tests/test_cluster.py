@@ -569,7 +569,7 @@ tune.run(
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
-    Experiment._register_if_needed(_Mock)
+    Experiment.register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
     runner = TrialRunner(

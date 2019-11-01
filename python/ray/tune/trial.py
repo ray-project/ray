@@ -85,6 +85,7 @@ class Trial(object):
                  stopping_criterion=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 sync_on_checkpoint=True,
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=TRAINING_ITERATION,
                  export_formats=None,
@@ -98,7 +99,6 @@ class Trial(object):
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-
         validate_trainable(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
@@ -138,6 +138,7 @@ class Trial(object):
         # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
 
+        self.sync_on_checkpoint = sync_on_checkpoint
         newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
         self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
                                                     checkpoint_score_attr)
@@ -279,12 +280,12 @@ class Trial(object):
         self.checkpoint.value = None
 
     def on_checkpoint(self, checkpoint):
-        """Attempts to pull and commit checkpoint if necessary.
+        """Hook for handling checkpoints taken by the Trainable.
 
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
-        if checkpoint.storage == Checkpoint.DISK:
+        if self.sync_on_checkpoint and checkpoint.storage == Checkpoint.DISK:
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
             self.result_logger.sync_down()

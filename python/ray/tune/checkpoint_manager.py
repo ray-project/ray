@@ -19,8 +19,8 @@ class Checkpoint(object):
 
     Attributes:
         storage (str): Storage type.
-        value (str): If storage==MEMORY,value is a Python object.
-            If storage==DISK,value is a path points to the checkpoint in disk.
+        value (str): If storage==MEMORY, value is a Python object.
+            If storage==DISK, value is a path points to the checkpoint in disk.
     """
 
     MEMORY = "memory"
@@ -34,7 +34,6 @@ class Checkpoint(object):
     def delete(self):
         """Deletes checkpoint data if disk checkpoint."""
         if self.storage == Checkpoint.DISK and self.value:
-            # TODO(ujvl): Consider asynchronous deletion.
             checkpoint_dir = self.value
             if not os.path.exists(checkpoint_dir):
                 raise FileNotFoundError(
@@ -73,8 +72,8 @@ class CheckpointManager(object):
             self._checkpoint_score_attr = checkpoint_score_attr[4:]
         else:
             self._checkpoint_score_attr = checkpoint_score_attr
-        self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
 
+        self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
         self._best_checkpoints = []
         self._membership = set()
 
@@ -116,6 +115,11 @@ class CheckpointManager(object):
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint not in self._membership:
             old_checkpoint.delete()
+
+    def best_checkpoints(self):
+        """Returns best checkpoints, sorted by priority."""
+        checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
+        return [queue_item.value for queue_item in checkpoints]
 
     def _priority(self, checkpoint):
         priority = checkpoint.last_result[self._checkpoint_score_attr]

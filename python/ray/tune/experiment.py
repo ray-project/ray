@@ -72,6 +72,7 @@ class Experiment(object):
                  sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 sync_on_checkpoint=True,
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=None,
                  export_formats=None,
@@ -80,6 +81,11 @@ class Experiment(object):
                  repeat=None,
                  trial_resources=None,
                  sync_function=None):
+        """Initialize a new Experiment.
+
+        The args here take the same meaning as the command line flags defined
+        in `tune.py:run`.
+        """
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
@@ -102,7 +108,7 @@ class Experiment(object):
                     "criteria must take exactly 2 parameters.".format(stop))
 
         config = config or {}
-        self._run_identifier = Experiment._register_if_needed(run)
+        self._run_identifier = Experiment.register_if_needed(run)
         spec = {
             "run": self._run_identifier,
             "stop": stop,
@@ -117,6 +123,7 @@ class Experiment(object):
             "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
+            "sync_on_checkpoint": sync_on_checkpoint,
             "keep_checkpoints_num": keep_checkpoints_num,
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
@@ -156,7 +163,7 @@ class Experiment(object):
         return exp
 
     @classmethod
-    def _register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string.

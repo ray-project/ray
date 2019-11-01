@@ -569,13 +569,19 @@ class RayTrialExecutor(TrialExecutor):
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, trial.last_result)
 
-        with warn_if_slow("on_checkpoint"):
+        with warn_if_slow("on_checkpoint") as profile:
             try:
                 trial.on_checkpoint(checkpoint)
             except Exception:
                 logger.exception("Error handling checkpoint for Trial %s",
                                  trial)
                 return None
+        if profile.too_slow:
+            logger.warning(
+                "Consider turning off forced driver-worker trial checkpoint "
+                "syncs by enabling force_trial_checkpoint_sync=True. Note "
+                "that this might result in faulty trial restoration for some "
+                "worker failure modes.")
         return checkpoint.value
 
     def restore(self, trial, checkpoint=None):

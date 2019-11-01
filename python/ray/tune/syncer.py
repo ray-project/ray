@@ -141,7 +141,7 @@ class CommandBasedClient(SyncClient):
 NOOP = FunctionBasedClient(lambda s, t: None, lambda s, t: None)
 
 
-class Syncer(NodeSyncMixin):
+class Syncer(object):
     def __init__(self, local_dir, remote_dir, sync_client=NOOP):
         """Syncs between two directories with the sync_function.
 
@@ -157,7 +157,6 @@ class Syncer(NodeSyncMixin):
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
-        super().__init__()
 
     def sync_up_if_needed(self):
         if time.time() - self.last_sync_up_time > SYNC_PERIOD:
@@ -198,6 +197,10 @@ class Syncer(NodeSyncMixin):
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
         self.sync_client.reset()
+
+    @property
+    def _remote_path(self):
+        return self._remote_dir
 
 
 def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
@@ -259,11 +262,10 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
         local_dir (str): Source directory for syncing.
         remote_dir (str): Target directory for syncing. If not provided, a
             no-op Syncer is returned.
-        sync_function (func | str): Function for syncing the local_dir to
+        sync_function (func|str): Function for syncing the local_dir to
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults rsync.
     """
-    print(local_dir, remote_dir)
     key = (local_dir, remote_dir)
     if key in _syncers:
         return _syncers[key]
@@ -279,7 +281,13 @@ def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
             sync_client.set_logdir(local_dir)
         else:
             sync_client = NOOP
-    _syncers[key] = Syncer(local_dir, remote_dir, sync_client)
+
+    class MixedSyncer(NodeSyncMixin, Syncer):
+        def __init__(self, *args, **kwargs):
+            Syncer.__init__(self, *args, **kwargs)
+            NodeSyncMixin.__init__(self)
+
+    _syncers[key] = MixedSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
 

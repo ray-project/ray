@@ -42,8 +42,9 @@ def log_sync_template(options=""):
         return
 
     rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
+    rsh = rsh.format(ssh_key=quote(ssh_key))
     template = """rsync {options} -savz -e "{rsh}" {{source}} {{target}}"""
-    return template.format(options=options, rsh=rsh, ssh_key=quote(ssh_key))
+    return template.format(options=options, rsh=rsh)
 
 
 class NodeSyncMixin(object):

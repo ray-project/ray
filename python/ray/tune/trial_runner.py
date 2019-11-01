@@ -126,7 +126,7 @@ class TrialRunner(object):
                 global checkpoints are stored and restored from. Used
                 if `resume` == REMOTE.
             resume (str|False): see `tune.py:run`.
-            sync_to_cloud (func|str): see `tune.py:run`.
+            sync_to_cloud (func|str): See `tune.py:run`.
             server_port (int): Port number for launching TuneServer.
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.

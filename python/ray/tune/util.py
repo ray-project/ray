@@ -121,13 +121,16 @@ class warn_if_slow(object):
 
     def __init__(self, name):
         self.name = name
+        self.too_slow = False
 
     def __enter__(self):
         self.start = time.time()
+        return self
 
     def __exit__(self, type, value, traceback):
         now = time.time()
         if now - self.start > 0.5 and now - START_OF_TIME > 60.0:
+            self.too_slow = True
             logger.warning("The `{}` operation took {} seconds to complete, ".
                            format(self.name, now - self.start) +
                            "which may be a performance bottleneck.")
