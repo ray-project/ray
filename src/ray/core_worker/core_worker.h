@@ -282,6 +282,10 @@ class CoreWorker {
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
+  /// Shut down the worker completely.
+  /// \return void.
+  void Shutdown();
+
   /// Send the list of active object IDs to the raylet.
   void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
 
@@ -360,6 +364,9 @@ class CoreWorker {
   /// are multiple threads, they will have a thread-local task ID stored in the
   /// worker context.
   TaskID main_thread_task_id_;
+
+  // Flag indicating whether this worker has been shut down.
+  bool shutdown_ = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   boost::asio::io_service io_service_;

@@ -279,6 +279,15 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   return ray::Status::OK();
 }
 
+ray::Status RayletClient::WaitForDirectActorCallArgs(
+    const std::vector<ObjectID> &object_ids, int64_t tag) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateWaitForDirectActorCallArgsRequest(
+      fbb, to_flatbuf(fbb, object_ids), tag);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
+}
+
 ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,
                                     const std::string &error_message, double timestamp) {
   flatbuffers::FlatBufferBuilder fbb;
