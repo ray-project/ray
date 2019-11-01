@@ -711,9 +711,10 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
                  << actor_registration.GetRemainingReconstructions();
 
   if (actor_registration.GetState() == ActorTableData::ALIVE) {
-    // The actor is now alive (created for the first time or reconstructed). We can
-    // stop listening for the actor creation task. This is needed because we use
-    // `ListenAndMaybeReconstruct` to reconstruct the actor.
+    // The actor is now alive (created for the first time or restarted). We can
+    // stop listening for the actor creation task. This is needed because
+    // before the actor is created, the actor's owner will listen for failure
+    // of the actor creation task.
     reconstruction_policy_.Cancel(actor_registration.GetActorCreationDependency());
 
     // The actor's location is now known. Dequeue any methods that were
@@ -985,11 +986,14 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id,
   HandleActorStateTransition(actor_id, ActorRegistration(new_actor_info));
   auto done = [actor_id](Status status) {
     if (!status.ok()) {
+      // TODO: Forward the message to the owner and let the owner update the
+      // actor table so that there is no race condition.
       // The disconnected actor was local, so only this node should try to
       // update actor state.
-      RAY_LOG(WARNING) << "Failed to update state for actor " << actor_id
-                       << ". This may be because the node crashed soon after the actor "
-                          "process failed.";
+      RAY_LOG(WARNING)
+          << "Failed to update state for actor " << actor_id
+          << ". This may be because the node heartbeats timed out after the actor "
+             "process failed.";
     }
   };
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
@@ -1149,9 +1153,16 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   task_message.mutable_task_execution_spec()->set_num_submissions(
       fbs_message->num_submissions());
 
+  const Task task(task_message);
+
+  // The creator of the actor must listen for actor creation failure so that it
+  // can mark the actor as dead if the task fails because of node failure.
+  reconstruction_policy_.ListenAndMaybeReconstruct(
+      task.GetTaskSpecification().ActorDummyObject());
+
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message), Lineage());
+  SubmitTask(task, Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -2085,7 +2096,11 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
-    // TODO: Fail this.
+    // TODO: If the actor creation task needs to be resubmitted, we should
+    // instead notify the actor's owner so that it can try again up to the
+    // specified max reconstructions. We cannot set the correct
+    // TaskExecutionSpec::num_submissions in this resubmission path because it
+    // will become out-of-sync with the owner.
     const auto &actor_id = task.GetTaskSpecification().ActorCreationId();
     const auto it = actor_registry_.find(actor_id);
     if (it != actor_registry_.end() && it->second.GetState() == ActorTableData::ALIVE) {
