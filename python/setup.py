@@ -77,7 +77,7 @@ extras = {
         "tabulate"
     ],
     "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
-    "dashboard": ["aiohttp", "psutil", "setproctitle"],
+    "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
     "tune": ["tabulate"],
 }
