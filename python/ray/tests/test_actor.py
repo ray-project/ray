@@ -2817,33 +2817,34 @@ def test_ray_wait_dead_actor(ray_start_cluster):
 
 def test_detached_actor(ray_start_regular):
     @ray.remote
-    class PersistentActor(object):
+    class DetachedActor(object):
         def ping(self):
             return "pong"
 
     with pytest.raises(Exception, match="Detached actors must be named"):
-        PersistentActor._remote(detached=True)
+        DetachedActor._remote(detached=True)
 
     with pytest.raises(ValueError, match="Please use a different name"):
-        _ = PersistentActor._remote(name="p_actor")
-        PersistentActor._remote(name="p_actor")
+        _ = DetachedActor._remote(name="d_actor")
+        DetachedActor._remote(name="d_actor")
 
     redis_address = ray_start_regular["redis_address"]
 
-    actor_name = "PersistentActor"
+    actor_name = "DetachedActor"
     driver_script = """
 import ray
 ray.init(address="{}")
 
 @ray.remote
-class PersistentActor:
+class DetachedActor(object):
     def ping(self):
         return "pong"
 
-actor = PersistentActor._remote(name="{}", detached=True)
+actor = DetachedActor._remote(name="{}", detached=True)
 ray.get(actor.ping.remote())
 """.format(redis_address, actor_name)
 
     run_string_as_driver(driver_script)
-    persistent_actor = ray.experimental.get_actor(actor_name)
-    assert ray.get(persistent_actor.ping.remote()) == "pong"
+    detached_actor = ray.experimental.get_actor(actor_name)
+    assert ray.get(detached_actor.ping.remote()) == "pong"
+
