@@ -100,7 +100,7 @@ class CentralizedQueues:
         self.workers[backend].append(intention)
         self.flush()
 
-    def remove_replica(self, backend, replica_handle):
+    def remove_and_destory_replica(self, backend, replica_handle):
         # NOTE: this function scale by O(#replicas for the backend)
         new_queue = deque()
         target_id = replica_handle._actor_id
@@ -110,6 +110,8 @@ class CentralizedQueues:
                 new_queue.append(work_intent)
 
         self.workers[backend] = new_queue
+
+        replica_handle.__ray_terminate__.remote()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)

@@ -1,6 +1,5 @@
 import inspect
 from functools import wraps
-import time
 
 import numpy as np
 
@@ -182,24 +181,19 @@ def _remove_replica(backend_tag):
     replica_tag = global_state.backend_table.remove_replica(backend_tag)
     [replica_handle] = ray.get(
         global_state.actor_nursery_handle.get_handle.remote(replica_tag))
-        replica_handle._ray_serve_prepare_shutdown.remote()
 
-    # sleep to avoid race condition. This gap is capped by
-    # O(#total_replicas * actor_task_submission_latency)
-    # which 100ms is a reasonable estimate. For explaination about the
-    # race condition, see docstring of TaskRunner._ray_serve_prepare_shutdown
-    time.sleep(0.1)
+    # Remove the replica from metric monitor.
+    ray.get(global_state.init_or_get_metric_monitor().remove_target.remote(
+        replica_handle))
 
-    # explicitly terminate that actor
-    del replica_handle
-    
-    global_state.init_or_get_metric_monitor().remove_target.remote(
-        replica_handle)
+    # Remove the replica from actor nursery.
     ray.get(
         global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
 
-
-
+    # Remote the replica from router.
+    # This will also destory the actor handle.
+    ray.get(global_state.init_or_get_router()
+            .remove_and_destory_replica.remote(backend_tag, replica_handle))
 
 
 @_ensure_connected

@@ -74,5 +74,5 @@ def test_split_traffic(serve_instance, task_runner_mock_actor):
 def test_queue_remove_replicas(serve_instance, task_runner_mock_actor):
     q = CentralizedQueues()
     q.dequeue_request("backend", task_runner_mock_actor)
-    q.remove_replica("backend", task_runner_mock_actor)
+    q.remove_and_destory_replica("backend", task_runner_mock_actor)
     assert len(q.workers["backend"]) == 0

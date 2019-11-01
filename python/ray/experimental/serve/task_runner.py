@@ -123,37 +123,6 @@ class RayServeMixin:
 
         self._ray_serve_fetch()
 
-    def _ray_serve_prepare_shutdown(self):
-        """Signal to router that this replica no longer intend to work
-
-        Note: This method is expected to called accompanying some waiting
-            period. For example
-            >>> ray.get(task_runner._ray_serve_prepare_shutdown.remote())
-            >>> time.sleep(0.5)
-            >>> del task_runner
-
-            Because this function is not race-free. Consider the following,
-                t+0: TaskRunner._ray_serve_prepare_shutdown called, immediately
-                    followed by __ray_termiante__.
-                t+0: Queue._flush() is running, queued a task for current
-                    TaskRunner
-                t+1: Queue.remove_replica is called, by this function.
-                t+1: The task queued for current TaskRunner will never be
-                    executed because the actor died at t+0.
-
-            Therefore, this cleanup method just act as a safety net.
-        """
-        if self._ray_serve_setup_completed:
-            future = self._ray_serve_router_handle.remove_replica.remote(
-                self._ray_serve_dequeue_requester_name,
-                self._ray_serve_self_handle)
-
-            # block so we make sure this task runner is taken off queue
-            ray.get(future)
-
-    def __del__(self):
-        self._ray_serve_prepare_shutdown()
-
 
 class TaskRunnerBackend(TaskRunner, RayServeMixin):
     """A simple function serving backend
