@@ -8,11 +8,11 @@ import uuid
 
 import networkx as nx
 
-from ray.experimental.streaming.communication import DataChannel, DataInput
-from ray.experimental.streaming.communication import DataOutput, QueueConfig
-from ray.experimental.streaming.operator import Operator, OpType
-from ray.experimental.streaming.operator import PScheme, PStrategy
-import ray.experimental.streaming.operator_instance as operator_instance
+from ray.streaming.communication import DataChannel, DataInput
+from ray.streaming.communication import DataOutput, QueueConfig
+from ray.streaming.operator import Operator, OpType
+from ray.streaming.operator import PScheme, PStrategy
+import ray.streaming.operator_instance as operator_instance
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
