@@ -2817,7 +2817,7 @@ def test_ray_wait_dead_actor(ray_start_cluster):
 
 def test_detached_actor(ray_start_regular):
     @ray.remote
-    class PersistentActor:
+    class PersistentActor(object):
         def ping(self):
             return "pong"
 
