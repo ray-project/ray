@@ -344,6 +344,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
 
     assert t1.status == Trial.TERMINATED
 
+
 def test_cluster_down_simple(start_connected_cluster, tmpdir):
     """Tests that TrialRunner save/restore works on cluster shutdown."""
     cluster = start_connected_cluster
