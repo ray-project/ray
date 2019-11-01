@@ -1557,8 +1557,6 @@ def connect(node,
         # Export cached functions_to_run.
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
-        # Export cached remote functions and actors to the workers.
-        worker.function_actor_manager.export_cached()
     worker.cached_functions_to_run = None
 
 
@@ -1587,7 +1585,6 @@ def disconnect(exiting_interpreter=False):
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
-    worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
 
     # We need to destruct the core worker here because after this function,

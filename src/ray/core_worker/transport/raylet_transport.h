@@ -22,8 +22,8 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `send_reply_callback` should be called.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `send_reply_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
@@ -41,6 +41,8 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The callback to process arg wait complete.
+  std::function<void(int64_t)> on_wait_complete_;
 };
 
 }  // namespace ray

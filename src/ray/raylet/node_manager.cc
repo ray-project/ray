@@ -275,13 +275,15 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       // Kill all the workers. The actual cleanup for these workers is done
       // later when we receive the DisconnectClient message from them.
       for (const auto &worker : workers) {
-        // Clean up any open ray.wait calls that the worker made.
-        task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
-        // Mark the worker as dead so further messages from it are ignored
-        // (except DisconnectClient).
-        worker->MarkDead();
-        // Then kill the worker process.
-        KillWorker(worker);
+        if (!worker->IsDetachedActor()) {
+          // Clean up any open ray.wait calls that the worker made.
+          task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+          // Mark the worker as dead so further messages from it are ignored
+          // (except DisconnectClient).
+          worker->MarkDead();
+          // Then kill the worker process.
+          KillWorker(worker);
+        }
       }
 
       // Remove all tasks for this job from the scheduling queues, mark
@@ -898,6 +900,9 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
   } break;
+  case protocol::MessageType::WaitForDirectActorCallArgsRequest: {
+    ProcessWaitForDirectActorCallArgsRequestMessage(client, message_data);
+  } break;
   case protocol::MessageType::PushErrorRequest: {
     ProcessPushErrorRequestMessage(message_data);
   } break;
@@ -1248,6 +1253,37 @@ void NodeManager::ProcessWaitRequestMessage(
               << "Failed to send WaitReply to client, so disconnecting client";
           // We failed to send the reply to the client, so disconnect the worker.
           ProcessDisconnectClientMessage(client);
+        }
+      });
+  RAY_CHECK_OK(status);
+}
+
+void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the data.
+  auto message =
+      flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
+  int64_t tag = message->tag();
+  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+  std::vector<ObjectID> required_object_ids;
+  for (auto const &object_id : object_ids) {
+    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
+      // Add any missing objects to the list to subscribe to in the task
+      // dependency manager. These objects will be pulled from remote node
+      // managers and reconstructed if necessary.
+      required_object_ids.push_back(object_id);
+    }
+  }
+
+  ray::Status status = object_manager_.Wait(
+      object_ids, -1, object_ids.size(), false,
+      [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+        RAY_CHECK(remaining.empty());
+        std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+        if (worker == nullptr) {
+          RAY_LOG(ERROR) << "Lost worker for wait request " << client;
+        } else {
+          worker->DirectActorCallArgWaitComplete(tag);
         }
       });
   RAY_CHECK_OK(status);
@@ -1981,6 +2017,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
     actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+    actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -2032,6 +2069,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   if (task_spec.IsActorCreationTask()) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
+
+    if (task_spec.IsDetachedActor()) {
+      worker.MarkDetachedActor();
+    }
+
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     int port = worker.Port();

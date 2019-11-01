@@ -1223,9 +1223,70 @@ def test_direct_actor_errors(ray_start_regular):
     with pytest.raises(Exception):
         ray.get(f.remote([a.f.remote(2)]))
 
-    # by ref args not implemented
-    with pytest.raises(ray.exceptions.RayletError):
-        a.f.remote(f.remote(2))
+
+def test_direct_actor_pass_by_ref(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return x
+
+    @ray.remote
+    def error():
+        sys.exit(0)
+
+    a = Actor._remote(is_direct_call=True)
+    assert ray.get(a.f.remote(f.remote(1))) == 2
+
+    fut = [a.f.remote(f.remote(i)) for i in range(100)]
+    assert ray.get(fut) == [i * 2 for i in range(100)]
+
+    # propagates errors for pass by ref
+    with pytest.raises(Exception):
+        ray.get(a.f.remote(error.remote()))
+
+
+def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            pass
+
+    a = Actor._remote(is_direct_call=True)
+
+    @ray.remote
+    def fast_value():
+        print("fast value")
+        pass
+
+    @ray.remote
+    def slow_value():
+        print("start sleep")
+        time.sleep(30)
+
+    @ray.remote
+    def runner(f):
+        print("runner", a, f)
+        return ray.get(a.f.remote(f.remote()))
+
+    runner.remote(slow_value)
+    time.sleep(1)
+    x2 = runner.remote(fast_value)
+    start = time.time()
+    ray.get(x2)
+    delta = time.time() - start
+    assert delta < 10, "did not skip slow value"
 
 
 def test_direct_actor_recursive(ray_start_regular):
