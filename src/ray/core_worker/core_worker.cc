@@ -308,7 +308,7 @@ Status CoreWorker::Seal(const ObjectID &object_id) {
   return plasma_store_provider_->Seal(object_id);
 }
 
-Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
@@ -324,11 +324,31 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                                                 &result_map, &got_exception));
 
   if (!got_exception) {
+    int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
-      timeout_ms = std::max(static_cast<int64_t>(0),
+      local_timeout_ms = std::max(static_cast<int64_t>(0),
                             timeout_ms - (current_time_ms() - start_time));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, timeout_ms,
+    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
+                                                  worker_context_.GetCurrentTaskID(),
+                                                  &result_map, &got_exception));
+  }
+
+  // If any of the objects have been promoted to plasma, then we retry their
+  // gets at the provider plasma.
+  std::unordered_set<ObjectID> promoted_plasma_ids;
+  for (const auto& pair : result_map) {
+    if (pair.second->IsInPlasmaError()) {
+      promoted_plasma_ids.push_back(pair.first);
+    }
+  }
+  if (!promoted_plasma_ids.empty()) {
+    int64_t local_timeout_ms = timeout_ms;
+    if (timeout_ms >= 0) {
+      local_timeout_ms = std::max(static_cast<int64_t>(0),
+                            timeout_ms - (current_time_ms() - start_time));
+    }
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
                                                   worker_context_.GetCurrentTaskID(),
                                                   &result_map, &got_exception));
   }
