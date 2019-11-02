@@ -39,7 +39,7 @@ class PlasmaProtocol(asyncio.Protocol):
             i += INT64_SIZE
             segment = self._buffer[i:i + msg_len]
             i += msg_len
-            messages.append(self.plasma_client.decode_notification(segment))
+            messages.extend(self.plasma_client.decode_notifications(segment))
 
         self._buffer = self._buffer[i:]
         self.plasma_event_handler.process_notifications(messages)
