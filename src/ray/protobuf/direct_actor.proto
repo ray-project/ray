@@ -33,8 +33,20 @@ message PushTaskReply {
   repeated ReturnObject return_objects = 1;
 }
 
+message DirectActorCallArgWaitCompleteRequest {
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  int64 tag = 1;
+}
+
+message DirectActorCallArgWaitCompleteReply {
+}
+
 // Service for direct actor.
 service DirectActorService {
   // Push a task to a worker.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // Notify wait for direct actor call args has completed
+  rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
+      returns (DirectActorCallArgWaitCompleteReply);
 }

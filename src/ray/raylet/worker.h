@@ -8,6 +8,7 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
+#include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/worker_client.h"
 
 namespace ray {
@@ -45,6 +46,8 @@ class Worker {
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
+  void MarkDetachedActor();
+  bool IsDetachedActor() const;
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
@@ -62,6 +65,7 @@ class Worker {
 
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                   const std::function<void(Status)> finish_assign_callback);
+  void DirectActorCallArgWaitComplete(int64_t tag);
 
  private:
   /// The worker's ID.
@@ -100,6 +104,11 @@ class Worker {
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
   std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
+  /// Whether the worker is detached. This is applies when the worker is actor.
+  /// Detached actor means the actor's creator can exit without killing this actor.
+  bool is_detached_actor_;
+  /// The rpc client to send tasks to the direct actor service.
+  std::unique_ptr<rpc::DirectActorClient> direct_rpc_client_;
 };
 
 }  // namespace raylet

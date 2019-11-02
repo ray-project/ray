@@ -171,6 +171,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
+        LocalMemoryBuffer(size_t size)
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
@@ -206,7 +207,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             uint64_t max_reconstructions, c_bool is_direct_call,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
-            const c_vector[c_string] &dynamic_worker_options)
+            const c_vector[c_string] &dynamic_worker_options,
+            c_bool is_detached)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

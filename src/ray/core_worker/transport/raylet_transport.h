@@ -3,7 +3,8 @@
 
 #include <list>
 
-#include "ray/core_worker/object_interface.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
@@ -17,13 +18,12 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
 
   CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
                                std::unique_ptr<RayletClient> &raylet_client,
-                               CoreWorkerObjectInterface &object_interface,
                                boost::asio::io_service &io_service,
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
 
   /// Handle a `AssignTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `send_reply_callback` should be called.
+  /// The implementation can handle this request asynchronously. When handling is done,
+  /// the `send_reply_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
@@ -37,12 +37,12 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   WorkerContext &worker_context_;
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The callback to process arg wait complete.
+  std::function<void(int64_t)> on_wait_complete_;
 };
 
 }  // namespace ray

@@ -90,6 +90,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
+    current_actor_use_direct_call_ = false;
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());

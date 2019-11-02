@@ -1,10 +1,11 @@
 #ifndef RAY_CORE_WORKER_MEMORY_STORE_H
 #define RAY_CORE_WORKER_MEMORY_STORE_H
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/store_provider.h"
 
 namespace ray {
 
@@ -46,10 +47,10 @@ class CoreWorkerMemoryStore {
 
  private:
   /// Map from object ID to `RayObject`.
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_;
 
   /// Map from object ID to its get requests.
-  std::unordered_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
+  absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_;
 
   /// Protect the two maps above.
