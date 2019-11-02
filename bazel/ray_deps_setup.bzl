@@ -106,11 +106,7 @@ def ray_deps_setup():
     http_archive(
         name = "com_github_jupp0r_prometheus_cpp",
         strip_prefix = "prometheus-cpp-master",
-
-        # TODO(qwang): We should use the repository of `jupp0r` here when this PR
-        # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
-        urls = ["https://github.com/jovany-wang/prometheus-cpp/archive/master.zip"],
-	sha256 = "d0c773da8af3db99c543dd0413f4427d835170eddfd517bfeba104236a8d2c07",
+        urls = ["https://github.com/jupp0r/prometheus-cpp/archive/master.zip"]
     )
 
     http_archive(
