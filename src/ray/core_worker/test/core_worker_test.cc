@@ -63,7 +63,7 @@ ActorID CreateActorHelper(CoreWorker &worker,
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   ActorCreationOptions actor_options{
-      max_reconstructions,  is_direct_call, resources, resources, {},
+      max_reconstructions,  is_direct_call, 1, resources, resources, {},
       /*is_detached*/ false};
 
   // Create an actor.
@@ -492,7 +492,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
   std::unordered_map<std::string, double> resources;
-  ActorCreationOptions actor_options{0,  /*is_direct_call*/ true, resources, resources,
+  ActorCreationOptions actor_options{0,  /*is_direct_call*/ true, 1, resources, resources,
                                      {}, /*is_detached*/ false};
   const auto job_id = NextJobId();
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), job_id,
@@ -592,7 +592,6 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 
   auto thread_func = [&context]() {
     // Verify that task_index, put_index are thread-local.
-    ASSERT_TRUE(!context.GetCurrentTaskID().IsNil());
     ASSERT_EQ(context.GetNextTaskIndex(), 1);
     ASSERT_EQ(context.GetNextPutIndex(), 1);
   };
