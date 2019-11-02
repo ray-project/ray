@@ -173,7 +173,12 @@ void RayLog::UninstallSignalAction() {
   RAY_LOG(DEBUG) << "Uninstall signal handlers.";
   // This signal list comes from glog's signalhandler.cc.
   // https://github.com/google/glog/blob/master/src/signalhandler.cc#L58-L70
-  static std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+  std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+#ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
+  for (int signal_num : installed_signals) {
+    signal(signal_num, SIG_DFL);
+  }
+#else
   struct sigaction sig_action;
   memset(&sig_action, 0, sizeof(sig_action));
   sigemptyset(&sig_action.sa_mask);
@@ -181,6 +186,7 @@ void RayLog::UninstallSignalAction() {
   for (int signal_num : installed_signals) {
     sigaction(signal_num, &sig_action, NULL);
   }
+#endif
 #endif
 }
 
