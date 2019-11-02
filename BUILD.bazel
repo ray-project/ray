@@ -536,6 +536,7 @@ cc_test(
 cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
+    copts = COPTS,
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -620,6 +621,7 @@ cc_library(
     hdrs = [
         "src/ray/thirdparty/sha256.h",
     ],
+    copts = COPTS,
     includes = ["src/ray/thirdparty"],
 )
 
@@ -634,6 +636,7 @@ cc_library(
             "src/ray/thirdparty/hiredis/test.c",
         ],
     ),
+    copts = COPTS,
     hdrs = glob([
         "src/ray/thirdparty/ae/*.h",
         "src/ray/thirdparty/hiredis/*.h",
@@ -755,6 +758,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
+    copts = COPTS,
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
