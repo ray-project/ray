@@ -39,8 +39,8 @@ void BuildCommonTaskSpec(
 
 // Group object ids according the the corresponding store providers.
 void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
-                                   std::unordered_set<ObjectID> *plasma_object_ids,
-                                   std::unordered_set<ObjectID> *memory_object_ids) {
+                                   absl::flat_hash_set<ObjectID> *plasma_object_ids,
+                                   absl::flat_hash_set<ObjectID> *memory_object_ids) {
   // There are two cases:
   // - for task return objects from direct actor call, use memory store provider;
   // - all the others use plasma store provider.
@@ -312,12 +312,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   bool got_exception = false;
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
                                                 worker_context_.GetCurrentTaskID(),
@@ -360,8 +360,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   if (plasma_object_ids.size() + memory_object_ids.size() != ids.size()) {
@@ -377,7 +377,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // a timeout of 0, but that does not address the situation where objects
   // become available on the second store provider while waiting on the first.
 
-  std::unordered_set<ObjectID> ready;
+  absl::flat_hash_set<ObjectID> ready;
   // Wait from both store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
@@ -421,8 +421,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,

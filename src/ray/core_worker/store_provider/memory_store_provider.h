@@ -1,6 +1,8 @@
 #ifndef RAY_CORE_WORKER_MEMORY_STORE_PROVIDER_H
 #define RAY_CORE_WORKER_MEMORY_STORE_PROVIDER_H
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -21,18 +23,18 @@ class CoreWorkerMemoryStoreProvider {
 
   Status Put(const RayObject &object, const ObjectID &object_id);
 
-  Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const TaskID &task_id,
-             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
   /// Note that `num_objects` must equal to number of items in `object_ids`.
-  Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
-              std::unordered_set<ObjectID> *ready);
+              absl::flat_hash_set<ObjectID> *ready);
 
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
-  Status Delete(const std::unordered_set<ObjectID> &object_ids);
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids);
 
  private:
   /// Implementation.

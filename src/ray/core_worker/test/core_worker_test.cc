@@ -2,6 +2,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
@@ -644,8 +646,8 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
-  std::unordered_set<ObjectID> wait_ids(ids.begin(), ids.end());
-  std::unordered_set<ObjectID> wait_results;
+  absl::flat_hash_set<ObjectID> wait_ids(ids.begin(), ids.end());
+  absl::flat_hash_set<ObjectID> wait_results;
 
   ObjectID nonexistent_id = ObjectID::FromRandom();
   wait_ids.insert(nonexistent_id);
@@ -662,8 +664,8 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   // Test Get().
   bool got_exception = false;
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> results;
-  std::unordered_set<ObjectID> ids_set(ids.begin(), ids.end());
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  absl::flat_hash_set<ObjectID> ids_set(ids.begin(), ids.end());
   RAY_CHECK_OK(provider.Get(ids_set, -1, RandomTaskId(), &results, &got_exception));
 
   ASSERT_TRUE(!got_exception);
