@@ -88,7 +88,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::FromRandom().Hex());
     store_id_2 = StartStore(UniqueID::FromRandom().Hex());
 
-    uint pull_timeout_ms = 1;
+    unsigned int pull_timeout_ms = 1;
     push_timeout_ms = 1000;
 
     // start first server
@@ -175,7 +175,7 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string store_id_1;
   std::string store_id_2;
 
-  uint push_timeout_ms;
+  unsigned int push_timeout_ms;
 
   uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 };
