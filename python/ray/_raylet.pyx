@@ -950,6 +950,7 @@ cdef class CoreWorker:
                     function_descriptor,
                     args,
                     int num_return_vals,
+                    c_bool is_direct_call,
                     resources):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -960,7 +961,7 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
-            task_options = CTaskOptions(num_return_vals, c_resources)
+            task_options = CTaskOptions(num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
@@ -1024,7 +1025,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, c_resources)
+            task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
