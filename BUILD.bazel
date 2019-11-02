@@ -839,7 +839,7 @@ genrule(
     ],
     cmd = """
         set -x &&
-        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
+        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
         make &&
         mv ./src/redis-server $(location redis-server) &&
         chmod +x $(location redis-server) &&
