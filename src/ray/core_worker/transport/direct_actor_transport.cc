@@ -156,10 +156,13 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
 
           if (return_object.in_plasma()) {
             // Mark it as in plasma with a dummy object.
-            std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-            auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+            std::string meta =
+                std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+            auto metadata =
+                const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
             auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-            RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+            RAY_CHECK_OK(
+                store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
           } else {
             std::shared_ptr<LocalMemoryBuffer> data_buffer;
             if (return_object.data().size() > 0) {
@@ -281,7 +284,8 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
             return_object->set_in_plasma(true);
           } else {
             if (result->GetData() != nullptr) {
-              return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+              return_object->set_data(result->GetData()->Data(),
+                                      result->GetData()->Size());
             }
             if (result->GetMetadata() != nullptr) {
               return_object->set_metadata(result->GetMetadata()->Data(),

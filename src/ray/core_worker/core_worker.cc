@@ -327,7 +327,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
-                            timeout_ms - (current_time_ms() - start_time));
+                                  timeout_ms - (current_time_ms() - start_time));
     }
     RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
                                                   worker_context_.GetCurrentTaskID(),
@@ -337,7 +337,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   // If any of the objects have been promoted to plasma, then we retry their
   // gets at the provider plasma.
   absl::flat_hash_set<ObjectID> promoted_plasma_ids;
-  for (const auto& pair : result_map) {
+  for (const auto &pair : result_map) {
     if (pair.second->IsInPlasmaError()) {
       promoted_plasma_ids.insert(pair.first);
     }
@@ -346,15 +346,15 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
       local_timeout_ms = std::max(static_cast<int64_t>(0),
-                            timeout_ms - (current_time_ms() - start_time));
+                                  timeout_ms - (current_time_ms() - start_time));
     }
-    for (const auto& id : promoted_plasma_ids) {
+    for (const auto &id : promoted_plasma_ids) {
       result_map.erase(id);
     }
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
                                                   worker_context_.GetCurrentTaskID(),
                                                   &result_map, &got_exception));
-    for (const auto& pair : result_map) {
+    for (const auto &pair : result_map) {
       RAY_CHECK(!pair.second->IsInPlasmaError());
     }
   }
