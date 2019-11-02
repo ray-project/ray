@@ -339,7 +339,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   absl::flat_hash_set<ObjectID> promoted_plasma_ids;
   for (const auto& pair : result_map) {
     if (pair.second->IsInPlasmaError()) {
-      promoted_plasma_ids.push_back(pair.first);
+      promoted_plasma_ids.insert(pair.first);
     }
   }
   if (!promoted_plasma_ids.empty()) {
@@ -348,9 +348,15 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       local_timeout_ms = std::max(static_cast<int64_t>(0),
                             timeout_ms - (current_time_ms() - start_time));
     }
+    for (const auto& id : promoted_plasma_ids) {
+      result_map.erase(id);
+    }
     RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
                                                   worker_context_.GetCurrentTaskID(),
                                                   &result_map, &got_exception));
+    for (const auto& pair : result_map) {
+      RAY_CHECK(!pair.second->IsInPlasmaError());
+    }
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
