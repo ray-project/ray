@@ -24,6 +24,7 @@ cc_library(
     hdrs = [
         "cpp/src/arrow/buffer.h",
         "cpp/src/arrow/io/interfaces.h",
+        "cpp/src/arrow/io/mman.h",
         "cpp/src/arrow/memory_pool.h",
         "cpp/src/arrow/status.h",
         "cpp/src/arrow/util/bit-util.h",
@@ -38,6 +39,7 @@ cc_library(
         "cpp/src/arrow/util/thread-pool.h",
         "cpp/src/arrow/util/type_traits.h",
         "cpp/src/arrow/util/ubsan.h",
+        "cpp/src/arrow/util/utf8.h",
         "cpp/src/arrow/util/visibility.h",
         "cpp/src/arrow/util/windows_compatibility.h",
         "cpp/src/arrow/vendored/string_view.hpp",
