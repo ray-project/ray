@@ -81,9 +81,9 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
-    std::unordered_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+    absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
     int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(batch_ids, fetch_only, task_id));
 
@@ -125,13 +125,13 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 }
 
 Status CoreWorkerPlasmaStoreProvider::Get(
-    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
-  std::unordered_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
+  absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
   // First, attempt to fetch all of the required objects once without reconstructing.
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
@@ -206,10 +206,9 @@ Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
-                                           int num_objects, int64_t timeout_ms,
-                                           const TaskID &task_id,
-                                           std::unordered_set<ObjectID> *ready) {
+Status CoreWorkerPlasmaStoreProvider::Wait(
+    const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
+    const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
 
   bool should_break = false;
@@ -240,7 +239,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(
-    const std::unordered_set<ObjectID> &object_ids, bool local_only,
+    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
     bool delete_creating_tasks) {
   std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
   return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
@@ -252,7 +251,7 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const std::unordered_set<ObjectID> &remaining) {
+    int num_attempts, const absl::flat_hash_set<ObjectID> &remaining) {
   if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
       0) {
     std::ostringstream oss;

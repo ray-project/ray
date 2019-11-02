@@ -1,6 +1,8 @@
 #ifndef RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 #define RAY_CORE_WORKER_PLASMA_STORE_PROVIDER_H
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "plasma/client.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
@@ -33,18 +35,18 @@ class CoreWorkerPlasmaStoreProvider {
 
   Status Seal(const ObjectID &object_id);
 
-  Status Get(const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
              const TaskID &task_id,
-             std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
-  Status Wait(const std::unordered_set<ObjectID> &object_ids, int num_objects,
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
               int64_t timeout_ms, const TaskID &task_id,
-              std::unordered_set<ObjectID> *ready);
+              absl::flat_hash_set<ObjectID> *ready);
 
-  Status Delete(const std::unordered_set<ObjectID> &object_ids, bool local_only,
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
                 bool delete_creating_tasks);
 
   std::string MemoryUsageString();
@@ -67,9 +69,9 @@ class CoreWorkerPlasmaStoreProvider {
   /// exception.
   /// \return Status.
   Status FetchAndGetFromPlasmaStore(
-      std::unordered_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+      absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
       int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
-      std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
       bool *got_exception);
 
   /// Print a warning if we've attempted too many times, but some objects are still
@@ -78,7 +80,7 @@ class CoreWorkerPlasmaStoreProvider {
   /// \param[in] num_attemps The number of attempted times.
   /// \param[in] remaining The remaining objects.
   static void WarnIfAttemptedTooManyTimes(int num_attempts,
-                                          const std::unordered_set<ObjectID> &remaining);
+                                          const absl::flat_hash_set<ObjectID> &remaining);
 
   const std::unique_ptr<RayletClient> &raylet_client_;
   plasma::PlasmaClient store_client_;
