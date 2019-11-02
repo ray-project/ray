@@ -43,9 +43,9 @@ class PlasmaProtocol(asyncio.Protocol):
                 metadata_sizes) = self.plasma_client.decode_notifications(
                     segment)
             assert len(object_ids) == len(object_sizes) == len(metadata_sizes)
-            for i in range(len(object_ids)):
+            for j in range(len(object_ids)):
                 messages.append(
-                    (object_ids[i], object_sizes[i], metadata_sizes[i]))
+                    (object_ids[j], object_sizes[j], metadata_sizes[j]))
 
         self._buffer = self._buffer[i:]
         self.plasma_event_handler.process_notifications(messages)
