@@ -8,7 +8,13 @@ load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
-COPTS = ["-DRAY_USE_GLOG"]
+COPTS = ["-DRAY_USE_GLOG"] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
+    ],
+    "//conditions:default": [
+    ],
+})
 
 # === Begin of protobuf definitions ===
 
