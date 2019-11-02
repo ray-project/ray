@@ -14,6 +14,7 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
@@ -423,6 +424,9 @@ class CoreWorker {
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Interface to submit non-actor tasks directly to leased workers.
+  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
