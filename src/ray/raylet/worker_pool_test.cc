@@ -37,9 +37,9 @@ class WorkerPoolMock : public WorkerPool {
     states_by_lang_.clear();
   }
 
-  void StartWorkerProcess(const Language &language,
+  void StartWorkerProcess(const Language &language, bool is_initial_worker = false,
                           const std::vector<std::string> &dynamic_options = {}) {
-    WorkerPool::StartWorkerProcess(language, dynamic_options);
+    WorkerPool::StartWorkerProcess(language, is_initial_worker, dynamic_options);
   }
 
   pid_t StartProcess(const std::vector<std::string> &worker_command_args) override {
@@ -215,6 +215,17 @@ TEST_F(WorkerPoolTest, InitialWorkerProcessCount) {
   ASSERT_EQ(worker_pool_.NumWorkerProcessesStarting(), LANGUAGES.size());
 }
 
+TEST_F(WorkerPoolTest, IgnoreMaximumStartupConcurrencyDuringStartup) {
+  int num_initial_workers = static_cast<int>(
+      NUM_WORKERS_PER_PROCESS *
+      std::ceil(MAXIMUM_STARTUP_CONCURRENCY * 2.0 / NUM_WORKERS_PER_PROCESS));
+  ASSERT_TRUE(num_initial_workers - NUM_WORKERS_PER_PROCESS >=
+              MAXIMUM_STARTUP_CONCURRENCY);
+  worker_pool_.Start({{ray::Language::JAVA, num_initial_workers},
+                      {ray::Language::PYTHON, num_initial_workers}});
+  ASSERT_EQ(worker_pool_.NumWorkersStarting(), num_initial_workers * LANGUAGES.size());
+}
+
 TEST_F(WorkerPoolTest, HandleWorkerPushPop) {
   // Try to pop a worker from the empty pool and make sure we don't get one.
   std::shared_ptr<Worker> popped_worker;
@@ -295,7 +306,8 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
   TaskSpecification task_spec = ExampleTaskSpec(
       ActorID::Nil(), Language::JAVA,
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1), {"test_op_0", "test_op_1"});
-  worker_pool_.StartWorkerProcess(Language::JAVA, task_spec.DynamicWorkerOptions());
+  worker_pool_.StartWorkerProcess(Language::JAVA, false,
+                                  task_spec.DynamicWorkerOptions());
   const auto real_command =
       worker_pool_.GetWorkerCommand(worker_pool_.LastStartedWorkerProcess());
   ASSERT_EQ(real_command,

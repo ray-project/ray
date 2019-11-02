@@ -84,7 +84,7 @@ void WorkerPool::Start(int num_workers) {
     int num_worker_processes = static_cast<int>(
         std::ceil(static_cast<double>(num_workers) / state.num_workers_per_process));
     for (int i = 0; i < num_worker_processes; i++) {
-      StartWorkerProcess(entry.first);
+      StartWorkerProcess(entry.first, /*is_initial_worker*/ true);
     }
   }
 }
@@ -122,7 +122,7 @@ uint32_t WorkerPool::Size(const Language &language) const {
   }
 }
 
-int WorkerPool::StartWorkerProcess(const Language &language,
+int WorkerPool::StartWorkerProcess(const Language &language, bool is_initial_worker,
                                    const std::vector<std::string> &dynamic_options) {
   auto &state = GetStateForLanguage(language);
   // If we are already starting up too many workers, then return without starting
@@ -131,7 +131,7 @@ int WorkerPool::StartWorkerProcess(const Language &language,
   for (auto &entry : state.starting_worker_processes) {
     starting_workers += entry.second;
   }
-  if (starting_workers >= maximum_startup_concurrency_) {
+  if (!is_initial_worker && starting_workers >= maximum_startup_concurrency_) {
     // Workers have been started, but not registered. Force start disabled -- returning.
     RAY_LOG(DEBUG) << "Worker not started, " << starting_workers
                    << " workers of language type " << static_cast<int>(language)
@@ -326,7 +326,8 @@ std::shared_ptr<Worker> WorkerPool::PopWorker(const TaskSpecification &task_spec
     } else if (!HasPendingWorkerForTask(task_spec.GetLanguage(), task_spec.TaskId())) {
       // We are not pending a registration from a worker for this task,
       // so start a new worker process for this task.
-      pid = StartWorkerProcess(task_spec.GetLanguage(), task_spec.DynamicWorkerOptions());
+      pid = StartWorkerProcess(task_spec.GetLanguage(), false,
+                               task_spec.DynamicWorkerOptions());
       if (pid > 0) {
         state.dedicated_workers_to_tasks[pid] = task_spec.TaskId();
         state.tasks_to_dedicated_workers[task_spec.TaskId()] = pid;

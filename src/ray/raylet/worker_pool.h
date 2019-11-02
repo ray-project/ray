@@ -154,10 +154,11 @@ class WorkerPool {
   /// any workers.
   ///
   /// \param language Which language this worker process should be.
+  /// \param is_startup Whether the process to start is an initial worker process.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  int StartWorkerProcess(const Language &language,
+  int StartWorkerProcess(const Language &language, bool is_initial_worker = false,
                          const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
@@ -223,6 +224,7 @@ class WorkerPool {
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
   FRIEND_TEST(WorkerPoolTest, InitialWorkerProcessCount);
+  FRIEND_TEST(WorkerPoolTest, IgnoreMaximumStartupConcurrencyDuringStartup);
 };
 
 }  // namespace raylet
