@@ -77,11 +77,6 @@ ERROR_KEY_PREFIX = b"Error:"
 logger = logging.getLogger(__name__)
 
 try:
-    import aiohttp
-except ImportError:
-    aiohttp = None
-
-try:
     import setproctitle
 except ImportError:
     setproctitle = None
@@ -292,8 +287,8 @@ class Worker(object):
 
         if isinstance(value, bytes):
             if return_buffer is not None:
-                raise NotImplementedError(
-                    "returning raw buffers from direct actor calls")
+                return_buffer.append(value)
+                return
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
@@ -844,8 +839,8 @@ def init(address=None,
          redis_password=None,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=aiohttp is not None,
-         webui_host="localhost",
+         include_webui=False,
+         webui_host="127.0.0.1",
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -926,8 +921,8 @@ def init(address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster.
         webui_host: The host to bind the web UI server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
+            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to 127.0.0.1 to prevent access from
             external machines.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
