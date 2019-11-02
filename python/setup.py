@@ -169,6 +169,9 @@ requires = [
     "protobuf >= 3.8.0",
 ]
 
+if (3, 6) <= sys.version_info < (3, 8):
+    requires.append("pickle5 >= 0.0.9")
+
 setup(
     name="ray",
     version=find_version("ray", "__init__.py"),
