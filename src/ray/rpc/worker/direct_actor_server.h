@@ -32,6 +32,15 @@ class DirectActorHandler {
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a worker lease granted request.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_replay_callback The callback to be called when the request is done.
+  virtual void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                        rpc::WorkerLeaseGrantedReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.
@@ -72,6 +81,16 @@ class DirectActorGrpcService : public GrpcService {
             cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(
         std::move(wait_complete_call_Factory), 100);
+
+    // Initialize the Factory for `WorkerLeaseGranted` requests.
+    std::unique_ptr<ServerCallFactory> worker_granted_call_Factory(
+        new ServerCallFactoryImpl<DirectActorService, DirectActorHandler,
+                                  WorkerLeaseGrantedRequest, WorkerLeaseGrantedReply>(
+            service_, &DirectActorService::AsyncService::RequestWorkerLeaseGranted,
+            service_handler_, &DirectActorHandler::HandleWorkerLeaseGranted, cq,
+            main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(worker_granted_call_Factory), 100);
   }
 
  private:

@@ -887,6 +887,9 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::SubmitTask: {
     ProcessSubmitTaskMessage(message_data);
   } break;
+  case protocol::MessageType::RequestWorkerLease: {
+    ProcessRequestWorkerLeaseMessage(client, message_data);
+  } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
@@ -1174,6 +1177,31 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(Task(task_message), Lineage());
+}
+
+void NodeManager::ProcessRequestWorkerLeaseMessage(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the resource spec submitted by the client.
+  auto fbs_message = flatbuffers::GetRoot<protocol::WorkerLeaseRequest>(message_data);
+  rpc::Task task_message;
+  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
+      fbs_message->resource_spec()->data(), fbs_message->resource_spec()->size()));
+
+  // Override the task dispatch to call back to the client instead of executing the
+  // task directly on the worker. TODO(ekl) handle spilling case
+  Task task(task_message);
+  task.OnDispatchInstead([this, client](const std::string &address, int port) {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    if (worker == nullptr) {
+      worker = worker_pool_.GetRegisteredDriver(client);
+    }
+    if (worker == nullptr) {
+      RAY_LOG(ERROR) << "Lost worker for lease request " << client;
+    } else {
+      worker->WorkerLeaseGranted(address, port);
+    }
+  });
+  SubmitTask(task, Lineage());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1947,7 +1975,12 @@ bool NodeManager::AssignTask(const Task &task) {
   ResourceIdSet resource_id_set =
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
-  worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
+  if (task.on_dispatch_ != nullptr) {
+    task.on_dispatch_(initial_config_.node_manager_address, worker->Port());
+    finish_assign_task_callback(Status::OK());
+  } else {
+    worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
+  }
 
   // We assigned this task to a worker.
   // (Note this means that we sent the task to the worker. The assignment

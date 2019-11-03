@@ -335,6 +335,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
 
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     boost::asio::io_service &main_io_service,
+                                    boost::asio::io_service &rpc_io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler,
                                     const std::function<void()> &exit_handler);
@@ -360,8 +361,16 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  // TODO(ekl) move this to direct task transport
+  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                rpc::WorkerLeaseGrantedReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxConcurrency(int max_concurrency);
+
+  // XXX fix this
+  std::function<void(const std::string &, int)> worker_lease_granted_ = nullptr;
 
  private:
   // Worker context.

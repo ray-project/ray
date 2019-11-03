@@ -371,3 +371,12 @@ ray::Status RayletClient::ReportActiveObjectIDs(
 
   return conn_->WriteMessage(MessageType::ReportActiveObjectIDs, &fbb);
 }
+
+ray::Status RayletClient::RequestWorkerLease(
+    const ray::TaskSpecification &resource_spec) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateWorkerLeaseRequest(
+      fbb, fbb.CreateString(resource_spec.Serialize()));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::RequestWorkerLease, &fbb);
+}

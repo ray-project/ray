@@ -182,6 +182,11 @@ class RayletClient {
   /// \return ray::Status
   ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
+  /// Requests a worker from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec);
+
   Language GetLanguage() const { return language_; }
 
   WorkerID GetWorkerID() const { return worker_id_; }

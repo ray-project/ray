@@ -38,6 +38,11 @@ class Task {
     ComputeDependencies();
   }
 
+  /// Override dispatch behaviour.
+  void OnDispatchInstead(std::function<void(const std::string &, int)> callback) {
+    on_dispatch_ = callback;
+  }
+
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
   ///
@@ -63,6 +68,9 @@ class Task {
   void CopyTaskExecutionSpec(const Task &task);
 
   std::string DebugString() const;
+
+  /// TODO(ekl) make private
+  std::function<void(const std::string &, int)> on_dispatch_ = nullptr;
 
  private:
   void ComputeDependencies();

@@ -174,6 +174,23 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   }
 }
 
+void Worker::WorkerLeaseGranted(const std::string &address, int port) {
+  RAY_CHECK(!address.empty());
+  RAY_CHECK(port_ > 0);
+  rpc::WorkerLeaseGrantedRequest request;
+  request.set_address(address);
+  request.set_port(port);
+  auto status = direct_rpc_client_->WorkerLeaseGranted(
+      request, [](Status status, const rpc::WorkerLeaseGrantedReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to reply to lease request: " << status.ToString();
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to reply to lease request: " << status.ToString();
+  }
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

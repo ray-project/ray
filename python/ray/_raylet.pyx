@@ -961,7 +961,8 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
-            task_options = CTaskOptions(num_return_vals, is_direct_call, c_resources)
+            task_options = CTaskOptions(
+                num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)

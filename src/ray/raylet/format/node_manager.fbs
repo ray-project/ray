@@ -77,6 +77,8 @@ enum MessageType:int {
   SetResourceRequest,
   // Update the active set of object IDs in use on this worker.
   ReportActiveObjectIDs,
+  // Request a worker from the raylet with the specified resources.
+  RequestWorkerLease,
 }
 
 table TaskExecutionSpecification {
@@ -96,6 +98,10 @@ table Task {
 
 table SubmitTaskRequest {
   task_spec: string;
+}
+
+table WorkerLeaseRequest {
+  resource_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.

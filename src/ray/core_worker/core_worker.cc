@@ -104,22 +104,20 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
 
-  // Initialize task execution.
+  // Initialize task receivers.
+  auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                                std::placeholders::_2, std::placeholders::_3);
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
-
-    // Initialize task receivers.
-    auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                                  std::placeholders::_2, std::placeholders::_3);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_, raylet_client_, task_execution_service_, worker_server_,
             execute_task));
-    direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              worker_server_, execute_task,
-                                              exit_handler));
   }
+  direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+      new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
+                                            io_service_, worker_server_, execute_task,
+                                            exit_handler));
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
@@ -179,6 +177,16 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       new CoreWorkerDirectActorTaskSubmitter(
           io_service_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
                            new CoreWorkerMemoryStoreProvider(memory_store_))));
+
+  direct_task_submitter_ =
+      std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
+          *raylet_client_, *direct_actor_submitter_,
+          std::unique_ptr<CoreWorkerMemoryStoreProvider>(
+              new CoreWorkerMemoryStoreProvider(memory_store_))));
+  direct_actor_task_receiver_->worker_lease_granted_ = [this](const std::string &addr,
+                                                              int port) {
+    direct_task_submitter_->HandleWorkerLeaseGranted(addr, port);
+  };
 }
 
 CoreWorker::~CoreWorker() {
@@ -459,6 +467,17 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
+
+  if (task_options.is_direct_call) {
+    // TODO(ekl) offload task building onto a thread pool for performance
+    BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
+                        worker_context_.GetCurrentTaskID(), next_task_index,
+                        GetCallerId(), function, args, task_options.num_returns,
+                        task_options.resources, {}, TaskTransportType::DIRECT_ACTOR,
+                        return_ids);
+    return direct_task_submitter_->SubmitTask(builder.Build());
+  }
+
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,

@@ -200,10 +200,10 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler,
-    const std::function<void()> &exit_handler)
+    boost::asio::io_service &rpc_io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
-      task_service_(main_io_service, *this),
+      task_service_(rpc_io_service, *this),
       task_handler_(task_handler),
       exit_handler_(exit_handler),
       task_main_io_service_(main_io_service) {
@@ -307,6 +307,14 @@ void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
   waiter_->OnWaitComplete(request.tag());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void CoreWorkerDirectActorTaskReceiver::HandleWorkerLeaseGranted(
+    const rpc::WorkerLeaseGrantedRequest &request, rpc::WorkerLeaseGrantedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(worker_lease_granted_ != nullptr);
+  worker_lease_granted_(request.address(), request.port());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
