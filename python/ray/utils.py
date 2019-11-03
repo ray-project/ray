@@ -263,13 +263,22 @@ def get_cuda_visible_devices():
     return [int(i) for i in gpu_ids_str.split(",")]
 
 
+last_set_gpu_ids = None
+
+
 def set_cuda_visible_devices(gpu_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
         gpu_ids: This is a list of integers representing GPU IDs.
     """
+
+    global last_set_gpu_ids
+    if last_set_gpu_ids == gpu_ids:
+        return  # optimization: already set
+
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
+    last_set_gpu_ids = gpu_ids
 
 
 def resources_from_resource_arguments(
