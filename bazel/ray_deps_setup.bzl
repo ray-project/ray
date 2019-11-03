@@ -105,7 +105,7 @@ def ray_deps_setup():
     # OpenCensus depends on jupp0r/prometheus-cpp
     git_repository(
         name = "com_github_jupp0r_prometheus_cpp",
-        commit = "78ac107937ee3b94f0b011f9ef0c12b912a222e7",
+        commit = "5c45ba7ddc0585d765a43d136764dd2a542bd495",
         # TODO(qwang): We should use the repository of `jupp0r` here when this PR
         # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
         remote = "https://github.com/ray-project/prometheus-cpp.git",
