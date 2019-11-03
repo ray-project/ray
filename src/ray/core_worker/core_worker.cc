@@ -17,8 +17,9 @@ void BuildCommonTaskSpec(
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, num_returns, required_resources,
-                            required_placement_resources);
+                            task_index, caller_id, num_returns,
+                            transport_type == ray::TaskTransportType::DIRECT_ACTOR,
+                            required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -161,10 +162,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     std::vector<std::string> empty_descriptor;
     std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
-                              worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
-                              0, GetCallerId(), 0, empty_resources, empty_resources);
+    builder.SetCommonTaskSpec(
+        task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
+        TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(), 0,
+        false, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -185,6 +186,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
               new CoreWorkerMemoryStoreProvider(memory_store_))));
   direct_actor_task_receiver_->worker_lease_granted_ = [this](const std::string &addr,
                                                               int port) {
+    RAY_CHECK(direct_task_submitter_ != nullptr);
     direct_task_submitter_->HandleWorkerLeaseGranted(addr, port);
   };
 }

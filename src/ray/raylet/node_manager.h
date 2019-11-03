@@ -419,6 +419,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ProcessRequestWorkerLeaseMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+  void ProcessReturnWorkerMessage(const uint8_t *message_data);
 
   /// Process client message of FetchOrReconstruct
   ///
@@ -589,6 +590,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
+
+  /// Map of workers leased out to direct call clients.
+  std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
 };
 
 }  // namespace raylet

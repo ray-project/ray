@@ -380,3 +380,10 @@ ray::Status RayletClient::RequestWorkerLease(
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::RequestWorkerLease, &fbb);
 }
+
+ray::Status RayletClient::ReturnWorker(int worker_port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateReturnWorkerRequest(fbb, worker_port);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::ReturnWorker, &fbb);
+}

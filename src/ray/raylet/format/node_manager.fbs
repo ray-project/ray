@@ -79,6 +79,8 @@ enum MessageType:int {
   ReportActiveObjectIDs,
   // Request a worker from the raylet with the specified resources.
   RequestWorkerLease,
+  // Returns a worker to the raylet.
+  ReturnWorker,
 }
 
 table TaskExecutionSpecification {
@@ -102,6 +104,10 @@ table SubmitTaskRequest {
 
 table WorkerLeaseRequest {
   resource_spec: string;
+}
+
+table ReturnWorkerRequest {
+  worker_port: int;
 }
 
 // This message describes a given resource that is reserved for a worker.

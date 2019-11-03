@@ -39,7 +39,9 @@ class Task {
   }
 
   /// Override dispatch behaviour.
-  void OnDispatchInstead(std::function<void(const std::string &, int)> callback) {
+  void OnDispatchInstead(
+      std::function<void(const std::shared_ptr<void>, const std::string &, int)>
+          callback) {
     on_dispatch_ = callback;
   }
 
@@ -70,7 +72,8 @@ class Task {
   std::string DebugString() const;
 
   /// TODO(ekl) make private
-  std::function<void(const std::string &, int)> on_dispatch_ = nullptr;
+  std::function<void(const std::shared_ptr<void>, const std::string &, int)>
+      on_dispatch_ = nullptr;
 
  private:
   void ComputeDependencies();

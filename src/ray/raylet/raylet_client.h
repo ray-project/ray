@@ -187,6 +187,11 @@ class RayletClient {
   /// \return ray::Status
   ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec);
 
+  /// Returns a worker to the raylet.
+  /// \param worker_port The local port of the worker on the raylet node.
+  /// \return ray::Status
+  ray::Status ReturnWorker(int worker_port);
+
   Language GetLanguage() const { return language_; }
 
   WorkerID GetWorkerID() const { return worker_id_; }

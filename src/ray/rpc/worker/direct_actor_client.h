@@ -100,6 +100,17 @@ class DirectActorClient : public std::enable_shared_from_this<DirectActorClient>
     return call->GetStatus();
   }
 
+  ray::Status PushTaskImmediate(std::unique_ptr<PushTaskRequest> request,
+                                const ClientCallback<PushTaskReply> &callback) {
+    request->set_sequence_number(-1);
+    request->set_client_processed_up_to(-1);
+    auto call = client_call_manager_
+                    .CreateCall<DirectActorService, PushTaskRequest, PushTaskReply>(
+                        *stub_, &DirectActorService::Stub::PrepareAsyncPushTask, *request,
+                        callback);
+    return call->GetStatus();
+  }
+
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being

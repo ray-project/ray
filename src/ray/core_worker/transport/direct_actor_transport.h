@@ -56,6 +56,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] actor_data The actor's new status information.
   void HandleActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
 
+  // XXX
+  rpc::ClientCallManager &CallManager() { return client_call_manager_; }
+
  private:
   /// Push a task to a remote actor via the given client.
   /// Note, this function doesn't return any error status code. If an error occurs while
@@ -233,6 +236,9 @@ class SchedulingQueue {
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<ObjectID> &dependencies = {}) {
+    if (seq_no == -1) {
+      seq_no = next_seq_no_;  // schedule immediately
+    }
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "

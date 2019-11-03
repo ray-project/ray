@@ -258,10 +258,11 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       request.sequence_number(), request.client_processed_up_to(),
       [this, reply, send_reply_callback, task_spec]() {
         auto num_returns = task_spec.NumReturns();
-        RAY_CHECK(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
+        if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+          // Decrease to account for the dummy object id.
+          num_returns--;
+        }
         RAY_CHECK(num_returns > 0);
-        // Decrease to account for the dummy object id.
-        num_returns--;
 
         // TODO(edoakes): resource IDs are currently kept track of in the raylet,
         // need to come up with a solution for this.

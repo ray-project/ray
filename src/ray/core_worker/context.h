@@ -48,7 +48,7 @@ class WorkerContext {
   JobID current_job_id_;
   ActorID current_actor_id_;
   bool current_actor_use_direct_call_;
-  int current_actor_max_concurrency_;
+  int current_actor_max_concurrency_ = 1;
 
  private:
   static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);

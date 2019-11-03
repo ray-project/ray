@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <memory>
 
 #include "ray/common/status.h"
 
@@ -890,6 +891,9 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RequestWorkerLease: {
     ProcessRequestWorkerLeaseMessage(client, message_data);
   } break;
+  case protocol::MessageType::ReturnWorker: {
+    ProcessReturnWorkerMessage(message_data);
+  } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
@@ -1190,18 +1194,39 @@ void NodeManager::ProcessRequestWorkerLeaseMessage(
   // Override the task dispatch to call back to the client instead of executing the
   // task directly on the worker. TODO(ekl) handle spilling case
   Task task(task_message);
-  task.OnDispatchInstead([this, client](const std::string &address, int port) {
-    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    if (worker == nullptr) {
-      worker = worker_pool_.GetRegisteredDriver(client);
+  task.OnDispatchInstead([this, client](const std::shared_ptr<void> granted,
+                                        const std::string &address, int port) {
+    std::shared_ptr<Worker> client_worker = worker_pool_.GetRegisteredWorker(client);
+    if (client_worker == nullptr) {
+      client_worker = worker_pool_.GetRegisteredDriver(client);
     }
-    if (worker == nullptr) {
+    if (client_worker == nullptr) {
       RAY_LOG(ERROR) << "Lost worker for lease request " << client;
     } else {
-      worker->WorkerLeaseGranted(address, port);
+      client_worker->WorkerLeaseGranted(address, port);
+      leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
     }
   });
   SubmitTask(task, Lineage());
+}
+
+void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
+  // Read the resource spec submitted by the client.
+  auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
+  auto worker_port = fbs_message->worker_port();
+  RAY_LOG(ERROR) << "Return worker " << worker_port;
+  std::shared_ptr<Worker> worker = leased_workers_[worker_port];
+  leased_workers_.erase(worker_port);
+  RAY_CHECK(worker != nullptr);
+  RAY_CHECK(!worker->GetAssignedTaskId().IsNil());
+  FinishAssignedTask(*worker);
+  worker_pool_.PushWorker(worker);
+  // Local resource availability changed: invoke scheduling policy for local node.
+  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+  cluster_resource_map_[local_client_id].SetLoadResources(
+      local_queues_.GetResourceLoad());
+  // Call task dispatch to assign work to the new worker.
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1976,7 +2001,7 @@ bool NodeManager::AssignTask(const Task &task) {
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
   if (task.on_dispatch_ != nullptr) {
-    task.on_dispatch_(initial_config_.node_manager_address, worker->Port());
+    task.on_dispatch_(worker, initial_config_.node_manager_address, worker->Port());
     finish_assign_task_callback(Status::OK());
   } else {
     worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
