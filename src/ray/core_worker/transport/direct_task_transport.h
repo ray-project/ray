@@ -13,67 +13,41 @@
 
 namespace ray {
 
-// struct TaskState {
-//  Task task;
-//  std::vector<ObjectID> local_dependencies;
-//  std::vector<ObjectID> remote_dependencies;
-//};
-//
-//// This class is NOT thread-safe.
-// class DependencyResolver {
-// public:
-//  DependencyResolver();
-//
-//  // inserts into pending_tasks
-//  void ResolveDependencies(const TaskSpecification& task, std::function<void(Task)>
-//  on_complete) {
-//    // first fill in any local dependencies if possible
-//    if (task.local_dependencies.empty() && task.remote_dependencies.empty()) {
-//      on_complete(task);
-//      return;
-//    }
-//    auto tag = next_request_id_++;
-//    pending_tasks_[tag] = TaskState(task);
-//    for (const ObjectID& dep : task.local_dependencies) {  // has direct bit set
-//      if (!localAlready(dep)) {
-//        local_wait_[dep].push_back(tag);
-//      }
-//    }
-//    // TODO(ekl) should just assume remote deps are fine for now
-//    if (!task.remote_dependencies.empty()) {
-//      raylet_client->WaitForDirectActorCallArgs(tag, task.remote_dependencies);
-//    }
-//  };
-//
-//  // gRPC callback from raylet
-//  void OnRemoteWaitComplete(int64_t tag) {
-//    auto& task = pending_tasks_[tag];
-//    task.remote_dependencies.clear();
-//    if (task.local_dependencies.empty()) {
-//      pending_tasks_.erase(tag);
-//      on_complete(task);
-//    }
-//  }
-//
-//  // gRPC callback on task completion
-//  void OnLocalObjectAvailable(const ObjectID& obj_id) {
-//    auto it = local_wait_.find(obj_id);
-//    if (it != local_wait_.end()) {
-//      for (const auto& task : *it) {
-//        task.local_dependencies.remove(obj_id);
-//        if (task.local_dependencies.empty()) {
-//          on_complete(task);
-//          erase(task);
-//        }
-//      }
-//    }
-//  }
-//
-// private:
-//  int64_t next_request_id_ = 0;
-//  absl::flat_hash_map<int64_t, TaskState> pending_tasks_;
-//  absl::flat_hash_map<ObjectID, std::vector<int64_t>> local_wait_;
-//}
+struct TaskState {
+  const TaskSpecification task;
+  absl::flat_hash_set<ObjectID> local_dependencies;
+  absl::flat_hash_set<ObjectID> remote_dependencies;
+};
+
+// This class is thread-safe.
+class DependencyResolver {
+ public:
+  DependencyResolver(
+      RayletClient& raylet_client,
+      CoreWorkerMemoryStoreProvider& store_provider)
+    : raylet_client_(raylet_client), store_provider_(store_provider) {}
+
+  /// Resolve all local and remote dependencies for the task, calling the specified
+  /// callback when done. Direct call ids in the task specification will be resolved
+  /// to concrete values and inlined.
+  //
+  /// Note: This method **will mutate** the given TaskSpecification.
+  ///
+  /// Postcondition: all direct call ids in arguments are converted to values.
+  void ResolveDependencies(
+      const TaskSpecification& task, std::function<void()> on_complete);
+
+ private:
+  // Reference to the shared raylet client for waiting for deps.
+  RayletClient &raylet_client_;
+
+  /// The store provider.
+  CoreWorkerMemoryStoreProvider& store_provider_;
+
+  absl::Mutex mu_;
+  int64_t next_request_id_ GUARDED_BY(mu_) = 1000000000;
+  absl::flat_hash_map<int64_t, std::unique_ptr<TaskState>> pending_;
+};
 
 typedef std::pair<std::string, int> WorkerAddress;
 
@@ -86,7 +60,8 @@ class CoreWorkerDirectTaskSubmitter {
       std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : raylet_client_(raylet_client),
         direct_actor_submitter_(direct_actor_submitter),
-        store_provider_(std::move(store_provider)) {}
+        store_provider_(std::move(store_provider)),
+        resolver_(raylet_client, *store_provider_) {}
 
   Status SubmitTask(const TaskSpecification &task_spec);
 
@@ -110,6 +85,9 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// The store provider.
   std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
+
+  /// Resolve local and remote dependencies;
+  DependencyResolver resolver_;
 
   // Protects task submission state below.
   absl::Mutex mu_;

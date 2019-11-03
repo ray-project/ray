@@ -136,11 +136,12 @@ def flatten_args(signature_parameters, args, kwargs):
         [None, 1, None, 2, None, 3, "a", 4]
     """
 
-    for obj in args:
-        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
-            raise NotImplementedError(
-                "Objects produced by direct actor calls cannot be "
-                "passed to other tasks as arguments.")
+# TODO(ekl) check this in C++ for non-direct calls only
+#    for obj in args:
+#        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
+#            raise NotImplementedError(
+#                "Objects produced by direct actor calls cannot be "
+#                "passed to other tasks as arguments.")
 
     restored = _restore_parameters(signature_parameters)
     reconstructed_signature = funcsigs.Signature(parameters=restored)

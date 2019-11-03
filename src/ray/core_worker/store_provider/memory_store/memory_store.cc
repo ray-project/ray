@@ -106,32 +106,68 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore() {}
 
-Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
-  std::unique_lock<std::mutex> lock(lock_);
-  auto iter = objects_.find(object_id);
-  if (iter != objects_.end()) {
-    return Status::ObjectExists("object already exists in the memory store");
+void CoreWorkerMemoryStore::GetAsync(
+      const ObjectID& object_id,
+      std::function<void(std::shared_ptr<RayObject>)> callback) {
+  std::shared_ptr<RayObject> ptr;
+  {
+    std::unique_lock<std::mutex> lock(lock_);
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      ptr = iter->second;
+    } else {
+      object_async_get_requests_[object_id].push_back(callback);
+    }
   }
+  // call outside lock
+  if (ptr != nullptr) {
+    callback(ptr);
+  }
+}
 
+Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
+  std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
       std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
 
-  bool should_add_entry = true;
-  auto object_request_iter = object_get_requests_.find(object_id);
-  if (object_request_iter != object_get_requests_.end()) {
-    auto &get_requests = object_request_iter->second;
-    for (auto &get_request : get_requests) {
-      get_request->Set(object_id, object_entry);
-      if (get_request->ShouldRemoveObjects()) {
-        should_add_entry = false;
+  {
+    std::unique_lock<std::mutex> lock(lock_);
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      return Status::ObjectExists("object already exists in the memory store");
+    }
+
+    bool should_add_entry = true;
+    auto object_request_iter = object_get_requests_.find(object_id);
+    if (object_request_iter != object_get_requests_.end()) {
+      auto &get_requests = object_request_iter->second;
+      for (auto &get_request : get_requests) {
+        get_request->Set(object_id, object_entry);
+        if (get_request->ShouldRemoveObjects()) {
+          should_add_entry = false;
+        }
       }
+    }
+
+    auto async_callback_it = object_async_get_requests_.find(object_id);
+    if (async_callback_it != object_async_get_requests_.end()) {
+      auto &callbacks = async_callback_it->second;
+      async_callbacks.insert(
+          async_callbacks.begin(), callbacks.begin(), callbacks.end());
+      object_async_get_requests_.erase(async_callback_it);
+      should_add_entry = false;
+    }
+
+    if (should_add_entry) {
+      // If there is no existing get request, then add the `RayObject` to map.
+      objects_.emplace(object_id, object_entry);
     }
   }
 
-  if (should_add_entry) {
-    // If there is no existing get request, then add the `RayObject` to map.
-    objects_.emplace(object_id, object_entry);
+  for (const auto& cb : async_callbacks) {
+    cb(object_entry);
   }
+
   return Status::OK();
 }
 
