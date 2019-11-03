@@ -433,7 +433,14 @@ cdef deserialize_args(
                     == RAW_BUFFER_METADATA):
                 args.append(data)
             else:
-                args.append(pickle.loads(data.to_pybytes()))
+                try:
+                    args.append(pickle.loads(data.to_pybytes()))
+                except:  # XXX handle inline RayObjects properly
+                    by_reference_ids.append(
+                        ObjectID(arg_reference_ids[i].Binary()))
+                    by_reference_indices.append(i)
+                    by_reference_objects.push_back(c_args[i])
+                    args.append(None)
         # Passed by reference.
         else:
             by_reference_ids.append(

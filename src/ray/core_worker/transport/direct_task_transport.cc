@@ -3,23 +3,30 @@
 namespace ray {
 
 void DoInlineObjectValue(
-    const ObjectID& obj_id, std::shared_ptr<RayObject> obj,
+    const ObjectID& obj_id, std::shared_ptr<RayObject> value,
     const TaskSpecification& task) {
-  RAY_LOG(ERROR) << "inlining " << obj_id;
-  auto msg = task.GetMutableMessage();
+  auto& msg = task.GetMutableMessage();
+  bool found = false;
   for (size_t i=0; i < task.NumArgs(); i++) {
     auto count = task.ArgIdCount(i);
     if (count > 0) {
       const auto& id = task.ArgId(i, 0);
       if (id == obj_id) {
-        msg.args(i).clear_object_ids();
-        msg.args(i).set_data("");
-        msg.args(i).set_metadata("");
-        return;
+        auto* mutable_arg = msg.mutable_args(i);
+        mutable_arg->clear_object_ids();
+        if (value->HasData()) {
+          const auto &data = value->GetData();
+          mutable_arg->set_data(data->Data(), data->Size());
+        }
+        if (value->HasMetadata()) {
+          const auto &metadata = value->GetMetadata();
+          mutable_arg->set_metadata(metadata->Data(), metadata->Size());
+        }
+        found = true;
       }
     }
   }
-  RAY_CHECK(false) << "obj id " << obj_id << " not found";
+  RAY_CHECK(found) << "obj id " << obj_id << " not found";
 }
 
 void DependencyResolver::ResolveDependencies(
@@ -86,14 +93,12 @@ void DependencyResolver::ResolveDependencies(
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     // TODO(ekl) should have a queue per distinct resource type required
+    absl::MutexLock lock(&mu_);
     RequestNewWorkerIfNeeded(task_spec);
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
     auto msg = task_spec.GetMutableMessage();
     request->mutable_task_spec()->Swap(&msg);
-    {
-      absl::MutexLock lock(&mu_);
-      queued_tasks_.push_back(std::move(request));
-    }
+    queued_tasks_.push_back(std::move(request));
   });
   return Status::OK();
 }
@@ -133,7 +138,6 @@ void CoreWorkerDirectTaskSubmitter::WorkerIdle(const WorkerAddress &addr) {
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const TaskSpecification &resource_spec) {
-  absl::MutexLock lock(&mu_);
   if (worker_request_pending_) {
     return;
   }

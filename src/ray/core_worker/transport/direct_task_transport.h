@@ -71,7 +71,8 @@ class CoreWorkerDirectTaskSubmitter {
  private:
   void WorkerIdle(const WorkerAddress &addr);
 
-  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec);
+  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // XXX this uses the direct actor submitter to push the task
   void PushTask(const WorkerAddress &addr, rpc::DirectActorClient &client,
