@@ -111,6 +111,15 @@ def ray_deps_setup():
         remote = "https://github.com/ray-project/prometheus-cpp.git",
     )
 
+    http_archive(
+        name = "com_github_grpc_grpc",
+        urls = [
+            "https://github.com/grpc/grpc/archive/76a381869413834692b8ed305fbe923c0f9c4472.tar.gz",
+        ],
+        strip_prefix = "grpc-76a381869413834692b8ed305fbe923c0f9c4472",
+	sha256 = "b5efbe086b9a00826a3f830094312e6d1647157b5a5e7954a8ac4179bce3de8b",
+    )
+
     git_repository(
         name = "build_stack_rules_proto",
         remote = "https://github.com/stackb/rules_proto.git",
