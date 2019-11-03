@@ -74,8 +74,8 @@ def ray_deps_setup():
     new_git_repository(
         name = "plasma",
         build_file = "@//bazel:BUILD.plasma",
-        commit = "486e8a043351ec680f63324382a0e1ed3a613888",
-        remote = "https://github.com/pcmoritz/arrow",
+        commit = "86f34aa07e611787d9cc98c6a33b0a0a536dce57",
+        remote = "https://github.com/apache/arrow",
     )
 
     new_git_repository(
