@@ -62,7 +62,8 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
   }
 
   const auto &object_notification =
-      flatbuffers::GetRoot<object_manager::protocol::PlasmaNotification>(notification_.data());
+      flatbuffers::GetRoot<object_manager::protocol::PlasmaNotification>(
+          notification_.data());
   for (size_t i = 0; i < object_notification->object_info()->size(); ++i) {
     auto object_info = object_notification->object_info()->Get(i);
     const ObjectID object_id =
