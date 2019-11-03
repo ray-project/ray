@@ -1,7 +1,9 @@
-#include "ray/core_worker/core_worker.h"
+#include <cstdlib>
+
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace {
@@ -135,8 +137,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
   if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
-    heartbeat_timer_.expires_from_now(boost::asio::chrono::milliseconds(
-        RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
+    // Seed using current time.
+    std::srand(std::time(nullptr));
+    // Randomly choose a time from [0, timeout]) to send the first heartbeat to avoid all
+    // workers sending heartbeats at the same time.
+    int64_t heartbeat_timeout =
+        std::rand() % RayConfig::instance().worker_heartbeat_timeout_milliseconds();
+    heartbeat_timer_.expires_from_now(
+        boost::asio::chrono::milliseconds(heartbeat_timeout));
     heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   }
 
@@ -235,7 +243,7 @@ void CoreWorker::AddObjectIDReference(const ObjectID &object_id) {
   object_id_refs_updated_ = true;
 }
 
-void CoreWorker::DecrementObjectIDReference(const ObjectID &object_id) {
+bool CoreWorker::DecrementObjectIDReference(const ObjectID &object_id) {
   auto object_id_entry = object_id_refs_.find(object_id);
   if (object_id_entry == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
@@ -243,20 +251,24 @@ void CoreWorker::DecrementObjectIDReference(const ObjectID &object_id) {
   } else {
     if (--object_id_entry->second == 0) {
       object_id_refs_.erase(object_id);
+      return true;
     }
   }
+  return false;
 }
 
 void CoreWorker::RemoveObjectIDReference(const ObjectID &object_id) {
   absl::MutexLock lock(&object_ref_mu_);
-  DecrementObjectIDReference(object_id);
-
-  auto pending_task_entry = pending_task_deps_.find(object_id);
-  if (pending_task_entry != pending_task_deps_.end()) {
-    for (auto &dep_object_id : *pending_task_entry->second) {
-      DecrementObjectIDReference(dep_object_id);
+  if (DecrementObjectIDReference(object_id)) {
+    // If the reference count reached 0, check if it corresponds to a submitted task
+    // and if so, decrease the reference counts for its dependencies.
+    auto pending_task_entry = pending_task_deps_.find(object_id);
+    if (pending_task_entry != pending_task_deps_.end()) {
+      for (auto &dep_object_id : *pending_task_entry->second) {
+        DecrementObjectIDReference(dep_object_id);
+      }
+      pending_task_deps_.erase(object_id);
     }
-    pending_task_deps_.erase(object_id);
   }
   object_id_refs_updated_ = true;
 }
@@ -474,6 +486,11 @@ TaskID CoreWorker::GetCallerId() const {
 Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
   RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(task_spec));
 
+  size_t num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+    num_returns--;
+  }
+
   absl::MutexLock lock(&object_ref_mu_);
   std::shared_ptr<std::vector<ObjectID>> task_deps =
       std::make_shared<std::vector<ObjectID>>();
@@ -484,16 +501,18 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
         task_deps->push_back(arg_id);
         auto entry = object_id_refs_.find(arg_id);
         if (entry == object_id_refs_.end()) {
-          object_id_refs_[arg_id] = task_spec.NumReturns();
+          object_id_refs_[arg_id] = num_returns;
         } else {
-          entry->second += task_spec.NumReturns();
+          entry->second += num_returns;
         }
       }
     }
   }
 
-  for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    pending_task_deps_[task_spec.ReturnId(i)] = task_deps;
+  if (task_deps->size() > 0) {
+    for (size_t i = 0; i < num_returns; i++) {
+      pending_task_deps_[task_spec.ReturnId(i)] = task_deps;
+    }
   }
 
   return Status::OK();

@@ -83,10 +83,14 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  // Increase the reference count for this object ID.
+  /// Increase the reference count for this object ID.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
   void AddObjectIDReference(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
-  // Decrease the reference count for this object ID.
+  /// Decrease the reference count for this object ID.
+  ///
+  /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
   /* Public methods related to storing and retrieving objects. */
@@ -288,10 +292,16 @@ class CoreWorker {
   void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
 
   /* Private methods related to task submission. */
-  /// TODO
+
+  /// Submit the task to the raylet and add its dependencies to pending_task_deps_.
   Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
 
-  void DecrementObjectIDReference(const ObjectID &object_id)
+  /// Decrement the object ID's reference count in object_id_refs_. If the reference
+  /// decreases to zero, it is removed from the map.
+  ///
+  /// \param[in] object_id The object ID to decrement the reference count for.
+  /// \return bool True if the reference count went down to zero.
+  bool DecrementObjectIDReference(const ObjectID &object_id)
       EXCLUSIVE_LOCKS_REQUIRED(object_ref_mu_);
 
   /// Give this worker a handle to an actor.
@@ -404,8 +414,8 @@ class CoreWorker {
   /// used by pending task dependencies.
   absl::flat_hash_map<ObjectID, size_t> object_id_refs_ GUARDED_BY(object_ref_mu_);
 
-  /// Dependencies for pending tasks.
-  /// TODO
+  /// Dependencies for return objects of pending tasks. Each return object from a given
+  /// task maps to all of the input objects for that task.
   absl::flat_hash_map<ObjectID, std::shared_ptr<std::vector<ObjectID>>> pending_task_deps_
       GUARDED_BY(object_ref_mu_);
 
