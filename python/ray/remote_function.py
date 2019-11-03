@@ -57,6 +57,8 @@ class RemoteFunction(object):
                  object_store_memory, resources, num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
+        self._function_descriptor_list = (
+            self._function_descriptor.get_function_descriptor_list())
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -149,8 +151,8 @@ class RemoteFunction(object):
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
-                    self._function_descriptor.get_function_descriptor_list(),
-                    list_args, num_return_vals, resources)
+                    self._function_descriptor_list, list_args, num_return_vals,
+                    resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

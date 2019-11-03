@@ -1,13 +1,15 @@
 #ifndef RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
+#include <boost/thread.hpp>
 #include <list>
 #include <set>
 #include <utility>
 
 #include "ray/common/id.h"
-#include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
+#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/direct_actor_server.h"
@@ -37,7 +39,7 @@ class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       boost::asio::io_service &io_service,
-      std::unique_ptr<CoreWorkerStoreProvider> store_provider);
+      std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
@@ -119,65 +121,144 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerStoreProvider> store_provider_;
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
 
   friend class CoreWorkerTest;
+};
+
+/// Object dependency and RPC state of an inbound request.
+class InboundRequest {
+ public:
+  InboundRequest(){};
+  InboundRequest(std::function<void()> accept_callback,
+                 std::function<void()> reject_callback, bool has_dependencies)
+      : accept_callback_(accept_callback),
+        reject_callback_(reject_callback),
+        has_pending_dependencies_(has_dependencies) {}
+
+  void Accept() { accept_callback_(); }
+  void Cancel() { reject_callback_(); }
+  bool CanExecute() const { return !has_pending_dependencies_; }
+  void MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
+
+ private:
+  std::function<void()> accept_callback_;
+  std::function<void()> reject_callback_;
+  bool has_pending_dependencies_;
+};
+
+/// Waits for an object dependency to become available. Abstract for testing.
+class DependencyWaiter {
+ public:
+  /// Calls `callback` once the specified objects become available.
+  virtual void Wait(const std::vector<ObjectID> &dependencies,
+                    std::function<void()> on_dependencies_available) = 0;
+};
+
+class DependencyWaiterImpl : public DependencyWaiter {
+ public:
+  DependencyWaiterImpl(RayletClient &raylet_client) : raylet_client_(raylet_client) {}
+
+  void Wait(const std::vector<ObjectID> &dependencies,
+            std::function<void()> on_dependencies_available) override {
+    auto tag = next_request_id_++;
+    requests_[tag] = on_dependencies_available;
+    raylet_client_.WaitForDirectActorCallArgs(dependencies, tag);
+  }
+
+  /// Fulfills the callback stored by Wait().
+  void OnWaitComplete(int64_t tag) {
+    auto it = requests_.find(tag);
+    RAY_CHECK(it != requests_.end());
+    it->second();
+    requests_.erase(it);
+  }
+
+ private:
+  int64_t next_request_id_ = 0;
+  std::unordered_map<int64_t, std::function<void()>> requests_;
+  RayletClient &raylet_client_;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
-  SchedulingQueue(boost::asio::io_service &io_service,
+  SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : wait_timer_(io_service), reorder_wait_seconds_(reorder_wait_seconds) {}
+      : wait_timer_(main_io_service),
+        waiter_(waiter),
+        reorder_wait_seconds_(reorder_wait_seconds),
+        main_thread_id_(boost::this_thread::get_id()) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
-           std::function<void()> accept_request, std::function<void()> reject_request) {
+           std::function<void()> accept_request, std::function<void()> reject_request,
+           const std::vector<ObjectID> &dependencies = {}) {
+    RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
-      RAY_LOG(DEBUG) << "client skipping requests " << next_seq_no_ << " to "
+      RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
                      << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }
-    pending_tasks_[seq_no] = make_pair(accept_request, reject_request);
+    pending_tasks_[seq_no] =
+        InboundRequest(accept_request, reject_request, dependencies.size() > 0);
+    if (dependencies.size() > 0) {
+      waiter_.Wait(dependencies, [seq_no, this]() {
+        RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+        auto it = pending_tasks_.find(seq_no);
+        if (it != pending_tasks_.end()) {
+          it->second.MarkDependenciesSatisfied();
+          ScheduleRequests();
+        }
+      });
+    }
+    ScheduleRequests();
+  }
 
-    // Reject any stale requests that the client doesn't need any longer.
+ private:
+  /// Schedules as many requests as possible in sequence.
+  void ScheduleRequests() {
+    // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_tasks_.begin();
-      head->second.second();  // reject_request
+      head->second.Cancel();
       pending_tasks_.erase(head);
     }
 
     // Process as many in-order requests as we can.
-    while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_) {
+    while (!pending_tasks_.empty() && pending_tasks_.begin()->first == next_seq_no_ &&
+           pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
-      head->second.first();  // accept_request
+      head->second.Accept();
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
 
-    // Set a timeout on the queued tasks to avoid an infinite wait on failure.
-    wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
-    if (!pending_tasks_.empty()) {
+    if (pending_tasks_.empty() || !pending_tasks_.begin()->second.CanExecute()) {
+      // No timeout for object dependency waits.
+      wait_timer_.cancel();
+    } else {
+      // Set a timeout on the queued tasks to avoid an infinite wait on failure.
+      wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
       RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
                      << pending_tasks_.size();
       wait_timer_.async_wait([this](const boost::system::error_code &error) {
         if (error == boost::asio::error::operation_aborted) {
           return;  // time deadline was adjusted
         }
-        OnDependencyWaitTimeout();
+        OnSequencingWaitTimeout();
       });
     }
   }
 
- private:
-  /// Called when we time out waiting for a task dependency to show up.
-  void OnDependencyWaitTimeout() {
+  /// Called when we time out waiting for an earlier task to show up.
+  void OnSequencingWaitTimeout() {
+    RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     RAY_LOG(ERROR) << "timed out waiting for " << next_seq_no_
                    << ", cancelling all queued tasks";
     while (!pending_tasks_.empty()) {
       auto head = pending_tasks_.begin();
-      head->second.second();  // reject_request
+      head->second.Cancel();
       pending_tasks_.erase(head);
       next_seq_no_ = std::max(next_seq_no_, head->first + 1);
     }
@@ -186,46 +267,62 @@ class SchedulingQueue {
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t reorder_wait_seconds_ = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
-  std::map<int64_t, std::pair<std::function<void()>, std::function<void()>>>
-      pending_tasks_;
+  std::map<int64_t, InboundRequest> pending_tasks_;
   /// The next sequence number we are waiting for to arrive.
   int64_t next_seq_no_ = 0;
   /// Timer for waiting on dependencies.
   boost::asio::deadline_timer wait_timer_;
+  /// The id of the thread that constructed this scheduling queue.
+  boost::thread::id main_thread_id_;
+  /// Reference to the waiter owned by the task receiver.
+  DependencyWaiter &waiter_;
 
   friend class SchedulingQueueTest;
 };
 
-class CoreWorkerDirectActorTaskReceiver : public CoreWorkerTaskReceiver,
-                                          public rpc::DirectActorHandler {
+class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  public:
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
+
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    CoreWorkerObjectInterface &object_interface,
-                                    boost::asio::io_service &io_service,
+                                    boost::asio::io_service &main_io_service,
                                     rpc::GrpcServer &server,
                                     const TaskHandler &task_handler);
 
+  /// Initialize this receiver. This must be called prior to use.
+  void Init(RayletClient &client);
+
   /// Handle a `PushTask` request.
-  /// The implementation can handle this request asynchronously. When hanling is done, the
-  /// `done_callback` should be called.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
-  /// \param[in] done_callback The callback to be called when the request is done.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `DirectActorCallArgWaitComplete` request.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_reply_callback The callback to be called when the request is done.
+  void HandleDirectActorCallArgWaitComplete(
+      const rpc::DirectActorCallArgWaitCompleteRequest &request,
+      rpc::DirectActorCallArgWaitCompleteReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `DirectActorService`.
   rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The IO event loop for running tasks on.
+  boost::asio::io_service &task_main_io_service_;
+  /// Shared waiter for dependencies required by incoming tasks.
+  std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.
   /// TODO(ekl) GC these queues once the handle is no longer active.
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;

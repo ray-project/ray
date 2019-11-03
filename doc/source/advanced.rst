@@ -51,6 +51,36 @@ And vary the number of return values for tasks (and actor methods too):
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
 
+Dynamic Custom Resources
+------------------------
+
+Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
+load balancing, gang scheduling, and priority-based scheduling.
+
+
+.. code-block:: python
+
+    ray.init()
+    resource_name = "test_resource"
+    resource_capacity = 1.0
+
+    @ray.remote
+    def set_resource(resource_name, resource_capacity):
+        ray.experimental.set_resource(resource_name, resource_capacity)
+
+    ray.get(set_resource.remote(resource_name, resource_capacity))
+
+    available_resources = ray.available_resources()
+    cluster_resources = ray.cluster_resources()
+
+    assert available_resources[resource_name] == resource_capacity
+    assert cluster_resources[resource_name] == resource_capacity
+
+
+.. autofunction:: ray.experimental.set_resource
+    :noindex:
+
+
 
 Nested Remote Functions
 -----------------------
@@ -205,3 +235,43 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+Detached Actors
+-----------------------------------
+
+When original actor handles goes out of scope or the driver that originally
+created the actor exits, ray will clean up the actor by default. If you want
+to make sure the actor is kept alive, you can use
+``_remote(name="some_name", detached=True)`` to keep the actor alive after
+the driver exits. The actor will have a globally unique name and can be 
+accessed across different drivers. 
+
+For example, you can instantiate and register a persistent actor as follows:
+
+.. code-block:: python
+
+  counter = Counter._remote(name="CounterActor", detached=True)
+
+The CounterActor will be kept alive even after the driver running above script
+exits. Therefore it is possible to run the following script in a different
+driver:
+
+.. code-block:: python
+
+  counter = ray.experimental.get_actor("CounterActor")
+  print(ray.get(counter.get_counter.remote()))
+
+Note that just creating a named actor is allowed, this actor will be cleaned
+up after driver exits:
+
+.. code-block:: python
+
+  Counter._remote(name="CounterActor")
+
+However, creating a detached actor without name is not allowed because there
+will be no way to retrieve the actor handle and the resource is leaked.
+
+.. code-block:: python
+
+  # Can't do this!
+  Counter._remote(detached=True)
