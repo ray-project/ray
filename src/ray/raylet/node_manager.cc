@@ -275,13 +275,15 @@ void NodeManager::HandleJobTableUpdate(const JobID &id,
       // Kill all the workers. The actual cleanup for these workers is done
       // later when we receive the DisconnectClient message from them.
       for (const auto &worker : workers) {
-        // Clean up any open ray.wait calls that the worker made.
-        task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
-        // Mark the worker as dead so further messages from it are ignored
-        // (except DisconnectClient).
-        worker->MarkDead();
-        // Then kill the worker process.
-        KillWorker(worker);
+        if (!worker->IsDetachedActor()) {
+          // Clean up any open ray.wait calls that the worker made.
+          task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
+          // Mark the worker as dead so further messages from it are ignored
+          // (except DisconnectClient).
+          worker->MarkDead();
+          // Then kill the worker process.
+          KillWorker(worker);
+        }
       }
 
       // Remove all tasks for this job from the scheduling queues, mark
@@ -867,12 +869,7 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
-  case protocol::MessageType::GetTask: {
-    RAY_CHECK(!registered_worker->UsePush());
-    HandleWorkerAvailable(client);
-  } break;
   case protocol::MessageType::TaskDone: {
-    RAY_CHECK(registered_worker->UsePush());
     HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
@@ -902,6 +899,9 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
+  } break;
+  case protocol::MessageType::WaitForDirectActorCallArgsRequest: {
+    ProcessWaitForDirectActorCallArgsRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::PushErrorRequest: {
     ProcessPushErrorRequestMessage(message_data);
@@ -956,12 +956,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   Status status;
   if (message->is_worker()) {
     // Register the new worker.
-    bool use_push_task = worker->UsePush();
-    auto connection = worker->Connection();
-    status = worker_pool_.RegisterWorker(std::move(worker));
-    if (status.ok() && use_push_task) {
-      // only call `HandleWorkerAvailable` when push mode is used.
-      HandleWorkerAvailable(connection);
+    if (worker_pool_.RegisterWorker(std::move(worker)).ok()) {
+      HandleWorkerAvailable(worker->Connection());
     }
   } else {
     // Register the new driver.
@@ -1257,6 +1253,37 @@ void NodeManager::ProcessWaitRequestMessage(
               << "Failed to send WaitReply to client, so disconnecting client";
           // We failed to send the reply to the client, so disconnect the worker.
           ProcessDisconnectClientMessage(client);
+        }
+      });
+  RAY_CHECK_OK(status);
+}
+
+void NodeManager::ProcessWaitForDirectActorCallArgsRequestMessage(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the data.
+  auto message =
+      flatbuffers::GetRoot<protocol::WaitForDirectActorCallArgsRequest>(message_data);
+  int64_t tag = message->tag();
+  std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
+  std::vector<ObjectID> required_object_ids;
+  for (auto const &object_id : object_ids) {
+    if (!task_dependency_manager_.CheckObjectLocal(object_id)) {
+      // Add any missing objects to the list to subscribe to in the task
+      // dependency manager. These objects will be pulled from remote node
+      // managers and reconstructed if necessary.
+      required_object_ids.push_back(object_id);
+    }
+  }
+
+  ray::Status status = object_manager_.Wait(
+      object_ids, -1, object_ids.size(), false,
+      [this, client, tag](std::vector<ObjectID> found, std::vector<ObjectID> remaining) {
+        RAY_CHECK(remaining.empty());
+        std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+        if (worker == nullptr) {
+          RAY_LOG(ERROR) << "Lost worker for wait request " << client;
+        } else {
+          worker->DirectActorCallArgWaitComplete(tag);
         }
       });
   RAY_CHECK_OK(status);
@@ -1903,22 +1930,18 @@ bool NodeManager::AssignTask(const Task &task) {
 
   auto task_id = spec.TaskId();
   auto finish_assign_task_callback = [this, worker, task_id](Status status) {
-    if (worker->UsePush()) {
-      // NOTE: we cannot directly call `FinishAssignTask` here because
-      // it assumes the task is in SWAP queue, thus we need to delay invoking this
-      // function after the assigned tasks are moved from READY queue to SWAP queue
-      // in `DispatchTasks`.
-      // Another option is to move the tasks to SWAP queue here just before calling
-      // `FinishAssignTask` so we can save an io_service post, at the
-      // expense of calling `MoveTask` for each of the assigned tasks.
-      // TODO(zhijunfu): after all workers are fully migrated to push mode, the
-      // `post` below and swap queue can be removed.
-      io_service_.post([this, status, worker, task_id]() {
-        FinishAssignTask(task_id, *worker, status.ok());
-      });
-    } else {
+    // NOTE: we cannot directly call `FinishAssignTask` here because
+    // it assumes the task is in SWAP queue, thus we need to delay invoking this
+    // function after the assigned tasks are moved from READY queue to SWAP queue
+    // in `DispatchTasks`.
+    // Another option is to move the tasks to SWAP queue here just before calling
+    // `FinishAssignTask` so we can save an io_service post, at the
+    // expense of calling `MoveTask` for each of the assigned tasks.
+    // TODO(zhijunfu): after all workers are fully migrated to push mode, the
+    // `post` below and swap queue can be removed.
+    io_service_.post([this, status, worker, task_id]() {
       FinishAssignTask(task_id, *worker, status.ok());
-    }
+    });
   };
 
   ResourceIdSet resource_id_set =
@@ -1994,6 +2017,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
     actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+    actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -2045,6 +2069,11 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
   if (task_spec.IsActorCreationTask()) {
     // This was an actor creation task. Convert the worker to an actor.
     worker.AssignActorId(actor_id);
+
+    if (task_spec.IsDetachedActor()) {
+      worker.MarkDetachedActor();
+    }
+
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     int port = worker.Port();
@@ -2550,7 +2579,77 @@ std::string NodeManager::DebugString() const {
   return result.str();
 }
 
-void NodeManager::RecordMetrics() const {
+// Summarizes a Census view and tag values into a compact string, e.g.,
+// "Tag1:Value1,Tag2:Value2,Tag3:Value3".
+std::string compact_tag_string(const opencensus::stats::ViewDescriptor &view,
+                               const std::vector<std::string> &values) {
+  std::stringstream result;
+  const auto &keys = view.columns();
+  for (size_t i = 0; i < values.size(); i++) {
+    result << keys[i].name() << ":" << values[i];
+    if (i < values.size() - 1) {
+      result << ",";
+    }
+  }
+  return result.str();
+}
+
+void NodeManager::HandleNodeStatsRequest(const rpc::NodeStatsRequest &request,
+                                         rpc::NodeStatsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  for (const auto &worker : worker_pool_.GetAllWorkers()) {
+    auto worker_stats = reply->add_workers_stats();
+    worker_stats->set_pid(worker->Pid());
+    worker_stats->set_is_driver(false);
+  }
+  for (const auto &driver : worker_pool_.GetAllDrivers()) {
+    auto worker_stats = reply->add_workers_stats();
+    worker_stats->set_pid(driver->Pid());
+    worker_stats->set_is_driver(true);
+  }
+  // Ensure we never report an empty set of metrics.
+  if (!recorded_metrics_) {
+    RecordMetrics();
+    RAY_CHECK(recorded_metrics_);
+  }
+  for (const auto &view : opencensus::stats::StatsExporter::GetViewData()) {
+    auto view_data = reply->add_view_data();
+    view_data->set_view_name(view.first.name());
+    if (view.second.type() == opencensus::stats::ViewData::Type::kInt64) {
+      for (const auto &measure : view.second.int_data()) {
+        auto measure_data = view_data->add_measures();
+        measure_data->set_tags(compact_tag_string(view.first, measure.first));
+        measure_data->set_int_value(measure.second);
+      }
+    } else if (view.second.type() == opencensus::stats::ViewData::Type::kDouble) {
+      for (const auto &measure : view.second.double_data()) {
+        auto measure_data = view_data->add_measures();
+        measure_data->set_tags(compact_tag_string(view.first, measure.first));
+        measure_data->set_double_value(measure.second);
+      }
+    } else {
+      RAY_CHECK(view.second.type() == opencensus::stats::ViewData::Type::kDistribution);
+      for (const auto &measure : view.second.distribution_data()) {
+        auto measure_data = view_data->add_measures();
+        measure_data->set_tags(compact_tag_string(view.first, measure.first));
+        measure_data->set_distribution_min(measure.second.min());
+        measure_data->set_distribution_mean(measure.second.mean());
+        measure_data->set_distribution_max(measure.second.max());
+        measure_data->set_distribution_count(measure.second.count());
+        for (const auto &bound : measure.second.bucket_boundaries().lower_boundaries()) {
+          measure_data->add_distribution_bucket_boundaries(bound);
+        }
+        for (const auto &count : measure.second.bucket_counts()) {
+          measure_data->add_distribution_bucket_counts(count);
+        }
+      }
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::RecordMetrics() {
+  recorded_metrics_ = true;
   if (stats::StatsConfig::instance().IsStatsDisabled()) {
     return;
   }

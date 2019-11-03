@@ -2,7 +2,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/object_interface.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 namespace ray {
@@ -10,10 +9,10 @@ namespace ray {
 /// A class that represents a `Get` request.
 class GetRequest {
  public:
-  GetRequest(std::unordered_set<ObjectID> object_ids, size_t num_objects,
+  GetRequest(absl::flat_hash_set<ObjectID> object_ids, size_t num_objects,
              bool remove_after_get);
 
-  const std::unordered_set<ObjectID> &ObjectIds() const;
+  const absl::flat_hash_set<ObjectID> &ObjectIds() const;
 
   /// Wait until all requested objects are available, or timeout happens.
   ///
@@ -32,9 +31,9 @@ class GetRequest {
   void Wait();
 
   /// The object IDs involved in this request.
-  const std::unordered_set<ObjectID> object_ids_;
+  const absl::flat_hash_set<ObjectID> object_ids_;
   /// The object information for the objects in this request.
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> objects_;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_;
   /// Number of objects required.
   const size_t num_objects_;
 
@@ -47,7 +46,7 @@ class GetRequest {
   std::condition_variable cv_;
 };
 
-GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, size_t num_objects,
+GetRequest::GetRequest(absl::flat_hash_set<ObjectID> object_ids, size_t num_objects,
                        bool remove_after_get)
     : object_ids_(std::move(object_ids)),
       num_objects_(num_objects),
@@ -56,7 +55,7 @@ GetRequest::GetRequest(std::unordered_set<ObjectID> object_ids, size_t num_objec
   RAY_CHECK(num_objects_ <= object_ids_.size());
 }
 
-const std::unordered_set<ObjectID> &GetRequest::ObjectIds() const { return object_ids_; }
+const absl::flat_hash_set<ObjectID> &GetRequest::ObjectIds() const { return object_ids_; }
 
 bool GetRequest::ShouldRemoveObjects() const { return remove_after_get_; }
 
@@ -145,8 +144,8 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   std::shared_ptr<GetRequest> get_request;
 
   {
-    std::unordered_set<ObjectID> remaining_ids;
-    std::unordered_set<ObjectID> ids_to_remove;
+    absl::flat_hash_set<ObjectID> remaining_ids;
+    absl::flat_hash_set<ObjectID> ids_to_remove;
 
     std::unique_lock<std::mutex> lock(lock_);
     // Check for existing objects and see if this get request can be fullfilled.

@@ -370,8 +370,8 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     assert all(t.status == Trial.RUNNING for t in runner.get_trials())
     runner.checkpoint()
 
-    cluster.shutdown()
     ray.shutdown()
+    cluster.shutdown()
 
     cluster = _start_new_cluster()
     runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
@@ -385,6 +385,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
         runner.step()
 
     assert all(t.status == Trial.TERMINATED for t in runner.get_trials())
+    ray.shutdown()
     cluster.shutdown()
 
 
@@ -425,6 +426,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         all_experiments, resume=True, raise_on_failed_trial=False)
     assert len(trials) == 4
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
+    ray.shutdown()
     cluster.shutdown()
 
 
@@ -487,6 +489,7 @@ tune.run(
         },
         resume=True)
     assert all(t.status == Trial.TERMINATED for t in trials2)
+    ray.shutdown()
     cluster.shutdown()
 
 
@@ -588,4 +591,5 @@ tune.run(
         raise_on_failed_trial=False)
     assert all(t.status == Trial.TERMINATED for t in trials2)
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
+    ray.shutdown()
     cluster.shutdown()
