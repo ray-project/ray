@@ -96,13 +96,11 @@ class CoreWorkerDirectTaskSubmitter {
  private:
   void WorkerIdle(const WorkerAddress &addr);
 
-  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec);
 
   // XXX this uses the direct actor submitter to push the task
   void PushTask(const WorkerAddress &addr, rpc::DirectActorClient &client,
-                std::unique_ptr<rpc::PushTaskRequest> request)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                std::unique_ptr<rpc::PushTaskRequest> request);
 
   // Reference to the shared raylet client for leasing workers.
   RayletClient &raylet_client_;

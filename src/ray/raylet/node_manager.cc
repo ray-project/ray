@@ -1214,7 +1214,7 @@ void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   // Read the resource spec submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
   auto worker_port = fbs_message->worker_port();
-  RAY_LOG(ERROR) << "Return worker " << worker_port;
+  RAY_LOG(DEBUG) << "Return worker " << worker_port;
   std::shared_ptr<Worker> worker = leased_workers_[worker_port];
   leased_workers_.erase(worker_port);
   RAY_CHECK(worker != nullptr);
