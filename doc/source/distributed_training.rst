@@ -15,7 +15,7 @@ Wrap your training with this:
 
     trainer1 = PyTorchTrainer(
         model_creator,
-        cifar_creator,
+        data_creator,
         optimizer_creator,
         nn.CrossEntropyLoss,
         num_replicas=NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
