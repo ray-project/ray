@@ -10,6 +10,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -89,12 +90,16 @@ class CoreWorker {
   /// Increase the reference count for this object ID.
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
-  void AddObjectIDReference(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  void AddObjectIDReference(const ObjectID &object_id) {
+    reference_counter_.AddReference(object_id);
+  }
 
   /// Decrease the reference count for this object ID.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
-  void RemoveObjectIDReference(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  void RemoveObjectIDReference(const ObjectID &object_id) {
+    reference_counter_.RemoveReference(object_id);
+  }
 
   /* Public methods related to storing and retrieving objects. */
 
@@ -292,20 +297,12 @@ class CoreWorker {
   void Shutdown();
 
   /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
+  void ReportActiveObjectIDs();
 
   /* Private methods related to task submission. */
 
-  /// Submit the task to the raylet and add its dependencies to pending_task_deps_.
+  /// Submit the task to the raylet and add its dependencies to the reference counter.
   Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
-
-  /// Decrement the object ID's reference count in object_id_refs_. If the reference
-  /// decreases to zero, it is removed from the map.
-  ///
-  /// \param[in] object_id The object ID to decrement the reference count for.
-  /// \return bool True if the reference count went down to zero.
-  bool DecrementObjectIDReference(const ObjectID &object_id)
-      EXCLUSIVE_LOCKS_REQUIRED(object_ref_mu_);
 
   /// Give this worker a handle to an actor.
   ///
@@ -406,25 +403,8 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
-  /* Fields related to ref counting objects. */
-
-  /// Protects access to the set of active object ids. Since this set is updated
-  /// very frequently, it is faster to lock around accesses rather than serialize
-  /// accesses via the event loop.
-  absl::Mutex object_ref_mu_;
-
-  /// Reference counts for object IDs that are in scope in the language worker or
-  /// used by pending task dependencies.
-  absl::flat_hash_map<ObjectID, size_t> object_id_refs_ GUARDED_BY(object_ref_mu_);
-
-  /// Dependencies for return objects of pending tasks. Each return object from a given
-  /// task maps to all of the input objects for that task.
-  absl::flat_hash_map<ObjectID, std::shared_ptr<std::vector<ObjectID>>> pending_task_deps_
-      GUARDED_BY(object_ref_mu_);
-
-  /// Indicates whether or not the object_ids_refs_ map has changed since the
-  /// last time it was sent to the raylet.
-  bool object_id_refs_updated_ GUARDED_BY(object_ref_mu_) = false;
+  // Keeps track of object ID reference counts.
+  ReferenceCounter reference_counter_;
 
   /* Fields related to storing and retrieving objects. */
 

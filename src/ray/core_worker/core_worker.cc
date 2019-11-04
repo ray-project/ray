@@ -238,71 +238,19 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   }
 }
 
-void CoreWorker::AddObjectIDReference(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  auto entry = object_id_refs_.find(object_id);
-  if (entry == object_id_refs_.end()) {
-    object_id_refs_[object_id] = 1;
-  } else {
-    entry->second++;
-  }
-  object_id_refs_updated_ = true;
-}
-
-bool CoreWorker::DecrementObjectIDReference(const ObjectID &object_id) {
-  auto object_id_entry = object_id_refs_.find(object_id);
-  if (object_id_entry == object_id_refs_.end()) {
-    RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
-                     << object_id;
-  } else {
-    if (--object_id_entry->second == 0) {
-      object_id_refs_.erase(object_id);
-      return true;
-    }
-  }
-  return false;
-}
-
-void CoreWorker::RemoveObjectIDReference(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  if (DecrementObjectIDReference(object_id)) {
-    // If the reference count reached 0, check if it corresponds to a submitted task
-    // and if so, decrease the reference counts for its dependencies.
-    auto pending_task_entry = pending_task_deps_.find(object_id);
-    if (pending_task_entry != pending_task_deps_.end()) {
-      for (auto &dep_object_id : *pending_task_entry->second) {
-        DecrementObjectIDReference(dep_object_id);
-      }
-      pending_task_deps_.erase(object_id);
-    }
-  }
-  object_id_refs_updated_ = true;
-}
-
 void CoreWorker::ReportActiveObjectIDs() {
-  absl::MutexLock lock(&object_ref_mu_);
-  // Only send a heartbeat when the set of active object IDs has changed because the
-  // raylet only modifies the set of IDs when it receives a heartbeat.
-  // TODO(edoakes): this is currently commented out because this heartbeat causes the
-  // workers to die when the raylet crashes unexpectedly. Without this, they could
-  // hang idle forever because they wait for the raylet to push tasks via gRPC.
-  // if (object_id_refs_updated_) {
-  RAY_LOG(DEBUG) << "Sending " << object_id_refs_.size() << " object IDs to raylet.";
-  if (object_id_refs_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
-    RAY_LOG(WARNING) << object_id_refs_.size() << "object IDs are currently in scope. "
+  std::unordered_set<ObjectID> active_object_ids =
+      reference_counter_.GetAllInScopeObjectIDs();
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
+  if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << active_object_ids.size() << "object IDs are currently in scope. "
                      << "This may lead to required objects being garbage collected.";
   }
-  std::unordered_set<ObjectID> copy;
-  copy.reserve(object_id_refs_.size());
-  for (auto it : object_id_refs_) {
-    copy.insert(it.first);
-  }
 
-  if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
+  if (!raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
   }
-  // }
 
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
@@ -310,7 +258,6 @@ void CoreWorker::ReportActiveObjectIDs() {
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
-  object_id_refs_updated_ = false;
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -497,7 +444,6 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
     num_returns--;
   }
 
-  absl::MutexLock lock(&object_ref_mu_);
   std::shared_ptr<std::vector<ObjectID>> task_deps =
       std::make_shared<std::vector<ObjectID>>();
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
@@ -505,19 +451,14 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
       for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
         ObjectID arg_id = task_spec.ArgId(i, j);
         task_deps->push_back(arg_id);
-        auto entry = object_id_refs_.find(arg_id);
-        if (entry == object_id_refs_.end()) {
-          object_id_refs_[arg_id] = num_returns;
-        } else {
-          entry->second += num_returns;
-        }
+        reference_counter_.AddReference(arg_id, num_returns);
       }
     }
   }
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      pending_task_deps_[task_spec.ReturnId(i)] = task_deps;
+      reference_counter_.SetDependencies(task_spec.ReturnId(i), task_deps);
     }
   }
 
