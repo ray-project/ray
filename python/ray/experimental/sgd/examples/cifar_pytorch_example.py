@@ -75,6 +75,7 @@ def cifar_creator(batch_size, config):
     validation_dataset = torchvision.datasets.CIFAR10(
         root="~/data", train=False, download=False, transform=transform_test)
 
+    train_sampler = None
     if distributed.is_initialized():
         train_sampler = DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
@@ -85,6 +86,7 @@ def cifar_creator(batch_size, config):
         pin_memory=False,
         sampler=train_sampler)
 
+    validation_sampler = None
     if distributed.is_initialized():
         validation_sampler = DistributedSampler(validation_dataset)
     validation_loader = torch.utils.data.DataLoader(
