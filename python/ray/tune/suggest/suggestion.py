@@ -32,14 +32,14 @@ class SuggestionAlgorithm(SearchAlgorithm):
         >>> better_parameters = suggester._suggest()
     """
 
-    def __init__(self, use_early_terminated_trials=True):
+    def __init__(self, use_early_stopped_trials=True):
         """Constructs a generator given experiment specifications.
         """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
-        self._use_early_terminated_trials = use_early_terminated_trials
+        self._use_early_stopped = use_early_stopped_trials
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.

@@ -40,8 +40,8 @@ class AxSearch(SuggestionAlgorithm):
             "x3 >= x4" or "x3 + x4 >= 2".
         outcome_constraints (list[str]): Outcome constraints of form
             "metric_name >= bound", like "m1 <= 3."
-        use_early_terminated_trials (bool): Determines whether to use
-            early terminated trial results.
+        use_early_stopped_trials (bool): Whether to use early terminated
+            trial results in the optimization process.
 
 
     Example:
@@ -90,7 +90,7 @@ class AxSearch(SuggestionAlgorithm):
         """
         ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
-            if early_terminated and self._use_early_terminated_trials is False:
+            if early_terminated and self._use_early_stopped is False:
                 return
             metric_dict = {
                 self._objective_name: (result[self._objective_name], 0.0)

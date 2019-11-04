@@ -53,8 +53,8 @@ class HyperOptSearch(SuggestionAlgorithm):
             results. Defaults to None.
         gamma (float in range (0,1)): parameter governing the tree parzen
             estimators suggestion algorithm. Defaults to 0.25.
-        use_early_terminated_trials (bool): Determines whether to use
-            early terminated trial results.
+        use_early_stopped_trials (bool): Whether to use early terminated
+            trial results in the optimization process.
 
     Example:
         >>> space = {
@@ -181,7 +181,7 @@ class HyperOptSearch(SuggestionAlgorithm):
         """
         ho_trial = self._get_hyperopt_trial(trial_id)
         if ho_trial is None or (
-            early_terminated and self._use_early_terminated_trials is False):
+            early_terminated and self._use_early_stopped is False):
             return
         ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
         if error:
