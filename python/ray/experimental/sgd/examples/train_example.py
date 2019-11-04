@@ -43,12 +43,12 @@ def model_creator(config):
 
 
 def optimizer_creator(model, config):
-    """Returns criterion, optimizer"""
+    """Returns optimizer."""
     return torch.optim.SGD(model.parameters(), lr=1e-4)
 
 
 def data_creator(batch_size, config):
-    """Returns training set, validation set"""
+    """Returns training dataloader, validation dataloader."""
     train_dataset = LinearDataset(2, 5)
     validation_dataset = LinearDataset(2, 5, size=400)
 
