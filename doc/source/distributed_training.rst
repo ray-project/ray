@@ -18,7 +18,7 @@ Wrap your training with this:
         data_creator,
         optimizer_creator,
         loss_creator,
-        num_replicas=NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
+        num_replicas=<NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
         use_gpu=True,
         batch_size=512,
         backend="nccl")
