@@ -8,6 +8,8 @@ import torch.nn as nn
 import argparse
 from ray import tune
 import torch.utils.data
+from torch import distributed
+from torch.utils.data.distributed import DistributedSampler
 import torchvision
 import torchvision.transforms as transforms
 
@@ -73,8 +75,8 @@ def cifar_creator(batch_size, config):
     validation_dataset = torchvision.datasets.CIFAR10(
         root="~/data", train=False, download=False, transform=transform_test)
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset)
+    if distributed.is_initialized():
+        train_sampler = DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -83,8 +85,8 @@ def cifar_creator(batch_size, config):
         pin_memory=False,
         sampler=train_sampler)
 
-    validation_sampler = torch.utils.data.distributed.DistributedSampler(
-        validation_dataset)
+    if distributed.is_initialized():
+        validation_sampler = DistributedSampler(validation_dataset)
     validation_loader = torch.utils.data.DataLoader(
         validation_dataset,
         batch_size=batch_size,

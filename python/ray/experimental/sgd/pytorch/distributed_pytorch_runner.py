@@ -64,13 +64,17 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
-        self.training_set, self.validation_set = self.data_creator(
+        self.train_loader, self.validation_loader = self.data_creator(
             self.batch_size, self.config)
 
     def step(self):
-        """Runs a training epoch and updates the model parameters."""
+        """Runs a training epoch and updates the model parameters.
+
+        Automatically sets epoch of sampler if possible.
+        """
         logger.debug("Starting step")
-        self.train_sampler.set_epoch(self.epoch)
+        if hasattr(self.train_loader.sampler, "set_epoch"):
+            self.train_loader.sampler.set_epoch(self.epoch)
         return super(DistributedPyTorchRunner, self).step()
 
     def get_state(self):

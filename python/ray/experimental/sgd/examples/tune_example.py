@@ -15,6 +15,8 @@ from __future__ import print_function
 import numpy as np
 import torch
 import torch.nn as nn
+from torch import distributed
+from torch.utils.data.distributed import DistributedSampler
 
 import ray
 from ray import tune
@@ -51,16 +53,18 @@ def data_creator(batch_size, config):
     train_dataset = LinearDataset(2, 5)
     validation_dataset = LinearDataset(2, 5, size=400)
 
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset)
+    train_sampler = None
+    if distributed.is_initialized():
+        train_sampler = DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=(train_sampler is None),
         sampler=train_sampler)
 
-    validation_sampler = torch.utils.data.distributed.DistributedSampler(
-        validation_dataset)
+    validation_sampler = None
+    if distributed.is_initialized():
+        validation_sampler = DistributedSampler(validation_dataset)
     validation_loader = torch.utils.data.DataLoader(
         validation_dataset,
         batch_size=batch_size,
