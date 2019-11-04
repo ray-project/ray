@@ -100,7 +100,7 @@ def cifar_creator(batch_size, config):
 
 def optimizer_creator(model, config):
     """Returns optimizer"""
-    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
+    return torch.optim.SGD(model.parameters(), lr=config.get("lr", 0.1))
 
 
 def train_example(num_replicas=1, use_gpu=False, test_mode=False):
@@ -117,9 +117,9 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         use_gpu=use_gpu,
         batch_size=16 if test_mode else 512,
         backend="nccl")
-    stats = trainer1.train()
-    print(stats)
-    print(trainer1.train())
+    for i in range(5):
+        stats = trainer1.train()
+        print(stats)
     trainer1.shutdown()
     print("success!")
 
