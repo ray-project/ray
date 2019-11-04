@@ -53,10 +53,10 @@ class PyTorchTrainer(object):
             loss_creator (dict -> loss): Creates the loss function/criterion
                 using the config.
             train_function: Trains a model for a epoch. This takes in (
-                model, train_iterator, criterion, optimizer, config), and
+                model, train_dataloader, criterion, optimizer, config), and
                 returns a dict of training stats.
             validation_function: Runs validation. This takes in (
-                model, val_iterator, criterion, config) and returns a dict of
+                model, val_dataloader, criterion, config) and returns a dict of
                 validation stats.
             config (dict): configuration passed to "model_creator",
                 "data_creator", "optimizer_creator", and "loss_creator".
