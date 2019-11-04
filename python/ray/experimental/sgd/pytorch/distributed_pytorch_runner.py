@@ -58,8 +58,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
         logger.debug("Creating optimizer.")
         self.optimizer = self.optimizer_creator(self.model, self.config)
-        self.criterion = self.loss_creator(
-            **self.config.get("loss_kwargs", {}))
+        self.criterion = self.loss_creator(self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 

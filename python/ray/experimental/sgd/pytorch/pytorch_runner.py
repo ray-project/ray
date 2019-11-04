@@ -28,8 +28,9 @@ class PyTorchRunner(object):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
-            data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
+            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py
+            data_creator (int, dict -> DataLoader, DataLoader): see
+                pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 see pytorch_trainer.py.
             loss_creator (dict -> loss):
@@ -46,8 +47,6 @@ class PyTorchRunner(object):
         self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.config = {} if config is None else config
-        if "dataloader_workers" not in self.config:
-            self.config["dataloader_workers"] = 8
         self.train_function = train_function or pytorch_utils.train
         self.validation_function = (validation_function
                                     or pytorch_utils.validate)
@@ -72,8 +71,7 @@ class PyTorchRunner(object):
 
         logger.debug("Creating optimizer")
         self.optimizer = self.optimizer_creator(self.model, self.config)
-        self.criterion = self.loss_creator(
-            **self.config.get("loss_kwargs", {}))
+        self.criterion = self.loss_creator(self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
