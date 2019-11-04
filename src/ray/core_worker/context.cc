@@ -6,7 +6,7 @@ namespace ray {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   WorkerThreadContext()
-      : current_task_id_(TaskID::Nil()), task_index_(0), put_index_(0) {}
+      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_index_(0) {}
 
   int GetNextTaskIndex() { return ++task_index_; }
 
@@ -21,7 +21,6 @@ struct WorkerThreadContext {
   void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
 
   void SetCurrentTask(const TaskSpecification &task_spec) {
-    RAY_CHECK(current_task_id_.IsNil());
     RAY_CHECK(task_index_ == 0);
     RAY_CHECK(put_index_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
@@ -97,7 +96,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_use_direct_call_ = task_spec.IsDirectCall();
-    current_actor_max_concurrency_ = task_spec.MaxConcurrency();
+    current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());

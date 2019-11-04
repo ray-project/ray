@@ -214,7 +214,7 @@ void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
 }
 
-void CoreWorkerDirectActorTaskReceiver::SetMaxConcurrency(int max_concurrency) {
+void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
   if (max_concurrency != max_concurrency_) {
     RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
     RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
@@ -234,7 +234,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
                         nullptr, nullptr);
     return;
   }
-  SetMaxConcurrency(worker_context_.CurrentActorMaxConcurrency());
+  SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
 
   // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
   // the raylet, which is a central bottleneck. In the future, we should inline

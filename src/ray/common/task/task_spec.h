@@ -142,7 +142,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool IsDirectCall() const;
 
-  int MaxConcurrency() const;
+  int MaxActorConcurrency() const;
 
   bool IsDetachedActor() const;
 
