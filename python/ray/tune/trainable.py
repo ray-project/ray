@@ -386,7 +386,7 @@ class Trainable(object):
             export_dir (str): Optional dir to place the exported model.
                 Defaults to self.logdir.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         export_dir = export_dir or self.logdir

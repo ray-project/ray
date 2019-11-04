@@ -578,10 +578,10 @@ class RayTrialExecutor(TrialExecutor):
                 return None
         if profile.too_slow and trial.sync_on_checkpoint:
             logger.warning(
-                "Consider turning off forced driver-worker trial checkpoint "
-                "syncs by enabling force_trial_checkpoint_sync=True. Note "
-                "that this might result in faulty trial restoration for some "
-                "worker failure modes.")
+                "Consider turning off forced head-worker trial checkpoint "
+                "syncs by setting sync_on_checkpoint=False. Note that this "
+                "might result in faulty trial restoration for some worker "
+                "failure modes.")
         return checkpoint.value
 
     def restore(self, trial, checkpoint=None):
