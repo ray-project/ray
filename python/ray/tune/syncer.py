@@ -119,12 +119,15 @@ class CommandBasedClient(SyncClient):
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.sync_process = subprocess.Popen(
-            final_cmd, shell=True, stdout=self.logfile)
+            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
 
     def wait(self):
         if self.sync_process:
-            self.sync_process.wait()
-        self.sync_process = None
+            _, error_msg = self.sync_process.communicate()
+            code = self.sync_process.returncode
+            self.sync_process = None
+            if code != 0:
+                raise TuneError("Sync error ({}): {}".format(code, error_msg))
 
     def reset(self):
         if self.sync_process:

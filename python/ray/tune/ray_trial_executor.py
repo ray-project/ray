@@ -573,8 +573,8 @@ class RayTrialExecutor(TrialExecutor):
             try:
                 trial.on_checkpoint(checkpoint)
             except Exception:
-                logger.exception("Error handling checkpoint for Trial %s",
-                                 trial)
+                logger.exception("Error handling checkpoint %s for Trial %s",
+                                 checkpoint.value, trial)
                 return None
         if profile.too_slow and trial.sync_on_checkpoint:
             logger.warning(
@@ -611,6 +611,8 @@ class RayTrialExecutor(TrialExecutor):
                     trial.sync_logger_to_new_location(worker_ip)
                 with warn_if_slow("restore_from_disk"):
                     get_with_timeout(trial.runner.restore.remote(value))
+
+            checkpoint.last_result["node_ip"] = worker_ip
             trial.last_result = checkpoint.last_result
             return True
         except RayTimeoutError:

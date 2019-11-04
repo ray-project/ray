@@ -459,6 +459,8 @@ class UnifiedLogger(Logger):
             # TODO: change this because this is blocking. But failures
             # are rare, so maybe this is OK?
             self._log_syncer.wait()
+        else:
+            logger.warning("Sync attempted to same IP %s", worker_ip)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

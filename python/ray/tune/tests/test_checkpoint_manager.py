@@ -9,7 +9,6 @@ import unittest
 
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 
-
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
 else:
@@ -17,7 +16,6 @@ else:
 
 
 class CheckpointManagerTest(unittest.TestCase):
-
     @staticmethod
     def mock_result(i):
         return {"i": i}
@@ -27,10 +25,14 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
 
-        checkpoints = [Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
-                       for i in range(3)]
-        checkpoints += [Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
-                        for i in range(6, 3, -1)]
+        checkpoints = [
+            Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
+            for i in range(3)
+        ]
+        checkpoints += [
+            Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
+            for i in range(6, 3, -1)
+        ]
 
         with patch("shutil.rmtree") as rmtree_mock, patch("os.path"):
 
@@ -61,8 +63,10 @@ class CheckpointManagerTest(unittest.TestCase):
     def testBestCheckpoints(self):
         keep_checkpoints_num = 4
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
-        checkpoints = [Checkpoint(Checkpoint.MEMORY, i, self.mock_result(i))
-                       for i in range(16)]
+        checkpoints = [
+            Checkpoint(Checkpoint.MEMORY, i, self.mock_result(i))
+            for i in range(16)
+        ]
         random.shuffle(checkpoints)
 
         for checkpoint in checkpoints:
