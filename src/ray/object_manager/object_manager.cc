@@ -431,7 +431,6 @@ ray::Status ObjectManager::SendObjectChunk(
   push_request.set_chunk_index(chunk_index);
 
   // Get data
-
   std::pair<const ObjectBufferPool::ChunkInfo &, ray::Status> chunk_status =
       buffer_pool_.GetChunk(object_id, data_size, metadata_size, chunk_index);
   ObjectBufferPool::ChunkInfo chunk_info = chunk_status.first;
