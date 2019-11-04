@@ -115,7 +115,7 @@ def tune_example(num_replicas=1, use_gpu=False):
 
     analysis = tune.run(
         PyTorchTrainable,
-        num_samples=12,
+        num_samples=2,
         config=config,
         stop={"training_iteration": 2},
         verbose=1)
