@@ -142,9 +142,7 @@ class PyTorchRunner(object):
     def shutdown(self):
         """Attempts to shut down the worker."""
         del self.validation_loader
-        del self.validation_set
         del self.train_loader
-        del self.training_set
         del self.criterion
         del self.optimizer
         del self.model
