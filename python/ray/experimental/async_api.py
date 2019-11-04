@@ -72,7 +72,7 @@ async def _async_init():
     if handler is None:
         worker = ray.worker.global_worker
         plasma_client = thread_safe_client(
-            plasma.connect(worker.node.plasma_store_socket_name, None, 0, 300))
+            plasma.connect(worker.node.plasma_store_socket_name, 300))
         loop = asyncio.get_event_loop()
         plasma_client.subscribe()
         rsock = plasma_client.get_notification_socket()
