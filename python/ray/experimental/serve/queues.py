@@ -42,15 +42,15 @@ class CentralizedQueues:
             "service-name", request_args, request_kwargs, request_context)
         # nothing happens, request is queued.
         # returns result ObjectID, which will contains the final result
-        >>> queue.dequeue_request('backend-1', worker_handle)
+        >>> queue.dequeue_request('backend-1', replica_handle)
         # nothing happens, work intention is queued.
         # return work ObjectID, which will contains the future request payload
         >>> queue.link('service-name', 'backend-1')
-        # here the enqueue_requester is matched with worker, request
-        # data is put into work ObjectID, and the worker processes the request
+        # here the enqueue_requester is matched with replica, request
+        # data is put into work ObjectID, and the replica processes the request
         # and store the result into result ObjectID
 
-    Traffic policy splits the traffic among different workers
+    Traffic policy splits the traffic among different replicas
     probabilistically:
 
     1. When all backends are ready to receive traffic, we will randomly

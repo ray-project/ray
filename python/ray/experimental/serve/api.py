@@ -190,7 +190,7 @@ def _remove_replica(backend_tag):
     ray.get(
         global_state.actor_nursery_handle.remove_handle.remote(replica_tag))
 
-    # Remote the replica from router.
+    # Remove the replica from router.
     # This will also destory the actor handle.
     ray.get(global_state.init_or_get_router()
             .remove_and_destory_replica.remote(backend_tag, replica_handle))
