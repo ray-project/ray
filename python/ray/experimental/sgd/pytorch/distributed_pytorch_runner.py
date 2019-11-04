@@ -54,12 +54,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
             self.model = self.model.cuda()
-        if torch.cuda.is_available():
-            self.model = torch.nn.parallel.DistributedDataParallel(self.model)
-        else:
-            self.model = torch.nn.parallel.DistributedDataParallelCPU(self.model)
-
-
+        self.model = torch.nn.parallel.DistributedDataParallel(self.model)
 
         logger.debug("Creating optimizer.")
         self.optimizer = self.optimizer_creator(self.model, self.config)
