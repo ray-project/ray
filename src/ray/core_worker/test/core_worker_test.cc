@@ -62,12 +62,8 @@ ActorID CreateActorHelper(CoreWorker &worker,
   std::vector<TaskArg> args;
   args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-  ActorCreationOptions actor_options{max_reconstructions,
-                                     is_direct_call,
-                                     /*max_concurrency*/ 1,
-                                     resources,
-                                     resources,
-                                     {},
+  ActorCreationOptions actor_options{max_reconstructions,   is_direct_call,
+                                     /*max_concurrency*/ 1, resources,      resources, {},
                                      /*is_detached*/ false};
 
   // Create an actor.

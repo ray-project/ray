@@ -1536,7 +1536,6 @@ def test_profiling_api(ray_start_2_cpus):
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
