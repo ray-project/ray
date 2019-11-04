@@ -124,6 +124,7 @@ class CommandBasedClient(SyncClient):
     def wait(self):
         if self.sync_process:
             self.sync_process.wait()
+        self.sync_process = None
 
     def reset(self):
         if self.sync_process:

@@ -576,7 +576,7 @@ class RayTrialExecutor(TrialExecutor):
                 logger.exception("Error handling checkpoint for Trial %s",
                                  trial)
                 return None
-        if profile.too_slow:
+        if profile.too_slow and trial.sync_on_checkpoint:
             logger.warning(
                 "Consider turning off forced driver-worker trial checkpoint "
                 "syncs by enabling force_trial_checkpoint_sync=True. Note "

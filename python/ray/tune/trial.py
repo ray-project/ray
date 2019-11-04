@@ -286,6 +286,8 @@ class Trial(object):
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if self.sync_on_checkpoint and checkpoint.storage == Checkpoint.DISK:
+            # Wait for any other syncs to finish.
+            self.result_logger.wait()
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
             self.result_logger.sync_down()
