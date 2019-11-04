@@ -632,13 +632,9 @@ cdef CRayStatus task_execution_handler(
                     job_id=None)
                 sys.exit(1)
         except SystemExit:
-            if isinstance(threading.current_thread(), threading._MainThread):
-                raise
-            else:
-                # We cannot exit from a non-main thread, so return a special
-                # status that tells the core worker to call sys.exit() on the
-                # main thread instead. This only applies to direct actor calls.
-                return CRayStatus.SystemExit()
+            # Tell the core worker to exit as soon as the result objects
+            # are processed.
+            return CRayStatus.SystemExit()
 
     return CRayStatus.OK()
 

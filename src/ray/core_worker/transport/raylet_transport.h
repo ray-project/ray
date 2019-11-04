@@ -19,7 +19,8 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
                                std::unique_ptr<RayletClient> &raylet_client,
                                boost::asio::io_service &io_service,
-                               rpc::GrpcServer &server, const TaskHandler &task_handler);
+                               rpc::GrpcServer &server, const TaskHandler &task_handler,
+                               const std::function<void()> &exit_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When handling is done,
@@ -41,6 +42,8 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The callback function to exit the worker.
+  std::function<void()> exit_handler_;
   /// The callback to process arg wait complete.
   std::function<void(int64_t)> on_wait_complete_;
 };
