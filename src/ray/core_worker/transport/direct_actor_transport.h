@@ -212,7 +212,7 @@ class BoundedExecutor {
   /// The number of currently running tasks.
   int num_running_ GUARDED_BY(mu_);
   /// The max number of concurrently running tasks allowed.
-  int max_concurrency_ GUARDED_BY(mu_);
+  const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
 };
