@@ -29,20 +29,22 @@ public interface QueueLink {
   Map<String, String> getConfiguration();
 
   /**
-   * get queue consumer of input queues
-   *
-   * @param inputQueueIds input queue ids
-   * @return queue consumer
-   */
-  QueueConsumer registerQueueConsumer(Collection<String> inputQueueIds, Map<String, Long> inputActorHandles);
-
-  /**
-   * get queue producer of output queues
+   * Create queue producer of output queues
    *
    * @param outputQueueIds output queue ids
+   * @param inputActorHandles input actor handles
    * @return queue producer
    */
   QueueProducer registerQueueProducer(Collection<String> outputQueueIds, Map<String, Long> inputActorHandles);
+
+  /**
+   * Create queue consumer of input queues
+   *
+   * @param inputQueueIds     input queue ids
+   * @param inputActorHandles input actor handles
+   * @return queue consumer
+   */
+  QueueConsumer registerQueueConsumer(Collection<String> inputQueueIds, Map<String, Long> inputActorHandles);
 
   /**
    * used in direct call mode
