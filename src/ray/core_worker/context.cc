@@ -97,7 +97,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_use_direct_call_ = task_spec.IsDirectCall();
-    current_actor_max_concurrency_ = task_spec.MaxConcurrency();
+    current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());

@@ -189,7 +189,7 @@ bool TaskSpecification::IsDirectCall() const {
   return message_->actor_creation_task_spec().is_direct_call();
 }
 
-int TaskSpecification::MaxConcurrency() const {
+int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();
 }

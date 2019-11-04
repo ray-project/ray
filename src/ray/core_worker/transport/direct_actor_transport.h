@@ -361,7 +361,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
       rpc::SendReplyCallback send_reply_callback) override;
 
   /// Set the max concurrency at runtime. It cannot be changed once set.
-  void SetMaxConcurrency(int max_concurrency);
+  void SetMaxActorConcurrency(int max_concurrency);
 
  private:
   // Worker context.
