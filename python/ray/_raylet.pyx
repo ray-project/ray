@@ -92,6 +92,7 @@ from ray.ray_constants import (
     RAW_BUFFER_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
+from ray.serialization import Pickle5Serialized
 
 # pyarrow cannot be imported until after _raylet finishes initializing
 # (see ray/__init__.py for details).
@@ -685,10 +686,12 @@ cdef void push_objects_into_return_vector(
     cdef:
         c_string metadata_str = RAW_BUFFER_METADATA
         c_string raw_data_str
+        c_string pickle5_metadata_str = PICKLE5_BUFFER_METADATA
         shared_ptr[CBuffer] data
         shared_ptr[CBuffer] metadata
         shared_ptr[CRayObject] ray_object
         int64_t data_size
+        Pickle5Writer pickle5_writer
 
     for serialized_object in py_objects:
         if isinstance(serialized_object, bytes):
@@ -703,6 +706,22 @@ cdef void push_objects_into_return_vector(
                     make_shared[LocalMemoryBuffer](
                         <uint8_t*>(metadata_str.data()), metadata_str.size()))
             ray_object = make_shared[CRayObject](data, metadata, True)
+            returns.push_back(ray_object)
+        elif isinstance(serialized_object, Pickle5Serialized):
+            pickle5_writer = serialized_object.writer
+            inband = serialized_object.inband
+            data_size = pickle5_writer.get_total_bytes(inband)
+            metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(pickle5_metadata_str.data()),
+                        pickle5_metadata_str.size(), True))
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](data_size))
+            pickle5_writer.write_to(
+                inband, data, serialized_object.memcopy_threads)
+            ray_object = make_shared[CRayObject](data, metadata)
             returns.push_back(ray_object)
         else:
             data_size = serialized_object.total_bytes

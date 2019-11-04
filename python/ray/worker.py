@@ -298,15 +298,16 @@ class Worker(object):
                 memcopy_threads=self.memcopy_threads)
 
         if self.use_pickle:
-            if return_buffer is not None:
-                raise NotImplementedError(
-                    "pickle5 serialization with direct actor calls")
-            return self._serialize_and_put_pickle5(value, object_id=object_id)
+            return self._serialize_and_put_pickle5(
+                value, object_id=object_id, return_buffer=return_buffer)
         else:
             return self._serialize_and_put_pyarrow(
                 value, object_id=object_id, return_buffer=return_buffer)
 
-    def _serialize_and_put_pickle5(self, value, object_id=None):
+    def _serialize_and_put_pickle5(self,
+                                   value,
+                                   object_id=None,
+                                   return_buffer=None):
         """Serialize an object using pickle5 and store it in the object store.
 
         Args:
@@ -324,11 +325,16 @@ class Worker(object):
                 value, protocol=5, buffer_callback=writer.buffer_callback)
         else:
             inband = pickle.dumps(value)
-        return self.core_worker.put_pickle5_buffers(
-            inband,
-            writer,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+        if return_buffer is not None:
+            return_buffer.append(
+                serialization.Pickle5Serialized(inband, writer,
+                                                self.memcopy_threads))
+        else:
+            return self.core_worker.put_pickle5_buffers(
+                inband,
+                writer,
+                object_id=object_id,
+                memcopy_threads=self.memcopy_threads)
 
     def _serialize_and_put_pyarrow(self,
                                    value,
