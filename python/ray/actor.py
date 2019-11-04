@@ -95,6 +95,8 @@ class ActorMethod(object):
         # actor method handles to remote functions.
         if hardref:
             self._actor_hard_ref = actor
+        else:
+            self._actor_hard_ref = None
 
     def __call__(self, *args, **kwargs):
         raise Exception("Actor methods cannot be called directly. Instead "
@@ -110,7 +112,7 @@ class ActorMethod(object):
             num_return_vals = self._num_return_vals
 
         def invocation(args, kwargs):
-            actor = self._actor_ref()
+            actor = self._actor_hard_ref or self._actor_ref()
             if actor is None:
                 raise RuntimeError("Lost reference to actor")
             return actor._actor_method_call(
@@ -615,9 +617,13 @@ class ActorHandle(object):
                 self._ray_class_name)
             return
         if worker.connected and self._ray_original_handle:
-            # TODO(rkn): Should we be passing in the actor cursor as a
-            # dependency here?
-            self.__ray_terminate__.remote()
+            # Note: in py2 the weakref is destroyed prior to calling __del__
+            # so we need to set the hardref here briefly
+            try:
+                self.__ray_terminate__._actor_hard_ref = self
+                self.__ray_terminate__.remote()
+            finally:
+                self.__ray_terminate__._actor_hard_ref = None
 
     @property
     def _actor_id(self):
