@@ -1,6 +1,7 @@
 """ResNet in PyTorch.
 
-Copied from https://github.com/kuangliu/pytorch-cifar/blob/ab908327d44bf9b1d22cd333a4466e85083d3f21/models/resnet.py
+Copied from https://github.com/kuangliu/pytorch-cifar/
+            blob/ab908327d44bf9b1d22cd333a4466e85083d3f21/models/resnet.py
 """
 import torch
 import torch.nn as nn

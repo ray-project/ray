@@ -2,13 +2,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data
-import torchvision
-import torchvision.transforms as transforms
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -43,5 +40,3 @@ def mse_loss(*args):
 def toy_data_creator(config):
     """Returns training set, validation set"""
     return LinearDataset(2, 5), LinearDataset(2, 5, size=400)
-
-

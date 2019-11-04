@@ -49,7 +49,8 @@ class PyTorchRunner(object):
         if "dataloader_workers" not in self.config:
             self.config["dataloader_workers"] = 8
         self.train_function = train_function or pytorch_utils.train
-        self.validation_function = validation_function or pytorch_utils.validate
+        self.validation_function = (validation_function
+                                    or pytorch_utils.validate)
         self.batch_size = batch_size
         self.verbose = True
 
