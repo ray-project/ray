@@ -23,7 +23,7 @@ class MockWaiter : public DependencyWaiter {
 TEST(SchedulingQueueTest, TestInOrder) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  SchedulingQueue queue(io_service, waiter, 0);
+  SchedulingQueue queue(io_service, waiter, nullptr, 0);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -43,7 +43,7 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   ObjectID obj3 = ObjectID::FromRandom();
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  SchedulingQueue queue(io_service, waiter, 0);
+  SchedulingQueue queue(io_service, waiter, nullptr, 0);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -68,7 +68,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj1 = ObjectID::FromRandom();
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  SchedulingQueue queue(io_service, waiter, 0);
+  SchedulingQueue queue(io_service, waiter, nullptr, 0);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -85,7 +85,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
 TEST(SchedulingQueueTest, TestOutOfOrder) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  SchedulingQueue queue(io_service, waiter, 0);
+  SchedulingQueue queue(io_service, waiter, nullptr, 0);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -102,7 +102,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  SchedulingQueue queue(io_service, waiter, 0);
+  SchedulingQueue queue(io_service, waiter, nullptr, 0);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
@@ -124,7 +124,7 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   boost::asio::io_service io_service;
   MockWaiter waiter;
-  SchedulingQueue queue(io_service, waiter, 0);
+  SchedulingQueue queue(io_service, waiter, nullptr, 0);
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok]() { n_ok++; };
