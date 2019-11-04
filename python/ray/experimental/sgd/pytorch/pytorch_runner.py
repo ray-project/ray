@@ -33,12 +33,9 @@ class PyTorchRunner(object):
                 pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 see pytorch_trainer.py.
-            loss_creator (dict -> loss):
-                see pytorch_trainer.py.
-            train_function:
-                see pytorch_trainer.py
-            validation_function:
-                see pytorch_trainer.py
+            loss_creator (dict -> loss): see pytorch_trainer.py.
+            train_function: see pytorch_trainer.py
+            validation_function: see pytorch_trainer.py
             config (dict): see pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
