@@ -78,20 +78,8 @@ class PyTorchRunner(object):
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
-        self.training_set, self.validation_set = self.data_creator(self.config)
-        self.train_loader = torch.utils.data.DataLoader(
-            self.training_set,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.config["dataloader_workers"],
-            pin_memory=True)
-
-        self.validation_loader = torch.utils.data.DataLoader(
-            self.validation_set,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=self.config["dataloader_workers"],
-            pin_memory=False)
+        self.train_loader, self.validation_loader = self.data_creator(
+            self.batch_size, self.config)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""

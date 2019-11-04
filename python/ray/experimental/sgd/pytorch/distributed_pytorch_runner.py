@@ -64,29 +64,8 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
-        self.training_set, self.validation_set = self.data_creator(self.config)
-
-        # TODO: make num_workers configurable
-        self.train_sampler = torch.utils.data.distributed.DistributedSampler(
-            self.training_set)
-        self.train_loader = torch.utils.data.DataLoader(
-            self.training_set,
-            batch_size=self.batch_size,
-            shuffle=(self.train_sampler is None),
-            num_workers=self.config["dataloader_workers"],
-            pin_memory=True,
-            sampler=self.train_sampler)
-
-        self.validation_sampler = (
-            torch.utils.data.distributed.DistributedSampler(
-                self.validation_set))
-        self.validation_loader = torch.utils.data.DataLoader(
-            self.validation_set,
-            batch_size=self.batch_size,
-            shuffle=(self.validation_sampler is None),
-            num_workers=self.config["dataloader_workers"],
-            pin_memory=False,
-            sampler=self.validation_sampler)
+        self.training_set, self.validation_set = self.data_creator(
+            self.batch_size, self.config)
 
     def step(self):
         """Runs a training epoch and updates the model parameters."""

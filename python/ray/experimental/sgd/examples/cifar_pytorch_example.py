@@ -49,7 +49,7 @@ def train(model, train_iterator, criterion, optimizer, config):
     return stats
 
 
-def cifar_creator(config):
+def cifar_creator(batch_size, config):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
@@ -65,14 +65,35 @@ def cifar_creator(config):
     ])
     from filelock import FileLock
     with FileLock(os.path.expanduser("~/data.lock")):
-        trainset = torchvision.datasets.CIFAR10(
+        train_dataset = torchvision.datasets.CIFAR10(
             root="~/data",
             train=True,
             download=True,
             transform=transform_train)
-    valset = torchvision.datasets.CIFAR10(
+    validation_dataset = torchvision.datasets.CIFAR10(
         root="~/data", train=False, download=False, transform=transform_test)
-    return trainset, valset
+
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        train_dataset)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=(train_sampler is None),
+        num_workers=2,
+        pin_memory=False,
+        sampler=train_sampler)
+
+    validation_sampler = torch.utils.data.distributed.DistributedSampler(
+        validation_dataset)
+    validation_loader = torch.utils.data.DataLoader(
+        validation_dataset,
+        batch_size=batch_size,
+        shuffle=(validation_sampler is None),
+        num_workers=2,
+        pin_memory=False,
+        sampler=validation_sampler)
+
+    return train_loader, validation_loader
 
 
 def optimizer_creator(model, config):
