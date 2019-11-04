@@ -4,6 +4,8 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
+#include "src/ray/protobuf/direct_actor.grpc.pb.h"
+#include "src/ray/protobuf/direct_actor.pb.h"
 
 namespace ray {
 
@@ -20,10 +22,13 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       connection_(connection),
       dead_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager) {
+      client_call_manager_(client_call_manager),
+      is_detached_actor_(false) {
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
+    direct_rpc_client_ = std::unique_ptr<rpc::DirectActorClient>(
+        new rpc::DirectActorClient("127.0.0.1", port_, client_call_manager_));
   }
 }
 
@@ -76,6 +81,10 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
+void Worker::MarkDetachedActor() { is_detached_actor_ = true; }
+
+bool Worker::IsDetachedActor() const { return is_detached_actor_; }
+
 const std::shared_ptr<LocalClientConnection> Worker::Connection() const {
   return connection_;
 }
@@ -121,51 +130,47 @@ void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids)
   active_object_ids_ = object_ids;
 }
 
-bool Worker::UsePush() const { return rpc_client_ != nullptr; }
-
 void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                         const std::function<void(Status)> finish_assign_callback) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
-  if (rpc_client_ != nullptr) {
-    // Use push mode.
-    RAY_CHECK(port_ > 0);
-    rpc::AssignTaskRequest request;
-    request.mutable_task()->mutable_task_spec()->CopyFrom(
-        task.GetTaskSpecification().GetMessage());
-    request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
-        task.GetTaskExecutionSpec().GetMessage());
-    request.set_resource_ids(resource_id_set.Serialize());
+  RAY_CHECK(port_ > 0);
+  rpc::AssignTaskRequest request;
+  request.mutable_task()->mutable_task_spec()->CopyFrom(
+      task.GetTaskSpecification().GetMessage());
+  request.mutable_task()->mutable_task_execution_spec()->CopyFrom(
+      task.GetTaskExecutionSpec().GetMessage());
+  request.set_resource_ids(resource_id_set.Serialize());
 
-    auto status = rpc_client_->AssignTask(request, [](Status status,
-                                                      const rpc::AssignTaskReply &reply) {
-      if (!status.ok()) {
-        RAY_LOG(ERROR) << "Worker failed to finish executing task: " << status.ToString();
-      }
-      // Worker has finished this task. There's nothing to do here
-      // and assigning new task will be done when raylet receives
-      // `TaskDone` message.
-    });
-    finish_assign_callback(status);
+  auto status = rpc_client_->AssignTask(request, [](Status status,
+                                                    const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
-                     << " to worker " << worker_id_;
-    } else {
-      RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
-                     << " to worker " << worker_id_;
+      RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }
+    // Worker has finished this task. There's nothing to do here
+    // and assigning new task will be done when raylet receives
+    // `TaskDone` message.
+  });
+  finish_assign_callback(status);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
+                   << " to worker " << worker_id_;
   } else {
-    // Use pull mode. This corresponds to existing python/java workers that haven't been
-    // migrated to core worker architecture.
-    flatbuffers::FlatBufferBuilder fbb;
-    auto resource_id_set_flatbuf = resource_id_set.ToFlatbuf(fbb);
+    RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
+                   << " to worker " << worker_id_;
+  }
+}
 
-    auto message =
-        protocol::CreateGetTaskReply(fbb, fbb.CreateString(spec.Serialize()),
-                                     fbb.CreateVector(resource_id_set_flatbuf));
-    fbb.Finish(message);
-    Connection()->WriteMessageAsync(
-        static_cast<int64_t>(protocol::MessageType::ExecuteTask), fbb.GetSize(),
-        fbb.GetBufferPointer(), finish_assign_callback);
+void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
+  RAY_CHECK(port_ > 0);
+  rpc::DirectActorCallArgWaitCompleteRequest request;
+  request.set_tag(tag);
+  auto status = direct_rpc_client_->DirectActorCallArgWaitComplete(
+      request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
   }
 }
 

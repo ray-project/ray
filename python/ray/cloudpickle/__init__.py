@@ -1,7 +1,14 @@
 from __future__ import absolute_import
 import sys
 
-if sys.version_info[:2] >= (3, 8):
+HAS_PICKLE5 = True
+
+try:
+    import pickle5
+except ImportError:
+    HAS_PICKLE5 = False
+
+if sys.version_info[:2] >= (3, 8) or HAS_PICKLE5:
     from ray.cloudpickle.cloudpickle_fast import *
     FAST_CLOUDPICKLE_USED = True
 else:

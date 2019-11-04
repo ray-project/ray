@@ -3,6 +3,7 @@
 
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
+load("@build_stack_rules_proto//python:python_grpc_compile.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
@@ -22,7 +23,7 @@ cc_proto_library(
     deps = [":common_proto"],
 )
 
-python_proto_compile(
+python_grpc_compile(
     name = "common_py_proto",
     deps = [":common_proto"],
 )
@@ -39,7 +40,7 @@ cc_proto_library(
     deps = [":gcs_proto"],
 )
 
-python_proto_compile(
+python_grpc_compile(
     name = "gcs_py_proto",
     deps = [":gcs_proto"],
 )
@@ -52,6 +53,11 @@ proto_library(
 
 cc_proto_library(
     name = "node_manager_cc_proto",
+    deps = [":node_manager_proto"],
+)
+
+python_grpc_compile(
+    name = "node_manager_py_proto",
     deps = [":node_manager_proto"],
 )
 
@@ -207,6 +213,7 @@ cc_library(
         ":ray_common",
         ":worker_cc_grpc",
         "@boost//:asio",
+        "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -331,6 +338,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -363,6 +371,8 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
@@ -404,6 +414,8 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -859,6 +871,7 @@ filegroup(
     srcs = [
         "common_py_proto",
         "gcs_py_proto",
+        "node_manager_py_proto",
     ],
 )
 
@@ -895,6 +908,9 @@ genrule(
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/gcs_pb2.py &&
+        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/common_pb2.py &&
+        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/node_manager_pb2.py &&
+        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py &&
         echo $$WORK_DIR > $@
     """,
     local = 1,

@@ -62,8 +62,8 @@ TRAINING_ITERATION = "training_iteration"
 
 DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 
-DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, MEAN_ACCURACY,
-                       MEAN_LOSS)
+DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
+                       MEAN_ACCURACY, MEAN_LOSS)
 
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.

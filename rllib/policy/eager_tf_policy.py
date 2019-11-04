@@ -31,7 +31,8 @@ def _convert_to_tf(x):
         return x
 
     if x is not None:
-        x = tf.nest.map_structure(tf.convert_to_tensor, x)
+        x = tf.nest.map_structure(
+            lambda f: tf.convert_to_tensor(f) if f is not None else None, x)
     return x
 
 
@@ -349,16 +350,20 @@ def build_eager_tf_policy(name,
 
         @override(Policy)
         def get_weights(self):
-            variables = self.model.variables()
+            variables = self.variables()
             return [v.numpy() for v in variables]
 
         @override(Policy)
         def set_weights(self, weights):
-            variables = self.model.variables()
+            variables = self.variables()
             assert len(weights) == len(variables), (len(weights),
                                                     len(variables))
             for v, w in zip(variables, weights):
                 v.assign(w)
+
+        def variables(self):
+            """Return the list of all savable variables for this policy."""
+            return self.model.variables()
 
         def is_recurrent(self):
             return len(self._state_in) > 0
