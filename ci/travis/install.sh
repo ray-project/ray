@@ -24,5 +24,5 @@ else
   # Mac OS X test
   ./install-dependencies.sh
   ./setup.sh
-  ./build.sh
+  RAY_INSTALL_JAVA=0 ./build.sh
 fi
