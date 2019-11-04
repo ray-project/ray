@@ -146,7 +146,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
         if (!status.ok()) {
           // Note that this might be the __ray_terminate__ task, so we don't log
           // loudly with ERROR here.
-          RAY_LOG(DEBUG) << "Task failed with error: " << status;
+          RAY_LOG(INFO) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
@@ -200,16 +200,27 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    rpc::GrpcServer &server, const TaskHandler &task_handler,
+    const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
       task_service_(main_io_service, *this),
       task_handler_(task_handler),
+      exit_handler_(exit_handler),
       task_main_io_service_(main_io_service) {
   server.RegisterService(task_service_);
 }
 
 void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
+}
+
+void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
+  if (max_concurrency != max_concurrency_) {
+    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
+    RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
+    pool_.reset(new BoundedExecutor(max_concurrency));
+    max_concurrency_ = max_concurrency;
+  }
 }
 
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
@@ -223,6 +234,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
                         nullptr, nullptr);
     return;
   }
+  SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
 
   // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
   // the raylet, which is a central bottleneck. In the future, we should inline
@@ -238,8 +250,8 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(
-                                  new SchedulingQueue(task_main_io_service_, *waiter_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                  task_main_io_service_, *waiter_, pool_)));
     it = result.first;
   }
   it->second->Add(
@@ -256,6 +268,13 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         ResourceMappingType resource_ids;
         std::vector<std::shared_ptr<RayObject>> results;
         auto status = task_handler_(task_spec, resource_ids, &results);
+        if (status.IsSystemExit()) {
+          // In Python, SystemExit cannot be raised except on the main thread. To work
+          // around this when we are executing tasks on worker threads, we re-post the
+          // exit event explicitly on the main thread.
+          task_main_io_service_.post([this]() { exit_handler_(); });
+          return;
+        }
         RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
         for (size_t i = 0; i < results.size(); i++) {
