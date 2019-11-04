@@ -220,20 +220,18 @@ def _make_cell(contents):
 
 def _cell_reduce(obj):
     """Cell (containing values of a function's free variables) reducer"""
+    try:
+        contents = (obj.cell_contents,)
+    except ValueError:  # cell is empty
+        contents = ()
+
     if sys.version_info[:2] < (3, 8):
-        try:
-            obj.cell_contents
-        except ValueError:  # cell is empty
+        if contents:
+            return _make_cell, contents
+        else:
             return _make_empty_cell, ()
-        else:
-            return _make_cell, (obj.cell_contents,)
     else:
-        try:
-            obj.cell_contents
-        except ValueError:  # cell is empty
-            return types.CellType, ()
-        else:
-            return types.CellType, (obj.cell_contents,)
+        return types.CellType, contents
 
 
 def _classmethod_reduce(obj):
