@@ -3,7 +3,6 @@ package org.ray.streaming.runtime;
 import java.io.Serializable;
 import java.util.Map;
 
-import com.google.common.base.Preconditions;
 import org.ray.api.annotation.RayRemote;
 import org.ray.streaming.core.graph.ExecutionGraph;
 import org.ray.streaming.core.graph.ExecutionNode;

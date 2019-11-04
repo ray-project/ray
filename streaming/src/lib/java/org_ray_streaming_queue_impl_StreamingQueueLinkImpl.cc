@@ -135,7 +135,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newMessageHandler(
 JNIEXPORT void JNICALL 
 Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransfer(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  STREAMING_LOG(INFO) << "Java_com_alipay_streaming_runtime_queue_impl_streamingqueue_StreamingQueueLinkImpl_onQueueTransfer";
+  STREAMING_LOG(INFO) << "Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransfer";
   QueueClient* client = reinterpret_cast<QueueClient*>(ptr);
 
   jbyte* buffer_bytes = env->GetByteArrayElements(bytes, 0);
@@ -153,7 +153,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransfer(
 JNIEXPORT jbyteArray JNICALL 
 Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransferSync(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
-  STREAMING_LOG(INFO) << "Java_com_alipay_streaming_runtime_queue_impl_streamingqueue_StreamingQueueLinkImpl_onQueueTransferSync";
+  STREAMING_LOG(INFO) << "Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransferSync";
   QueueClient* client = reinterpret_cast<QueueClient*>(ptr);
 
   jbyte* buffer_bytes = env->GetByteArrayElements(bytes, 0);

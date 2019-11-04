@@ -439,14 +439,14 @@ std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(
 }
 
 void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
-  /// com.alipay.streaming.runtime.worker
+  /// org.ray.streaming.runtime.JobWorker
   /// onStreamingTransfer
   /// ()V
   STREAMING_LOG(INFO) << "DirectCallTransport::Send buffer size: " << buffer->Size();
   //  RayFunction func{ray::Language::JAVA,
-  //  {"com.alipay.streaming.runtime.worker.JobWorker",
+  //  {"org.ray.streaming.runtime.JobWorker",
   //                                         "onStreamingTransfer", "()V"}};
-  //  RayFunction func{ray::Language::JAVA, {"com.alipay.streaming.runtime.queue.Worker",
+  //  RayFunction func{ray::Language::JAVA, {"org.ray.streaming.runtime.JobWorker",
   //                                         "onStreamingTransfer", "([B)V"}};
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_0, resources};
@@ -477,7 +477,7 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
   STREAMING_LOG(INFO) << "DirectCallTransport::SendForResult buffer size: "
                       << buffer->Size();
-  //  RayFunction func{ray::Language::JAVA, {"com.alipay.streaming.runtime.queue.Worker",
+  //  RayFunction func{ray::Language::JAVA, {"org.ray.streaming.runtime.JobWorker",
   //                                         "onStreamingTransferSync", "([B)[B"}};
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_1, resources};
