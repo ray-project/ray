@@ -17,7 +17,7 @@ Wrap your training with this:
         model_creator,
         data_creator,
         optimizer_creator,
-        nn.CrossEntropyLoss,
+        loss_creator,
         num_replicas=NUM_GPUS_YOU_HAVE> * <NUM_NODES>,
         use_gpu=True,
         batch_size=512,
