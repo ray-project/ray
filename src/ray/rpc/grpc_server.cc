@@ -61,10 +61,8 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
 
   // Keep reading events from the `CompletionQueue` until it's shutdown.
   while (cqs_[index]->Next(&tag, &ok)) {
-    RAY_LOG(WARNING) << std::this_thread::get_id();
     auto *server_call = static_cast<ServerCall *>(tag);
     bool delete_call = false;
-
     if (ok) {
       switch (server_call->GetState()) {
       case ServerCallState::PENDING:

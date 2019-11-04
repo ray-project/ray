@@ -21,7 +21,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(rpc_service_) {
+      client_call_manager_(main_service) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
@@ -75,7 +75,7 @@ void ObjectManager::HandleObjectAdded(
   if (iter != unfulfilled_push_requests_.end()) {
     for (auto &pair : iter->second) {
       auto &client_id = pair.first;
-      rpc_service_.post([this, object_id, client_id]() { Push(object_id, client_id); });
+      main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
       // When push timeout is set to -1, there will be an empty timer in pair.second.
       if (pair.second != nullptr) {
         pair.second->cancel();
@@ -730,7 +730,7 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
     profile_events_.emplace_back(profile_event);
   }
 
-  rpc_service_.post([this, object_id, client_id]() { Push(object_id, client_id); });
+  main_service_->post([this, object_id, client_id]() { Push(object_id, client_id); });
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
