@@ -702,20 +702,20 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   status = task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, &return_objects);
+                                    args, arg_reference_ids, return_ids, return_objects);
 
-  for (size_t i = 0; i < return_objects.size(); i++) {
+  for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
-    if (!return_objects[i]) {
+    if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects[i]->GetData()->IsPlasmaBuffer()) {
+    if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
       if (!Seal(return_ids[i]).ok()) {
         RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
     } else if (!worker_context_.CurrentActorUseDirectCall()) {
-      if (!Put(*return_objects[i], return_ids[i]).ok()) {
+      if (!Put(*return_objects->at(i), return_ids[i]).ok()) {
         RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
