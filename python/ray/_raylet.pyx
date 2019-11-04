@@ -435,7 +435,7 @@ cdef deserialize_args(
             else:
                 try:
                     args.append(pickle.loads(data.to_pybytes()))
-                except:  # XXX handle inline RayObjects properly
+                except Exception:  # XXX handle inline RayObjects properly
                     by_reference_ids.append(
                         ObjectID(arg_reference_ids[i].Binary()))
                     by_reference_indices.append(i)

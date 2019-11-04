@@ -21,9 +21,8 @@ class CoreWorkerMemoryStoreProvider {
  public:
   CoreWorkerMemoryStoreProvider(std::shared_ptr<CoreWorkerMemoryStore> store);
 
-  void GetAsync(
-      const ObjectID& object_id,
-      std::function<void(std::shared_ptr<RayObject>)> callback) {
+  void GetAsync(const ObjectID &object_id,
+                std::function<void(std::shared_ptr<RayObject>)> callback) {
     store_->GetAsync(object_id, callback);
   }
 

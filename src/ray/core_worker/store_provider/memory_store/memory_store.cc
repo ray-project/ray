@@ -107,8 +107,7 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore() {}
 
 void CoreWorkerMemoryStore::GetAsync(
-      const ObjectID& object_id,
-      std::function<void(std::shared_ptr<RayObject>)> callback) {
+    const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
   std::shared_ptr<RayObject> ptr;
   {
     std::unique_lock<std::mutex> lock(lock_);
@@ -152,8 +151,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
     auto async_callback_it = object_async_get_requests_.find(object_id);
     if (async_callback_it != object_async_get_requests_.end()) {
       auto &callbacks = async_callback_it->second;
-      async_callbacks.insert(
-          async_callbacks.begin(), callbacks.begin(), callbacks.end());
+      async_callbacks.insert(async_callbacks.begin(), callbacks.begin(), callbacks.end());
       object_async_get_requests_.erase(async_callback_it);
       should_add_entry = false;
     }
@@ -164,7 +162,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
     }
   }
 
-  for (const auto& cb : async_callbacks) {
+  for (const auto &cb : async_callbacks) {
     cb(object_entry);
   }
 

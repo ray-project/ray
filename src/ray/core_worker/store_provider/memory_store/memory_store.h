@@ -39,9 +39,8 @@ class CoreWorkerMemoryStore {
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
 
-  void GetAsync(
-      const ObjectID& object_id,
-      std::function<void(std::shared_ptr<RayObject>)> callback);
+  void GetAsync(const ObjectID &object_id,
+                std::function<void(std::shared_ptr<RayObject>)> callback);
 
   /// Delete a list of objects from the object store.
   ///
@@ -58,7 +57,8 @@ class CoreWorkerMemoryStore {
       object_get_requests_;
 
   /// Map from object ID to its async get requests.
-  absl::flat_hash_map<ObjectID, std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
+  absl::flat_hash_map<ObjectID,
+                      std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_;
 
   /// Protect the two maps above.

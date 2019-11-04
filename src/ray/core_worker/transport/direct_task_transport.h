@@ -16,16 +16,14 @@ namespace ray {
 struct TaskState {
   const TaskSpecification task;
   absl::flat_hash_set<ObjectID> local_dependencies;
-  absl::flat_hash_set<ObjectID> remote_dependencies;
 };
 
 // This class is thread-safe.
-class DependencyResolver {
+class LocalDependencyResolver {
  public:
-  DependencyResolver(
-      RayletClient& raylet_client,
-      CoreWorkerMemoryStoreProvider& store_provider)
-    : raylet_client_(raylet_client), store_provider_(store_provider) {}
+  LocalDependencyResolver(RayletClient &raylet_client,
+                          CoreWorkerMemoryStoreProvider &store_provider)
+      : raylet_client_(raylet_client), store_provider_(store_provider) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -34,19 +32,18 @@ class DependencyResolver {
   /// Note: This method **will mutate** the given TaskSpecification.
   ///
   /// Postcondition: all direct call ids in arguments are converted to values.
-  void ResolveDependencies(
-      const TaskSpecification& task, std::function<void()> on_complete);
+  void ResolveDependencies(const TaskSpecification &task,
+                           std::function<void()> on_complete);
 
  private:
   // Reference to the shared raylet client for waiting for deps.
   RayletClient &raylet_client_;
 
   /// The store provider.
-  CoreWorkerMemoryStoreProvider& store_provider_;
+  CoreWorkerMemoryStoreProvider &store_provider_;
 
+  /// Protects against concurrent access to internal state.
   absl::Mutex mu_;
-  int64_t next_request_id_ GUARDED_BY(mu_) = 1000000000;
-  absl::flat_hash_map<int64_t, std::unique_ptr<TaskState>> pending_;
 };
 
 typedef std::pair<std::string, int> WorkerAddress;
@@ -88,7 +85,7 @@ class CoreWorkerDirectTaskSubmitter {
   std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
 
   /// Resolve local and remote dependencies;
-  DependencyResolver resolver_;
+  LocalDependencyResolver resolver_;
 
   // Protects task submission state below.
   absl::Mutex mu_;
@@ -104,7 +101,6 @@ class CoreWorkerDirectTaskSubmitter {
   std::deque<std::unique_ptr<rpc::PushTaskRequest>> queued_tasks_ GUARDED_BY(mu_);
 };
 
-//  DependencyResolver resolver_ GUARDED_BY(mu_);
 };  // namespace ray
 
 #endif  // RAY_CORE_WORKER_DIRECT_TASK_H
