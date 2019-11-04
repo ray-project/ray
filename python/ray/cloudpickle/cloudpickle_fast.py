@@ -114,7 +114,6 @@ def _function_getstate(func):
         "__defaults__": func.__defaults__,
         "__module__": func.__module__,
         "__doc__": func.__doc__,
-        "__closure__": func.__closure__,
     }
 
     f_globals_ref = _extract_code_globals(func.__code__)
@@ -125,9 +124,6 @@ def _function_getstate(func):
         list(map(_get_cell_contents, func.__closure__))
         if func.__closure__ is not None else ()
     )
-
-    if sys.version_info[:2] < (3, 7):
-        slotstate["__closure__"] = closure_values
 
     # Extract currently-imported submodules used by func. Storing these modules
     # in a smoke _cloudpickle_subimports attribute of the object's state will
@@ -216,14 +212,28 @@ def _code_reduce(obj):
     return types.CodeType, args
 
 
+def _make_cell(contents):
+    cell = _make_empty_cell()
+    cell_set(cell, contents)
+    return cell
+
+
 def _cell_reduce(obj):
     """Cell (containing values of a function's free variables) reducer"""
-    try:
-        obj.cell_contents
-    except ValueError:  # cell is empty
-        return types.CellType, ()
+    if sys.version_info[:2] < (3, 8):
+        try:
+            obj.cell_contents
+        except ValueError:  # cell is empty
+            return _make_empty_cell, ()
+        else:
+            return _make_cell, (obj.cell_contents,)
     else:
-        return types.CellType, (obj.cell_contents,)
+        try:
+            obj.cell_contents
+        except ValueError:  # cell is empty
+            return types.CellType, ()
+        else:
+            return types.CellType, (obj.cell_contents,)
 
 
 def _classmethod_reduce(obj):
@@ -365,7 +375,6 @@ def _function_setstate(obj, state):
     obj.__dict__.update(state)
 
     obj_globals = slotstate.pop("__globals__")
-    obj_closure = slotstate.pop("__closure__")
     # _cloudpickle_subimports is a set of submodules that must be loaded for
     # the pickled function to work correctly at unpickling time. Now that these
     # submodules are depickled (hence imported), they can be removed from the
@@ -375,10 +384,6 @@ def _function_setstate(obj, state):
 
     obj.__globals__.update(obj_globals)
     obj.__globals__["__builtins__"] = __builtins__
-
-    if obj_closure is not None:
-        for i, cell in enumerate(obj_closure):
-            cell_set(obj.__closure__[i], cell)
 
     for k, v in slotstate.items():
         setattr(obj, k, v)
@@ -397,16 +402,6 @@ def _class_setstate(obj, state):
             obj.register(subclass)
 
     return obj
-
-
-def _make_dynamic_function(code, base_globals, name, argdefs, num_freevars):
-    if num_freevars is None:
-        closure = None
-    elif sys.version_info[:2] < (3, 7):
-        closure = tuple(_make_empty_cell() for _ in range(num_freevars))
-    else:
-        closure = tuple(types.CellType() for _ in range(num_freevars))
-    return types.FunctionType(code, base_globals, name, argdefs, closure)
 
 
 def _property_reduce(obj):
@@ -444,6 +439,8 @@ class CloudPickler(Pickler):
     dispatch[weakref.WeakSet] = _weakset_reduce
     if sys.version_info[:2] >= (3, 7):
         dispatch[types.CellType] = _cell_reduce
+    else:
+        dispatch[type(_make_empty_cell())] = _cell_reduce
     if sys.version_info[:2] < (3, 8):
         dispatch[property] = _property_reduce
 
@@ -512,7 +509,7 @@ class CloudPickler(Pickler):
         """Reduce a function that is not pickleable via attribute lookup."""
         newargs = self._function_getnewargs(func)
         state = _function_getstate(func)
-        return (_make_dynamic_function, newargs, state, None, None,
+        return (types.FunctionType, newargs, state, None, None,
                 _function_setstate)
 
     def _function_reduce(self, obj):
@@ -555,14 +552,7 @@ class CloudPickler(Pickler):
                 if k in func.__globals__:
                     base_globals[k] = func.__globals__[k]
 
-        # Do not bind the free variables before the function is created to
-        # avoid infinite recursion.
-        if func.__closure__ is None:
-            num_freevars = None
-        else:
-            num_freevars = len(code.co_freevars)
-
-        return code, base_globals, None, None, num_freevars
+        return code, base_globals, None, None, func.__closure__
 
     def dump(self, obj):
         try:
