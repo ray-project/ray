@@ -383,7 +383,8 @@ class RayletStats(threading.Thread):
             # First remove node connections of disconnected nodes.
             for node_id in self.stubs.keys():
                 if node_id not in node_ids:
-                    self.stubs.pop(node_id)
+                    stub = self.stubs.pop(node_id)
+                    stub.close()
 
             # Now add node connections of new nodes.
             for node in self.nodes:
@@ -403,7 +404,9 @@ class RayletStats(threading.Thread):
         while True:
             time.sleep(1.0)
             with self._raylet_stats_lock:
-                for node, stub in zip(self.nodes, self.stubs.values()):
+                for node in self.nodes:
+                    node_id = node["NodeID"]
+                    stub = self.stubs[node_id]
                     reply = stub.GetNodeStats(
                         node_manager_pb2.NodeStatsRequest())
                     self._raylet_stats[node[
