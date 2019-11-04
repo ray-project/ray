@@ -8,11 +8,12 @@ namespace ray {
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
     boost::asio::io_service &io_service, rpc::GrpcServer &server,
-    const TaskHandler &task_handler)
+    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
       task_service_(io_service, *this),
-      task_handler_(task_handler) {
+      task_handler_(task_handler),
+      exit_handler_(exit_handler) {
   server.RegisterService(task_service_);
 }
 
@@ -56,6 +57,10 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, resource_ids, &results);
+  if (status.IsSystemExit()) {
+    exit_handler_();
+    return;
+  }
 
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId() << " finished execution.";
 

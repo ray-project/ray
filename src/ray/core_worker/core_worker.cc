@@ -73,7 +73,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals)
+                       std::function<Status()> check_signals,
+                       const std::function<void()> exit_handler)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -113,10 +114,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
             worker_context_, raylet_client_, task_execution_service_, worker_server_,
-            execute_task));
+            execute_task, exit_handler));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              worker_server_, execute_task));
+                                              worker_server_, execute_task,
+                                              exit_handler));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -509,6 +511,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.is_direct_call,
+                                   actor_creation_options.max_concurrency,
                                    actor_creation_options.is_detached);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
@@ -633,10 +636,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
       new worker::ProfileEvent(profiler_, event_type));
 }
 
-void CoreWorker::StartExecutingTasks() {
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
-  task_execution_service_.run();
-}
+void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
 
 Status CoreWorker::GetReturnObjects(
     const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
@@ -671,10 +671,7 @@ Status CoreWorker::GetReturnObjects(
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *return_by_value) {
-  idle_profile_event_.reset();
-  RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
-
+                               std::vector<std::shared_ptr<RayObject>> *return_objects) {
   resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
@@ -703,14 +700,11 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
-  // TODO(ekl) unify return_by_value and return_objects
-  std::vector<std::shared_ptr<RayObject>> return_objects;
   status = task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
                                     args, arg_reference_ids, return_ids, &return_objects);
 
   for (size_t i = 0; i < return_objects.size(); i++) {
-    return_by_value->push_back(return_objects[i]);
     // The object is nullptr if it already existed in the object store.
     if (!return_objects[i]) {
       continue;
@@ -730,11 +724,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
-
-  // TODO(zhijunfu):
-  // 1. Check and handle failure.
-  // 2. Save or load checkpoint.
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   return status;
 }
 

@@ -110,6 +110,26 @@ class RemoteFunction(object):
             num_gpus=num_gpus,
             resources=resources)
 
+    def options(self, **options):
+        """Convenience method for executing a task with options.
+
+        Same arguments as func._remote(), but returns a wrapped function
+        that a non-underscore .remote() can be called on.
+
+        Examples:
+            # The following two calls are equivalent.
+            >>> func._remote(num_cpus=4, args=[x, y])
+            >>> func.options(num_cpus=4).remote(x, y)
+        """
+
+        func_cls = self
+
+        class FuncWrapper(object):
+            def remote(self, *args, **kwargs):
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+        return FuncWrapper()
+
     def _remote(self,
                 args=None,
                 kwargs=None,

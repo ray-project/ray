@@ -6,6 +6,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import numpy
+import threading
 import time
 import logging
 import os
@@ -615,26 +616,28 @@ cdef CRayStatus task_execution_handler(
 
     with gil:
         try:
-            # The call to execute_task should never raise an exception. If it
-            # does, that indicates that there was an unexpected internal error.
-            execute_task(task_type, ray_function, c_resources, c_args,
-                         c_arg_reference_ids, c_return_ids, returns)
-        except Exception:
-            traceback_str = traceback.format_exc() + (
-                "An unexpected internal error occurred while the worker was"
-                "executing a task.")
-            ray.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "worker_crash",
-                traceback_str,
-                job_id=None)
-            # TODO(rkn): Note that if the worker was in the middle of executing
-            # a task, then any worker or driver that is blocking in a get call
-            # and waiting for the output of that task will hang. We need to
-            # address this.
-            sys.exit(1)
+            try:
+                # The call to execute_task should never raise an exception. If
+                # it does, that indicates that there was an internal error.
+                execute_task(task_type, ray_function, c_resources, c_args,
+                             c_arg_reference_ids, c_return_ids, returns)
+            except Exception:
+                traceback_str = traceback.format_exc() + (
+                    "An unexpected internal error occurred while the worker "
+                    "was executing a task.")
+                ray.utils.push_error_to_driver(
+                    ray.worker.global_worker,
+                    "worker_crash",
+                    traceback_str,
+                    job_id=None)
+                sys.exit(1)
+        except SystemExit:
+            # Tell the core worker to exit as soon as the result objects
+            # are processed.
+            return CRayStatus.SystemExit()
 
     return CRayStatus.OK()
+
 
 cdef CRayStatus check_signals() nogil:
     with gil:
@@ -643,6 +646,11 @@ cdef CRayStatus check_signals() nogil:
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
     return CRayStatus.OK()
+
+
+cdef void exit_handler() nogil:
+    with gil:
+        sys.exit(0)
 
 
 cdef class CoreWorker:
@@ -661,7 +669,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), task_execution_handler,
-            check_signals))
+            check_signals, exit_handler))
 
     def disconnect(self):
         with nogil:
@@ -892,6 +900,7 @@ cdef class CoreWorker:
                      resources,
                      placement_resources,
                      c_bool is_direct_call,
+                     int32_t max_concurrency,
                      c_bool is_detached):
         cdef:
             CRayFunction ray_function
@@ -912,9 +921,9 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, c_resources,
-                        c_placement_resources, dynamic_worker_options,
-                        is_detached),
+                        max_reconstructions, is_direct_call, max_concurrency,
+                        c_resources, c_placement_resources,
+                        dynamic_worker_options, is_detached),
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
