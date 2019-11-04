@@ -24,9 +24,6 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    return Status::Invalid("Direct actor call only supports by-value arguments");
-  }
 
   RAY_CHECK(task_spec.IsActorTask());
   const auto &actor_id = task_spec.ActorId();
@@ -84,7 +81,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     // Check if this actor is the one that we're interested, if we already have
     // a connection to the actor, or have pending requests for it, we should
     // create a new connection.
-    if (pending_requests_.count(actor_id) > 0) {
+    if (pending_requests_.count(actor_id) > 0 && rpc_clients_.count(actor_id) == 0) {
       ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
     }
   } else {
@@ -147,6 +144,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
           waiting_reply_tasks_[actor_id].erase(task_id);
         }
         if (!status.ok()) {
+          // Note that this might be the __ray_terminate__ task, so we don't log
+          // loudly with ERROR here.
+          RAY_LOG(INFO) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
@@ -200,36 +200,58 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    rpc::GrpcServer &server, const TaskHandler &task_handler,
+    const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
       task_service_(main_io_service, *this),
       task_handler_(task_handler),
+      exit_handler_(exit_handler),
       task_main_io_service_(main_io_service) {
   server.RegisterService(task_service_);
+}
+
+void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
+  waiter_.reset(new DependencyWaiterImpl(raylet_client));
+}
+
+void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
+  if (max_concurrency != max_concurrency_) {
+    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
+    RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
+    pool_.reset(new BoundedExecutor(max_concurrency));
+    max_concurrency_ = max_concurrency;
+  }
 }
 
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    send_reply_callback(
-        Status::Invalid("Direct actor call only supports by value arguments"), nullptr,
-        nullptr);
-    return;
-  }
   if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
   }
+  SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
+
+  // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
+  // the raylet, which is a central bottleneck. In the future, we should inline
+  // dependencies that are small and already known to be local to the client.
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
+    int count = task_spec.ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(task_spec.ArgId(i, j));
+    }
+  }
 
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(task_main_io_service_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                  task_main_io_service_, *waiter_, pool_)));
     it = result.first;
   }
   it->second->Add(
@@ -246,6 +268,13 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         ResourceMappingType resource_ids;
         std::vector<std::shared_ptr<RayObject>> results;
         auto status = task_handler_(task_spec, resource_ids, &results);
+        if (status.IsSystemExit()) {
+          // In Python, SystemExit cannot be raised except on the main thread. To work
+          // around this when we are executing tasks on worker threads, we re-post the
+          // exit event explicitly on the main thread.
+          task_main_io_service_.post([this]() { exit_handler_(); });
+          return;
+        }
         RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
 
         for (size_t i = 0; i < results.size(); i++) {
@@ -268,7 +297,17 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       },
       [send_reply_callback]() {
         send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
-      });
+      },
+      dependencies);
+}
+
+void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
+    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+  waiter_->OnWaitComplete(request.tag());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

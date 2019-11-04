@@ -146,6 +146,10 @@ class TFPolicy(Policy):
             raise ValueError(
                 "seq_lens tensor must be given if state inputs are defined")
 
+    def variables(self):
+        """Return the list of all savable variables for this policy."""
+        return self.model.variables()
+
     def get_placeholder(self, name):
         """Returns the given action or loss input placeholder by name.
 
@@ -194,8 +198,13 @@ class TFPolicy(Policy):
             if g is not None
         ]
         self._grads = [g for (g, v) in self._grads_and_vars]
-        self._variables = ray.experimental.tf_utils.TensorFlowVariables(
-            self._loss, self._sess)
+        if hasattr(self, "model") and isinstance(self.model, ModelV2):
+            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
+                [], self._sess, self.variables())
+        else:
+            # TODO(ekl) deprecate support for v1 models
+            self._variables = ray.experimental.tf_utils.TensorFlowVariables(
+                self._loss, self._sess)
 
         # gather update ops for any batch norm layers
         if not self._update_ops:
@@ -253,11 +262,11 @@ class TFPolicy(Policy):
 
     @override(Policy)
     def get_weights(self):
-        return self._variables.get_flat()
+        return self._variables.get_weights()
 
     @override(Policy)
     def set_weights(self, weights):
-        return self._variables.set_flat(weights)
+        return self._variables.set_weights(weights)
 
     @override(Policy)
     def export_model(self, export_dir):

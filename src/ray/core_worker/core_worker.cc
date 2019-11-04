@@ -41,8 +41,8 @@ void BuildCommonTaskSpec(
 
 // Group object ids according the the corresponding store providers.
 void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
-                                   std::unordered_set<ObjectID> *plasma_object_ids,
-                                   std::unordered_set<ObjectID> *memory_object_ids) {
+                                   absl::flat_hash_set<ObjectID> *plasma_object_ids,
+                                   absl::flat_hash_set<ObjectID> *memory_object_ids) {
   // There are two cases:
   // - for task return objects from direct actor call, use memory store provider;
   // - all the others use plasma store provider.
@@ -75,7 +75,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
                        const TaskExecutionCallback &task_execution_callback,
-                       std::function<Status()> check_signals)
+                       std::function<Status()> check_signals,
+                       const std::function<void()> exit_handler)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -118,7 +119,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             execute_task));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              worker_server_, execute_task));
+                                              worker_server_, execute_task,
+                                              exit_handler));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -133,6 +135,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
+  // Unfortunately the raylet client has to be constructed after the receivers.
+  if (direct_actor_task_receiver_ != nullptr) {
+    direct_actor_task_receiver_->Init(*raylet_client_);
+  }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -347,12 +353,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   bool got_exception = false;
-  std::unordered_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
   RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
                                                 worker_context_.GetCurrentTaskID(),
@@ -395,8 +401,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(ids, &plasma_object_ids, &memory_object_ids);
 
   if (plasma_object_ids.size() + memory_object_ids.size() != ids.size()) {
@@ -412,7 +418,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // a timeout of 0, but that does not address the situation where objects
   // become available on the second store provider while waiting on the first.
 
-  std::unordered_set<ObjectID> ready;
+  absl::flat_hash_set<ObjectID> ready;
   // Wait from both store providers with timeout set to 0. This is to avoid the case
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
@@ -456,8 +462,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only,
                           bool delete_creating_tasks) {
-  std::unordered_set<ObjectID> plasma_object_ids;
-  std::unordered_set<ObjectID> memory_object_ids;
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  absl::flat_hash_set<ObjectID> memory_object_ids;
   GroupObjectIdsByStoreProvider(object_ids, &plasma_object_ids, &memory_object_ids);
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
@@ -552,7 +558,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.is_direct_call);
+                                   actor_creation_options.is_direct_call,
+                                   actor_creation_options.max_concurrency,
+                                   actor_creation_options.is_detached);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
@@ -675,17 +683,11 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
       new worker::ProfileEvent(profiler_, event_type));
 }
 
-void CoreWorker::StartExecutingTasks() {
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
-  task_execution_service_.run();
-}
+void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *results) {
-  idle_profile_event_.reset();
-  RAY_LOG(DEBUG) << "Executing task " << task_spec.TaskId();
-
   resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
@@ -738,11 +740,6 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       }
     }
   }
-
-  // TODO(zhijunfu):
-  // 1. Check and handle failure.
-  // 2. Save or load checkpoint.
-  idle_profile_event_.reset(new worker::ProfileEvent(profiler_, "worker_idle"));
   return status;
 }
 

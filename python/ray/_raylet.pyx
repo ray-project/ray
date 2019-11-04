@@ -6,6 +6,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import numpy
+import threading
 import time
 import logging
 import os
@@ -647,27 +648,33 @@ cdef CRayStatus task_execution_handler(
 
     with gil:
         try:
-            # The call to execute_task should never raise an exception. If it
-            # does, that indicates that there was an unexpected internal error.
-            execute_task(task_type, ray_function, c_resources, c_args,
-                         c_arg_reference_ids, c_return_ids,
-                         return_results_directly, returns)
-        except Exception:
-            traceback_str = traceback.format_exc() + (
-                "An unexpected internal error occurred while the worker was"
-                "executing a task.")
-            ray.utils.push_error_to_driver(
-                ray.worker.global_worker,
-                "worker_crash",
-                traceback_str,
-                job_id=None)
-            # TODO(rkn): Note that if the worker was in the middle of executing
-            # a task, then any worker or driver that is blocking in a get call
-            # and waiting for the output of that task will hang. We need to
-            # address this.
-            sys.exit(1)
+            try:
+                # The call to execute_task should never raise an exception. If
+                # it does, that indicates that there was an internal error.
+                execute_task(task_type, ray_function, c_resources, c_args,
+                             c_arg_reference_ids, c_return_ids,
+                             return_results_directly, returns)
+            except Exception:
+                traceback_str = traceback.format_exc() + (
+                    "An unexpected internal error occurred while the worker "
+                    "was executing a task.")
+                ray.utils.push_error_to_driver(
+                    ray.worker.global_worker,
+                    "worker_crash",
+                    traceback_str,
+                    job_id=None)
+                sys.exit(1)
+        except SystemExit:
+            if isinstance(threading.current_thread(), threading._MainThread):
+                raise
+            else:
+                # We cannot exit from a non-main thread, so return a special
+                # status that tells the core worker to call sys.exit() on the
+                # main thread instead. This only applies to direct actor calls.
+                return CRayStatus.SystemExit()
 
     return CRayStatus.OK()
+
 
 cdef CRayStatus check_signals() nogil:
     with gil:
@@ -678,26 +685,48 @@ cdef CRayStatus check_signals() nogil:
     return CRayStatus.OK()
 
 
+cdef void exit_handler() nogil:
+    with gil:
+        sys.exit(0)
+
+
 cdef void push_objects_into_return_vector(
         py_objects,
         c_vector[shared_ptr[CRayObject]] *returns):
 
     cdef:
+        c_string metadata_str = RAW_BUFFER_METADATA
+        c_string raw_data_str
         shared_ptr[CBuffer] data
         shared_ptr[CBuffer] metadata
         shared_ptr[CRayObject] ray_object
         int64_t data_size
 
     for serialized_object in py_objects:
-        data_size = serialized_object.total_bytes
-        data = dynamic_pointer_cast[
-            CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](data_size))
-        stream = pyarrow.FixedSizeBufferWriter(
-            pyarrow.py_buffer(Buffer.make(data)))
-        serialized_object.write_to(stream)
-        ray_object = make_shared[CRayObject](data, metadata)
-        returns.push_back(ray_object)
+        if isinstance(serialized_object, bytes):
+            data_size = len(serialized_object)
+            raw_data_str = serialized_object
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(raw_data_str.data()), raw_data_str.size()))
+            metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
+            ray_object = make_shared[CRayObject](data, metadata, True)
+            returns.push_back(ray_object)
+        else:
+            data_size = serialized_object.total_bytes
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](data_size))
+            metadata.reset()
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            serialized_object.write_to(stream)
+            ray_object = make_shared[CRayObject](data, metadata)
+            returns.push_back(ray_object)
 
 
 cdef class CoreWorker:
@@ -716,7 +745,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), task_execution_handler,
-            check_signals))
+            check_signals, exit_handler))
 
     def disconnect(self):
         with nogil:
@@ -948,7 +977,9 @@ cdef class CoreWorker:
                      uint64_t max_reconstructions,
                      resources,
                      placement_resources,
-                     c_bool is_direct_call):
+                     c_bool is_direct_call,
+                     int32_t max_concurrency,
+                     c_bool is_detached):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -968,8 +999,9 @@ cdef class CoreWorker:
                 check_status(self.core_worker.get().CreateActor(
                     ray_function, args_vector,
                     CActorCreationOptions(
-                        max_reconstructions, is_direct_call, c_resources,
-                        c_placement_resources, dynamic_worker_options),
+                        max_reconstructions, is_direct_call, max_concurrency,
+                        c_resources, c_placement_resources,
+                        dynamic_worker_options, is_detached),
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())
@@ -979,7 +1011,7 @@ cdef class CoreWorker:
                           function_descriptor,
                           args,
                           int num_return_vals,
-                          resources):
+                          double num_method_cpus):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -990,7 +1022,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] return_ids
 
         with self.profile_event(b"submit_task"):
-            prepare_resources(resources, &c_resources)
+            if num_method_cpus > 0:
+                c_resources[b"CPU"] = num_method_cpus
             task_options = CTaskOptions(num_return_vals, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))

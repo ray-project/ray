@@ -4,7 +4,8 @@ FROM ray-project/deploy
 
 # This updates numpy to 1.14 and mutes errors from other libraries
 RUN conda install -y numpy
-RUN apt-get install -y zlib1g-dev
+# Needed to run Tune example with a 'plot' call - which does not actually render a plot, but throws an error.
+RUN apt-get install -y zlib1g-dev libgl1-mesa-dev
 # The following is needed to support TensorFlow 1.14
 RUN conda remove -y --force wrapt
 RUN pip install -U pip
