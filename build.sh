@@ -110,7 +110,7 @@ if [[ "$PYTHON_VERSION" == "3.6" ]]; then
     pushd pickle5-backport
       git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
       "$PYTHON_EXECUTABLE" setup.py bdist_wheel
-      unzip dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+      unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
     popd
   popd
 fi

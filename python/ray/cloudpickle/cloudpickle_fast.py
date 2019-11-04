@@ -15,22 +15,28 @@ import copyreg
 import io
 import itertools
 import logging
-import _pickle
-import pickle
+
 import sys
 import types
 import weakref
-
-from _pickle import Pickler
 
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
     _find_imported_submodules, _get_cell_contents, _is_global, _builtin_type,
     Enum, _ensure_tracking,  _make_skeleton_class, _make_skeleton_enum,
-    _extract_class_dict, string_types, dynamic_subimport, subimport
+    _extract_class_dict, string_types, dynamic_subimport, subimport, cell_set,
+    _make_empty_cell
 )
 
-load, loads = _pickle.load, _pickle.loads
+if sys.version_info[:2] < (3, 8):
+    import pickle5 as pickle
+    from pickle5 import Pickler
+    load, loads = pickle.load, pickle.loads
+else:
+    import _pickle
+    import pickle
+    from _pickle import Pickler
+    load, loads = _pickle.load, _pickle.loads
 
 
 # Shorthands similar to pickle.dump/pickle.dumps
@@ -119,6 +125,9 @@ def _function_getstate(func):
         list(map(_get_cell_contents, func.__closure__))
         if func.__closure__ is not None else ()
     )
+
+    if sys.version_info[:2] < (3, 7):
+        slotstate["__closure__"] = closure_values
 
     # Extract currently-imported submodules used by func. Storing these modules
     # in a smoke _cloudpickle_subimports attribute of the object's state will
@@ -369,11 +378,7 @@ def _function_setstate(obj, state):
 
     if obj_closure is not None:
         for i, cell in enumerate(obj_closure):
-            try:
-                value = cell.cell_contents
-            except ValueError:  # cell is empty
-                continue
-            obj.__closure__[i].cell_contents = value
+            cell_set(obj.__closure__[i], cell)
 
     for k, v in slotstate.items():
         setattr(obj, k, v)
@@ -392,6 +397,21 @@ def _class_setstate(obj, state):
             obj.register(subclass)
 
     return obj
+
+
+def _make_dynamic_function(code, base_globals, name, argdefs, num_freevars):
+    if num_freevars is None:
+        closure = None
+    elif sys.version_info[:2] < (3, 7):
+        closure = tuple(_make_empty_cell() for _ in range(num_freevars))
+    else:
+        closure = tuple(types.CellType() for _ in range(num_freevars))
+    return types.FunctionType(code, base_globals, name, argdefs, closure)
+
+
+def _property_reduce(obj):
+    # Python < 3.8 only
+    return property, (obj.fget, obj.fset, obj.fdel, obj.__doc__)
 
 
 class CloudPickler(Pickler):
@@ -416,13 +436,16 @@ class CloudPickler(Pickler):
     dispatch[logging.RootLogger] = _root_logger_reduce
     dispatch[memoryview] = _memoryview_reduce
     dispatch[staticmethod] = _classmethod_reduce
-    dispatch[types.CellType] = _cell_reduce
     dispatch[types.CodeType] = _code_reduce
     dispatch[types.GetSetDescriptorType] = _getset_descriptor_reduce
     dispatch[types.ModuleType] = _module_reduce
     dispatch[types.MethodType] = _method_reduce
     dispatch[types.MappingProxyType] = _mappingproxy_reduce
     dispatch[weakref.WeakSet] = _weakset_reduce
+    if sys.version_info[:2] >= (3, 7):
+        dispatch[types.CellType] = _cell_reduce
+    if sys.version_info[:2] < (3, 8):
+        dispatch[property] = _property_reduce
 
     def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:
@@ -489,7 +512,7 @@ class CloudPickler(Pickler):
         """Reduce a function that is not pickleable via attribute lookup."""
         newargs = self._function_getnewargs(func)
         state = _function_getstate(func)
-        return (types.FunctionType, newargs, state, None, None,
+        return (_make_dynamic_function, newargs, state, None, None,
                 _function_setstate)
 
     def _function_reduce(self, obj):
@@ -535,12 +558,11 @@ class CloudPickler(Pickler):
         # Do not bind the free variables before the function is created to
         # avoid infinite recursion.
         if func.__closure__ is None:
-            closure = None
+            num_freevars = None
         else:
-            closure = tuple(
-                types.CellType() for _ in range(len(code.co_freevars)))
+            num_freevars = len(code.co_freevars)
 
-        return code, base_globals, None, None, closure
+        return code, base_globals, None, None, num_freevars
 
     def dump(self, obj):
         try:
