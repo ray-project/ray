@@ -24,10 +24,12 @@ def initialization_hook(runner):
     os.environ["NCCL_DEBUG"] = "INFO"
 
 
-def train(model, train_iterator, criterion, optimizer):
+def train(model, train_iterator, criterion, optimizer, config):
     model.train()
     train_loss, total_num, correct = 0, 0, 0
     for batch_idx, (data, target) in enumerate(train_iterator):
+        if config.get("test_mode") and batch_idx > 0:
+            break
         # get small model update
         if torch.cuda.is_available():
             data, target = data.cuda(), target.cuda()
@@ -78,7 +80,8 @@ def optimizer_creator(model, config):
     return torch.optim.SGD(model.parameters(), lr=config.get("lr", 1e-4))
 
 
-def train_example(num_replicas=1, use_gpu=False):
+def train_example(num_replicas=1, use_gpu=False, test_mode=False):
+    config = {"test_mode": test_mode}
     trainer1 = PyTorchTrainer(
         ResNet18,
         cifar_creator,
@@ -87,8 +90,9 @@ def train_example(num_replicas=1, use_gpu=False):
         initialization_hook=initialization_hook,
         train_function=train,
         num_replicas=num_replicas,
+        config=config,
         use_gpu=use_gpu,
-        batch_size=512,
+        batch_size=16 if test_mode else 512,
         backend="nccl")
     stats = trainer1.train()
     print(stats)
@@ -97,7 +101,7 @@ def train_example(num_replicas=1, use_gpu=False):
     print("success!")
 
 
-def tune_example(num_replicas=1, use_gpu=False):
+def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
     config = {
         "model_creator": ResNet18,
         "data_creator": cifar_creator,
@@ -106,9 +110,10 @@ def tune_example(num_replicas=1, use_gpu=False):
         "num_replicas": num_replicas,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
-        "batch_size": 512,
+        "batch_size": 16 if test_mode else 512,
         "config": {
-            "lr": tune.choice([1e-4, 1e-3, 5e-3, 1e-2])
+            "lr": tune.choice([1e-4, 1e-3, 5e-3, 1e-2]),
+            "test_mode": test_mode
         },
         "backend": "nccl"
     }
@@ -142,6 +147,11 @@ if __name__ == "__main__":
         default=False,
         help="Enables GPU training")
     parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        default=False,
+        help="Finish quickly for testing.")
+    parser.add_argument(
         "--tune", action="store_true", default=False, help="Tune training")
 
     args, _ = parser.parse_known_args()
@@ -149,6 +159,12 @@ if __name__ == "__main__":
     ray.init(address=args.ray_redis_address, log_to_driver=False)
 
     if args.tune:
-        tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+        tune_example(
+            num_replicas=args.num_replicas,
+            use_gpu=args.use_gpu,
+            test_mode=args.smoke_test)
     else:
-        train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+        train_example(
+            num_replicas=args.num_replicas,
+            use_gpu=args.use_gpu,
+            test_mode=args.smoke_test)

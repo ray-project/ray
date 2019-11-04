@@ -106,7 +106,8 @@ class PyTorchRunner(object):
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
             train_stats = self.train_function(self.model, self.train_loader,
-                                              self.criterion, self.optimizer)
+                                              self.criterion, self.optimizer,
+                                              self.config)
             train_stats["epoch"] = self.epoch
 
         self.epoch += 1
@@ -118,7 +119,8 @@ class PyTorchRunner(object):
         """Evaluates the model on the validation data set."""
         with self._timers["validation"]:
             validation_stats = self.validation_function(
-                self.model, self.validation_loader, self.criterion)
+                self.model, self.validation_loader, self.criterion,
+                self.config)
 
         validation_stats.update(self.stats())
         return validation_stats

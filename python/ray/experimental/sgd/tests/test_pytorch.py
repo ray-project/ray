@@ -47,6 +47,7 @@ def test_tune_train(ray_start_2_cpus, num_replicas):  # noqa: F811
         "model_creator": tune.function(model_creator),
         "data_creator": tune.function(data_creator),
         "optimizer_creator": tune.function(optimizer_creator),
+        "loss_creator": tune.function(nn.MSELoss),
         "num_replicas": num_replicas,
         "use_gpu": False,
         "batch_size": 512,

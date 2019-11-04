@@ -11,7 +11,7 @@ import torch.nn as nn
 
 from ray.experimental.sgd.utils import TimerStat
 
-def train(model, train_iterator, criterion, optimizer):
+def train(model, train_iterator, criterion, optimizer, config):
     """Runs 1 training epoch"""
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -65,7 +65,7 @@ def train(model, train_iterator, criterion, optimizer):
     return stats
 
 
-def validate(model, val_iterator, criterion):
+def validate(model, val_iterator, criterion, config):
     batch_time = AverageMeter()
     losses = AverageMeter()
 
