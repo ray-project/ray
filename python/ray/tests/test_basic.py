@@ -1318,6 +1318,32 @@ def test_direct_actor_recursive(ray_start_regular):
     assert result == [x * 2 for x in range(100)]
 
 
+def test_direct_actor_concurrent(ray_start_regular):
+    @ray.remote
+    class Batcher(object):
+        def __init__(self):
+            self.batch = []
+            self.event = threading.Event()
+
+        def add(self, x):
+            self.batch.append(x)
+            if len(self.batch) >= 3:
+                self.event.set()
+            else:
+                self.event.wait()
+            return sorted(self.batch)
+
+    a = Batcher.options(is_direct_call=True, max_concurrency=3).remote()
+    x1 = a.add.remote(1)
+    x2 = a.add.remote(2)
+    x3 = a.add.remote(3)
+    r1 = ray.get(x1)
+    r2 = ray.get(x2)
+    r3 = ray.get(x3)
+    assert r1 == [1, 2, 3]
+    assert r1 == r2 == r3
+
+
 def test_wait(ray_start_regular):
     @ray.remote
     def f(delay):
@@ -1516,7 +1542,6 @@ def test_profiling_api(ray_start_2_cpus):
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
