@@ -26,6 +26,11 @@
             <artifactId>ray-runtime</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.ray</groupId>
+            <artifactId>streaming-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         {generated_bzl_deps}
     </dependencies>
 </project>

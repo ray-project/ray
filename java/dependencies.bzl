@@ -20,7 +20,7 @@ def gen_java_deps():
             "redis.clients:jedis:2.8.0",
         ],
         repositories = [
-            "http://mvn.dev.alipay.net:8080/artifactory/repo/",
+            "https://repo1.maven.org/maven2",
         ],
         # Fetch srcjars. Defaults to False.
         fetch_sources = False,
