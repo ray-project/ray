@@ -91,7 +91,7 @@ def run(run_or_experiment,
     """Executes training.
 
     Args:
-        run_or_experiment (function|class|str|Experiment): If
+        run_or_experiment (function|class|str|Experiment|list[Experiment]): If
             function|class|str, this is the algorithm or model to train.
             This may refer to the name of a built-on algorithm
             (e.g. RLLib's DQN or PPO), a user-defined trainable
@@ -213,41 +213,46 @@ def run(run_or_experiment,
         queue_trials=queue_trials,
         reuse_actors=reuse_actors,
         ray_auto_init=ray_auto_init)
-    experiment = run_or_experiment
-    if not isinstance(run_or_experiment, Experiment):
-        run_identifier = Experiment._register_if_needed(run_or_experiment)
-        experiment = Experiment(
-            name=name,
-            run=run_identifier,
-            stop=stop,
-            config=config,
-            resources_per_trial=resources_per_trial,
-            num_samples=num_samples,
-            local_dir=local_dir,
-            upload_dir=upload_dir,
-            sync_to_driver=sync_to_driver,
-            trial_name_creator=trial_name_creator,
-            loggers=loggers,
-            checkpoint_freq=checkpoint_freq,
-            checkpoint_at_end=checkpoint_at_end,
-            keep_checkpoints_num=keep_checkpoints_num,
-            checkpoint_score_attr=checkpoint_score_attr,
-            export_formats=export_formats,
-            max_failures=max_failures,
-            restore=restore,
-            sync_function=sync_function)
+    if isinstance(run_or_experiment, list):
+        experiments = run_or_experiment
+    else:
+        experiments = [run_or_experiment]
+    for i, exp in enumerate(experiments):
+        if not isinstance(exp, Experiment):
+            run_identifier = Experiment._register_if_needed(exp)
+            experiments[i] = Experiment(
+                name=name,
+                run=run_identifier,
+                stop=stop,
+                config=config,
+                resources_per_trial=resources_per_trial,
+                num_samples=num_samples,
+                local_dir=local_dir,
+                upload_dir=upload_dir,
+                sync_to_driver=sync_to_driver,
+                trial_name_creator=trial_name_creator,
+                loggers=loggers,
+                checkpoint_freq=checkpoint_freq,
+                checkpoint_at_end=checkpoint_at_end,
+                keep_checkpoints_num=keep_checkpoints_num,
+                checkpoint_score_attr=checkpoint_score_attr,
+                export_formats=export_formats,
+                max_failures=max_failures,
+                restore=restore,
+                sync_function=sync_function)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
 
     if sync_to_cloud:
-        assert experiment.remote_checkpoint_dir, (
-            "Need `upload_dir` if `sync_to_cloud` given.")
+        for exp in experiments:
+            assert exp.remote_checkpoint_dir, (
+                "Need `upload_dir` if `sync_to_cloud` given.")
 
     runner = TrialRunner(
         search_alg=search_alg or BasicVariantGenerator(),
         scheduler=scheduler or FIFOScheduler(),
-        local_checkpoint_dir=experiment.checkpoint_dir,
-        remote_checkpoint_dir=experiment.remote_checkpoint_dir,
+        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
         sync_to_cloud=sync_to_cloud,
         checkpoint_period=global_checkpoint_period,
         resume=resume,
@@ -256,7 +261,8 @@ def run(run_or_experiment,
         verbose=bool(verbose > 1),
         trial_executor=trial_executor)
 
-    runner.add_experiment(experiment)
+    for exp in experiments:
+        runner.add_experiment(exp)
 
     if IS_NOTEBOOK:
         reporter = JupyterNotebookReporter(overwrite=verbose < 2)
@@ -357,19 +363,16 @@ def run_experiments(experiments,
     # and it conducts the implicit registration.
     experiments = convert_to_experiment_list(experiments)
 
-    trials = []
-    for exp in experiments:
-        trials += run(
-            exp,
-            search_alg=search_alg,
-            scheduler=scheduler,
-            with_server=with_server,
-            server_port=server_port,
-            verbose=verbose,
-            resume=resume,
-            queue_trials=queue_trials,
-            reuse_actors=reuse_actors,
-            trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial,
-            return_trials=True)
-    return trials
+    return run(
+        experiments,
+        search_alg=search_alg,
+        scheduler=scheduler,
+        with_server=with_server,
+        server_port=server_port,
+        verbose=verbose,
+        resume=resume,
+        queue_trials=queue_trials,
+        reuse_actors=reuse_actors,
+        trial_executor=trial_executor,
+        raise_on_failed_trial=raise_on_failed_trial,
+        return_trials=True)
