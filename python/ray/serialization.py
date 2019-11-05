@@ -13,6 +13,10 @@ class CloudPickleError(Exception):
     pass
 
 
+class DeserializationError(Exception):
+    pass
+
+
 def check_serializable(cls):
     """Throws an exception if Ray cannot serialize this class efficiently.
 
