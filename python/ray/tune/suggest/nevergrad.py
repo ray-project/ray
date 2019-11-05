@@ -142,12 +142,17 @@ class NevergradSearch(SuggestionAlgorithm):
         so that Nevergrad Optimizers can "maximize" this value,
         as it minimizes on default.
         """
-        ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            if early_terminated and self._use_early_stopped is False:
-                return
-            self._nevergrad_opt.tell(ng_trial_info,
-                                     self._metric_op * result[self._metric])
+            self._process_result(trial_id, result, early_terminated)
+
+        self._live_trial_mapping.pop(trial_id)
+
+    def _process_result(self, trial_id, result, early_terminated=False):
+        if early_terminated and self._use_early_stopped is False:
+            return
+        ng_trial_info = self._live_trial_mapping[trial_id]
+        self._nevergrad_opt.tell(ng_trial_info,
+                                 self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

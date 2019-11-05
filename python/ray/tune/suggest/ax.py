@@ -88,20 +88,24 @@ class AxSearch(SuggestionAlgorithm):
 
         Data of form key value dictionary of metric names and values.
         """
-        ax_trial_index = self._live_index_mapping.pop(trial_id)
         if result:
-            if early_terminated and self._use_early_stopped is False:
-                return
-            metric_dict = {
-                self._objective_name: (result[self._objective_name], 0.0)
-            }
-            outcome_names = [
-                oc.metric.name for oc in
-                self._ax.experiment.optimization_config.outcome_constraints
-            ]
-            metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
-            self._ax.complete_trial(
-                trial_index=ax_trial_index, raw_data=metric_dict)
+            self._process_result(trial_id, result, early_terminated)
+        self._live_index_mapping.pop(trial_id)
+
+    def _process_result(self, trial_id, result, early_terminated=False):
+        if early_terminated and self._use_early_stopped is False:
+            return
+        ax_trial_index = self._live_index_mapping[trial_id]
+        metric_dict = {
+            self._objective_name: (result[self._objective_name], 0.0)
+        }
+        outcome_names = [
+            oc.metric.name for oc in
+            self._ax.experiment.optimization_config.outcome_constraints
+        ]
+        metric_dict.update({on: (result[on], 0.0) for on in outcome_names})
+        self._ax.complete_trial(
+            trial_index=ax_trial_index, raw_data=metric_dict)
 
     def _num_live_trials(self):
         return len(self._live_index_mapping)

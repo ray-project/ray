@@ -107,13 +107,15 @@ class BayesOptSearch(SuggestionAlgorithm):
         """Passes the result to BayesOpt unless errored or the trial is early
         terminated and should not be used."""
         if result:
-            if early_terminated and self._use_early_stopped is False:
-                return
-            self.optimizer.register(
-                params=self._live_trial_mapping[trial_id],
-                target=self._metric_op * result[self._metric])
-
+            self._process_result(trial_id, result, early_terminated)
         del self._live_trial_mapping[trial_id]
+
+    def _process_result(self, trial_id, result, early_terminated=False):
+        if early_terminated and self.use_early_stopped is False:
+            return
+        self.optimizer.register(
+            params=self._live_trial_mapping[trial_id],
+            target=self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

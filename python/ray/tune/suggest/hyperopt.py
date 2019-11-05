@@ -180,19 +180,26 @@ class HyperOptSearch(SuggestionAlgorithm):
         so that HyperOpt can "maximize" this value, as it minimizes on default.
         """
         ho_trial = self._get_hyperopt_trial(trial_id)
-        if ho_trial is None or (
-            early_terminated and self._use_early_stopped is False):
+        if ho_trial is None:
             return
         ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
         if error:
             ho_trial["state"] = hpo.base.JOB_STATE_ERROR
             ho_trial["misc"]["error"] = (str(TuneError), "Tune Error")
+            self._hpopt_trials.refresh()
         else:
-            ho_trial["state"] = hpo.base.JOB_STATE_DONE
-            hp_result = self._to_hyperopt_result(result)
-            ho_trial["result"] = hp_result
-        self._hpopt_trials.refresh()
+            self._process_result(trial_id, result, early_terminated)
         del self._live_trial_mapping[trial_id]
+
+    def _process_result(self, trial_id, result, early_terminated=False):
+        if early_terminated and self._use_early_stopped is False:
+            return
+        ho_trial = self._get_hyperopt_trial(trial_id)
+        ho_trial["refresh_time"] = hpo.utils.coarse_utcnow()
+        ho_trial["state"] = hpo.base.JOB_STATE_DONE
+        hp_result = self._to_hyperopt_result(result)
+        ho_trial["result"] = hp_result
+        self._hpopt_trials.refresh()
 
     def _to_hyperopt_result(self, result):
         return {"loss": self._metric_op * result[self._metric], "status": "ok"}
