@@ -1379,6 +1379,10 @@ void NodeManager::ProcessReportActiveObjectIDs(
       unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
 }
 
+void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
+                                   rpc::SubmitTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {}
+
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
                                     rpc::ForwardTaskReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {

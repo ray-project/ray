@@ -13,6 +13,9 @@ namespace rpc {
 /// Interface of the `NodeManagerService`, see `src/ray/protobuf/node_manager.proto`.
 class NodeManagerServiceHandler {
  public:
+  virtual void HandleSubmitTask(const SubmitTaskRequest &request, SubmitTaskReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
+
   /// Handle a `ForwardTask` request.
   /// The implementation can handle this request asynchronously. When handling is done,
   /// the `send_reply_callback` should be called.
@@ -55,6 +58,13 @@ class NodeManagerGrpcService : public GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     // Initialize the factory for requests.
+    std::unique_ptr<ServerCallFactory> submit_task_call_factory(
+        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
+                                  SubmitTaskRequest, SubmitTaskReply>(
+            service_, &NodeManagerService::AsyncService::RequestSubmitTask,
+            service_handler_, &NodeManagerServiceHandler::HandleSubmitTask, cq,
+            main_service_));
+
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
@@ -70,6 +80,8 @@ class NodeManagerGrpcService : public GrpcService {
             main_service_));
 
     // Set accept concurrency.
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(submit_task_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
         std::move(forward_task_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
