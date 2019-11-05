@@ -330,8 +330,8 @@ class Trial(object):
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
         for metric, value in result.items():
-            if (value is not None) and (type(value) is not dict):
-                if metric not in self.metric_analysis.keys():
+            if value is not None and type(value) is not dict:
+                if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
                         "max": value,
                         "min": value,

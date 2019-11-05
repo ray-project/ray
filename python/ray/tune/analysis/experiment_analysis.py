@@ -199,17 +199,15 @@ class ExperimentAnalysis(Analysis):
                 "ExperimentAnalysis: attempting to get best trial for "
                 "metric {} for mode {} not in [\"max\", \"min\"]".format(
                     metric, mode))
-            return None
         if scope not in ["all", "last"]:
             raise ValueError(
                 "ExperimentAnalysis: attempting to get best trial for "
                 "metric {} for scope {} not in [\"all\", \"last\"]".format(
                     metric, scope))
-            return None
         best_trial = None
         best_metric_score = None
         for trial in self.trials:
-            if metric not in trial.metric_analysis.keys():
+            if metric not in trial.metric_analysis:
                 continue
 
             if scope == "last":
