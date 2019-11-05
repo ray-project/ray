@@ -95,8 +95,10 @@ message ActorCreationTaskSpec {
   repeated string dynamic_worker_options = 4;
   // Whether direct actor call is used.
   bool is_direct_call = 5;
+  // The max number of concurrent calls for direct call actors.
+  int32 max_concurrency = 6;
   // Whether the actor is persistent
-  bool is_detached = 6;
+  bool is_detached = 7;
 }
 
 // Task spec of an actor task.

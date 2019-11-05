@@ -33,7 +33,7 @@ class CoreWorker {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids, const bool return_results_directly,
+      const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
  public:
@@ -52,6 +52,8 @@ class CoreWorker {
   /// \parma[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
+  /// \parma[in] exit_handler Language worker function to orderly shutdown the worker.
+  ///            We guarantee this will be run on the main thread of the worker.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const Language language,
@@ -59,7 +61,8 @@ class CoreWorker {
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
              const TaskExecutionCallback &task_execution_callback,
-             std::function<Status()> check_signals = nullptr);
+             std::function<Status()> check_signals = nullptr,
+             std::function<void()> exit_handler = nullptr);
 
   ~CoreWorker();
 
@@ -279,6 +282,19 @@ class CoreWorker {
   /// \return void.
   void StartExecutingTasks();
 
+  /// Allocate the return objects for an executing task. The caller should write into the
+  /// data buffers of the allocated buffers.
+  ///
+  /// \param[in] object_ids Object IDs of the return values.
+  /// \param[in] data_sizes Sizes of the return values.
+  /// \param[in] metadatas Metadata buffers of the return values.
+  /// \param[out] return_objects RayObjects containing buffers to write results into.
+  /// \return Status.
+  Status AllocateReturnObjects(const std::vector<ObjectID> &object_ids,
+                               const std::vector<size_t> &data_sizes,
+                               const std::vector<std::shared_ptr<Buffer>> &metadatas,
+                               std::vector<std::shared_ptr<RayObject>> *return_objects);
+
  private:
   /// Metadata for an actor that we created.
   struct ChildActor {
@@ -332,11 +348,12 @@ class CoreWorker {
   ///
   /// \param spec[in] Task specification.
   /// \param spec[in] Resource IDs of resources assigned to this worker.
-  /// \param results[out] Results for task execution.
+  /// \param results[out] Result objects that should be returned by value (not via
+  ///                     plasma).
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const ResourceMappingType &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *results);
+                     std::vector<std::shared_ptr<RayObject>> *return_by_value);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
@@ -453,10 +470,6 @@ class CoreWorker {
 
   /// Profiler including a background thread that pushes profiling events to the GCS.
   std::shared_ptr<worker::Profiler> profiler_;
-
-  /// Profile event for when the worker is idle. Should be reset when the worker
-  /// enters and exits an idle period.
-  std::unique_ptr<worker::ProfileEvent> idle_profile_event_;
 
   /// Task execution callback.
   TaskExecutionCallback task_execution_callback_;
