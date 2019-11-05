@@ -84,7 +84,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
-        CRayStatus GetReturnObjects(
+        CRayStatus AllocateReturnObjects(
             const c_vector[CObjectID] &object_ids,
             const c_vector[size_t] &data_sizes,
             const c_vector[shared_ptr[CBuffer]] &metadatas,

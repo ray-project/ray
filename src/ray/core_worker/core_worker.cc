@@ -638,7 +638,7 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 
 void CoreWorker::StartExecutingTasks() { task_execution_service_.run(); }
 
-Status CoreWorker::GetReturnObjects(
+Status CoreWorker::AllocateReturnObjects(
     const std::vector<ObjectID> &object_ids, const std::vector<size_t> &data_sizes,
     const std::vector<std::shared_ptr<Buffer>> &metadatas,
     std::vector<std::shared_ptr<RayObject>> *return_objects) {
