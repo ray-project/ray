@@ -9,8 +9,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import tensorflow as tf
-from tensorflow import keras
 
 from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -27,13 +25,14 @@ num_classes = 10
 
 
 def fetch_keras_data():
+    import tensorflow as tf
     # The data, split between train and test sets:
     with FileLock(os.path.expanduser("~/.cifar.lock")):
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
 
     # Convert class vectors to binary class matrices.
-    y_train = keras.utils.to_categorical(y_train, num_classes)
-    y_test = keras.utils.to_categorical(y_test, num_classes)
+    y_train = tf.keras.utils.to_categorical(y_train, num_classes)
+    y_test = tf.keras.utils.to_categorical(y_test, num_classes)
 
     x_train = x_train.astype("float32")
     x_test = x_test.astype("float32")
@@ -47,6 +46,7 @@ input_shape = x_train.shape[1:]
 
 
 def create_model(config):
+    import tensorflow as tf
     model = Sequential()
     model.add(Conv2D(32, (3, 3), padding="same", input_shape=input_shape))
     model.add(Activation("relu"))
@@ -70,7 +70,7 @@ def create_model(config):
     model.add(Activation("softmax"))
 
     # initiate RMSprop optimizer
-    opt = keras.optimizers.RMSprop(lr=0.001, decay=1e-6)
+    opt = tf.keras.optimizers.RMSprop(lr=0.001, decay=1e-6)
 
     # Let"s train the model using RMSprop
     model.compile(
@@ -79,6 +79,7 @@ def create_model(config):
 
 
 def data_creator(config):
+    import tensorflow as tf
     batch_size = config["batch_size"]
     (x_train, y_train), (x_test, y_test) = fetch_keras_data()
     train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
@@ -131,6 +132,7 @@ def _make_generator(x_train, y_train, batch_size):
 
 
 def data_augmentation_creator(config):
+    import tensorflow as tf
     batch_size = config["batch_size"]
     (x_train, y_train), (x_test, y_test) = fetch_keras_data()
     trainset = tf.data.Dataset.from_generator(
