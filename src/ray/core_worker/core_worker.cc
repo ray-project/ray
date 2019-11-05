@@ -369,8 +369,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 }
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
-  // Currently only the Plasma store supports Contains().
-  return plasma_store_provider_->Contains(object_id, has_object);
+  bool found = false;
+  if (object_id.IsDirectActorType()) {
+    // Note that the memory store returns false if the object value is
+    // ErrorType::OBJECT_IN_PLASMA.
+    RAY_RETURN_NOT_OK(memory_store_provider_->Contains(object_id, &found));
+  }
+  if (!found) {
+    // We check plasma as a fallback in all cases, since a direct call object
+    // may have been spilled to plasma.
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(
+        object_id.WithTransportType(TaskTransportType::RAYLET), &found));
+  }
+  *has_object = found;
+  return Status::OK();
 }
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
@@ -409,6 +421,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                                      worker_context_.GetCurrentTaskID(), &ready));
   }
   if (memory_object_ids.size() > 0) {
+    // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
+    // consider waiting on them in plasma as well to ensure they are local.
     RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
         memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
         /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
