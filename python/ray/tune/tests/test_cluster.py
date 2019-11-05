@@ -695,6 +695,7 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
 
     ray.shutdown()
     cluster.shutdown()
+    cluster = _start_new_cluster()
 
     script_after_shutdown = script.format(
         address=cluster.address, checkpoint_dir=dirpath, resume_bool=True)
