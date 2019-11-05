@@ -6,6 +6,8 @@ import java.util.Random;
 
 import javax.xml.bind.DatatypeConverter;
 
+import org.ray.api.id.ActorId;
+
 import com.google.common.base.Preconditions;
 
 public class QueueUtils {
@@ -76,6 +78,16 @@ public class QueueUtils {
     queueName[19] = (byte) (toTaskIndex & 0xff);
 
     return QueueUtils.qidBytesToString(queueName);
+  }
+
+  public static byte[][] actorIdListToByteArray(Collection<ActorId> actorIds) {
+    byte[][] res = new byte[actorIds.size()][ActorId.fromRandom().size()];
+    int i = 0;
+    for (ActorId id : actorIds) {
+      res[i] = id.getBytes();
+      i++;
+    }
+    return res;
   }
 }
 

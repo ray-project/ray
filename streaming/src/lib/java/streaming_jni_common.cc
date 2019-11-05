@@ -16,6 +16,21 @@ jarray_to_object_id_vec(JNIEnv *env, jobjectArray jarr) {
    return object_id_vec;
 }
 
+std::vector<ray::ActorID>
+jarray_to_actor_id_vec(JNIEnv *env, jobjectArray jarr) {
+  int count = env->GetArrayLength(jarr);
+  std::vector<ray::ActorID> actor_id_vec;
+  for (int i = 0; i < count; i++) {
+    auto bytes = (jbyteArray)(env->GetObjectArrayElement(jarr, i));
+    std::string id_str(ray::ActorID::Size(), 0);
+    env->GetByteArrayRegion(bytes, 0, ray::ActorID::Size(),
+                           reinterpret_cast<jbyte *>(&id_str.front()));
+   actor_id_vec.push_back(ActorID::FromBinary(id_str));
+  }
+
+  return actor_id_vec;
+}
+
 jint throwRuntimeException(JNIEnv *env, const char *message) {
   jclass exClass;
   char className[] = "java/lang/RuntimeException";

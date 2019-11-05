@@ -505,7 +505,7 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
 
   std::vector<bool> wait_results;
   std::vector<std::shared_ptr<RayObject>> results;
-  Status wait_st = core_worker_->Objects().Wait(return_ids, 1, timeout_ms, &wait_results);
+  Status wait_st = core_worker_->Wait(return_ids, 1, timeout_ms, &wait_results);
   if (!wait_st.ok()) {
     STREAMING_LOG(ERROR) << "Wait fail.";
     return nullptr;
@@ -517,7 +517,7 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
     return nullptr;
   }
 
-  Status get_st = core_worker_->Objects().Get(return_ids, -1, &results);
+  Status get_st = core_worker_->Get(return_ids, -1, &results);
   if (!get_st.ok()) {
     STREAMING_LOG(ERROR) << "Get fail.";
     return nullptr;

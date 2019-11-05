@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.ray.api.id.ActorId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.streaming.queue.QueueConsumer;
 import org.ray.streaming.queue.QueueLink;
@@ -36,13 +37,13 @@ public class MemQueueLinkImpl implements QueueLink, Serializable {
 
   @Override
   public QueueProducer registerQueueProducer(Collection<String> outputQueueIds,
-                                             Map<String, Long> outputActorHandls) {
+                                             Map<String, ActorId> outputActorIds) {
     return new MemQueueProducerImpl(outputQueueIds, msgQueueMap, conf);
   }
 
   @Override
   public QueueConsumer registerQueueConsumer(Collection<String> inputQueueIds,
-                                             Map<String, Long> inputActorHandls) {
+                                             Map<String, ActorId> inputActorIds) {
     return new MemQueueConsumerImpl(inputQueueIds, msgQueueMap);
   }
 

@@ -12,7 +12,7 @@ using namespace ray::streaming;
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
     JNIEnv *env, jobject this_obj,
-    jlong core_worker, jlongArray actor_handles_array,
+    jlong core_worker, jobjectArray actor_id_array,
     jobject async_func, jobject sync_func,
     jobjectArray input_queue_id_array,  // byte[][]
     jlongArray seq_id_array, jlongArray streaming_msg_id_array,
@@ -25,14 +25,9 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
       LongVectorFromJLongArray(env, seq_id_array).data;
   std::vector<uint64_t> streaming_msg_ids =
       LongVectorFromJLongArray(env, streaming_msg_id_array).data;
-  std::vector<uint64_t> actor_handles = 
-      LongVectorFromJLongArray(env, actor_handles_array).data;
+  std::vector<ray::ActorID> actor_ids = 
+      jarray_to_actor_id_vec(env, actor_id_array);
 
-  std::vector<ray::ActorID> actor_ids;
-  for (auto &handle : actor_handles) {
-    ray::ActorHandle *handle_ptr = reinterpret_cast<ray::ActorHandle*>(handle);
-    actor_ids.push_back(handle_ptr->GetActorID());
-  }
   // std::vector<ray::ObjectID> abnormal_queues;
   auto *streaming_reader = new StreamingReaderDirectCall(
       reinterpret_cast<ray::CoreWorker *>(core_worker), 
@@ -55,7 +50,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
 JNIEXPORT jlong JNICALL
 Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
     JNIEnv *env, jobject this_obj,
-    jlong core_worker, jlongArray actor_handles,
+    jlong core_worker, jobjectArray actor_id_vec,
     jobject async_func, jobject sync_func,
     jobjectArray output_queue_ids,  // byte[][]
     jlongArray seq_ids, jlong queue_size, jlongArray creator_type,
@@ -76,13 +71,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
   std::vector<ray::ObjectID> remain_id_vec;
 
   LongVectorFromJLongArray create_types_vec(env, creator_type);
-  std::vector<uint64_t> actor_handle_vec = LongVectorFromJLongArray(env, actor_handles).data;
-
-  std::vector<ray::ActorID> actor_ids;
-  for (auto &handle : actor_handle_vec) {
-    ray::ActorHandle *handle_ptr = reinterpret_cast<ray::ActorHandle*>(handle);
-    actor_ids.push_back(handle_ptr->GetActorID());
-  }
+  std::vector<ray::ActorID> actor_ids = jarray_to_actor_id_vec(env, actor_id_vec);
 
   auto *streaming_writer = new StreamingWriterDirectCall(
       reinterpret_cast<ray::CoreWorker *>(core_worker), 
