@@ -114,8 +114,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
-  std::shared_ptr<rpc::DirectActorClient> grpc_client =
-      rpc::DirectActorClient::make(ip_address, port, client_call_manager_);
+  std::shared_ptr<rpc::WorkerTaskClient> grpc_client =
+      std::make_shared<rpc::WorkerTaskClient>(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.
@@ -131,7 +131,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushTask(
-    rpc::DirectActorClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    rpc::WorkerTaskClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));

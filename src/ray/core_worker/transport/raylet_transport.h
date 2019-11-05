@@ -9,7 +9,7 @@
 
 namespace ray {
 
-class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
+class CoreWorkerRayletTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
@@ -27,7 +27,7 @@ class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+                        rpc::SendReplyCallback send_reply_callback);
 
  private:
   /// Raylet client.

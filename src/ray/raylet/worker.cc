@@ -27,8 +27,6 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
   if (port_ > 0) {
     rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
         new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
-    direct_rpc_client_ = std::unique_ptr<rpc::DirectActorClient>(
-        new rpc::DirectActorClient("127.0.0.1", port_, client_call_manager_));
   }
 }
 
@@ -163,7 +161,7 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
   RAY_CHECK(port_ > 0);
   rpc::DirectActorCallArgWaitCompleteRequest request;
   request.set_tag(tag);
-  auto status = direct_rpc_client_->DirectActorCallArgWaitComplete(
+  auto status = rpc_client_->DirectActorCallArgWaitComplete(
       request, [](Status status, const rpc::DirectActorCallArgWaitCompleteReply &reply) {
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();

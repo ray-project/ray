@@ -22,6 +22,26 @@ class WorkerTaskHandler {
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   virtual void HandleAssignTask(const AssignTaskRequest &request, AssignTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a `PushTask` request.
+  /// The implementation can handle this request asynchronously. When hanling is done, the
+  /// `done_callback` should be called.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] done_callback The callback to be called when the request is done.
+  virtual void HandlePushTask(const PushTaskRequest &request, PushTaskReply *reply,
+                              SendReplyCallback send_reply_callback) = 0;
+
+  /// Handle a wait reply for direct actor call arg dependencies.
+  ///
+  /// \param[in] request The request message.
+  /// \param[out] reply The reply message.
+  /// \param[in] send_replay_callback The callback to be called when the request is done.
+  virtual void HandleDirectActorCallArgWaitComplete(
+      const rpc::DirectActorCallArgWaitCompleteRequest &request,
+      rpc::DirectActorCallArgWaitCompleteReply *reply,
+      rpc::SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcServer` for `WorkerService`.
@@ -43,7 +63,7 @@ class WorkerTaskGrpcService : public GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     // Initialize the Factory for `AssignTask` requests.
-    std::unique_ptr<ServerCallFactory> push_task_call_Factory(
+    std::unique_ptr<ServerCallFactory> assign_task_call_Factory(
         new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler, AssignTaskRequest,
                                   AssignTaskReply>(
             service_, &WorkerTaskService::AsyncService::RequestAssignTask,
@@ -51,7 +71,28 @@ class WorkerTaskGrpcService : public GrpcService {
 
     // Set `AssignTask`'s accept concurrency to 5.
     server_call_factories_and_concurrencies->emplace_back(
-        std::move(push_task_call_Factory), 5);
+        std::move(assign_task_call_Factory), 5);
+
+    // Initialize the Factory for `PushTask` requests.
+    std::unique_ptr<ServerCallFactory> push_task_call_Factory(
+        new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler, PushTaskRequest,
+                                  PushTaskReply>(
+            service_, &WorkerTaskService::AsyncService::RequestPushTask, service_handler_,
+            &WorkerTaskHandler::HandlePushTask, cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(push_task_call_Factory), 100);
+
+    // Initialize the Factory for `DirectActorCallArgWaitComplete` requests.
+    std::unique_ptr<ServerCallFactory> wait_complete_call_Factory(
+        new ServerCallFactoryImpl<WorkerTaskService, WorkerTaskHandler,
+                                  DirectActorCallArgWaitCompleteRequest,
+                                  DirectActorCallArgWaitCompleteReply>(
+            service_,
+            &WorkerTaskService::AsyncService::RequestDirectActorCallArgWaitComplete,
+            service_handler_, &WorkerTaskHandler::HandleDirectActorCallArgWaitComplete,
+            cq, main_service_));
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(wait_complete_call_Factory), 100);
   }
 
  private:

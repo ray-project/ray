@@ -25,7 +25,7 @@ namespace ray {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public rpc::WorkerTaskHandler, public rpc::DirectActorHandler {
+class CoreWorker : public rpc::WorkerTaskHandler {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -471,9 +471,6 @@ class CoreWorker : public rpc::WorkerTaskHandler, public rpc::DirectActorHandler
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
-
-  /// The rpc service for `DirectActorService`.
-  rpc::DirectActorGrpcService direct_task_grpc_service_;
 
   friend class CoreWorkerTest;
 };
