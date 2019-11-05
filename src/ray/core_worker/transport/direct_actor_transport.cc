@@ -64,7 +64,6 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   // Connect.
   auto inserted = rpc_clients_.emplace(
       actor_id, rpc::DirectActorClient::make(ip_address, port, client_call_manager_));
-  RAY_CHECK(inserted.second);
   auto &rpc_client = inserted.first->second;
 
   // Submit all pending requests.
