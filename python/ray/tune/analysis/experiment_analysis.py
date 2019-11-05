@@ -217,7 +217,7 @@ class ExperimentAnalysis(Analysis):
             else:
                 metric_score = trial.metric_analysis[metric][mode]
 
-            if not best_metric_score:
+            if best_metric_score is None:
                 best_metric_score = metric_score
                 best_trial = trial
                 continue

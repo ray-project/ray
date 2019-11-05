@@ -10,17 +10,51 @@ import os
 import pandas as pd
 
 import ray
-from ray.tune import run, sample_from, Analysis
+from ray.tune import run, Trainable, sample_from, Analysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
+scores_list = [5, 4, 2, 9, 7, 0, 1, 8, 6, 3]
+scores_list_bkup = scores_list[:]
 
-class TrainableDescending(Trainable):
+
+class TrainableScoresList(Trainable):
     def _setup(self, config):
         self.timestep = 0
-        self._scores = [5, 4, 3, 1, 2]
 
     def _train(self):
-        return {"score": self._scores.pop(0)}
+        return {"score": scores_list.pop(0)}
+
+    def _save(self, checkpoint_dir):
+        pass
+
+    def _restore(self, checkpoint_path):
+        pass
+
+
+class ExperimentAnalysisInMemSuite(unittest.TestCase):
+    def testCompareTrials(self):
+        ray.init(local_mode=True, num_cpus=1)
+        self.test_dir = tempfile.mkdtemp()
+        self.test_name = "analysis_exp"
+        self.ea = run(
+            TrainableScoresList,
+            name=self.test_name,
+            local_dir=self.test_dir,
+            stop={"training_iteration": 2},
+            num_samples=5)
+
+        max_all = self.ea.get_best_trial("score",
+                                         "max").metric_analysis["score"]["max"]
+        min_all = self.ea.get_best_trial("score",
+                                         "min").metric_analysis["score"]["min"]
+        max_last = self.ea.get_best_trial(
+            "score", "max", "last").metric_analysis["score"]["last"]
+        self.assertEqual(max_all, max(scores_list_bkup))
+        self.assertEqual(min_all, min(scores_list_bkup))
+        self.assertEqual(max_last, max(scores_list_bkup[5:]))
+        self.assertNotEqual(max_last, max(scores_list_bkup))
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        ray.shutdown()
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
