@@ -288,8 +288,9 @@ class CoreWorker : public rpc::WorkerTaskHandler {
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleDirectActorAssignTask(const rpc::DirectActorAssignTaskRequest &request,
+                                   rpc::DirectActorAssignTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
@@ -467,7 +468,7 @@ class CoreWorker : public rpc::WorkerTaskHandler {
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
   /// The rpc service for `WorkerTaskService`.
-  rpc::WorkerTaskGrpcService task_grpc_service_;
+  rpc::WorkerGrpcService grpc_service_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;

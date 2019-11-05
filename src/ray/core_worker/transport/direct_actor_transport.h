@@ -67,9 +67,10 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushTask(rpc::WorkerTaskClient &client,
-                std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
-                const TaskID &task_id, int num_returns);
+  void DirectActorAssignTask(rpc::WorkerTaskClient &client,
+                             std::unique_ptr<rpc::DirectActorAssignTaskRequest> request,
+                             const ActorID &actor_id, const TaskID &task_id,
+                             int num_returns);
 
   /// Treat a task as failed.
   ///
@@ -117,7 +118,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::unordered_map<ActorID, std::shared_ptr<rpc::WorkerTaskClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
+  std::unordered_map<ActorID,
+                     std::list<std::unique_ptr<rpc::DirectActorAssignTaskRequest>>>
       pending_requests_;
 
   /// Map from actor id to the tasks that are waiting for reply.
@@ -342,13 +344,14 @@ class CoreWorkerDirectActorTaskReceiver {
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
 
-  /// Handle a `PushTask` request.
+  /// Handle a `DirectActorAssignTask` request.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback);
+  void HandleDirectActorAssignTask(const rpc::DirectActorAssignTaskRequest &request,
+                                   rpc::DirectActorAssignTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback);
 
   /// Handle a `DirectActorCallArgWaitComplete` request.
   ///

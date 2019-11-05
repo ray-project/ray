@@ -25,7 +25,7 @@ const int64_t kMaxBytesInFlight = 16 * 1024 * 1024;
 const int64_t kBaseRequestSize = 1024;
 
 /// Get the estimated size in bytes of the given task.
-const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
+const static int64_t RequestSizeInBytes(const DirectActorAssignTaskRequest &request) {
   int64_t size = kBaseRequestSize;
   for (auto &arg : request.task_spec().args()) {
     size += arg.data().size();
@@ -46,7 +46,7 @@ class WorkerTaskClient : public std::enable_shared_from_this<WorkerTaskClient> {
       : client_call_manager_(client_call_manager) {
     std::shared_ptr<grpc::Channel> channel = grpc::CreateChannel(
         address + ":" + std::to_string(port), grpc::InsecureChannelCredentials());
-    stub_ = WorkerTaskService::NewStub(channel);
+    stub_ = WorkerService::NewStub(channel);
   };
 
   /// Assign a task to the work.
@@ -56,10 +56,10 @@ class WorkerTaskClient : public std::enable_shared_from_this<WorkerTaskClient> {
   /// \return if the rpc call succeeds
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) {
-    auto call = client_call_manager_
-                    .CreateCall<WorkerTaskService, AssignTaskRequest, AssignTaskReply>(
-                        *stub_, &WorkerTaskService::Stub::PrepareAsyncAssignTask, request,
-                        callback);
+    auto call =
+        client_call_manager_
+            .CreateCall<WorkerService, AssignTaskRequest, AssignTaskReply>(
+                *stub_, &WorkerService::Stub::PrepareAsyncAssignTask, request, callback);
     return call->GetStatus();
   }
 
@@ -68,8 +68,9 @@ class WorkerTaskClient : public std::enable_shared_from_this<WorkerTaskClient> {
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  ray::Status PushTask(std::unique_ptr<PushTaskRequest> request,
-                       const ClientCallback<PushTaskReply> &callback) {
+  ray::Status DirectActorAssignTask(
+      std::unique_ptr<DirectActorAssignTaskRequest> request,
+      const ClientCallback<DirectActorAssignTaskReply> &callback) {
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -92,11 +93,12 @@ class WorkerTaskClient : public std::enable_shared_from_this<WorkerTaskClient> {
   ray::Status DirectActorCallArgWaitComplete(
       const DirectActorCallArgWaitCompleteRequest &request,
       const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
-    auto call = client_call_manager_.CreateCall<WorkerTaskService,
-                                                DirectActorCallArgWaitCompleteRequest,
-                                                DirectActorCallArgWaitCompleteReply>(
-        *stub_, &WorkerTaskService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
-        request, callback);
+    auto call =
+        client_call_manager_
+            .CreateCall<WorkerService, DirectActorCallArgWaitCompleteRequest,
+                        DirectActorCallArgWaitCompleteReply>(
+                *stub_, &WorkerService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
+                request, callback);
     return call->GetStatus();
   }
 
@@ -120,10 +122,11 @@ class WorkerTaskClient : public std::enable_shared_from_this<WorkerTaskClient> {
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      client_call_manager_.CreateCall<WorkerTaskService, PushTaskRequest, PushTaskReply>(
-          *stub_, &WorkerTaskService::Stub::PrepareAsyncPushTask, *request,
-          [this, this_ptr, seq_no, task_size, callback](Status status,
-                                                        const rpc::PushTaskReply &reply) {
+      client_call_manager_.CreateCall<WorkerService, DirectActorAssignTaskRequest,
+                                      DirectActorAssignTaskReply>(
+          *stub_, &WorkerService::Stub::PrepareAsyncDirectActorAssignTask, *request,
+          [this, this_ptr, seq_no, task_size, callback](
+              Status status, const rpc::DirectActorAssignTaskReply &reply) {
             {
               std::lock_guard<std::mutex> lock(mutex_);
               if (seq_no > max_finished_seq_no_) {
@@ -147,13 +150,14 @@ class WorkerTaskClient : public std::enable_shared_from_this<WorkerTaskClient> {
   std::mutex mutex_;
 
   /// The gRPC-generated stub.
-  std::unique_ptr<WorkerTaskService::Stub> stub_;
+  std::unique_ptr<WorkerService::Stub> stub_;
 
   /// The `ClientCallManager` used for managing requests.
   ClientCallManager &client_call_manager_;
 
   /// Queue of requests to send.
-  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
+  std::deque<std::pair<std::unique_ptr<DirectActorAssignTaskRequest>,
+                       ClientCallback<DirectActorAssignTaskReply>>>
       send_queue_ GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.
