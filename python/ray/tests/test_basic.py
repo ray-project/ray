@@ -1206,6 +1206,20 @@ def test_direct_actor_enabled(ray_start_regular):
     assert ray.get(obj_id) == 2
 
 
+def test_direct_actor_large_objects(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self):
+            return np.zeros(10000000)
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote()
+    assert isinstance(ray.get(obj_id), np.ndarray)
+
+
 def test_direct_actor_errors(ray_start_regular):
     @ray.remote
     class Actor(object):
