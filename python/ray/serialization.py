@@ -64,10 +64,3 @@ def is_named_tuple(cls):
     if not isinstance(f, tuple):
         return False
     return all(type(n) == str for n in f)
-
-
-class Pickle5Serialized:
-    def __init__(self, inband, writer, memcopy_threads):
-        self.inband = inband
-        self.writer = writer
-        self.memcopy_threads = memcopy_threads

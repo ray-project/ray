@@ -94,7 +94,6 @@ from ray.ray_constants import (
     RAW_BUFFER_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
-from ray.serialization import Pickle5Serialized
 
 # pyarrow cannot be imported until after _raylet finishes initializing
 # (see ray/__init__.py for details).
@@ -647,7 +646,6 @@ cdef CRayStatus check_signals() nogil:
         except KeyboardInterrupt:
             return CRayStatus.Interrupted(b"")
     return CRayStatus.OK()
-
 
 
 cdef void exit_handler() nogil:

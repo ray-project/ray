@@ -290,10 +290,7 @@ class Worker(object):
         else:
             return self._serialize_and_put_pyarrow(value, object_id=object_id)
 
-    def _serialize_and_put_pickle5(self,
-                                   value,
-                                   object_id=None,
-                                   return_buffer=None):
+    def _serialize_and_put_pickle5(self, value, object_id=None):
         """Serialize an object using pickle5 and store it in the object store.
 
         Args:
