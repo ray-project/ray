@@ -97,12 +97,14 @@ struct TaskOptions {
 struct ActorCreationOptions {
   ActorCreationOptions() {}
   ActorCreationOptions(uint64_t max_reconstructions, bool is_direct_call,
+                       int max_concurrency,
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
                        bool is_detached)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
+        max_concurrency(max_concurrency),
         resources(resources),
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
@@ -114,6 +116,8 @@ struct ActorCreationOptions {
   /// Whether to use direct actor call. If this is set to true, callers will submit
   /// tasks directly to the created actor without going through raylet.
   const bool is_direct_call = false;
+  /// The max number of concurrent tasks to run on this direct call actor.
+  const int max_concurrency = 1;
   /// Resources required by the whole lifetime of this actor.
   const std::unordered_map<std::string, double> resources;
   /// Resources required to place this actor.

@@ -11,6 +11,8 @@
 #include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/worker_client.h"
 
+#include <unistd.h>  // pid_t
+
 namespace ray {
 
 namespace raylet {
