@@ -86,7 +86,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       gcs_client_(gcs_options),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
-      task_execution_callback_(task_execution_callback) {
+      task_execution_callback_(task_execution_callback),
+      task_grpc_service_(io_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -111,10 +112,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     // Initialize task receivers.
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    raylet_task_receiver_ =
-        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, task_execution_service_, worker_server_,
-            execute_task));
+    raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+        new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task));
+    worker_server_.RegisterService(task_grpc_service_);
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
                                               worker_server_, execute_task,
@@ -714,6 +714,17 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   return status;
+}
+
+void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
+                                  rpc::AssignTaskReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
+  if (worker_context_.CurrentActorUseDirectCall()) {
+    send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
+                        nullptr);
+    return;
+  }
+  raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
 }
 
 }  // namespace ray
