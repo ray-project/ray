@@ -50,14 +50,16 @@ def train(model, train_iterator, criterion, optimizer, config):
     }
     return stats
 
+
 def validate(model, val_iterator, criterion, config):
     # switch to evaluate mode
     model.eval()
     correct = 0
     total = 0
+    total_loss = 0
     with torch.no_grad():
         for batch_idx, (features, target) in enumerate(val_iterator):
-            if config.get("test_mode") and batch_idx > 0:
+            if config.get("test_mode") and batch_idx > 10:
                 break
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
@@ -65,12 +67,12 @@ def validate(model, val_iterator, criterion, config):
             # compute output
             output = model(features)
             loss = criterion(output, target)
+            total_loss += loss.item() * target.size(0)
             _, predicted = torch.max(output.data, 1)
             total += target.size(0)
             correct += (predicted == target).sum().item()
-    stats = {"mean_accuracy": correct / total}
+    stats = {"mean_accuracy": correct / total, "mean_loss": total_loss / total}
     return stats
-
 
 
 def cifar_creator(batch_size, config):
@@ -136,6 +138,7 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
         lambda config: nn.CrossEntropyLoss(),
         initialization_hook=initialization_hook,
         train_function=train,
+        validation_function=validate,
         num_replicas=num_replicas,
         config=config,
         use_gpu=use_gpu,
@@ -144,6 +147,8 @@ def train_example(num_replicas=1, use_gpu=False, test_mode=False):
     for i in range(5):
         stats = trainer1.train()
         print(stats)
+
+    print(trainer1.validate())
     trainer1.shutdown()
     print("success!")
 
