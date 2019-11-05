@@ -31,7 +31,8 @@ def _convert_to_tf(x):
         return x
 
     if x is not None:
-        x = tf.nest.map_structure(tf.convert_to_tensor, x)
+        x = tf.nest.map_structure(
+            lambda f: tf.convert_to_tensor(f) if f is not None else None, x)
     return x
 
 

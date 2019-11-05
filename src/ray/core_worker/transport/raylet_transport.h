@@ -3,19 +3,21 @@
 
 #include <list>
 
-#include "ray/core_worker/object_interface.h"
-#include "ray/core_worker/transport/transport.h"
+#include "ray/common/ray_object.h"
+#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
 namespace ray {
 
-class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
-                                     public rpc::WorkerTaskHandler {
+class CoreWorkerRayletTaskReceiver : public rpc::WorkerTaskHandler {
  public:
+  using TaskHandler = std::function<Status(
+      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
+      std::vector<std::shared_ptr<RayObject>> *results)>;
+
   CoreWorkerRayletTaskReceiver(WorkerContext &worker_context,
                                std::unique_ptr<RayletClient> &raylet_client,
-                               CoreWorkerObjectInterface &object_interface,
                                boost::asio::io_service &io_service,
                                rpc::GrpcServer &server, const TaskHandler &task_handler);
 
@@ -35,8 +37,6 @@ class CoreWorkerRayletTaskReceiver : public CoreWorkerTaskReceiver,
   WorkerContext &worker_context_;
   /// Raylet client.
   std::unique_ptr<RayletClient> &raylet_client_;
-  // Object interface.
-  CoreWorkerObjectInterface &object_interface_;
   /// The rpc service for `WorkerTaskService`.
   rpc::WorkerTaskGrpcService task_service_;
   /// The callback function to process a task.

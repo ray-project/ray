@@ -227,45 +227,6 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
-ray::Status RayletClient::GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec) {
-  std::unique_ptr<uint8_t[]> reply;
-  // Receive a task from the raylet. This will block until the raylet
-  // gives this client a task.
-  auto status =
-      conn_->AtomicRequestReply(MessageType::GetTask, MessageType::ExecuteTask, reply);
-  if (!status.ok()) return status;
-  // Parse the flatbuffer object.
-  auto reply_message = flatbuffers::GetRoot<ray::protocol::GetTaskReply>(reply.get());
-  // Set the resource IDs for this task.
-  resource_ids_.clear();
-  for (size_t i = 0;
-       i < reply_message->fractional_resource_ids()->resource_infos()->size(); ++i) {
-    auto const &fractional_resource_ids =
-        reply_message->fractional_resource_ids()->resource_infos()->Get(i);
-    auto &acquired_resources =
-        resource_ids_[string_from_flatbuf(*fractional_resource_ids->resource_name())];
-
-    size_t num_resource_ids = fractional_resource_ids->resource_ids()->size();
-    size_t num_resource_fractions = fractional_resource_ids->resource_fractions()->size();
-    RAY_CHECK(num_resource_ids == num_resource_fractions);
-    RAY_CHECK(num_resource_ids > 0);
-    for (size_t j = 0; j < num_resource_ids; ++j) {
-      int64_t resource_id = fractional_resource_ids->resource_ids()->Get(j);
-      double resource_fraction = fractional_resource_ids->resource_fractions()->Get(j);
-      if (num_resource_ids > 1) {
-        int64_t whole_fraction = resource_fraction;
-        RAY_CHECK(whole_fraction == resource_fraction);
-      }
-      acquired_resources.push_back(std::make_pair(resource_id, resource_fraction));
-    }
-  }
-
-  // Return the copy of the task spec and pass ownership to the caller.
-  task_spec->reset(
-      new ray::TaskSpecification(string_from_flatbuf(*reply_message->task_spec())));
-  return ray::Status::OK();
-}
-
 ray::Status RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }

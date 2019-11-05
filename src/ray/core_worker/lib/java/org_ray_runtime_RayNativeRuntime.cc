@@ -39,11 +39,11 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
 
   auto task_execution_callback =
       [](ray::TaskType task_type, const ray::RayFunction &ray_function,
-         const JobID &job_id, const ActorID &actor_id,
          const std::unordered_map<std::string, double> &required_resources,
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids,
+         const bool return_results_directly,
          std::vector<std::shared_ptr<ray::RayObject>> *results) {
         JNIEnv *env = local_env;
         RAY_CHECK(env);
@@ -96,7 +96,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
   local_env = env;
   local_java_task_executor = javaTaskExecutor;
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  core_worker->Execution().Run();
+  core_worker->StartExecutingTasks();
   local_env = nullptr;
   local_java_task_executor = nullptr;
 }
