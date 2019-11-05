@@ -4,18 +4,17 @@ from __future__ import print_function
 
 import time
 import torch
-import torch.nn as nn
 
-from ray.experimental.sgd import utils
+from ray.experimental.sgd.utils import TimerStat
 
 
-def train(train_iterator, model, criterion, optimizer):
+def train(model, train_iterator, criterion, optimizer, config):
     """Runs 1 training epoch"""
-    batch_time = utils.AverageMeter()
-    data_time = utils.AverageMeter()
-    losses = utils.AverageMeter()
+    batch_time = AverageMeter()
+    data_time = AverageMeter()
+    losses = AverageMeter()
 
-    timers = {k: utils.TimerStat() for k in ["d2h", "fwd", "grad", "apply"]}
+    timers = {k: TimerStat() for k in ["d2h", "fwd", "grad", "apply"]}
 
     # switch to train mode
     model.train()
@@ -63,16 +62,17 @@ def train(train_iterator, model, criterion, optimizer):
     return stats
 
 
-def validate(val_loader, model, criterion):
-    batch_time = utils.AverageMeter()
-    losses = utils.AverageMeter()
+def validate(model, val_iterator, criterion, config):
+    batch_time = AverageMeter()
+    losses = AverageMeter()
 
     # switch to evaluate mode
     model.eval()
-
+    correct = 0
+    total = 0
     with torch.no_grad():
         end = time.time()
-        for i, (features, target) in enumerate(val_loader):
+        for i, (features, target) in enumerate(val_iterator):
 
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
@@ -81,6 +81,9 @@ def validate(val_loader, model, criterion):
             # compute output
             output = model(features)
             loss = criterion(output, target)
+            _, predicted = torch.max(output.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
 
             # measure accuracy and record loss
             losses.update(loss.item(), features.size(0))
@@ -90,18 +93,24 @@ def validate(val_loader, model, criterion):
             end = time.time()
 
     stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
+    stats.update(mean_accuracy=correct / total)
     return stats
 
 
-def sgd_mse_optimizer(model, config):
-    """Returns the mean squared error criterion and SGD optimizer.
+class AverageMeter(object):
+    """Computes and stores the average and current value."""
 
-    Args:
-        model (torch.nn.Module): the model to optimize.
-        config (dict): configuration for the optimizer.
-            lr (float): the learning rate. defaults to 0.01.
-    """
-    learning_rate = config.get("lr", 0.01)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    return criterion, optimizer
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
