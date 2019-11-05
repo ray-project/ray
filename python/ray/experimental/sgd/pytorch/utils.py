@@ -2,14 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from contextlib import closing
 import numpy as np
-import socket
 import time
 import torch
-import torch.nn as nn
 
 from ray.experimental.sgd.utils import TimerStat
+
 
 def train(model, train_iterator, criterion, optimizer, config):
     """Runs 1 training epoch"""
