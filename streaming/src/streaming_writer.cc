@@ -116,13 +116,8 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
     STREAMING_LOG(WARNING) << "stop in write message to ringbuffer";
     return 0;
   }
-  std::shared_ptr<uint8_t> msg_data;
-  auto new_buffer = new uint8_t[data_size];
-  std::memcpy(new_buffer, data, data_size);
-  msg_data.reset(new_buffer);
-
   ring_buffer_ptr->Push(std::make_shared<StreamingMessage>(
-      msg_data, data_size, write_message_id, message_type));
+      data, data_size, write_message_id, message_type));
 
   return write_message_id;
 }
@@ -168,8 +163,8 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     // init channelIdGenerator or create it
-    StreamingStatus status = InitChannel(queue_id_vec[i], channel_message_id_vec[i],
-                                         queue_size_vec[i]);
+    StreamingStatus status =
+        InitChannel(queue_id_vec[i], channel_message_id_vec[i], queue_size_vec[i]);
     if (status != StreamingStatus::OK) {
       return status;
     }

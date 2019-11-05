@@ -100,6 +100,33 @@ cc_binary(
 )
 
 cc_binary(
+    name = "streaming_message_ring_buffer_tests",
+    srcs = [
+        "test/streaming_message_ring_buffer_tests.cc",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+cc_binary(
+    name = "streaming_message_serialization_tests",
+    srcs = [
+        "test/streaming_message_serialization_tests.cc",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+
+cc_binary(
     name = "streaming_writer_tests_with_streamingqueue",
     srcs = [
         "test/streaming_writer_tests_with_streamingqueue.cc",
@@ -150,3 +177,4 @@ filegroup(
     }),
     visibility = ["//visibility:public"],
 )
+

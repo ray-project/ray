@@ -9,12 +9,27 @@
 
 namespace ray {
 namespace streaming {
-StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> data, uint32_t data_size,
+
+StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size,
                                    uint64_t seq_id, StreamingMessageType message_type)
-    : message_data_(std::move(data)),
+    : message_data_(data),
       data_size_(data_size),
       message_type_(message_type),
       message_id_(seq_id) {}
+
+StreamingMessage::StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size,
+                                   uint64_t seq_id, StreamingMessageType message_type)
+    : message_data_(data),
+      data_size_(data_size),
+      message_type_(message_type),
+      message_id_(seq_id) {}
+
+StreamingMessage::StreamingMessage(const uint8_t *data, uint32_t data_size,
+                                   uint64_t seq_id, StreamingMessageType message_type)
+    : data_size_(data_size), message_type_(message_type), message_id_(seq_id) {
+  message_data_.reset(new uint8_t[data_size], std::default_delete<uint8_t[]>());
+  std::memcpy(message_data_.get(), data, data_size_);
+}
 
 StreamingMessage::StreamingMessage(const StreamingMessage &msg) {
   data_size_ = msg.data_size_;
