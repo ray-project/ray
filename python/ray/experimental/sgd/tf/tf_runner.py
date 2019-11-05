@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 def _try_import_strategy():
     """Late import for Tesnorflow"""
-    from tensorflow.distribute.experimental import MultiWorkerMirroredStrategy
-    return MultiWorkerMirroredStrategy
+    import tensorflow as tf
+    return tf.distribute.experimental.MultiWorkerMirroredStrategy
 
 
 class TFRunner(object):
