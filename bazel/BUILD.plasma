@@ -1,6 +1,12 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
-COPTS = ["-DARROW_USE_GLOG"]
+COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+    ],
+    "//conditions:default": [
+        "-DARROW_USE_GLOG",
+    ],
+})
 
 cc_library(
     name = "arrow",
@@ -20,6 +26,7 @@ cc_library(
         "cpp/src/arrow/buffer.h",
         "cpp/src/arrow/io/concurrency.h",
         "cpp/src/arrow/io/interfaces.h",
+        "cpp/src/arrow/io/mman.h",
         "cpp/src/arrow/io/util_internal.h",
         "cpp/src/arrow/memory_pool.h",
         "cpp/src/arrow/result.h",
@@ -41,6 +48,7 @@ cc_library(
         "cpp/src/arrow/util/thread_pool.h",
         "cpp/src/arrow/util/type_traits.h",
         "cpp/src/arrow/util/ubsan.h",
+        "cpp/src/arrow/util/utf8.h",
         "cpp/src/arrow/util/variant.h",
         "cpp/src/arrow/util/visibility.h",
         "cpp/src/arrow/util/windows_compatibility.h",
