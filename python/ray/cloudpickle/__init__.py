@@ -4,7 +4,7 @@ import sys
 
 CLOUDPICKLE_PATH = os.path.dirname(os.path.realpath(__file__))
 
-if os.path.exists(os.path.join(CLOUDPICKLE_PATH, "..", "pickle5_files")):
+if os.path.exists(os.path.join(CLOUDPICKLE_PATH, "..", "pickle5_files", "pickle5")):
     HAS_PICKLE5 = True
 else:
     HAS_PICKLE5 = False
