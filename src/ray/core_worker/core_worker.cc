@@ -87,8 +87,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
-      task_grpc_service_(io_service_, *this),
-      direct_task_grpc_service_(io_service_, *this) {
+      task_grpc_service_(task_execution_service_, *this),
+      direct_task_grpc_service_(task_execution_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
