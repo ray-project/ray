@@ -1586,6 +1586,51 @@ def connect(node,
             worker.run_function_on_all_workers(function)
     worker.cached_functions_to_run = None
 
+    if worker.use_pickle:
+
+        def id_serializer(obj):
+            if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
+                raise NotImplementedError(
+                    "Objects produced by direct actor calls cannot be "
+                    "passed to other tasks as arguments.")
+            return obj.__reduce__()
+
+        def id_deserializer(serialized_obj):
+            return serialized_obj[0](*serialized_obj[1])
+
+        for id_type in ray._raylet._ID_TYPES:
+            _register_cloudpickle_serializer(id_type, id_serializer,
+                                             id_deserializer)
+
+        def actor_handle_serializer(obj):
+            return obj._serialization_helper(True)
+
+        def actor_handle_deserializer(serialized_obj):
+            new_handle = ray.actor.ActorHandle.__new__(ray.actor.ActorHandle)
+            new_handle._deserialization_helper(serialized_obj, True)
+            return new_handle
+
+        # We register this serializer on each worker instead of calling
+        # _register_custom_serializer from the driver so that isinstance still
+        # works.
+        _register_cloudpickle_serializer(ray.actor.ActorHandle,
+                                         actor_handle_serializer,
+                                         actor_handle_deserializer)
+
+
+def _register_cloudpickle_serializer(cls, serializer, deserializer):
+    if pickle.FAST_CLOUDPICKLE_USED:
+        # construct a reducer
+        pickle.CloudPickler.dispatch[
+            cls] = lambda obj: (deserializer, (serializer(obj), ))
+    else:
+
+        def _CloudPicklerReducer(_self, obj):
+            _self.save_reduce(deserializer, (serializer(obj), ), obj=obj)
+
+        # use a placeholder for 'self' argument
+        pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+
 
 def disconnect(exiting_interpreter=False):
     """Disconnect this worker from the raylet and object store."""
@@ -1817,18 +1862,7 @@ def _register_custom_serializer(cls,
 
     def register_class_for_serialization(worker_info):
         if worker_info["worker"].use_pickle:
-            if pickle.FAST_CLOUDPICKLE_USED:
-                # construct a reducer
-                pickle.CloudPickler.dispatch[
-                    cls] = lambda obj: (deserializer, (serializer(obj), ))
-            else:
-
-                def _CloudPicklerReducer(_self, obj):
-                    _self.save_reduce(
-                        deserializer, (serializer(obj), ), obj=obj)
-
-                # use a placeholder for 'self' argument
-                pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+            _register_cloudpickle_serializer(cls, serializer, deserializer)
         else:
             # TODO(rkn): We need to be more thoughtful about what to do if
             # custom serializers have already been registered for class_id.
