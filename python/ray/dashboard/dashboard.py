@@ -404,14 +404,15 @@ class RayletStats(threading.Thread):
         counter = 0
         while True:
             time.sleep(1.0)
+            replies = {}
+            for node in self.nodes:
+                node_id = node["NodeID"]
+                stub = self.stubs[node_id]
+                reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+                replies[node["NodeManagerAddress"]] = reply
             with self._raylet_stats_lock:
-                for node in self.nodes:
-                    node_id = node["NodeID"]
-                    stub = self.stubs[node_id]
-                    reply = stub.GetNodeStats(
-                        node_manager_pb2.NodeStatsRequest())
-                    self._raylet_stats[node[
-                        "NodeManagerAddress"]] = MessageToDict(reply)
+                for address, reply in replies.items():
+                    self._raylet_stats[address] = MessageToDict(reply)
             counter += 1
             # From time to time, check if new nodes have joined the cluster
             # and update self.nodes
