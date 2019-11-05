@@ -176,7 +176,7 @@ void RayLog::UninstallSignalAction() {
   std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
 #ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
   for (int signal_num : installed_signals) {
-    signal(signal_num, SIG_DFL);
+    RAY_CHECK(signal(signal_num, SIG_DFL) != SIG_ERR);
   }
 #else
   struct sigaction sig_action;
@@ -184,7 +184,7 @@ void RayLog::UninstallSignalAction() {
   sigemptyset(&sig_action.sa_mask);
   sig_action.sa_handler = SIG_DFL;
   for (int signal_num : installed_signals) {
-    sigaction(signal_num, &sig_action, NULL);
+    RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
   }
 #endif
 #endif
