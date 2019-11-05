@@ -392,7 +392,8 @@ class RayletStats(threading.Thread):
                 if node_id not in self.stubs:
                     channel = grpc.insecure_channel("{}:{}".format(
                         node["NodeManagerAddress"], node["NodeManagerPort"]))
-                    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+                    stub = node_manager_pb2_grpc.NodeManagerServiceStub(
+                        channel)
                     self.stubs[node_id] = stub
 
     def get_raylet_stats(self) -> Dict:
