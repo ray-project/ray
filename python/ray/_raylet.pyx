@@ -1060,7 +1060,7 @@ cdef class CoreWorker:
                 data_sizes.push_back(serialized_object.total_bytes)
                 metadatas.push_back(empty_metadata)
 
-        check_status(self.core_worker.get().GetReturnObjects(
+        check_status(self.core_worker.get().AllocateReturnObjects(
             return_ids, data_sizes, metadatas, returns))
 
         for i, serialized_object in enumerate(serialized_objects):
