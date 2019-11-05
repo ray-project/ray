@@ -58,25 +58,26 @@ void ActorHandle::SetActorTaskSpec(TaskSpecBuilder &builder,
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
 
-void ActorHandle::Connect(const gcs::ActorTableData &data,
-                          rpc::ClientCallManager &client_call_manager) {
-  RAY_CHECK(data.state() == gcs::ActorTableData::ALIVE);
-  data_.reset(new gcs::ActorTableData(data));
-  rpc_client_ = rpc::DirectActorClient::make(data_->ip_address(), data_->port(),
-                                             client_call_manager);
+void ActorHandle::UpdateLocation(const ClientID &node_id) {
+  state_ = gcs::ActorTableData::ALIVE;
+  node_id_ = node_id;
 }
 
-void ActorHandle::Reset(const gcs::ActorTableData &data, bool reset_task_counter) {
-  RAY_CHECK(data.state() != gcs::ActorTableData::ALIVE);
-  data_.reset(new gcs::ActorTableData(data));
-  // Disconnect from the RPC client.
-  rpc_client_.reset();
-
+void ActorHandle::MarkFailed(bool reset_task_counter) {
+  state_ = gcs::ActorTableData::RECONSTRUCTING;
+  node_id_ = ClientID::Nil();
   if (reset_task_counter) {
     std::unique_lock<std::mutex> guard(mutex_);
     task_counter_ = 0;
     actor_cursor_ = ObjectID::FromBinary(inner_.actor_cursor());
   }
+}
+
+void ActorHandle::MarkDead() {
+  state_ = gcs::ActorTableData::DEAD;
+  RAY_CHECK(state_.has_value());
+  RAY_CHECK(IsDead());
+  node_id_ = ClientID::Nil();
 }
 
 }  // namespace ray

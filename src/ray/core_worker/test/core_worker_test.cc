@@ -208,8 +208,8 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
     if (!status.ok()) {
       return false;
     }
-    bool actor_alive = handle->ActorState() == gcs::ActorTableData::ALIVE;
-    return wait_alive ? actor_alive : !actor_alive;
+    bool actor_location_unknown = handle->NodeId().IsNil();
+    return wait_alive ? !actor_location_unknown : actor_location_unknown;
   };
 
   return WaitForCondition(condition_func, timeout_ms);

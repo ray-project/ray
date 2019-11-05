@@ -29,23 +29,13 @@ class ActorHandle {
   /// Constructs an ActorHandle from a serialized string.
   ActorHandle(const std::string &serialized);
 
-  absl::optional<gcs::ActorTableData::ActorState> ActorState() const {
-    if (data_ == nullptr) {
-      return absl::optional<gcs::ActorTableData::ActorState>();
-    } else {
-      return data_->state();
-    }
+  /// Whether the actor is dead. If yes, then the actor can never become alive
+  /// again.
+  bool IsDead() const {
+    return state_.has_value() ? *state_ == gcs::ActorTableData::DEAD : false;
   }
 
-  ClientID NodeId() const {
-    if (data_ == nullptr) {
-      return ClientID::Nil();
-    } else {
-      return ClientID::FromBinary(data_->node_manager_id());
-    }
-  }
-
-  std::shared_ptr<rpc::DirectActorClient> &RpcClient() { return rpc_client_; }
+  ClientID NodeId() const { return node_id_; }
 
   ActorID GetActorID() const { return ActorID::FromBinary(inner_.actor_id()); };
 
@@ -66,32 +56,30 @@ class ActorHandle {
 
   void Serialize(std::string *output);
 
-  /// Connect to the actor.
+  /// Update the actor's location.
   ///
-  /// If the actor dies, disconnect via ActorHandle::Reset.
-  ///
-  /// \param[in] data The actor's data in the GCS.
-  /// \param[in] client_call_manager The service used to send RPCs to the actor.
-  void Connect(const gcs::ActorTableData &data,
-               rpc::ClientCallManager &client_call_manager);
+  /// \param[in] node_id The ID of the actor's new node location.
+  void UpdateLocation(const ClientID &node_id);
 
-  /// Reset the handle state after the actor has died.
+  /// Mark the actor as failed.
   ///
-  /// If the actor is restarted, connect via ActorHandle::Connect.
+  /// TODO(swang): Remove reset_task_counter flag once we remove raylet codepath.
   ///
-  /// This should be called whenever the actor is restarted, since the new
-  /// instance of the actor does not have the previous sequence number.
-  void Reset(const gcs::ActorTableData &data, bool reset_task_counter);
+  /// \param[in] reset_task_counter Whether to reset the task counter. This
+  /// should only be set to false for the raylet codepath.
+  void MarkFailed(bool reset_task_counter);
+
+  /// Mark the actor as dead. The actor should never become alive again.
+  void MarkDead();
 
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
-  /// Actor's state (e.g. alive, dead, reconstrucing) and location.
-  std::unique_ptr<gcs::ActorTableData> data_;
-  /// GRPC client to the actor. This must be a shared pointer so that the
-  /// client is kept alive if there are pending callbacks after when the client
-  /// disconnects.
-  std::shared_ptr<rpc::DirectActorClient> rpc_client_;
+
+  /// The actor's state (alive, dead, reconstructing, or unknown).
+  absl::optional<gcs::ActorTableData::ActorState> state_;
+  /// Actor node location. Nil if we do not know whether the actor is alive or not.
+  ClientID node_id_;
 
   /// The unique id of the dummy object returned by the previous task.
   /// TODO: This can be removed once we schedule actor tasks by task counter

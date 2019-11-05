@@ -1160,10 +1160,12 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 
   const Task task(task_message);
 
-  // The creator of the actor must listen for actor creation failure so that it
+  // The creator of an actor must listen for actor creation failure so that it
   // can mark the actor as dead if the task fails because of node failure.
-  reconstruction_policy_.ListenAndMaybeReconstruct(
-      task.GetTaskSpecification().ActorDummyObject());
+  if (task.GetTaskSpecification().IsActorCreationTask()) {
+    reconstruction_policy_.ListenAndMaybeReconstruct(
+        task.GetTaskSpecification().ActorDummyObject());
+  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.

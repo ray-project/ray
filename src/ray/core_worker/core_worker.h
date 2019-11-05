@@ -389,8 +389,6 @@ class CoreWorker {
   boost::asio::io_service io_service_;
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
   /// Timer used to periodically send heartbeat containing active object IDs to the
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;

@@ -17,11 +17,12 @@ bool HasByReferenceArgs(const TaskSpecification &spec) {
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service,
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-    : io_service_(io_service), store_provider_(std::move(store_provider)) {}
+    : io_service_(io_service),
+      client_call_manager_(io_service),
+      store_provider_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
-    const TaskSpecification &task_spec,
-    std::shared_ptr<rpc::DirectActorClient> &rpc_client) {
+    const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
 
   RAY_CHECK(task_spec.IsActorTask());
@@ -35,7 +36,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
   std::unique_lock<std::mutex> guard(mutex_);
 
-  if (rpc_client == nullptr) {
+  auto it = rpc_clients_.find(actor_id);
+  if (it == rpc_clients_.end()) {
     // Actor is not yet created, or is being reconstructed, cache the request
     // and submit after actor is alive.
     // TODO(zhijunfu): it might be possible for a user to specify an invalid
@@ -46,7 +48,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
   } else {
     // Submit request.
-    PushTask(*rpc_client, std::move(request), actor_id, task_id, num_returns);
+    PushTask(*it->second, std::move(request), actor_id, task_id, num_returns);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -54,8 +56,34 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::FailPendingTasks(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
+                                                      const std::string &ip_address,
+                                                      int port) {
   std::unique_lock<std::mutex> guard(mutex_);
+
+  // Connect.
+  auto inserted = rpc_clients_.emplace(
+      actor_id, rpc::DirectActorClient::make(ip_address, port, client_call_manager_));
+  RAY_CHECK(inserted.second);
+  auto &rpc_client = inserted.first->second;
+
+  // Submit all pending requests.
+  auto &requests = pending_requests_[actor_id];
+  while (!requests.empty()) {
+    auto request = std::move(requests.front());
+    auto num_returns = request->task_spec().num_returns();
+    auto task_id = TaskID::FromBinary(request->task_spec().task_id());
+    PushTask(*rpc_client, std::move(request), actor_id, task_id, num_returns);
+    requests.pop_front();
+  }
+}
+
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id) {
+  std::unique_lock<std::mutex> guard(mutex_);
+
+  // Disconnect.
+  rpc_clients_.erase(actor_id);
+
   // For tasks that have been sent and are waiting for replies, treat them
   // as failed when the destination actor is dead or reconstructing.
   auto iter = waiting_reply_tasks_.find(actor_id);
@@ -76,19 +104,6 @@ void CoreWorkerDirectActorTaskSubmitter::FailPendingTasks(const ActorID &actor_i
                         request->task_spec().num_returns(), rpc::ErrorType::ACTOR_DIED);
     }
     pending_requests_.erase(pending_it);
-  }
-}
-
-void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(
-    const ActorID &actor_id, std::shared_ptr<rpc::DirectActorClient> &rpc_client) {
-  // Submit all pending requests.
-  auto &requests = pending_requests_[actor_id];
-  while (!requests.empty()) {
-    auto request = std::move(requests.front());
-    auto num_returns = request->task_spec().num_returns();
-    auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    PushTask(*rpc_client, std::move(request), actor_id, task_id, num_returns);
-    requests.pop_front();
   }
 }
 

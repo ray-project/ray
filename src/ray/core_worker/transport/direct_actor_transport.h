@@ -44,26 +44,25 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
-  /// \param[in] rpc_client The gRPC client to the actor. This may be null if
-  /// we do not know where the actor is yet.
   /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(const TaskSpecification &task_spec,
-                    std::shared_ptr<rpc::DirectActorClient> &rpc_client);
+  Status SubmitTask(const TaskSpecification &task_spec);
 
   /// Create connection to actor and send all pending tasks.
-  /// Note that this function doesn't take lock, the caller is expected to hold
-  /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
-  /// \param[in] rpc_client The gRPC client to the actor. This is never null.
+  /// \param[in] ip_address The new IP address of the actor.
+  /// \param[in] port The new IP port of the actor.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id,
-                        std::shared_ptr<rpc::DirectActorClient> &rpc_client);
+  void ConnectActor(const ActorID &actor_id, const std::string &ip_address,
+                    const int port);
 
-  void FailPendingTasks(const ActorID &actor_id);
+  /// Disconnect from a failed actor.
+  ///
+  /// \param[in] actor_id Actor to disconnect.
+  void DisconnectActor(const ActorID &actor_id);
 
   /// Treat a task as failed.
-  /// TODO: This should be moved to the CoreWorker.
+  /// TODO(swang): This should be moved to the CoreWorker.
   ///
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
@@ -89,9 +88,18 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// The IO event loop.
   boost::asio::io_service &io_service_;
+  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
+  rpc::ClientCallManager client_call_manager_;
 
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
+
+  /// Map from actor id to rpc client. This only includes actors that we send tasks to.
+  /// We use shared_ptr to enable shared_from_this for pending client callbacks.
+  ///
+  /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
+  /// subscribe updates for a specific actor.
+  std::unordered_map<ActorID, std::shared_ptr<rpc::DirectActorClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
   std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
@@ -102,8 +110,6 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// The store provider.
   std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
-
-  friend class CoreWorkerTest;
 };
 
 /// Object dependency and RPC state of an inbound request.
