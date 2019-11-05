@@ -164,8 +164,9 @@ class PyTorchTrainer(object):
         """Evaluates the model on the validation data set."""
         worker_stats = ray.get([w.validate.remote() for w in self.workers])
         validation_stats = worker_stats[0].copy()
-        validation_stats["validation_loss"] = np.mean(
-            [s["validation_loss"] for s in worker_stats])
+        if "validation_loss" in validation_stats:
+            validation_stats["validation_loss"] = np.nanmean(
+                [s.get("validation_loss", np.nan) for s in worker_stats])
         return validation_stats
 
     def get_model(self):

@@ -50,6 +50,28 @@ def train(model, train_iterator, criterion, optimizer, config):
     }
     return stats
 
+def validate(model, val_iterator, criterion, config):
+    # switch to evaluate mode
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for batch_idx, (features, target) in enumerate(val_iterator):
+            if config.get("test_mode") and batch_idx > 0:
+                break
+            if torch.cuda.is_available():
+                features = features.cuda(non_blocking=True)
+                target = target.cuda(non_blocking=True)
+            # compute output
+            output = model(features)
+            loss = criterion(output, target)
+            _, predicted = torch.max(output.data, 1)
+            total += target.size(0)
+            correct += (predicted == target).sum().item()
+    stats = {"mean_accuracy": correct / total}
+    return stats
+
+
 
 def cifar_creator(batch_size, config):
     transform_train = transforms.Compose([
@@ -132,6 +154,8 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         "data_creator": cifar_creator,
         "optimizer_creator": optimizer_creator,
         "loss_creator": lambda config: nn.CrossEntropyLoss(),
+        "train_function": train,
+        "validation_function": validate,
         "num_replicas": num_replicas,
         "initialization_hook": initialization_hook,
         "use_gpu": use_gpu,
@@ -148,9 +172,9 @@ def tune_example(num_replicas=1, use_gpu=False, test_mode=False):
         num_samples=2,
         config=config,
         stop={"training_iteration": 2},
-        verbose=1)
+        verbose=2)
 
-    return analysis.get_best_config(metric="validation_loss", mode="min")
+    return analysis.get_best_config(metric="mean_accuracy", mode="max")
 
 
 if __name__ == "__main__":
