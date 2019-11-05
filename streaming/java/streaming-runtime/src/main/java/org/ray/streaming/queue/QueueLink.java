@@ -32,10 +32,10 @@ public interface QueueLink {
    * Create queue producer of output queues
    *
    * @param outputQueueIds output queue ids
-   * @param inputActorHandles input actor handles
+   * @param outputActorHandles output actor handles
    * @return queue producer
    */
-  QueueProducer registerQueueProducer(Collection<String> outputQueueIds, Map<String, Long> inputActorHandles);
+  QueueProducer registerQueueProducer(Collection<String> outputQueueIds, Map<String, Long> outputActorHandles);
 
   /**
    * Create queue consumer of input queues
