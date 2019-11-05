@@ -331,7 +331,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *return_by_value)>;
 
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     boost::asio::io_service &main_io_service,

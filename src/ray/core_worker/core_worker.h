@@ -33,7 +33,7 @@ class CoreWorker {
       const std::unordered_map<std::string, double> &required_resources,
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<ObjectID> &arg_reference_ids,
-      const std::vector<ObjectID> &return_ids, const bool return_results_directly,
+      const std::vector<ObjectID> &return_ids,
       std::vector<std::shared_ptr<RayObject>> *results)>;
 
  public:
@@ -282,6 +282,19 @@ class CoreWorker {
   /// \return void.
   void StartExecutingTasks();
 
+  /// Allocate the return objects for an executing task. The caller should write into the
+  /// data buffers of the allocated buffers.
+  ///
+  /// \param[in] object_ids Object IDs of the return values.
+  /// \param[in] data_sizes Sizes of the return values.
+  /// \param[in] metadatas Metadata buffers of the return values.
+  /// \param[out] return_objects RayObjects containing buffers to write results into.
+  /// \return Status.
+  Status AllocateReturnObjects(const std::vector<ObjectID> &object_ids,
+                               const std::vector<size_t> &data_sizes,
+                               const std::vector<std::shared_ptr<Buffer>> &metadatas,
+                               std::vector<std::shared_ptr<RayObject>> *return_objects);
+
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -321,11 +334,12 @@ class CoreWorker {
   ///
   /// \param spec[in] Task specification.
   /// \param spec[in] Resource IDs of resources assigned to this worker.
-  /// \param results[out] Results for task execution.
+  /// \param results[out] Result objects that should be returned by value (not via
+  ///                     plasma).
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const ResourceMappingType &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *results);
+                     std::vector<std::shared_ptr<RayObject>> *return_by_value);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
