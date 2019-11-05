@@ -258,11 +258,6 @@ def run(run_or_experiment,
 
     runner.add_experiment(experiment)
 
-    if IS_NOTEBOOK:
-        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
-    else:
-        reporter = CLIReporter()
-
     # User Warning for GPUs
     if trial_executor.has_gpus():
         if isinstance(resources_per_trial,
@@ -280,6 +275,93 @@ def run(run_or_experiment,
                            "You can also override "
                            "`Trainable.default_resource_request` if using the "
                            "Trainable API.")
+    return _execute_runner(
+        runner,
+        verbose=verbose,
+        return_trials=return_trials,
+        raise_on_failed_trial=raise_on_failed_trial)
+
+
+def run_experiments(experiments,
+                    search_alg=None,
+                    scheduler=None,
+                    with_server=False,
+                    server_port=TuneServer.DEFAULT_PORT,
+                    sync_to_cloud=None,
+                    global_checkpoint_period=10,
+                    verbose=2,
+                    resume=False,
+                    queue_trials=False,
+                    reuse_actors=False,
+                    trial_executor=None,
+                    ray_auto_init=True,
+                    return_trials=False,
+                    raise_on_failed_trial=True):
+    """Runs and blocks until all trials finish.
+
+    See `tune.run` for parameter docstrings.
+
+    .. warning:: Tune does not support resuming multi-experiments.
+
+    Examples:
+        >>> experiment_spec = Experiment("experiment", my_func)
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> experiment_spec = {"experiment": {"run": my_func}}
+        >>> run_experiments(experiments=experiment_spec)
+
+        >>> run_experiments(
+        >>>     experiments=experiment_spec,
+        >>>     scheduler=MedianStoppingRule(...))
+
+        >>> run_experiments(
+        >>>     experiments=experiment_spec,
+        >>>     search_alg=SearchAlgorithm(),
+        >>>     scheduler=MedianStoppingRule(...))
+
+    Returns:
+        List of Trial objects, holding data for each executed trial.
+
+    """
+    # This is important to do this here
+    # because it schematize the experiments
+    # and it conducts the implicit registration.
+    experiments = convert_to_experiment_list(experiments)
+    trial_executor = trial_executor or RayTrialExecutor(
+        queue_trials=queue_trials,
+        reuse_actors=reuse_actors,
+        ray_auto_init=ray_auto_init)
+
+    runner = TrialRunner(
+        search_alg=search_alg or BasicVariantGenerator(),
+        scheduler=scheduler or FIFOScheduler(),
+        local_checkpoint_dir=experiments[0].checkpoint_dir,
+        remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
+        sync_to_cloud=sync_to_cloud,
+        checkpoint_period=global_checkpoint_period,
+        resume=resume,
+        launch_web_server=with_server,
+        server_port=server_port,
+        verbose=bool(verbose > 1),
+        trial_executor=trial_executor)
+
+    for experiment in experiments:
+        runner.add_experiment(experiment)
+    return _execute_runner(
+        runner,
+        verbose=verbose,
+        return_trials=return_trials,
+        raise_on_failed_trial=raise_on_failed_trial)
+
+
+def _execute_runner(runner,
+                    verbose=2,
+                    return_trials=False,
+                    raise_on_failed_trial=True):
+    if IS_NOTEBOOK:
+        reporter = JupyterNotebookReporter(overwrite=verbose < 2)
+    else:
+        reporter = CLIReporter()
 
     last_debug = 0
     while not runner.is_finished():
@@ -317,59 +399,3 @@ def run(run_or_experiment,
                 "`analysis.trials` to retrieve a list of trials. "
                 "This message will be removed in future versions of Tune.")
     return ExperimentAnalysis(runner.checkpoint_file, trials=trials)
-
-
-def run_experiments(experiments,
-                    search_alg=None,
-                    scheduler=None,
-                    with_server=False,
-                    server_port=TuneServer.DEFAULT_PORT,
-                    verbose=2,
-                    resume=False,
-                    queue_trials=False,
-                    reuse_actors=False,
-                    trial_executor=None,
-                    raise_on_failed_trial=True):
-    """Runs and blocks until all trials finish.
-
-    Examples:
-        >>> experiment_spec = Experiment("experiment", my_func)
-        >>> run_experiments(experiments=experiment_spec)
-
-        >>> experiment_spec = {"experiment": {"run": my_func}}
-        >>> run_experiments(experiments=experiment_spec)
-
-        >>> run_experiments(
-        >>>     experiments=experiment_spec,
-        >>>     scheduler=MedianStoppingRule(...))
-
-        >>> run_experiments(
-        >>>     experiments=experiment_spec,
-        >>>     search_alg=SearchAlgorithm(),
-        >>>     scheduler=MedianStoppingRule(...))
-
-    Returns:
-        List of Trial objects, holding data for each executed trial.
-
-    """
-    # This is important to do this here
-    # because it schematize the experiments
-    # and it conducts the implicit registration.
-    experiments = convert_to_experiment_list(experiments)
-
-    trials = []
-    for exp in experiments:
-        trials += run(
-            exp,
-            search_alg=search_alg,
-            scheduler=scheduler,
-            with_server=with_server,
-            server_port=server_port,
-            verbose=verbose,
-            resume=resume,
-            queue_trials=queue_trials,
-            reuse_actors=reuse_actors,
-            trial_executor=trial_executor,
-            raise_on_failed_trial=raise_on_failed_trial,
-            return_trials=True)
-    return trials
