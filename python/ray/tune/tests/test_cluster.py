@@ -666,12 +666,11 @@ algo = HyperOptSearch(
         mode="min",
         random_state_seed=5,
         points_to_evaluate=current_best_params)
-run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0, resume={resume_bool}, **config)
+run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
+    resume={resume_bool}, **config)
 """
     script_before_shutdown = script.format(
-        address=cluster.address,
-        checkpoint_dir=dirpath,
-        resume_bool=False)
+        address=cluster.address, checkpoint_dir=dirpath, resume_bool=False)
     run_string_as_driver_nonblocking(script_before_shutdown)
 
     # Wait until the right checkpoint is saved.
@@ -698,9 +697,7 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0, resume={resum
     cluster.shutdown()
 
     script_after_shutdown = script.format(
-        address=cluster.address,
-        checkpoint_dir=dirpath,
-        resume_bool=True)
+        address=cluster.address, checkpoint_dir=dirpath, resume_bool=True)
     run_string_as_driver_nonblocking(script_after_shutdown)
 
     for i in range(50):
@@ -709,8 +706,8 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0, resume={resum
             runner = TrialRunner(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
-            assert(len(trials) >= 10)
-            assert(len(trials <= 20))
+            assert (len(trials) >= 10)
+            assert (len(trials <= 20))
         time.sleep(0.2)
 
     # TODO(hershg) : make sure script completes?

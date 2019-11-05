@@ -242,9 +242,11 @@ class TrialRunner(object):
         if not self._resumed:
             self._search_alg.add_configurations([experiment])
         else:
-            experiment.spec["num_samples"] = max(0, experiment.spec["num_samples"] - len(self._trials))
+            experiment.spec["num_samples"] = max(
+                0, experiment.spec["num_samples"] - len(self._trials))
             self._search_alg.add_configurations([experiment])
-            # logger.info("TrialRunner resumed, ignoring new add_experiment.") TODO(hershg)
+            # logger.info("TrialRunner resumed, ignoring new add_experiment.")
+            # TODO(hershg)
 
     def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.

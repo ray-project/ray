@@ -208,7 +208,8 @@ class HyperOptSearch(SuggestionAlgorithm):
         return len(self._live_trial_mapping)
 
     def save(self, checkpoint_dir):
-        trials_object = (self._hpopt_trials, self._points_to_evaluate, self.rstate.get_state())
+        trials_object = (self._hpopt_trials, self._points_to_evaluate,
+                         self.rstate.get_state())
         with open(checkpoint_dir, "wb") as outputFile:
             pickle.dump(trials_object, outputFile)
 
