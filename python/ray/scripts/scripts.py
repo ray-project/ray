@@ -827,6 +827,13 @@ cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)
 
+try:
+    from ray.experimental.serve.scripts import serve_cli
+    cli.add_command(serve_cli)
+except Exception as e:
+    logger.debug(
+        "Integrating ray serve command line tool failed with {}".format(e))
+
 
 def main():
     return cli()

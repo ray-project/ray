@@ -14,8 +14,7 @@ namespace worker {
 class Profiler {
  public:
   Profiler(WorkerContext &worker_context, const std::string &node_ip_address,
-           boost::asio::io_service &io_service,
-           std::unique_ptr<gcs::RedisGcsClient> &gcs_client);
+           boost::asio::io_service &io_service, gcs::RedisGcsClient &gcs_client);
 
   // Add an event to the queue to be flushed periodically.
   void AddEvent(const rpc::ProfileTableData::ProfileEvent &event);
@@ -34,7 +33,7 @@ class Profiler {
   // until they are flushed.
   rpc::ProfileTableData rpc_profile_data_ GUARDED_BY(mu_);
 
-  std::unique_ptr<gcs::RedisGcsClient> &gcs_client_;
+  gcs::RedisGcsClient &gcs_client_;
 
   absl::Mutex mu_;
 };

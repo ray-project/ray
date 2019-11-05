@@ -15,8 +15,49 @@ message ForwardTaskRequest {
 message ForwardTaskReply {
 }
 
+message NodeStatsRequest {
+}
+
+message WorkerStats {
+  // PID of the worker process.
+  uint32 pid = 1;
+  // Whether this is a driver.
+  bool is_driver = 2;
+}
+
+message ViewData {
+  message Measure {
+    // A short string that describes the tags for this mesaure, e.g.,
+    // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
+    string tags = 1;
+    // Int64 type value (if present).
+    int64 int_value = 2;
+    // Double type value (if present).
+    double double_value = 3;
+    // Distribution type value (if present).
+    double distribution_min = 4;
+    double distribution_mean = 5;
+    double distribution_max = 6;
+    double distribution_count = 7;
+    repeated double distribution_bucket_boundaries = 8;
+    repeated double distribution_bucket_counts = 9;
+  }
+
+  // The name of this Census view.
+  string view_name = 1;
+  // The list of measures recorded under this view.
+  repeated Measure measures = 2;
+}
+
+message NodeStatsReply {
+  repeated WorkerStats workers_stats = 1;
+  repeated ViewData view_data = 2;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
+  // Get the current node stats.
+  rpc GetNodeStats(NodeStatsRequest) returns (NodeStatsReply);
 }

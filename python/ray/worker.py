@@ -11,7 +11,6 @@ import inspect
 import io
 import json
 import logging
-import numpy as np
 import os
 import redis
 import signal
@@ -26,7 +25,6 @@ import random
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
-import ray.experimental.no_return
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
@@ -129,9 +127,6 @@ class Worker(object):
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
         self.actor_task_counter = 0
-        # The number of threads Plasma should use when putting an object in the
-        # object store.
-        self.memcopy_threads = 12
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -288,10 +283,7 @@ class Worker(object):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
-            return self.core_worker.put_raw_buffer(
-                value,
-                object_id=object_id,
-                memcopy_threads=self.memcopy_threads)
+            return self.core_worker.put_raw_buffer(value, object_id=object_id)
 
         if self.use_pickle:
             return self._serialize_and_put_pickle5(value, object_id=object_id)
@@ -310,17 +302,18 @@ class Worker(object):
             Exception: An exception is raised if the attempt to store the
                 object fails. This can happen if the object store is full.
         """
+        inband, writer = self._serialize_with_pickle5(value)
+        return self.core_worker.put_pickle5_buffers(
+            inband, writer, object_id=object_id)
+
+    def _serialize_with_pickle5(self, value):
         writer = Pickle5Writer()
         if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
             inband = pickle.dumps(
                 value, protocol=5, buffer_callback=writer.buffer_callback)
         else:
             inband = pickle.dumps(value)
-        return self.core_worker.put_pickle5_buffers(
-            inband,
-            writer,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+        return inband, writer
 
     def _serialize_and_put_pyarrow(self, value, object_id=None):
         """Wraps `store_and_register` with cases for existence and pickling.
@@ -330,8 +323,13 @@ class Worker(object):
                 put.
             value: The value to put in the object store.
         """
+        serialized_value = self._serialize_with_pyarrow(value)
+        return self.core_worker.put_serialized_object(
+            serialized_value, object_id=object_id)
+
+    def _serialize_with_pyarrow(self, value):
         try:
-            serialized_value = self._serialize_with_pyarrow(value)
+            serialized_value = self._store_and_register_pyarrow(value)
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
@@ -340,14 +338,11 @@ class Worker(object):
             _register_custom_serializer(type(value), use_pickle=True)
             logger.warning("WARNING: Serializing the class {} failed, "
                            "falling back to cloudpickle.".format(type(value)))
-            serialized_value = self._serialize_with_pyarrow(value)
+            serialized_value = self._store_and_register_pyarrow(value)
 
-        return self.core_worker.put_serialized_object(
-            serialized_value,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+        return serialized_value
 
-    def _serialize_with_pyarrow(self, value, depth=100):
+    def _store_and_register_pyarrow(self, value, depth=100):
         """Store an object and attempt to register its class if needed.
 
         Args:
@@ -722,11 +717,22 @@ def _initialize_serialization(job_id, worker=global_worker):
     serialization_context.set_pickle(pickle.dumps, pickle.loads)
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
+    def id_serializer(obj):
+        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
+            raise NotImplementedError(
+                "Objects produced by direct actor calls cannot be "
+                "passed to other tasks as arguments.")
+        return pickle.dumps(obj)
+
+    def id_deserializer(serialized_obj):
+        return pickle.loads(serialized_obj)
+
     for id_type in ray._raylet._ID_TYPES:
         serialization_context.register_type(
             id_type,
             "{}.{}".format(id_type.__module__, id_type.__name__),
-            pickle=True)
+            custom_serializer=id_serializer,
+            custom_deserializer=id_deserializer)
 
     def actor_handle_serializer(obj):
         return obj._serialization_helper(True)
@@ -1491,7 +1497,7 @@ def connect(node,
     # Put something in the plasma store so that subsequent plasma store
     # accesses will be faster. Currently the first access is always slow, and
     # we don't want the user to experience this.
-    temporary_object_id = ray.ObjectID(np.random.bytes(20))
+    temporary_object_id = ray.ObjectID.from_random()
     worker.put_object(1, object_id=temporary_object_id)
     ray.internal.free([temporary_object_id])
 
@@ -1551,8 +1557,6 @@ def connect(node,
         # Export cached functions_to_run.
         for function in worker.cached_functions_to_run:
             worker.run_function_on_all_workers(function)
-        # Export cached remote functions and actors to the workers.
-        worker.function_actor_manager.export_cached()
     worker.cached_functions_to_run = None
 
 
@@ -1581,7 +1585,6 @@ def disconnect(exiting_interpreter=False):
 
     worker.node = None  # Disconnect the worker from the node.
     worker.cached_functions_to_run = []
-    worker.function_actor_manager.reset_cache()
     worker.serialization_context_map.clear()
 
     # We need to destruct the core worker here because after this function,

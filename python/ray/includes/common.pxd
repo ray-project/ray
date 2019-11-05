@@ -2,7 +2,7 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
-from libc.stdint cimport uint8_t, uint64_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
@@ -75,6 +75,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
 
         @staticmethod
         CRayStatus Interrupted(const c_string &msg)
+
+        @staticmethod
+        CRayStatus SystemExit()
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -171,6 +174,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
+        LocalMemoryBuffer(size_t size)
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
@@ -186,7 +190,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CRayFunction(CLanguage language,
                      const c_vector[c_string] function_descriptor)
         CLanguage GetLanguage()
-        c_vector[c_string] GetFunctionDescriptor()
+        const c_vector[c_string]& GetFunctionDescriptor()
 
     cdef cppclass CTaskArg "ray::TaskArg":
         @staticmethod
@@ -204,9 +208,11 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CActorCreationOptions()
         CActorCreationOptions(
             uint64_t max_reconstructions, c_bool is_direct_call,
+            int32_t max_concurrency,
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
-            const c_vector[c_string] &dynamic_worker_options)
+            const c_vector[c_string] &dynamic_worker_options,
+            c_bool is_detached)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

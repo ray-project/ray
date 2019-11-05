@@ -271,7 +271,7 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_requests_.find(object_id);
   RAY_CHECK(iter != unfulfilled_push_requests_.end());
-  uint num_erased = iter->second.erase(client_id);
+  size_t num_erased = iter->second.erase(client_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
     unfulfilled_push_requests_.erase(iter);
@@ -502,7 +502,8 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
 
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
-  RAY_CHECK(num_required_objects <= object_ids.size());
+  RAY_CHECK(num_required_objects <= object_ids.size())
+      << num_required_objects << " " << object_ids.size();
   if (object_ids.size() == 0) {
     callback(std::vector<ObjectID>(), std::vector<ObjectID>());
   }

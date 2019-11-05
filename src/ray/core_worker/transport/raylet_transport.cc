@@ -7,13 +7,13 @@ namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
     WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    CoreWorkerObjectInterface &object_interface, boost::asio::io_service &io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    boost::asio::io_service &io_service, rpc::GrpcServer &server,
+    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
       raylet_client_(raylet_client),
-      object_interface_(object_interface),
       task_service_(io_service, *this),
-      task_handler_(task_handler) {
+      task_handler_(task_handler),
+      exit_handler_(exit_handler) {
   server.RegisterService(task_service_);
 }
 
@@ -57,34 +57,14 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, resource_ids, &results);
-
-  auto num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-    RAY_CHECK(num_returns > 0);
-    // Decrease to account for the dummy object id.
-    num_returns--;
+  if (status.IsSystemExit()) {
+    exit_handler_();
+    return;
   }
+  // Raylet transport doesn't currently support returning objects inline.
+  RAY_CHECK(results.size() == 0);
 
-  RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId()
-                 << " finished execution. num_returns: " << num_returns;
-  if (results.size() != 0) {
-    RAY_CHECK(results.size() == num_returns);
-    for (size_t i = 0; i < num_returns; i++) {
-      ObjectID id = ObjectID::ForTaskReturn(
-          task_spec.TaskId(), /*index=*/i + 1,
-          /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
-      Status status = object_interface_.Put(*results[i], id);
-      if (!status.ok()) {
-        // NOTE(hchen): `PlasmaObjectExists` error is already ignored inside
-        // `ObjectInterface::Put`, we treat other error types as fatal here.
-        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object " << id
-                       << " in store: " << status.message();
-      } else {
-        RAY_LOG(DEBUG) << "Task " << task_spec.TaskId() << " put object " << id
-                       << " in store.";
-      }
-    }
-  }
+  RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId() << " finished execution.";
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous

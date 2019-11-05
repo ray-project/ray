@@ -85,10 +85,6 @@ echo "Using Python executable $PYTHON_EXECUTABLE."
 BAZEL_EXECUTABLE=$(PATH="$PATH:$HOME/.bazel/bin" which bazel)
 echo "Using Bazel executable $BAZEL_EXECUTABLE."
 
-RAY_BUILD_PYTHON=$RAY_BUILD_PYTHON \
-RAY_BUILD_JAVA=$RAY_BUILD_JAVA \
-bash "$ROOT_DIR/setup_thirdparty.sh" "$PYTHON_EXECUTABLE"
-
 # Now we build everything.
 BUILD_DIR="$ROOT_DIR/build/"
 if [ ! -d "${BUILD_DIR}" ]; then
@@ -101,18 +97,18 @@ pushd "$BUILD_DIR"
 # generated from https://github.com/ray-project/arrow-build from
 # the commit listed in the command.
 if [ -z "$SKIP_PYARROW_INSTALL" ]; then
-    $PYTHON_EXECUTABLE -m pip install -q \
+    "$PYTHON_EXECUTABLE" -m pip install -q \
         --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/516e15028091b5e287200b5df77d77f72d9a6c9a/index.html
+        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
 fi
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  $BAZEL_EXECUTABLE build //java:all --verbose_failures
+  "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  $BAZEL_EXECUTABLE build //:ray_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
 fi
 
 popd

@@ -12,10 +12,12 @@ from ray.rllib.agents.sac.sac_model import SACModel
 from ray.rllib.agents.ddpg.noop_model import NoopModel
 from ray.rllib.agents.dqn.dqn_policy import _postprocess_dqn, PRIO_WEIGHTS
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils import try_import_tf, try_import_tfp
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.tf_ops import minimize_and_clip, make_tf_callable
 
 tf = try_import_tf()
@@ -290,9 +292,6 @@ class ComputeTDErrorMixin(object):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            if not self.loss_initialized():
-                return tf.zeros_like(rew_t)
-
             # Do forward pass on loss to update td error attribute
             actor_critic_loss(
                 self, self.model, None, {
@@ -332,6 +331,10 @@ class TargetNetworkMixin(object):
     # support both hard and soft sync
     def update_target(self, tau=None):
         self._do_update(np.float32(tau or self.config.get("tau")))
+
+    @override(TFPolicy)
+    def variables(self):
+        return self.model.variables() + self.target_model.variables()
 
 
 def setup_early_mixins(policy, obs_space, action_space, config):

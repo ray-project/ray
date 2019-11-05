@@ -3,11 +3,18 @@
 
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
+load("@build_stack_rules_proto//python:python_grpc_compile.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")
 
-COPTS = ["-DRAY_USE_GLOG"]
+COPTS = ["-DRAY_USE_GLOG"] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
+    ],
+    "//conditions:default": [
+    ],
+})
 
 # === Begin of protobuf definitions ===
 
@@ -22,7 +29,7 @@ cc_proto_library(
     deps = [":common_proto"],
 )
 
-python_proto_compile(
+python_grpc_compile(
     name = "common_py_proto",
     deps = [":common_proto"],
 )
@@ -39,7 +46,7 @@ cc_proto_library(
     deps = [":gcs_proto"],
 )
 
-python_proto_compile(
+python_grpc_compile(
     name = "gcs_py_proto",
     deps = [":gcs_proto"],
 )
@@ -52,6 +59,11 @@ proto_library(
 
 cc_proto_library(
     name = "node_manager_cc_proto",
+    deps = [":node_manager_proto"],
+)
+
+python_grpc_compile(
+    name = "node_manager_py_proto",
     deps = [":node_manager_proto"],
 )
 
@@ -207,6 +219,7 @@ cc_library(
         ":ray_common",
         ":worker_cc_grpc",
         "@boost//:asio",
+        "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
     ],
 )
@@ -331,6 +344,7 @@ cc_library(
         "@boost//:asio",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -363,6 +377,8 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         ":core_worker_cc_proto",
         ":ray_common",
         ":ray_util",
@@ -404,6 +420,8 @@ cc_library(
     deps = [
         ":core_worker_lib",
         ":gcs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -524,6 +542,7 @@ cc_test(
 cc_test(
     name = "stats_test",
     srcs = ["src/ray/stats/stats_test.cc"],
+    copts = COPTS,
     deps = [
         ":stats_lib",
         "@com_google_googletest//:gtest_main",
@@ -608,6 +627,7 @@ cc_library(
     hdrs = [
         "src/ray/thirdparty/sha256.h",
     ],
+    copts = COPTS,
     includes = ["src/ray/thirdparty"],
 )
 
@@ -630,6 +650,7 @@ cc_library(
         "src/ray/thirdparty/ae/ae_kqueue.c",
         "src/ray/thirdparty/ae/ae_epoll.c",
     ]),
+    copts = COPTS,
     includes = [
         "src/ray/thirdparty/ae",
         "src/ray/thirdparty/hiredis",
@@ -743,6 +764,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
+    copts = COPTS,
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
@@ -827,7 +849,7 @@ genrule(
     ],
     cmd = """
         set -x &&
-        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar xz --strip-components=1 -C . &&
+        curl -sL \"https://github.com/antirez/redis/archive/5.0.3.tar.gz\" | tar -xzf - --strip-components=1 -C . &&
         make &&
         mv ./src/redis-server $(location redis-server) &&
         chmod +x $(location redis-server) &&
@@ -859,6 +881,7 @@ filegroup(
     srcs = [
         "common_py_proto",
         "gcs_py_proto",
+        "node_manager_py_proto",
     ],
 )
 
@@ -879,23 +902,26 @@ genrule(
     cmd = """
         set -x &&
         WORK_DIR=$$(pwd) &&
-        cp -f $(location python/ray/_raylet.so) $$WORK_DIR/python/ray &&
-        mkdir -p $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
-        cp -f $(location //:redis-server) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
-        cp -f $(location //:redis-cli) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
-        mkdir -p $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
-        cp -f $(locations //:libray_redis_module.so) $$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/ &&
-        cp -f $(location //:raylet_monitor) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        cp -f $(location @plasma//:plasma_store_server) $$WORK_DIR/python/ray/core/src/plasma/ &&
-        cp -f $(location //:raylet) $$WORK_DIR/python/ray/core/src/ray/raylet/ &&
-        mkdir -p $$WORK_DIR/python/ray/core/generated/ray/protocol/ &&
+        cp -f $(location python/ray/_raylet.so) "$$WORK_DIR/python/ray" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
+        cp -f $(location //:redis-server) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
+        cp -f $(location //:redis-cli) "$$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
+        cp -f $(locations //:libray_redis_module.so) "$$WORK_DIR/python/ray/core/src/ray/gcs/redis_module/" &&
+        cp -f $(location //:raylet_monitor) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        cp -f $(location @plasma//:plasma_store_server) "$$WORK_DIR/python/ray/core/src/plasma/" &&
+        cp -f $(location //:raylet) "$$WORK_DIR/python/ray/core/src/ray/raylet/" &&
+        mkdir -p "$$WORK_DIR/python/ray/core/generated/ray/protocol/" &&
         for f in $(locations //:all_py_proto); do
-            cp -f $$f $$WORK_DIR/python/ray/core/generated/;
+            cp -f "$$f" "$$WORK_DIR/python/ray/core/generated/";
         done &&
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
-        sed -i -E 's/from src.ray.protobuf/from ./' $$WORK_DIR/python/ray/core/generated/gcs_pb2.py &&
-        echo $$WORK_DIR > $@
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/gcs_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/common_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2.py" &&
+        sed -i -E 's/from src.ray.protobuf/from ./' "$$WORK_DIR/python/ray/core/generated/node_manager_pb2_grpc.py" &&
+        echo "$$WORK_DIR" > $@
     """,
     local = 1,
 )
