@@ -87,7 +87,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
-      task_grpc_service_(io_service_, *this) {
+      task_grpc_service_(io_service_, *this),
+      direct_task_grpc_service_(io_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -119,6 +120,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
                                               worker_server_, execute_task,
                                               exit_handler));
+    worker_server_.RegisterService(direct_task_grpc_service_);
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -725,6 +727,20 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
     return;
   }
   raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
+}
+
+void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
+                                rpc::PushTaskReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) {
+  direct_actor_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
+}
+
+void CoreWorker::HandleDirectActorCallArgWaitComplete(
+    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  direct_actor_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
+                                                                    send_reply_callback);
 }
 
 }  // namespace ray

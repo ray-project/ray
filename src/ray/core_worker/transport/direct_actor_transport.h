@@ -366,8 +366,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The rpc service for `DirectActorService`.
-  rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.

@@ -25,7 +25,7 @@ namespace ray {
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public rpc::WorkerTaskHandler {
+class CoreWorker : public rpc::WorkerTaskHandler, public rpc::DirectActorHandler {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -282,10 +282,19 @@ class CoreWorker : public rpc::WorkerTaskHandler {
   /// \return void.
   void StartExecutingTasks();
 
-  /* gRPC stuff */
+  /* TODO: gRPC stuff */
+
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+                      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleDirectActorCallArgWaitComplete(
+      const rpc::DirectActorCallArgWaitCompleteRequest &request,
+      rpc::DirectActorCallArgWaitCompleteReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -462,6 +471,9 @@ class CoreWorker : public rpc::WorkerTaskHandler {
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
+
+  /// The rpc service for `DirectActorService`.
+  rpc::DirectActorGrpcService direct_task_grpc_service_;
 
   friend class CoreWorkerTest;
 };

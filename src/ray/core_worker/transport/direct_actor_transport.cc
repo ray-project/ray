@@ -203,12 +203,9 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     rpc::GrpcServer &server, const TaskHandler &task_handler,
     const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
-      task_service_(main_io_service, *this),
       task_handler_(task_handler),
       exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {
-  server.RegisterService(task_service_);
-}
+      task_main_io_service_(main_io_service) {}
 
 void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
@@ -269,7 +266,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         std::vector<std::shared_ptr<RayObject>> results;
         auto status = task_handler_(task_spec, resource_ids, &results);
         if (status.IsSystemExit()) {
-          // In Python, SystemExit cannot be raised except on the main thread. To work
+          // In Python, SystemExit can only be raised on the main thread. To work
           // around this when we are executing tasks on worker threads, we re-post the
           // exit event explicitly on the main thread.
           task_main_io_service_.post([this]() { exit_handler_(); });
