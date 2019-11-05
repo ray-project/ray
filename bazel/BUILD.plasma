@@ -4,7 +4,7 @@ COPTS = [] + select({
     "@bazel_tools//src/conditions:windows": [
     ],
     "//conditions:default": [
-        "-DARROW_USE_GLOG"
+        "-DARROW_USE_GLOG",
     ],
 })
 

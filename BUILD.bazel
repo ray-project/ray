@@ -642,7 +642,6 @@ cc_library(
             "src/ray/thirdparty/hiredis/test.c",
         ],
     ),
-    copts = COPTS,
     hdrs = glob([
         "src/ray/thirdparty/ae/*.h",
         "src/ray/thirdparty/hiredis/*.h",
@@ -651,6 +650,7 @@ cc_library(
         "src/ray/thirdparty/ae/ae_kqueue.c",
         "src/ray/thirdparty/ae/ae_epoll.c",
     ]),
+    copts = COPTS,
     includes = [
         "src/ray/thirdparty/ae",
         "src/ray/thirdparty/hiredis",
