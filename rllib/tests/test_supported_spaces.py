@@ -85,10 +85,11 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                     stat = "skip"  # speed up tests by avoiding full grid
                 else:
                     a = get_agent_class(alg)(config=config, env="stub_env")
-                    if o_name in ["atari", "image"]:
-                        assert isinstance(a.get_policy().model, VisionNetV2)
-                    elif o_name in ["vector", "vector2"]:
-                        assert isinstance(a.get_policy().model, FCNetV2)
+                    if alg not in ["ES", "ARS"]:
+                        if o_name in ["atari", "image"]:
+                            assert isinstance(a.get_policy().model, VisionNetV2)
+                        elif o_name in ["vector", "vector2"]:
+                            assert isinstance(a.get_policy().model, FCNetV2)
                     a.train()
                     covered_a.add(a_name)
                     covered_o.add(o_name)
