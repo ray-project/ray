@@ -24,6 +24,8 @@ class Buffer {
   /// Whether this buffer owns the data.
   virtual bool OwnsData() const = 0;
 
+  virtual bool IsPlasmaBuffer() const = 0;
+
   virtual ~Buffer(){};
 
   bool operator==(const Buffer &rhs) const {
@@ -75,6 +77,8 @@ class LocalMemoryBuffer : public Buffer {
 
   bool OwnsData() const override { return has_data_copy_; }
 
+  bool IsPlasmaBuffer() const override { return false; }
+
   ~LocalMemoryBuffer() {}
 
  private:
@@ -104,6 +108,8 @@ class PlasmaBuffer : public Buffer {
   size_t Size() const override { return buffer_->size(); }
 
   bool OwnsData() const override { return true; }
+
+  bool IsPlasmaBuffer() const override { return true; }
 
  private:
   /// shared_ptr to arrow buffer which can potentially hold a reference
