@@ -29,7 +29,6 @@ from .cloudpickle import (
 )
 
 if sys.version_info[:2] < (3, 8):
-    import ray
     import pickle5 as pickle
     from pickle5 import Pickler
     load, loads = pickle.load, pickle.loads
