@@ -1,11 +1,12 @@
 from __future__ import absolute_import
+import os
 import sys
 
-HAS_PICKLE5 = True
+CLOUDPICKLE_PATH = os.path.dirname(os.path.realpath(__file__))
 
-try:
-    import pickle5
-except ImportError:
+if os.path.exists(os.path.join(CLOUDPICKLE_PATH, "..", "pickle5_files")):
+    HAS_PICKLE5 = True
+else:
     HAS_PICKLE5 = False
 
 if sys.version_info[:2] >= (3, 8) or HAS_PICKLE5:
