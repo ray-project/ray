@@ -247,14 +247,15 @@ def validate_save_restore(trainable_cls,
 
 
 def file_exists(directory, file_pattern):
-    path_pattern = glob.glob(os.path.join(directory, file_pattern))
-    return len(glob.glob(path_pattern)) > 0
+    found_paths = glob.glob(os.path.join(directory, file_pattern))
+    print("PATH PATTERN: " + str(found_paths))
+    return len(found_paths) > 0
 
 
 def find_newest_dated_path(directory, file_pattern):
     """Assumes files have timestamp in file name, returns newest file."""
-    path_pattern = glob.glob(os.path.join(directory, file_pattern))
-    return max(glob.glob(path_pattern))
+    found_paths = glob.glob(os.path.join(directory, file_pattern))
+    return max(found_paths)
 
 
 if __name__ == "__main__":
