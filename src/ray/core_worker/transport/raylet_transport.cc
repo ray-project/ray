@@ -6,16 +6,11 @@
 namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    WorkerContext &worker_context, std::unique_ptr<RayletClient> &raylet_client,
-    boost::asio::io_service &io_service, rpc::GrpcServer &server,
-    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
-    : worker_context_(worker_context),
-      raylet_client_(raylet_client),
-      task_service_(io_service, *this),
+    std::unique_ptr<RayletClient> &raylet_client, const TaskHandler &task_handler,
+    const std::function<void()> &exit_handler)
+    : raylet_client_(raylet_client),
       task_handler_(task_handler),
-      exit_handler_(exit_handler) {
-  server.RegisterService(task_service_);
-}
+      exit_handler_(exit_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
@@ -23,11 +18,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (task_spec.IsActorTask() && worker_context_.CurrentActorUseDirectCall()) {
-    send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
-                        nullptr);
-    return;
-  }
 
   // Set the resource IDs for this task.
   // TODO: convert the resource map to protobuf and change this.
