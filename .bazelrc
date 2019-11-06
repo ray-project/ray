@@ -1,7 +1,6 @@
 # build config
 build --compilation_mode=opt
 build --action_env=PATH
-build --action_env=PYTHON_BIN_PATH
 build --action_env=PYTHON2_BIN_PATH
 build --action_env=PYTHON3_BIN_PATH
 # Warnings should be errors
