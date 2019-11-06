@@ -217,6 +217,10 @@ def run(run_or_experiment,
         experiments = run_or_experiment
     else:
         experiments = [run_or_experiment]
+    if len(experiments) > 1:
+        logger.info(
+            "Running multiple concurrent experiments is experimental and may "
+            "not work with certain features.")
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
             run_identifier = Experiment._register_if_needed(exp)
@@ -365,8 +369,6 @@ def run_experiments(experiments,
     experiments = convert_to_experiment_list(experiments)
 
     if concurrent:
-        logger.info("Concurrent mode is experimental and may not support "
-                    "certain features.")
         return run(
             experiments,
             search_alg=search_alg,
