@@ -2,25 +2,34 @@
 
 namespace ray {
 
-void ReferenceCounter::AddReference(const ObjectID &object_id, size_t num_references) {
+void ReferenceCounter::AddReference(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
+  AddReferenceInternal(object_id);
+}
+
+void ReferenceCounter::AddReferenceInternal(const ObjectID &object_id) {
   auto entry = object_id_refs_.find(object_id);
   if (entry == object_id_refs_.end()) {
-    object_id_refs_[object_id] = std::make_pair(num_references, nullptr);
+    object_id_refs_[object_id] = std::make_pair(1, nullptr);
   } else {
-    entry->second.first += num_references;
+    entry->second.first++;
   }
 }
 
 void ReferenceCounter::SetDependencies(
     const ObjectID &object_id, std::shared_ptr<std::vector<ObjectID>> dependencies) {
   absl::MutexLock lock(&mutex_);
+
   auto entry = object_id_refs_.find(object_id);
   if (entry == object_id_refs_.end()) {
     object_id_refs_[object_id] = std::make_pair(0, dependencies);
   } else {
     RAY_CHECK(!entry->second.second);
     entry->second.second = dependencies;
+  }
+
+  for (auto &dependency_id : *dependencies) {
+    AddReferenceInternal(dependency_id);
   }
 }
 

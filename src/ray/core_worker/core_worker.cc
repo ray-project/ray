@@ -449,9 +449,7 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
       for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
-        ObjectID arg_id = task_spec.ArgId(i, j);
-        task_deps->push_back(arg_id);
-        reference_counter_.AddReference(arg_id, num_returns);
+        task_deps->push_back(task_spec.ArgId(i, j));
       }
     }
   }

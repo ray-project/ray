@@ -18,18 +18,18 @@ class ReferenceCounter {
 
   ~ReferenceCounter() {}
 
-  /// Increase the reference count for the ObjectID by num_references. If there is no
+  /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created with no dependencies.
-  void AddReference(const ObjectID &object_id, size_t num_references = 1)
-      LOCKS_EXCLUDED(mutex_);
+  void AddReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the reference count for the ObjectID by one. If the reference count reaches
   /// zero, it will be erased from the map and the reference count for all of its
   /// dependencies will be decreased be one.
   void RemoveReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
-  /// Set the dependencies for the ObjectID. Dependencies for each ObjectID must only be
-  /// set once. The direct reference count for the ObjectID is set to zero.
+  /// Set the dependencies for the ObjectID. Dependencies for each ObjectID must be
+  /// set at most once. The direct reference count for the ObjectID is set to zero and the
+  /// reference count for each dependency is incremented.
   void SetDependencies(const ObjectID &object_id,
                        std::shared_ptr<std::vector<ObjectID>> dependencies)
       LOCKS_EXCLUDED(mutex_);
@@ -41,6 +41,10 @@ class ReferenceCounter {
   void LogDebugString() LOCKS_EXCLUDED(mutex_);
 
  private:
+  /// Helper function with the same semantics as AddReference to allow adding a reference
+  /// while already holding mutex_.
+  void AddReferenceInternal(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Recursive helper function for decreasing reference counts. Will recursively call
   /// itself on any dependencies whose reference count reaches zero as a result of
   /// removing the reference.
