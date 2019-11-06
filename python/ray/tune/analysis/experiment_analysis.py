@@ -186,8 +186,11 @@ class ExperimentAnalysis(Analysis):
     def get_best_trial(self, metric, mode="max", scope="all"):
         """Retrieve the best trial object.
 
-        Compares all trials' scores on `metric`, based on `mode`.
-        Only factors in `scope` steps.
+        Compares all trials' scores on `metric`.
+        If `scope=last`, only look at each trial's final step for
+        `metric`, and compare across trials based on `mode=[min,max]`.
+        If `scope=all`, find each trial's min/max score for `metric`
+        based on `mode`, and compare trials based on `mode=[min,max]`.
 
         Args:
             metric (str): Key for trial info to order on.
@@ -232,8 +235,11 @@ class ExperimentAnalysis(Analysis):
     def get_best_config(self, metric, mode="max", scope="all"):
         """Retrieve the best config corresponding to the trial.
 
-        Compares all trials' scores on `metric`, based on `mode`.
-        Only factors in `scope` steps.
+        Compares all trials' scores on `metric`.
+        If `scope=last`, only look at each trial's final step for
+        `metric`, and compare across trials based on `mode=[min,max]`.
+        If `scope=all`, find each trial's min/max score for `metric`
+        based on `mode`, and compare trials based on `mode=[min,max]`.
 
         Args:
             metric (str): Key for trial info to order on.
@@ -246,8 +252,11 @@ class ExperimentAnalysis(Analysis):
     def get_best_logdir(self, metric, mode="max", scope="all"):
         """Retrieve the logdir corresponding to the best trial.
 
-        Compares all trials' scores on `metric`, based on `mode`.
-        Only factors in `scope` steps.
+        Compares all trials' scores on `metric`.
+        If `scope=last`, only look at each trial's final step for
+        `metric`, and compare across trials based on `mode=[min,max]`.
+        If `scope=all`, find each trial's min/max score for `metric`
+        based on `mode`, and compare trials based on `mode=[min,max]`.
 
         Args:
             metric (str): Key for trial info to order on.

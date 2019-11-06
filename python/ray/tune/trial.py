@@ -10,8 +10,10 @@ import uuid
 import time
 import tempfile
 import os
+from numbers import Number
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
+from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -329,8 +331,8 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-        for metric, value in result.items():
-            if value is not None and type(value) is not dict:
+        for metric, value in flatten_dict(result).items():
+            if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
                         "max": value,

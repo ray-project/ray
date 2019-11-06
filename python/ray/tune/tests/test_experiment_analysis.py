@@ -13,31 +13,31 @@ import ray
 from ray.tune import run, Trainable, sample_from, Analysis
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
-scores_list = [5, 4, 2, 9, 7, 0, 1, 8, 6, 3]
-scores_list_bkup = scores_list[:]
-
-
-class TrainableScoresList(Trainable):
-    def _setup(self, config):
-        self.timestep = 0
-
-    def _train(self):
-        return {"score": scores_list.pop(0)}
-
-    def _save(self, checkpoint_dir):
-        pass
-
-    def _restore(self, checkpoint_path):
-        pass
-
 
 class ExperimentAnalysisInMemSuite(unittest.TestCase):
+    scores_list = [5, 4, 2, 9, 7, 0, 1, 8, 6, 3]
+
+    class TrainableScoresList(Trainable):
+        def _setup(self, config):
+            self.timestep = 0
+
+        def _train(self):
+            return {"score": ExperimentAnalysisInMemSuite.scores_list.pop(0)}
+
+        def _save(self, checkpoint_dir):
+            pass
+
+        def _restore(self, checkpoint_path):
+            pass
+
     def testCompareTrials(self):
+        scores_list_copy = ExperimentAnalysisInMemSuite.scores_list[:]
+
         ray.init(local_mode=True, num_cpus=1)
         self.test_dir = tempfile.mkdtemp()
         self.test_name = "analysis_exp"
         self.ea = run(
-            TrainableScoresList,
+            self.TrainableScoresList,
             name=self.test_name,
             local_dir=self.test_dir,
             stop={"training_iteration": 2},
@@ -49,10 +49,10 @@ class ExperimentAnalysisInMemSuite(unittest.TestCase):
                                          "min").metric_analysis["score"]["min"]
         max_last = self.ea.get_best_trial(
             "score", "max", "last").metric_analysis["score"]["last"]
-        self.assertEqual(max_all, max(scores_list_bkup))
-        self.assertEqual(min_all, min(scores_list_bkup))
-        self.assertEqual(max_last, max(scores_list_bkup[5:]))
-        self.assertNotEqual(max_last, max(scores_list_bkup))
+        self.assertEqual(max_all, max(scores_list_copy))
+        self.assertEqual(min_all, min(scores_list_copy))
+        self.assertEqual(max_last, max(scores_list_copy[5:]))
+        self.assertNotEqual(max_last, max(scores_list_copy))
         shutil.rmtree(self.test_dir, ignore_errors=True)
         ray.shutdown()
 
