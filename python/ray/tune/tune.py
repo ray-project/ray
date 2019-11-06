@@ -91,7 +91,7 @@ def run(run_or_experiment,
     """Executes training.
 
     Args:
-        run_or_experiment (function|class|str|Experiment|list[Experiment]): If
+        run_or_experiment (function|class|str|Experiment): If
             function|class|str, this is the algorithm or model to train.
             This may refer to the name of a built-on algorithm
             (e.g. RLLib's DQN or PPO), a user-defined trainable
@@ -335,7 +335,8 @@ def run_experiments(experiments,
                     queue_trials=False,
                     reuse_actors=False,
                     trial_executor=None,
-                    raise_on_failed_trial=True):
+                    raise_on_failed_trial=True,
+                    concurrent=False):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -363,16 +364,36 @@ def run_experiments(experiments,
     # and it conducts the implicit registration.
     experiments = convert_to_experiment_list(experiments)
 
-    return run(
-        experiments,
-        search_alg=search_alg,
-        scheduler=scheduler,
-        with_server=with_server,
-        server_port=server_port,
-        verbose=verbose,
-        resume=resume,
-        queue_trials=queue_trials,
-        reuse_actors=reuse_actors,
-        trial_executor=trial_executor,
-        raise_on_failed_trial=raise_on_failed_trial,
-        return_trials=True)
+    if concurrent:
+        logger.info("Concurrent mode is experimental and may not support "
+                    "certain features.")
+        return run(
+            experiments,
+            search_alg=search_alg,
+            scheduler=scheduler,
+            with_server=with_server,
+            server_port=server_port,
+            verbose=verbose,
+            resume=resume,
+            queue_trials=queue_trials,
+            reuse_actors=reuse_actors,
+            trial_executor=trial_executor,
+            raise_on_failed_trial=raise_on_failed_trial,
+            return_trials=True)
+    else:
+        trials = []
+        for exp in experiments:
+            trials += run(
+                exp,
+                search_alg=search_alg,
+                scheduler=scheduler,
+                with_server=with_server,
+                server_port=server_port,
+                verbose=verbose,
+                resume=resume,
+                queue_trials=queue_trials,
+                reuse_actors=reuse_actors,
+                trial_executor=trial_executor,
+                raise_on_failed_trial=raise_on_failed_trial,
+                return_trials=True)
+        return trials
