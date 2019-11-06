@@ -111,9 +111,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                 std::placeholders::_2, std::placeholders::_3);
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
-    raylet_task_receiver_ =
-        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            raylet_client_, execute_task, exit_handler));
+    raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+        new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task, exit_handler));
   }
   direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
       new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
@@ -784,12 +783,11 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
   }
 }
 
-void CoreWorker::HandlePushTask(
-    const rpc::PushTaskRequest &request,
-    rpc::PushTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
+                                rpc::PushTaskReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) {
   task_execution_service_.post([=] {
-    direct_actor_task_receiver_->HandlePushTask(request, reply,
-                                                             send_reply_callback);
+    direct_actor_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
 }
 
@@ -803,10 +801,8 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   });
 }
 
-void CoreWorker::HandleWorkerLeaseGranted(
-    const rpc::WorkerLeaseGrantedRequest &request,
-    rpc::WorkerLeaseGrantedReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-}
+void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                          rpc::WorkerLeaseGrantedReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {}
 
 }  // namespace ray

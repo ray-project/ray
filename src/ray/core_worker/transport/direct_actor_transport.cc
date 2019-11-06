@@ -22,8 +22,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   const auto task_id = task_spec.TaskId();
   const auto num_returns = task_spec.NumReturns();
 
-  auto request = std::unique_ptr<rpc::PushTaskRequest>(
-      new rpc::PushTaskRequest);
+  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
@@ -123,16 +122,14 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushTask(
-    rpc::CoreWorkerClient &client,
-    std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
-    const TaskID &task_id, int num_returns) {
+    rpc::CoreWorkerClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
   auto status = client.PushTask(
-      std::move(request),
-      [this, actor_id, task_id, num_returns](
-          Status status, const rpc::PushTaskReply &reply) {
+      std::move(request), [this, actor_id, task_id, num_returns](
+                              Status status, const rpc::PushTaskReply &reply) {
         {
           std::unique_lock<std::mutex> guard(mutex_);
           waiting_reply_tasks_[actor_id].erase(task_id);
@@ -214,8 +211,8 @@ void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurren
 }
 
 void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
-    const rpc::PushTaskRequest &request,
-    rpc::PushTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();

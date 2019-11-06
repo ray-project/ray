@@ -26,9 +26,9 @@
 /// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
 /// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
 /// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS                       \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)               \
-  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999) \
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
   RAY_CORE_WORKER_RPC_HANDLER(WorkerLeaseGranted, 5)
 
@@ -325,9 +325,8 @@ class CoreWorker {
 
   /// Handle a "PushTask" event corresponding to scheduling an actor task
   /// on this worker from another worker.
-  void HandlePushTask(const rpc::PushTaskRequest &request,
-                                   rpc::PushTaskReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback);
+  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+                      rpc::SendReplyCallback send_reply_callback);
 
   /// Handle a "PushTask" event corresponding to the raylet notifiying this
   /// worker that an argument is ready.
@@ -338,10 +337,9 @@ class CoreWorker {
 
   /// Handle a "WorkerLeaseGranted" event corresponding to the raylet notifiying this
   /// worker that a worker lease is granted.
-  void HandleWorkerLeaseGranted(
-      const rpc::WorkerLeaseGrantedRequest &request,
-      rpc::WorkerLeaseGrantedReply *reply,
-      rpc::SendReplyCallback send_reply_callback);
+  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                rpc::WorkerLeaseGrantedReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.

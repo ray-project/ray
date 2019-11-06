@@ -91,8 +91,8 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  absl::flat_hash_map<WorkerAddress, std::unique_ptr<rpc::CoreWorkerClient>>
-      client_cache_ GUARDED_BY(mu_);
+  absl::flat_hash_map<WorkerAddress, std::unique_ptr<rpc::CoreWorkerClient>> client_cache_
+      GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
   bool worker_request_pending_ GUARDED_BY(mu_) = false;
