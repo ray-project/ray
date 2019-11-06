@@ -123,7 +123,7 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 8)
+  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
       : main_service_(main_service), num_threads_(num_threads) {
     // Start the polling thread.
     cqs_.reserve(num_threads_);
