@@ -8,8 +8,9 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/rpc/worker/direct_actor_client.h"
 #include "ray/rpc/worker/worker_client.h"
+
+#include <unistd.h>  // pid_t
 
 namespace ray {
 
@@ -108,8 +109,6 @@ class Worker {
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
-  /// The rpc client to send tasks to the direct actor service.
-  std::unique_ptr<rpc::DirectActorClient> direct_rpc_client_;
 };
 
 }  // namespace raylet

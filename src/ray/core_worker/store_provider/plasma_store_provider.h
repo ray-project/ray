@@ -12,8 +12,6 @@
 
 namespace ray {
 
-class CoreWorker;
-
 /// The class provides implementations for accessing plasma store, which includes both
 /// local and remote stores. Local access goes is done via a
 /// CoreWorkerLocalPlasmaStoreProvider and remote access goes through the raylet.
