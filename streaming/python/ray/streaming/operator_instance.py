@@ -8,13 +8,11 @@ import time
 import types
 
 import ray
+from ray.streaming.communication import DataInput
+from ray.streaming.communication import DataOutput
 from ray.streaming.config import Config
-from ray.streaming.queue.streaming_queue import QueueLinkImpl
 from ray.streaming.queue.memory_queue import MemQueueLinkImpl
-import ray.streaming.queue.queue_utils as queue_utils
-from ray.streaming.communication import DataChannel, DataInput
-from ray.streaming.communication import DataOutput, QueueConfig
-from ray.streaming.streaming import Environment
+from ray.streaming.queue.streaming_queue import QueueLinkImpl
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
@@ -69,7 +67,7 @@ class OperatorInstance(object):
     def attribute_based_selector(self, record):
         return vars(record)[self.key_attribute]
 
-    def init(self, env: Environment):
+    def init(self, env):
         """init streaming actor"""
         self.env = env
         if self.env.config.queue_type == Config.MEMORY_QUEUE:

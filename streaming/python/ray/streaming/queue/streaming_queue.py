@@ -1,18 +1,16 @@
 import logging
 from queue import Queue
 
-from ray import streaming
-from streaming.queue.queue_interface import QueueMessage
-from streaming.queue.queue_interface import QueueLink
-from streaming.queue.queue_interface import QueueConsumer
-from streaming.queue.queue_interface import QueueProducer
-import streaming.queue.queue_utils as qutils
-from streaming.queue.config import Config
-from streaming.queue.fbs_config_converter import FbsConfigConverter
-from streaming.queue.queue_constants import QueueCreatorType
-import streaming.queue.queue_constants as qc
-from streaming.queue.queue_constants import QueueConstants, QueueStatus, QueueBundleType
-from streaming.exception import QueueInitException, QueueInterruptException
+import ray.streaming.queue.queue_utils as qutils
+from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
+from ray.streaming.config import Config
+# from ray.streaming.queue.fbs_config_converter import FbsConfigConverter
+from ray.streaming.queue.queue_constants import QueueConstants, QueueStatus, QueueBundleType
+from ray.streaming.queue.queue_constants import QueueCreatorType
+from ray.streaming.queue.queue_interface import QueueConsumer
+from ray.streaming.queue.queue_interface import QueueLink
+from ray.streaming.queue.queue_interface import QueueMessage
+from ray.streaming.queue.queue_interface import QueueProducer
 
 
 class QueueMessageImpl(QueueMessage):
