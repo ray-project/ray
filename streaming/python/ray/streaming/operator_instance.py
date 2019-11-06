@@ -71,14 +71,15 @@ class OperatorInstance(object):
         """init streaming actor"""
         self.env = env
         if self.env.config.queue_type == Config.MEMORY_QUEUE:
-            self.queue_link = QueueLinkImpl()
-        else:
             self.queue_link = MemQueueLinkImpl()
+        else:
+            self.queue_link = QueueLinkImpl()
         self.input_gate = DataInput(self.queue_link, self.input_channels)
         self.output_gate = DataOutput(self.queue_link, self.output_channels, self.operator.partitioning_strategies)
         # start
         self.input_gate.init()
         self.output_gate.init()
+        return True
 
     # Starts the actor
     def start(self):
@@ -112,10 +113,10 @@ class ReadTextFile(OperatorInstance):
             record = self.reader.readline()
             # Reader returns empty string ('') on EOF
             if not record:
-                self.output.close()
+                self.output_gate.close()
                 self.reader.close()
                 return
-            self.output.push(record[:-1])  # Push after removing newline characters
+            self.output_gate.push(record[:-1])  # Push after removing newline characters
 
 
 # Map actor
@@ -142,10 +143,10 @@ class Map(OperatorInstance):
         start = time.time()
         elements = 0
         while True:
-            record = self.input.pull()
+            record = self.input_gate.pull()
             if record is None:
                 continue
-            self.output.push(self.map_fn(record))
+            self.output_gate.push(self.map_fn(record))
             elements += 1
 
 
@@ -171,10 +172,10 @@ class FlatMap(OperatorInstance):
     # and pushes resulting records to the output stream(s)
     def start(self):
         while True:
-            record = self.input.pull()
+            record = self.input_gate.pull()
             if record is None:
                 continue
-            self.output.push_all(self.flatmap_fn(record))
+            self.output_gate.push_all(self.flatmap_fn(record))
 
 
 # Filter actor
@@ -199,11 +200,11 @@ class Filter(OperatorInstance):
     # and pushes resulting records to the output stream(s)
     def start(self):
         while True:
-            record = self.input.pull()
+            record = self.input_gate.pull()
             if record is None:
                 continue
             if self.filter_fn(record):
-                self.output.push(record)
+                self.output_gate.push(record)
 
 
 # Inspect actor
@@ -222,17 +223,17 @@ class Inspect(OperatorInstance):
         OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
         self.inspect_fn = operator.logic
 
+    def start(self):
         # Applies the inspect logic (e.g. print) to the records of
         # the input stream(s)
         # and leaves stream unaffected by simply pushing the records to
         # the output stream(s)
         while True:
-            record = self.input.pull()
+            record = self.input_gate.pull()
             if record is None:
                 continue
-            self.output.push(record)
+            self.output_gate.push(record)
             self.inspect_fn(record)
-
 
 # Reduce actor
 @ray.remote
@@ -271,7 +272,7 @@ class Reduce(OperatorInstance):
     # Outputs the result as (key,new value)
     def start(self):
         while True:
-            record = self.input.pull()
+            record = self.input_gate.pull()
             if record is None:
                 continue
             key, rest = record
@@ -284,7 +285,7 @@ class Reduce(OperatorInstance):
                 self.state[key] = new_value
             except KeyError:  # Key does not exist in state
                 self.state.setdefault(key, new_value)
-            self.output.push((key, new_value))
+            self.output_gate.push((key, new_value))
 
         # Returns the state of the actor
         def get_state(self):
@@ -318,11 +319,11 @@ class KeyBy(OperatorInstance):
     # The actual partitioning is done by the output gate
     def start(self):
         while True:
-            record = self.input.pull()
+            record = self.input_gate.pull()
             if record is None:
                 continue
             key = self.key_selector(record)
-            self.output.push((key, record))
+            self.output_gate.push((key, record))
 
 
 # A custom source actor
@@ -343,9 +344,9 @@ class Source(OperatorInstance):
             if not record:
                 logger.debug("[writer {}] puts per second: {}".format(
                     self.instance_id, elements / (time.time() - start)))
-                self.output.close()
+                self.output_gate.close()
                 return
-            self.output.push(record)
+            self.output_gate.push(record)
             elements += 1
 
 
