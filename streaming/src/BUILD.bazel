@@ -145,6 +145,23 @@ cc_binary(
     ],
 )
 
+genrule(
+    name = "run_streaming_common_tests",
+    srcs = [
+      ":streaming_message_ring_buffer_tests",
+      ":streaming_message_serialization_tests",
+      ":streaming_utility_tests",
+    ],
+    cmd = """
+      set -x &&
+      date > $@
+      $(location streaming_message_ring_buffer_tests) >> $@ &&
+      $(location streaming_message_serialization_tests) >> $@ &&
+      $(location streaming_utility_tests) >> $@
+    """,
+    outs = ["streaming_test_log.out"],
+)
+
 
 genrule(
     name = "copy_jni_h",
