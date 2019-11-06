@@ -62,7 +62,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &arg_reference_ids,
                         const c_vector[CObjectID] &return_ids,
-                        c_bool is_direct_call,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     CRayStatus() nogil,
                     void () nogil)
@@ -85,6 +84,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
+        CRayStatus AllocateReturnObjects(
+            const c_vector[CObjectID] &object_ids,
+            const c_vector[size_t] &data_sizes,
+            const c_vector[shared_ptr[CBuffer]] &metadatas,
+            c_vector[shared_ptr[CRayObject]] *return_objects)
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
