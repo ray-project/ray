@@ -117,9 +117,6 @@ cc_binary(
     srcs = [
         "test/streaming_message_serialization_tests.cc",
     ],
-    includes = [
-        "streaming/src/test",
-    ],
     deps = [
         ":streaming_lib",
     ],
@@ -132,14 +129,22 @@ cc_binary(
         "test/streaming_writer_tests_with_streamingqueue.cc",
         "test/streaming_queue_tests_base.h",
     ],
-    includes = [
-        "streaming/src/test",
-    ],
     copts = ["-Itest/"],
     deps = [
         ":streaming_lib",
     ],
 )
+
+cc_binary(
+    name = "streaming_utility_tests",
+    srcs = [
+        "test/streaming_utility_tests.cc",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
 
 genrule(
     name = "copy_jni_h",
