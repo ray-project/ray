@@ -2,6 +2,8 @@
 build --compilation_mode=opt
 build --action_env=PATH
 build --action_env=PYTHON_BIN_PATH
+build --action_env=PYTHON2_BIN_PATH
+build --action_env=PYTHON3_BIN_PATH
 # Warnings should be errors
 build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc@-Werror
 # Ignore warnings for protobuf generated files and external projects.
