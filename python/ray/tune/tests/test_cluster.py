@@ -698,7 +698,7 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
     cluster = _start_new_cluster()
 
     script_after_shutdown = script.format(
-        address=cluster.address, checkpoint_dir=dirpath, resume_bool=True)
+        address=cluster.address, checkpoint_dir=dirpath, resume_bool="LOCAL")
     run_string_as_driver_nonblocking(script_after_shutdown)
 
     for i in range(50):
@@ -710,8 +710,6 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
             assert (len(trials) >= 10)
             assert (len(trials <= 20))
         time.sleep(0.2)
-
-    # TODO(hershg) : make sure script completes?
 
     ray.shutdown()
     cluster.shutdown()
