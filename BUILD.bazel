@@ -78,36 +78,14 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "worker_proto",
-    srcs = ["src/ray/protobuf/worker.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "worker_cc_proto",
-    deps = ["worker_proto"],
-)
-
-proto_library(
     name = "core_worker_proto",
     srcs = ["src/ray/protobuf/core_worker.proto"],
     deps = [":common_proto"],
 )
 
 cc_proto_library(
-    name = "core_worker_cc_proto",
+    name = "worker_cc_proto",
     deps = ["core_worker_proto"],
-)
-
-proto_library(
-    name = "direct_actor_proto",
-    srcs = ["src/ray/protobuf/direct_actor.proto"],
-    deps = [":common_proto"],
-)
-
-cc_proto_library(
-    name = "direct_actor_cc_proto",
-    deps = ["direct_actor_proto"],
 )
 
 proto_library(
@@ -193,17 +171,9 @@ cc_library(
 # Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
-    srcs = [":worker_proto"],
+    srcs = [":core_worker_proto"],
     grpc_only = True,
     deps = [":worker_cc_proto"],
-)
-
-# direct actor gRPC lib.
-cc_grpc_library(
-    name = "direct_actor_cc_grpc",
-    srcs = [":direct_actor_proto"],
-    grpc_only = True,
-    deps = [":direct_actor_cc_proto"],
 )
 
 # worker server and client.
@@ -214,7 +184,6 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        "direct_actor_cc_grpc",
         ":grpc_common_lib",
         ":ray_common",
         ":worker_cc_grpc",
@@ -363,6 +332,7 @@ cc_library(
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
+            "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",
@@ -379,7 +349,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        ":core_worker_cc_proto",
+        ":worker_cc_proto",
         ":ray_common",
         ":ray_util",
         # TODO(hchen): After `raylet_client` is migrated to gRPC, `core_worker_lib`

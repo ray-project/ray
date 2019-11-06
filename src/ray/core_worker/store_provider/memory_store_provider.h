@@ -11,8 +11,6 @@
 
 namespace ray {
 
-class CoreWorker;
-
 /// The class provides implementations for accessing local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
 /// actor call (see direct_actor_transport.cc).

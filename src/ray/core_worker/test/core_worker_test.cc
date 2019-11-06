@@ -13,8 +13,7 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 #include "ray/raylet/raylet_client.h"
-#include "src/ray/protobuf/direct_actor.grpc.pb.h"
-#include "src/ray/protobuf/direct_actor.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/util/test_util.h"
 
@@ -481,7 +480,7 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   ASSERT_EQ(*data, *buffer);
 }
 
-// Performance batchmark for `PushTaskRequest` creation.
+// Performance batchmark for `DirectActorAssignTaskRequest` creation.
 TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // Create a dummy actor handle, and then create a number of `TaskSpec`
   // to benchmark performance.
@@ -500,11 +499,11 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                            function.GetFunctionDescriptor());
 
   // Manually create `num_tasks` task specs, and for each of them create a
-  // `PushTaskRequest`, this is to batch performance of TaskSpec
+  // `DirectActorAssignTaskRequest`, this is to batch performance of TaskSpec
   // creation/copy/destruction.
   int64_t start_ms = current_time_ms();
   const auto num_tasks = 10000 * 10;
-  RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
+  RAY_LOG(INFO) << "start creating " << num_tasks << " DirectActorAssignTaskRequests";
   for (int i = 0; i < num_tasks; i++) {
     TaskOptions options{1, resources};
     std::vector<ObjectID> return_ids;
@@ -529,10 +528,11 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     const auto &task_spec = builder.Build();
 
     ASSERT_TRUE(task_spec.IsActorTask());
-    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    auto request = std::unique_ptr<rpc::DirectActorAssignTaskRequest>(
+        new rpc::DirectActorAssignTaskRequest);
     request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   }
-  RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests"
+  RAY_LOG(INFO) << "Finish creating " << num_tasks << " DirectActorAssignTaskRequests"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 

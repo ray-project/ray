@@ -86,7 +86,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       gcs_client_(gcs_options),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
-      task_execution_callback_(task_execution_callback) {
+      task_execution_callback_(task_execution_callback),
+      grpc_service_(io_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
   if (log_dir_ != "") {
@@ -111,14 +112,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     // Initialize task receivers.
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    raylet_task_receiver_ =
-        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, task_execution_service_, worker_server_,
-            execute_task, exit_handler));
+    raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
+        new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task, exit_handler));
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
                                               worker_server_, execute_task,
                                               exit_handler));
+    worker_server_.RegisterService(grpc_service_);
   }
 
   // Start RPC server after all the task receivers are properly initialized.
@@ -748,6 +748,39 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   return status;
+}
+
+void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
+                                  rpc::AssignTaskReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) {
+  if (worker_context_.CurrentActorUseDirectCall()) {
+    send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
+                        nullptr);
+    return;
+  } else {
+    task_execution_service_.post([=] {
+      raylet_task_receiver_->HandleAssignTask(request, reply, send_reply_callback);
+    });
+  }
+}
+
+void CoreWorker::HandleDirectActorAssignTask(
+    const rpc::DirectActorAssignTaskRequest &request,
+    rpc::DirectActorAssignTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  task_execution_service_.post([=] {
+    direct_actor_task_receiver_->HandleDirectActorAssignTask(request, reply,
+                                                             send_reply_callback);
+  });
+}
+
+void CoreWorker::HandleDirectActorCallArgWaitComplete(
+    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  task_execution_service_.post([=] {
+    direct_actor_task_receiver_->HandleDirectActorCallArgWaitComplete(
+        request, reply, send_reply_callback);
+  });
 }
 
 }  // namespace ray

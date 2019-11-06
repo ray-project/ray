@@ -14,8 +14,8 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/rpc/worker/direct_actor_client.h"
-#include "ray/rpc/worker/direct_actor_server.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/rpc/worker/worker_client.h"
 
 namespace ray {
 
@@ -67,9 +67,10 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushTask(rpc::DirectActorClient &client,
-                std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
-                const TaskID &task_id, int num_returns);
+  void DirectActorAssignTask(rpc::WorkerTaskClient &client,
+                             std::unique_ptr<rpc::DirectActorAssignTaskRequest> request,
+                             const ActorID &actor_id, const TaskID &task_id,
+                             int num_returns);
 
   /// Treat a task as failed.
   ///
@@ -114,10 +115,11 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::DirectActorClient>> rpc_clients_;
+  std::unordered_map<ActorID, std::shared_ptr<rpc::WorkerTaskClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
+  std::unordered_map<ActorID,
+                     std::list<std::unique_ptr<rpc::DirectActorAssignTaskRequest>>>
       pending_requests_;
 
   /// Map from actor id to the tasks that are waiting for reply.
@@ -327,7 +329,7 @@ class SchedulingQueue {
   friend class SchedulingQueueTest;
 };
 
-class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
+class CoreWorkerDirectActorTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
@@ -342,13 +344,14 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
 
-  /// Handle a `PushTask` request.
+  /// Handle a `DirectActorAssignTask` request.
   ///
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
-  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+  void HandleDirectActorAssignTask(const rpc::DirectActorAssignTaskRequest &request,
+                                   rpc::DirectActorAssignTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback);
 
   /// Handle a `DirectActorCallArgWaitComplete` request.
   ///
@@ -358,7 +361,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+      rpc::SendReplyCallback send_reply_callback);
 
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
@@ -366,8 +369,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The rpc service for `DirectActorService`.
-  rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.
