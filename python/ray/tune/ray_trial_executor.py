@@ -11,7 +11,8 @@ import time
 import traceback
 
 import ray
-from ray import ray_constants
+from ray.exceptions import RayError
+from ray import ObjectID, ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
+DEFAULT_GET_TIMEOUT = 30.0  # seconds
 
 
 class _LocalWrapper(object):
@@ -34,6 +36,35 @@ class _LocalWrapper(object):
     def unwrap(self):
         """Returns the wrapped result."""
         return self._result
+
+
+class RayTimeoutError(RayError):
+    pass
+
+
+def get_with_timeout(obj_id, timeout=DEFAULT_GET_TIMEOUT):
+    """Gets object IDs with a timeout.
+
+    Args:
+        obj_id (ObjectID): Object ID for object that may or may not be ready.
+        timeout (float): The maximum amount of time in seconds to wait.
+
+    Returns:
+        A Python object.
+
+    Raises:
+        TimeoutError: Error indicating timeout.
+    """
+    # TODO(ujvl): This is a stopgap solution to alleviate the effect of a
+    #  slow ray.get (eg: during failure). It should be replaced with a call to
+    #  ray.get(obj_id, timeout) which is currently not possible.
+    done, waiting = ray.wait([obj_id], timeout=timeout)
+    if done:
+        # This can still be slow if a failure occurs here. However, the IDs
+        # are ready so hopefully it will be fast enough to evade failure.
+        return ray.get(done[0])
+    else:
+        raise RayTimeoutError("Timeout exceeded trying to get object IDs.")
 
 
 class RayTrialExecutor(TrialExecutor):
@@ -285,7 +316,12 @@ class RayTrialExecutor(TrialExecutor):
         trial.config = new_config
         trainable = trial.runner
         with warn_if_slow("reset_config"):
-            reset_val = ray.get(trainable.reset_config.remote(new_config))
+            try:
+                reset_val = get_with_timeout(
+                    trainable.reset_config.remote(new_config))
+            except RayTimeoutError:
+                logger.exception("Trial %s: reset_config timed out.")
+                return False
         return reset_val
 
     def get_running_trials(self):
@@ -351,7 +387,7 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         with warn_if_slow("fetch_result"):
-            result = ray.get(trial_future[0])
+            result = get_with_timeout(trial_future[0])
 
         # For local mode
         if isinstance(result, _LocalWrapper):
@@ -593,21 +629,21 @@ class RayTrialExecutor(TrialExecutor):
                 assert type(value) != Checkpoint, type(value)
                 trial.runner.restore_from_object.remote(value)
             else:
-                # TODO: Somehow, the call to get the current IP on the
-                # remote actor can be very slow - a better fix would
-                # be to use an actor table to detect the IP of the Trainable
-                # and rsync the files there.
-                # See https://github.com/ray-project/ray/issues/5168
                 with warn_if_slow("get_current_ip"):
-                    worker_ip = ray.get(trial.runner.current_ip.remote())
+                    worker_ip = get_with_timeout(
+                        trial.runner.current_ip.remote())
                 with warn_if_slow("sync_to_new_location"):
                     trial.sync_logger_to_new_location(worker_ip)
                 with warn_if_slow("restore_from_disk"):
-                    ray.get(trial.runner.restore.remote(value))
+                    get_with_timeout(trial.runner.restore.remote(value))
             trial.last_result = checkpoint.last_result
             return True
+        except RayTimeoutError:
+            logger.exception(
+                "Trial %s: runner task timed out; restoration failed.", trial)
+            self.set_status(trial, Trial.ERROR)
         except Exception:
-            logger.exception("Error restoring runner for Trial %s.", trial)
+            logger.exception("Trial %s: Error restoring runner", trial)
             self.set_status(trial, Trial.ERROR)
             return False
 
@@ -618,7 +654,7 @@ class RayTrialExecutor(TrialExecutor):
             A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
-            return ray.get(
+            return get_with_timeout(
                 trial.runner.export_model.remote(trial.export_formats))
         return {}
 
