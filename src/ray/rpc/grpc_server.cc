@@ -26,7 +26,7 @@ void GrpcServer::Run() {
   // Get hold of the completion queue used for the asynchronous communication
   // with the gRPC runtime.
   for (int i = 0; i < num_threads_; i++) {
-    cqs_.push_back(std::move(builder.AddCompletionQueue()));
+    cqs_.push_back(builder.AddCompletionQueue());
   }
   // Build and start server.
   server_ = builder.BuildAndStart();
