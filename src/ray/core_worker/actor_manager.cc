@@ -12,8 +12,12 @@ Status ActorManager::GetActorHandle(const ActorID &actor_id,
   return Status::OK();
 }
 
-void ActorManager::RegisterChildActor(const ActorID &actor_id,
-                                      const ray::TaskSpecification &spec) {
+void ActorManager::RegisterChildActor(const ray::TaskSpecification &spec) {
+  const ActorID &actor_id = spec.ActorCreationId();
+  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
+      actor_id, spec.JobId(), /*actor_cursor=*/spec.ActorDummyObject(), spec.GetLanguage(), spec.IsDirectCall(), spec.FunctionDescriptor()));
+  RAY_CHECK(AddActorHandle(std::move(actor_handle)))
+      << "Actor " << actor_id << " already exists";
   auto inserted = children_actors_.insert({actor_id, ChildActor(spec)});
   RAY_CHECK(inserted.second) << "Child actor already exists";
 }

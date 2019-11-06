@@ -50,7 +50,7 @@ class ActorManager {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  void RegisterChildActor(const ActorID &actor_id, const ray::TaskSpecification &spec);
+  void RegisterChildActor(const ray::TaskSpecification &spec);
 
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
 

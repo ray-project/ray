@@ -510,14 +510,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_detached);
   const ray::TaskSpecification spec = builder.Build();
   RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(spec));
-
-  std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
-      actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
-      actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle)))
-      << "Actor " << actor_id << " already exists";
-  actor_manager_->RegisterChildActor(actor_id, spec);
-
+  actor_manager_->RegisterChildActor(spec);
+  SubscribeActorUpdates(actor_id);
   *return_actor_id = actor_id;
   return Status::OK();
 }
@@ -571,7 +565,9 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
   const ActorID actor_id = actor_handle->GetActorID();
-  RAY_UNUSED(AddActorHandle(std::move(actor_handle)));
+  if (actor_manager_->AddActorHandle(std::move(actor_handle))) {
+    SubscribeActorUpdates(actor_id);
+  }
   return actor_id;
 }
 
@@ -585,40 +581,35 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
   return status;
 }
 
-bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
-  const auto &actor_id = actor_handle->GetActorID();
-  auto inserted = actor_manager_->AddActorHandle(std::move(actor_handle));
-  if (inserted) {
-    // Register a callback to handle actor notifications.
-    auto actor_notification_callback = [this](const ActorID &actor_id,
-                                              const gcs::ActorTableData &actor_data) {
-      switch (actor_data.state()) {
-      case gcs::ActorTableData::ALIVE: {
-        actor_manager_->OnActorLocationChanged(
-            actor_id, ClientID::FromBinary(actor_data.node_manager_id()),
-            actor_data.ip_address(), actor_data.port());
-      } break;
-      case gcs::ActorTableData::RECONSTRUCTING: {
-        actor_manager_->OnActorFailed(actor_id);
-      } break;
-      case gcs::ActorTableData::DEAD: {
-        actor_manager_->OnActorDead(actor_id);
-        RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
-      } break;
-      default:
-        RAY_LOG(FATAL) << "Received unexpected message type " << actor_data.state();
-      }
+void CoreWorker::SubscribeActorUpdates(const ActorID &actor_id) {
+  // Register a callback to handle actor notifications.
+  auto actor_notification_callback = [this](const ActorID &actor_id,
+                                            const gcs::ActorTableData &actor_data) {
+    switch (actor_data.state()) {
+    case gcs::ActorTableData::ALIVE: {
+      actor_manager_->OnActorLocationChanged(
+          actor_id, ClientID::FromBinary(actor_data.node_manager_id()),
+          actor_data.ip_address(), actor_data.port());
+    } break;
+    case gcs::ActorTableData::RECONSTRUCTING: {
+      actor_manager_->OnActorFailed(actor_id);
+    } break;
+    case gcs::ActorTableData::DEAD: {
+      actor_manager_->OnActorDead(actor_id);
+      RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
+    } break;
+    default:
+      RAY_LOG(FATAL) << "Received unexpected message type " << actor_data.state();
+    }
 
-      RAY_LOG(INFO) << "received notification on actor, state="
-                    << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                    << ", ip address: " << actor_data.ip_address()
-                    << ", port: " << actor_data.port();
-    };
+    RAY_LOG(INFO) << "received notification on actor, state="
+                  << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
+                  << ", ip address: " << actor_data.ip_address()
+                  << ", port: " << actor_data.port();
+  };
 
-    RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(
-        actor_id, actor_notification_callback, nullptr));
-  }
-  return inserted;
+  RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(
+      actor_id, actor_notification_callback, nullptr));
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(

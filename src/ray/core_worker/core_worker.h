@@ -309,17 +309,11 @@ class CoreWorker {
 
   /* Private methods related to task submission. */
 
-  /// Give this worker a handle to an actor.
+  /// Subscribe to GCS updates about an actor. This should be called for all
+  /// actors that we have a reference to.
   ///
-  /// This handle will remain as long as the current actor or task is
-  /// executing, even if the Python handle goes out of scope. Tasks submitted
-  /// through this handle are guaranteed to execute in the same order in which
-  /// they are submitted.
-  ///
-  /// \param actor_handle The handle to the actor.
-  /// \return True if the handle was added and False if we already had a handle
-  /// to the same actor.
-  bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
+  /// \param actor_id The ID of the actor.
+  void SubscribeActorUpdates(const ActorID &actor_id);
 
   /* Private methods related to task execution. Should not be used by driver processes. */
 
