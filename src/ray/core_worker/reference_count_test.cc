@@ -7,24 +7,22 @@ namespace ray {
 
 class ReferenceCountTest : public ::testing::Test {
  protected:
-  std::unique_ptr<ReferenceCounter> reference_counter;
-  virtual void SetUp() {
-    reference_counter = std::unique_ptr<ReferenceCounter>(new ReferenceCounter);
-  }
+  std::unique_ptr<ReferenceCounter> rc;
+  virtual void SetUp() { rc = std::unique_ptr<ReferenceCounter>(new ReferenceCounter); }
 
   virtual void TearDown() {}
 };
 
 TEST_F(ReferenceCountTest, TestBasic) {
   ObjectID id = ObjectID::FromRandom();
-  reference_counter.AddReference(id, 3);
-  ASSERT_EQ(reference_counter.GetAllInScopeObjectIDs().size(), 1);
-  reference_counter.RemoveReference(id);
-  ASSERT_EQ(reference_counter.GetAllInScopeObjectIDs().size(), 1);
-  reference_counter.RemoveReference(id);
-  ASSERT_EQ(reference_counter.GetAllInScopeObjectIDs().size(), 1);
-  reference_counter.RemoveReference(id);
-  ASSERT_EQ(reference_counter.GetAllInScopeObjectIDs().size(), 0);
+  rc->AddReference(id, 3);
+  ASSERT_EQ(rc->GetAllInScopeObjectIDs().size(), 1);
+  rc->RemoveReference(id);
+  ASSERT_EQ(rc->GetAllInScopeObjectIDs().size(), 1);
+  rc->RemoveReference(id);
+  ASSERT_EQ(rc->GetAllInScopeObjectIDs().size(), 1);
+  rc->RemoveReference(id);
+  ASSERT_EQ(rc->GetAllInScopeObjectIDs().size(), 0);
 }
 
 }  // namespace ray
