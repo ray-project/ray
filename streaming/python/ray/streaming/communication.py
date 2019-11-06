@@ -51,10 +51,6 @@ class DataChannel(object):
         self.dst_instance_id = dst_instance_id
         self.str_qid = queue_utils.generate_qid(src_instance_id, dst_instance_id, env.build_time)
 
-    def str_qid(self):
-        """return qid for this channel"""
-        return self.str_qid
-
     def __repr__(self):
         return "({},{},{},{})".format(
             self.src_operator_id, self.dst_operator_id, self.src_instance_id,
@@ -94,7 +90,12 @@ class DataInput(object):
 
     def pull(self):
         # pull from queue
-        queue_item = self.consumer.pull(100)
+        queue_item = None
+        import time
+        while queue_item is None:
+            print("queue_item is None")
+            time.sleep(0.5)
+            queue_item = self.consumer.pull(100)
         msg_data = queue_item.body()
         return pickle.loads(msg_data)
 
@@ -124,6 +125,7 @@ class DataOutput(object):
     def __init__(self, queue_link, channels, partitioning_schemes):
         self.queue_link = queue_link
         self.producer = None  # created in `init` method
+        self.channels = channels
         self.key_selector = None
         self.round_robin_indexes = [0]
         self.partitioning_schemes = partitioning_schemes
@@ -182,7 +184,7 @@ class DataOutput(object):
 
     def init(self):
         """init DataOutput which creates QueueProducer"""
-        qids = [channel.str_qid for channel in self.input_channels]
+        qids = [channel.str_qid for channel in self.channels]
         self.producer = self.queue_link.register_queue_producer(qids)
 
     def close(self):
@@ -191,20 +193,19 @@ class DataOutput(object):
         None is used as special type of record that is propagated from sources
         to sink to notify that the end of data in a stream.
         """
-        for channel in self.forward_channels + self.shuffle_channels + \
-                       self.shuffle_key_channels + self.round_robin_channels:
-            self.producer.produce(channel.str_qid(), None)
+        for channel in self.channels:
+            self.producer.produce(channel.str_qid, None)
 
     # Pushes the record to the output
     # Each individual output queue flushes batches to plasma periodically
     # based on 'batch_max_size' and 'batch_max_time'
     def push(self, record):
-        channels = []
+        target_channels = []
         # Forward record
         for channel in self.forward_channels:
             logger.debug("[writer] Push record '{}' to channel {}".format(
                 record, channel))
-            channels.append(channel)
+            target_channels.append(channel)
         # Forward record
         index = 0
         for channels in self.round_robin_channels:
@@ -214,7 +215,7 @@ class DataOutput(object):
             channel = channels[self.round_robin_indexes[index]]
             logger.debug("[writer] Push record '{}' to channel {}".format(
                 record, channel))
-            channels.append(channel)
+            target_channels.append(channel)
             index += 1
         # Hash-based shuffling by key
         if self.shuffle_key_exists:
@@ -226,7 +227,7 @@ class DataOutput(object):
                 logger.debug(
                     "[key_shuffle] Push record '{}' to channel {}".format(
                         record, channel))
-                channels.append(channel)
+                target_channels.append(channel)
         elif self.shuffle_exists:  # Hash-based shuffling per destination
             h = _hash(record)
             for channels in self.shuffle_channels:
@@ -234,14 +235,15 @@ class DataOutput(object):
                 channel = channels[h % num_instances]
                 logger.debug("[shuffle] Push record '{}' to channel {}".format(
                     record, channel))
-                channels.append(channel)
+                target_channels.append(channel)
         else:  # TODO (john): Handle rescaling
             pass
 
         msg_data = pickle.dumps(record)
-        for channel in channels:
+        for channel in target_channels:
             # send data to queue
-            self.producer.produce(channel.str_qid(), msg_data)
+            print("produce data: ", record, "qid: ", channel.str_qid)
+            self.producer.produce(channel.str_qid, msg_data)
 
     # Pushes a list of records to the output
     # Each individual output queue flushes batches to plasma periodically
