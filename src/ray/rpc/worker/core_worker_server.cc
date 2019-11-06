@@ -13,11 +13,11 @@ namespace rpc {
   server_call_factories_and_concurrencies->emplace_back(                          \
       std::move(HANDLER##_call_factory), CONCURRENCY);
 
-CoreWorkerGRPCService::CoreWorkerGRPCService(boost::asio::io_service &main_service,
+CoreWorkerGrpcService::CoreWorkerGrpcService(boost::asio::io_service &main_service,
                                      CoreWorker &core_worker)
     : GrpcService(main_service), core_worker_(core_worker){};
 
-void CoreWorkerGRPCService::InitServerCallFactories(
+void CoreWorkerGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
         *server_call_factories_and_concurrencies) {

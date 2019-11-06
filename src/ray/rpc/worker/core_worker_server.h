@@ -14,13 +14,13 @@ class CoreWorker;
 namespace rpc {
 
 /// The `GrpcServer` for `CoreWorkerService`.
-class CoreWorkerGRPCService : public GrpcService {
+class CoreWorkerGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  CoreWorkerGRPCService(boost::asio::io_service &main_service, CoreWorker &core_worker);
+  CoreWorkerGrpcService(boost::asio::io_service &main_service, CoreWorker &core_worker);
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }

@@ -522,7 +522,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
   /// Common rpc service for all worker modules.
-  rpc::CoreWorkerGRPCService grpc_service_;
+  rpc::CoreWorkerGrpcService grpc_service_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;

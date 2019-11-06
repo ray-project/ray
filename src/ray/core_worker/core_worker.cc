@@ -125,6 +125,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Start RPC server after all the task receivers are properly initialized.
   core_worker_server_.Run();
 
+  RAY_LOG(ERROR) << "Starting server on " << core_worker_server_.GetPort();
+
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
   // connect to Raylet after a number of retries, this can be changed later
@@ -771,6 +773,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "handle asign task";
   if (worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
@@ -803,6 +806,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                           rpc::WorkerLeaseGrantedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(ERROR) << "got least grant";
   task_execution_service_.post([=] {
     direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
   });
