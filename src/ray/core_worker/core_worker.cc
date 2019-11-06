@@ -608,8 +608,8 @@ void CoreWorker::SubscribeActorUpdates(const ActorID &actor_id) {
                   << ", port: " << actor_data.port();
   };
 
-  RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(
-      actor_id, actor_notification_callback, nullptr));
+  RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(actor_id, actor_notification_callback,
+                                                   nullptr));
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
