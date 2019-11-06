@@ -27,7 +27,10 @@ class ObjectManagerClient {
   ObjectManagerClient(const std::string &address, const int port,
                       ClientCallManager &client_call_manager, int num_connections = 4)
       : client_call_manager_(client_call_manager), num_connections_(num_connections) {
-    stubs_.reserve(num_connections);
+    push_rr_index_ = rand() % num_connections_;
+    pull_rr_index_ = rand() % num_connections_;
+    freeobjects_rr_index_ = rand() % num_connections_;
+    stubs_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
       grpc::ResourceQuota quota;
       quota.SetMaxThreads(num_connections_);
@@ -46,7 +49,7 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
-        *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPush,
+        *stubs_[push_rr_index_++ % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPush,
         request, callback);
   }
 
@@ -56,7 +59,7 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
-        *stubs_[rand() % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPull,
+        *stubs_[pull_rr_index_++ % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPull,
         request, callback);
   }
 
@@ -68,12 +71,16 @@ class ObjectManagerClient {
                    const ClientCallback<FreeObjectsReply> &callback) {
     client_call_manager_
         .CreateCall<ObjectManagerService, FreeObjectsRequest, FreeObjectsReply>(
-            *stubs_[rand() % num_connections_],
+            *stubs_[freeobjects_rr_index_++ % num_connections_],
             &ObjectManagerService::Stub::PrepareAsyncFreeObjects, request, callback);
   }
 
  private:
   int num_connections_;
+
+  std::atomic<unsigned int> push_rr_index_;
+  std::atomic<unsigned int> pull_rr_index_;
+  std::atomic<unsigned int> freeobjects_rr_index_;
 
   /// The gRPC-generated stub.
   std::vector<std::unique_ptr<ObjectManagerService::Stub>> stubs_;

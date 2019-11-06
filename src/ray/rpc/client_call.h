@@ -125,7 +125,8 @@ class ClientCallManager {
   /// posted.
   explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
       : main_service_(main_service), num_threads_(num_threads) {
-    // Start the polling thread.
+    rr_index_ = rand() % num_threads_;
+    // Start the polling threads.
     cqs_.reserve(num_threads_);
     for (int i = 0; i < num_threads_; i++) {
       cqs_.emplace_back();
@@ -163,9 +164,9 @@ class ClientCallManager {
       const Request &request, const ClientCallback<Reply> &callback) {
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
     // Send request.
-    // Find a random completion queue to wait for response.
+    // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(&call->context_, request,
-                                                            &cqs_[rand() % num_threads_]);
+                                                            &cqs_[rr_index_++ % num_threads_]);
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -217,6 +218,9 @@ class ClientCallManager {
 
   /// The number of polling threads.
   int num_threads_;
+
+  /// The index to send RPCs in a round-robin fashion
+  std::atomic<unsigned int> rr_index_;
 
   /// The gRPC `CompletionQueue` object used to poll events.
   std::vector<grpc::CompletionQueue> cqs_;
