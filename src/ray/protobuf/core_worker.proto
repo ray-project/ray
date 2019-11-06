@@ -86,7 +86,8 @@ service WorkerService {
   // Push a task to a worker.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
   // Push a task to a direct-call actor.
-  rpc DirectActorAssignTask(DirectActorAssignTaskRequest) returns (DirectActorAssignTaskReply);
+  rpc DirectActorAssignTask(DirectActorAssignTaskRequest)
+      returns (DirectActorAssignTaskReply);
   // Notify wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
