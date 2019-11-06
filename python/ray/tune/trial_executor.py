@@ -38,6 +38,8 @@ class TrialExecutor(object):
             trial (Trial): Trial to checkpoint.
             status (Trial.status): Status to set trial to.
         """
+        logger.debug("Trial %s: Changing status from %s to %s.", trial,
+                     trial.status, status)
         trial.status = status
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self.try_checkpoint_metadata(trial)
@@ -118,7 +120,6 @@ class TrialExecutor(object):
 
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
-
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 

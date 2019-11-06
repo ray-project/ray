@@ -40,6 +40,9 @@ class SyncClient(object):
         Args:
             source (str): Source path.
             target (str): Target path.
+
+        Returns:
+            True if sync initiation successful, False otherwise.
         """
         raise NotImplementedError
 
@@ -49,6 +52,9 @@ class SyncClient(object):
         Args:
             source (str): Source path.
             target (str): Target path.
+
+        Returns:
+            True if sync initiation successful, False otherwise.
         """
         raise NotImplementedError
 
@@ -68,9 +74,11 @@ class FunctionBasedClient(SyncClient):
 
     def sync_up(self, source, target):
         self.sync_up_func(source, target)
+        return True
 
     def sync_down(self, source, target):
         self.sync_down_func(source, target)
+        return True
 
 
 class CommandBasedClient(SyncClient):
@@ -104,22 +112,24 @@ class CommandBasedClient(SyncClient):
             prefix="log_sync", dir=logdir, suffix=".log", delete=False)
 
     def sync_up(self, source, target):
-        self.execute(self.sync_up_template, source, target)
+        return self.execute(self.sync_up_template, source, target)
 
     def sync_down(self, source, target):
-        self.execute(self.sync_down_template, source, target)
+        return self.execute(self.sync_down_template, source, target)
 
     def execute(self, sync_template, source, target):
+        """Executes sync_template on source and target."""
         if self.sync_process:
             self.sync_process.poll()
             if self.sync_process.returncode is None:
                 logger.warning("Last sync is still in progress, skipping.")
-                return
+                return False
         final_cmd = sync_template.format(
             source=quote(source), target=quote(target))
         logger.debug("Running sync: {}".format(final_cmd))
         self.sync_process = subprocess.Popen(
             final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
+        return True
 
     def wait(self):
         if self.sync_process:
@@ -171,26 +181,31 @@ class Syncer(object):
             self.sync_down()
 
     def sync_up(self):
+        result = False
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                self.sync_client.sync_up(self._local_dir, self._remote_path)
+                result = self.sync_client.sync_up(self._local_dir,
+                                                  self._remote_path)
                 self.last_sync_up_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
+        return result
 
     def sync_down(self):
+        result = False
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                self.sync_client.sync_down(self._remote_path, self._local_dir)
+                result = self.sync_client.sync_down(self._remote_path,
+                                                    self._local_dir)
                 self.last_sync_down_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
+        return result
 
     def validate_hosts(self, source, target):
         if not (source and target):
-            logger.debug(
-                "Source or target is empty, skipping log sync for {}".format(
-                    self._local_dir))
+            logger.debug("Source or target is empty, skipping log sync for "
+                         "{}".format(self._local_dir))
             return False
         return True
 

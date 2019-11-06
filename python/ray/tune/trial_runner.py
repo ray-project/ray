@@ -216,8 +216,7 @@ class TrialRunner(object):
                     "Called resume from remote without remote directory.")
 
             # Try syncing down the upload directory.
-            logger.info("Downloading from {}".format(
-                self._remote_checkpoint_dir))
+            logger.info("Downloading from %s", self._remote_checkpoint_dir)
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
@@ -343,7 +342,7 @@ class TrialRunner(object):
                              "Pass `queue_trials=True` in "
                              "ray.tune.run() or on the command "
                              "line to queue trials until the cluster scales "
-                             "up. {}").format(
+                             "up or resources become available. {}").format(
                                  trial.resources.summary_string(),
                                  self.trial_executor.resource_string(),
                                  trial.get_trainable_cls().resource_help(
@@ -422,10 +421,14 @@ class TrialRunner(object):
     def _process_events(self):
         failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
+            logger.info(
+                "%s (IP: %s) detected as stale. This is likely "
+                "because the node was lost", failed_trial,
+                failed_trial.node_ip)
             with warn_if_slow("process_failed_trial"):
                 self._process_trial_failure(
                     failed_trial,
-                    error_msg="{} (ip: {}) detected as stale. This is likely"
+                    error_msg="{} (IP: {}) detected as stale. This is likely "
                     "because the node was lost".format(failed_trial,
                                                        failed_trial.node_ip))
         else:
@@ -537,12 +540,17 @@ class TrialRunner(object):
                 stop_logger=False)
             trial.result_logger.flush()
             if self.trial_executor.has_resources(trial.resources):
-                logger.info("Attempting to recover trial.")
+                logger.info(
+                    "Trial %s: Attempting to recover "
+                    "trial state from last checkpoint.", trial)
                 self.trial_executor.start_trial(trial)
                 if trial.status == Trial.ERROR:
+                    logger.error("Trial %s: Did not start correctly.", trial)
                     raise RuntimeError("Trial did not start correctly.")
+                logger.debug("Trial %s: Started correctly.", trial)
             else:
-                logger.debug("Notifying Scheduler and requeueing trial.")
+                logger.debug("Trial %s: Notifying Scheduler and requeueing.",
+                             trial)
                 self._requeue_trial(trial)
         except Exception:
             logger.exception("Error recovering trial from checkpoint, abort.")

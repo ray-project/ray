@@ -122,6 +122,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
+        self.node_ip = None
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
@@ -238,8 +239,9 @@ class Trial(object):
             self.num_failures += 1  # may be moved to outer scope?
             error_file = os.path.join(self.logdir,
                                       "error_{}.txt".format(date_str()))
-            with open(error_file, "w") as f:
-                f.write(error_msg)
+            with open(error_file, "a+") as f:
+                f.write("Failure # {}".format(self.num_failures) + "\n")
+                f.write(error_msg + "\n")
             self.error_file = error_file
             self.error_msg = error_msg
 
@@ -291,8 +293,12 @@ class Trial(object):
             self.result_logger.wait()
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
-            self.result_logger.sync_down()
-            self.result_logger.wait()
+            if self.result_logger.sync_down():
+                self.result_logger.wait()
+            else:
+                logger.error(
+                    "Trial %s: Checkpoint sync skipped. "
+                    "This should not happen.", self)
         self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def should_recover(self):
@@ -314,6 +320,7 @@ class Trial(object):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
+        self.node_ip = result.get("node_ip")
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
@@ -340,10 +347,6 @@ class Trial(object):
 
     def is_finished(self):
         return self.status in [Trial.TERMINATED, Trial.ERROR]
-
-    @property
-    def node_ip(self):
-        return self.last_result.get("node_ip")
 
     def __repr__(self):
         return str(self)
