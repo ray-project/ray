@@ -188,6 +188,18 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       new CoreWorkerDirectActorTaskSubmitter(
           io_service_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
                            new CoreWorkerMemoryStoreProvider(memory_store_))));
+  auto create_actor_callback = [this](const ActorID &actor_id,
+                                      const TaskSpecification &actor_creation_spec,
+                                      uint64_t num_lifetimes) {
+    if (!raylet_client_->SubmitTask(actor_creation_spec, num_lifetimes).ok()) {
+      // TODO(swang): Mark the actor as DEAD in the GCS. This is
+      // currently hard to do because the GCS first expects an ALIVE
+      // entry in the actor's log before we add the DEAD entry.
+      RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
+    }
+  };
+  actor_manager_ = std::unique_ptr<ActorManager>(
+      new ActorManager(*direct_actor_submitter_, create_actor_callback));
 }
 
 CoreWorker::~CoreWorker() {
@@ -230,18 +242,12 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
-  // Clear all actor handles at the end of each non-actor task.
+  // Clear all actor state at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
-    for (const auto &handle : actor_handles_) {
+    for (const auto &handle : actor_manager_->Handles()) {
       RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
-    actor_handles_.clear();
-
-    if (!children_actors_.empty()) {
-      RAY_LOG(WARNING)
-          << "Task is exiting but it created some actors. They will not be restarted.";
-      children_actors_.clear();
-    }
+    actor_manager_->Clear();
   }
 }
 
@@ -502,17 +508,17 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_direct_call,
                                    actor_creation_options.max_concurrency,
                                    actor_creation_options.is_detached);
+  const ray::TaskSpecification spec = builder.Build();
+  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(spec));
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
       actor_creation_options.is_direct_call, function.GetFunctionDescriptor()));
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
+  actor_manager_->RegisterChildActor(actor_id, spec);
 
-  const ray::TaskSpecification spec = builder.Build();
-  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(spec));
   *return_actor_id = actor_id;
-  children_actors_.insert({*return_actor_id, ChildActor(spec)});
   return Status::OK();
 }
 
@@ -521,7 +527,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
                                    const TaskOptions &task_options,
                                    std::vector<ObjectID> *return_ids) {
   ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
+  RAY_RETURN_NOT_OK(actor_manager_->GetActorHandle(actor_id, &actor_handle));
 
   // Add one for actor cursor object id for tasks.
   const int num_returns = task_options.num_returns + 1;
@@ -572,7 +578,7 @@ ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &seriali
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
                                         std::string *output) const {
   ActorHandle *actor_handle = nullptr;
-  auto status = GetActorHandle(actor_id, &actor_handle);
+  auto status = actor_manager_->GetActorHandle(actor_id, &actor_handle);
   if (status.ok()) {
     actor_handle->Serialize(output);
   }
@@ -581,53 +587,23 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
 
 bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
   const auto &actor_id = actor_handle->GetActorID();
-  auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
+  auto inserted = actor_manager_->AddActorHandle(std::move(actor_handle));
   if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
-      auto it = actor_handles_.find(actor_id);
-      RAY_CHECK(it != actor_handles_.end());
       switch (actor_data.state()) {
       case gcs::ActorTableData::ALIVE: {
-        it->second->UpdateLocation(ClientID::FromBinary(actor_data.node_manager_id()));
-        direct_actor_submitter_->ConnectActor(actor_id, actor_data.ip_address(),
-                                              actor_data.port());
+        actor_manager_->OnActorLocationChanged(
+            actor_id, ClientID::FromBinary(actor_data.node_manager_id()),
+            actor_data.ip_address(), actor_data.port());
       } break;
       case gcs::ActorTableData::RECONSTRUCTING: {
-        // We have to reset the actor handle since the next instance of the
-        // actor will not have the last sequence number that we sent.
-        // TODO: Remove the flag for direct calls. We do not reset for the
-        // raylet codepath because it tries to replay all tasks since the last
-        // actor checkpoint.
-        it->second->MarkFailed(/*reset_task_counter=*/it->second->IsDirectCallActor());
-        direct_actor_submitter_->DisconnectActor(actor_id);
-
-        // If we are the actor's creator, restart it.
-        auto child_it = children_actors_.find(actor_id);
-        if (child_it != children_actors_.end()) {
-          child_it->second.num_lifetimes++;
-          // Restart the actor.
-          RAY_LOG(ERROR) << "Attempting to restart failed actor " << actor_id
-                         << ", attempt #" << child_it->second.num_lifetimes;
-          if (!raylet_client_
-                   ->SubmitTask(child_it->second.actor_creation_spec,
-                                child_it->second.num_lifetimes)
-                   .ok()) {
-            // TODO(swang): Mark the actor as DEAD in the GCS. This is
-            // currently hard to do because the GCS first expects an ALIVE
-            // entry in the actor's log before we add the DEAD entry.
-            RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
-          }
-        }
+        actor_manager_->OnActorFailed(actor_id);
       } break;
       case gcs::ActorTableData::DEAD: {
-        it->second->MarkDead();
-        direct_actor_submitter_->DisconnectActor(actor_id);
-        // The actor is dead.
+        actor_manager_->OnActorDead(actor_id);
         RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
-        // We cannot erase the actor handle here because clients can still
-        // submit tasks to dead actors.
       } break;
       default:
         RAY_LOG(FATAL) << "Received unexpected message type " << actor_data.state();
@@ -643,16 +619,6 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         actor_id, actor_notification_callback, nullptr));
   }
   return inserted;
-}
-
-Status CoreWorker::GetActorHandle(const ActorID &actor_id,
-                                  ActorHandle **actor_handle) const {
-  auto it = actor_handles_.find(actor_id);
-  if (it == actor_handles_.end()) {
-    return Status::Invalid("Handle for actor does not exist");
-  }
-  *actor_handle = it->second.get();
-  return Status::OK();
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
@@ -803,13 +769,15 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 
 void CoreWorker::HandleNodeRemoved(const ClientID &node_id) {
   // TODO(swang): For orphaned actors, move failure detection to the raylet monitor.
-  for (const auto &handle : actor_handles_) {
-    // TODO: Handle out-of-order messages.
+  for (const auto &handle : actor_manager_->Handles()) {
     if (handle.second->NodeId() == node_id) {
       const auto &actor_id = handle.first;
-      auto child_it = children_actors_.find(actor_id);
-      if (child_it != children_actors_.end()) {
+      auto child_it = actor_manager_->Children().find(actor_id);
+      if (child_it != actor_manager_->Children().end()) {
         // Mark the child as failed in the GCS.
+        // TODO(swang): This just triggers a callback via the GCS notification.
+        // We could remove this and just call the right callback directly if we
+        // refactor the actor table so that entries can be added in any order.
         auto new_state = child_it->second.CanRestart()
                              ? gcs::ActorTableData::RECONSTRUCTING
                              : gcs::ActorTableData::DEAD;

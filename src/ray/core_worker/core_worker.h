@@ -8,6 +8,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
@@ -296,20 +297,6 @@ class CoreWorker {
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
  private:
-  /// Metadata for an actor that we created.
-  struct ChildActor {
-    ChildActor(const ray::TaskSpecification &spec) : actor_creation_spec(spec) {}
-    /// The actor creation task spec. This is used to populate the actor table
-    /// entry and restart the actor if the actor fails.
-    const ray::TaskSpecification actor_creation_spec;
-    /// How many times this actor has been alive before.
-    uint64_t num_lifetimes = 0;
-
-    bool CanRestart() const {
-      return actor_creation_spec.MaxActorReconstructions() - num_lifetimes > 0;
-    }
-  };
-
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
 
@@ -333,14 +320,6 @@ class CoreWorker {
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle);
-
-  /// Get a handle to an actor. This asserts that the worker actually has this
-  /// handle.
-  ///
-  /// \param[in] actor_id The actor handle to get.
-  /// \param[out] actor_handle A handle to the requested actor.
-  /// \return Status::Invalid if we don't have this actor handle.
-  Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
   /* Private methods related to task execution. Should not be used by driver processes. */
 
@@ -419,6 +398,9 @@ class CoreWorker {
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
 
+  // Manager for actors that we have created and/or references to.
+  std::unique_ptr<ActorManager> actor_manager_;
+
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
@@ -451,11 +433,6 @@ class CoreWorker {
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
-
-  /// Map of actors that we created.
-  std::unordered_map<ActorID, ChildActor> children_actors_;
-  /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
   /* Fields related to task execution. */
 

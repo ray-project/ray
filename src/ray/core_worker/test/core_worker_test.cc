@@ -204,7 +204,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
                                                  int timeout_ms) {
   auto condition_func = [&worker, actor_id, wait_alive]() -> bool {
     ActorHandle *handle = nullptr;
-    auto status = worker.GetActorHandle(actor_id, &handle);
+    auto status = worker.actor_manager_->GetActorHandle(actor_id, &handle);
     if (!status.ok()) {
       return false;
     }

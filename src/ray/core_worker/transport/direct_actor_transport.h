@@ -37,8 +37,16 @@ struct ActorStateData {
   std::pair<std::string, int> location_;
 };
 
+/// For testing purposes. Abstracts the map from actor ID to RPC client.
+class DirectActorClientsInterface {
+ public:
+  virtual void ConnectActor(const ActorID &actor_id, const std::string &ip_address,
+                            const int port) = 0;
+  virtual void DisconnectActor(const ActorID &actor_id) = 0;
+};
+
 // This class is thread-safe.
-class CoreWorkerDirectActorTaskSubmitter {
+class CoreWorkerDirectActorTaskSubmitter : public DirectActorClientsInterface {
  public:
   CoreWorkerDirectActorTaskSubmitter(
       boost::asio::io_service &io_service,
