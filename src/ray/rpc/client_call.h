@@ -62,7 +62,7 @@ class ClientCallImpl : public ClientCall {
   ClientCallback<Reply> callback_;
 
   /// The response reader.
-  std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> response_reader_;
+  std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> response_reader_;
 
   /// gRPC status of this request.
   grpc::Status status_;
@@ -106,7 +106,7 @@ class ClientCallTag {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using PrepareAsyncFunction = std::unique_ptr<grpc::ClientAsyncResponseReader<Reply>> (
+using PrepareAsyncFunction = std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> (
     GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
                           grpc::CompletionQueue *cq);
 

@@ -2,8 +2,8 @@
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
-load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
-load("@build_stack_rules_proto//python:python_grpc_compile.bzl", "python_grpc_compile")
+load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
+load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@//bazel:ray.bzl", "flatbuffer_py_library")
 load("@//bazel:cython_library.bzl", "pyx_library")

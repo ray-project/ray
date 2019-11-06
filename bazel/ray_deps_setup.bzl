@@ -118,7 +118,7 @@ def ray_deps_setup():
     )
 
     git_repository(
-        name = "build_stack_rules_proto",
-        remote = "https://github.com/stackb/rules_proto.git",
-        commit = "d9a123032f8436dbc34069cfc3207f2810a494ee",
+        name = "rules_proto_grpc",
+        commit = "a74fef39c5fe636580083545f76d1eab74f6450d",
+        remote = "https://github.com/rules-proto-grpc/rules_proto_grpc.git",
     )
