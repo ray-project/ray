@@ -6,8 +6,11 @@
 namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client, const TaskHandler &task_handler)
-    : raylet_client_(raylet_client), task_handler_(task_handler) {}
+    std::unique_ptr<RayletClient> &raylet_client, const TaskHandler &task_handler,
+    const std::function<void()> &exit_handler)
+    : raylet_client_(raylet_client),
+      task_handler_(task_handler),
+      exit_handler_(exit_handler) {}
 
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
@@ -44,16 +47,14 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   std::vector<std::shared_ptr<RayObject>> results;
   auto status = task_handler_(task_spec, resource_ids, &results);
-
-  auto num_returns = task_spec.NumReturns();
-  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-    RAY_CHECK(num_returns > 0);
-    // Decrease to account for the dummy object id.
-    num_returns--;
+  if (status.IsSystemExit()) {
+    exit_handler_();
+    return;
   }
+  // Raylet transport doesn't currently support returning objects inline.
+  RAY_CHECK(results.size() == 0);
 
-  RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId()
-                 << " finished execution. num_returns: " << num_returns;
+  RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId() << " finished execution.";
 
   // Notify raylet that current task is done via a `TaskDone` message. This is to
   // ensure that the task is marked as finished by raylet only after previous

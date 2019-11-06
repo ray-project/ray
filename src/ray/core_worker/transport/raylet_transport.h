@@ -13,10 +13,11 @@ class CoreWorkerRayletTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *results)>;
+      std::vector<std::shared_ptr<RayObject>> *return_by_value)>;
 
   CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
-                               const TaskHandler &task_handler);
+                               const TaskHandler &task_handler,
+                               const std::function<void()> &exit_handler);
 
   /// Handle a `AssignTask` request.
   /// The implementation can handle this request asynchronously. When handling is done,
@@ -34,6 +35,8 @@ class CoreWorkerRayletTaskReceiver {
   std::unique_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
+  /// The callback function to exit the worker.
+  std::function<void()> exit_handler_;
   /// The callback to process arg wait complete.
   std::function<void(int64_t)> on_wait_complete_;
 };

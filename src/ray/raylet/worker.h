@@ -10,6 +10,8 @@
 #include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/worker_client.h"
 
+#include <unistd.h>  // pid_t
+
 namespace ray {
 
 namespace raylet {

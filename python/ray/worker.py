@@ -25,7 +25,6 @@ import random
 import pyarrow
 import pyarrow.plasma as plasma
 import ray.cloudpickle as pickle
-import ray.experimental.no_return
 import ray.gcs_utils
 import ray.memory_monitor as memory_monitor
 import ray.node
@@ -128,9 +127,6 @@ class Worker(object):
         # Information used to maintain actor checkpoints.
         self.actor_checkpoint_info = {}
         self.actor_task_counter = 0
-        # The number of threads Plasma should use when putting an object in the
-        # object store.
-        self.memcopy_threads = 12
         # When the worker is constructed. Record the original value of the
         # CUDA_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray.utils.get_cuda_visible_devices()
@@ -251,7 +247,7 @@ class Worker(object):
         """
         self.mode = mode
 
-    def put_object(self, value, object_id=None, return_buffer=None):
+    def put_object(self, value, object_id=None):
         """Put value in the local object store with object id `objectid`.
 
         This assumes that the value for `objectid` has not yet been placed in
@@ -265,8 +261,6 @@ class Worker(object):
             value: The value to put in the object store.
             object_id (object_id.ObjectID): The object ID of the value to be
                 put. If None, one will be generated.
-            return_buffer: If specified, append returns to this list instead
-                of storing directly in the object store.
 
         Returns:
             object_id.ObjectID: The object ID the object was put under.
@@ -286,25 +280,15 @@ class Worker(object):
                 "call 'put' on it (or return it).")
 
         if isinstance(value, bytes):
-            if return_buffer is not None:
-                return_buffer.append(value)
-                return
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
-            return self.core_worker.put_raw_buffer(
-                value,
-                object_id=object_id,
-                memcopy_threads=self.memcopy_threads)
+            return self.core_worker.put_raw_buffer(value, object_id=object_id)
 
         if self.use_pickle:
-            if return_buffer is not None:
-                raise NotImplementedError(
-                    "pickle5 serialization with direct actor calls")
             return self._serialize_and_put_pickle5(value, object_id=object_id)
         else:
-            return self._serialize_and_put_pyarrow(
-                value, object_id=object_id, return_buffer=return_buffer)
+            return self._serialize_and_put_pyarrow(value, object_id=object_id)
 
     def _serialize_and_put_pickle5(self, value, object_id=None):
         """Serialize an object using pickle5 and store it in the object store.
@@ -318,33 +302,34 @@ class Worker(object):
             Exception: An exception is raised if the attempt to store the
                 object fails. This can happen if the object store is full.
         """
+        inband, writer = self._serialize_with_pickle5(value)
+        return self.core_worker.put_pickle5_buffers(
+            inband, writer, object_id=object_id)
+
+    def _serialize_with_pickle5(self, value):
         writer = Pickle5Writer()
         if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
             inband = pickle.dumps(
                 value, protocol=5, buffer_callback=writer.buffer_callback)
         else:
             inband = pickle.dumps(value)
-        return self.core_worker.put_pickle5_buffers(
-            inband,
-            writer,
-            object_id=object_id,
-            memcopy_threads=self.memcopy_threads)
+        return inband, writer
 
-    def _serialize_and_put_pyarrow(self,
-                                   value,
-                                   object_id=None,
-                                   return_buffer=None):
+    def _serialize_and_put_pyarrow(self, value, object_id=None):
         """Wraps `store_and_register` with cases for existence and pickling.
 
         Args:
             object_id (object_id.ObjectID): The object ID of the value to be
                 put.
             value: The value to put in the object store.
-            return_buffer: If specified, append returns to this list instead
-                of storing directly in the object store.
         """
+        serialized_value = self._serialize_with_pyarrow(value)
+        return self.core_worker.put_serialized_object(
+            serialized_value, object_id=object_id)
+
+    def _serialize_with_pyarrow(self, value):
         try:
-            serialized_value = self._serialize_with_pyarrow(value)
+            serialized_value = self._store_and_register_pyarrow(value)
         except TypeError:
             # TypeError can happen because one of the members of the object
             # may not be serializable for cloudpickle. So we need
@@ -353,17 +338,11 @@ class Worker(object):
             _register_custom_serializer(type(value), use_pickle=True)
             logger.warning("WARNING: Serializing the class {} failed, "
                            "falling back to cloudpickle.".format(type(value)))
-            serialized_value = self._serialize_with_pyarrow(value)
+            serialized_value = self._store_and_register_pyarrow(value)
 
-        if return_buffer is not None:
-            return_buffer.append(serialized_value)
-        else:
-            return self.core_worker.put_serialized_object(
-                serialized_value,
-                object_id=object_id,
-                memcopy_threads=self.memcopy_threads)
+        return serialized_value
 
-    def _serialize_with_pyarrow(self, value, depth=100):
+    def _store_and_register_pyarrow(self, value, depth=100):
         """Store an object and attempt to register its class if needed.
 
         Args:
