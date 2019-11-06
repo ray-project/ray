@@ -642,6 +642,7 @@ class RayTrialExecutor(TrialExecutor):
             logger.exception(
                 "Trial %s: runner task timed out; restoration failed.", trial)
             self.set_status(trial, Trial.ERROR)
+            return False
         except Exception:
             logger.exception("Trial %s: Error restoring runner", trial)
             self.set_status(trial, Trial.ERROR)
