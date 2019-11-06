@@ -51,6 +51,16 @@ And vary the number of return values for tasks (and actor methods too):
     assert ray.get(id1) == 0
     assert ray.get(id2) == 1
 
+You can also use ``ActorClass.options`` API as a convience method to wrap arguments and return
+a wrapped actor class that a non-underscore .remote() can be called on. For example:
+
+.. code-block:: python
+
+    # The following two calls are equivalent.
+    >>> Actor._remote(num_cpus=4, max_concurrency=8, args=[x, y])
+    >>> Actor.options(num_cpus=4, max_concurrency=8).remote(x, y)
+
+
 Dynamic Custom Resources
 ------------------------
 
