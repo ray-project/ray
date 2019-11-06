@@ -173,7 +173,6 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
 }
 
 void Worker::WorkerLeaseGranted(const std::string &address, int port) {
-  RAY_LOG(ERROR) << "sending to " << address << " " << port_;
   RAY_CHECK(!address.empty());
   RAY_CHECK(port_ > 0);
   rpc::WorkerLeaseGrantedRequest request;

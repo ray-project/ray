@@ -117,15 +117,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
         new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task, exit_handler));
+    direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
+        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
+                                              execute_task, exit_handler));
+    core_worker_server_.RegisterService(grpc_service_);
   }
-  direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-      new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                            execute_task, exit_handler));
 
   // Start RPC server after all the task receivers are properly initialized.
   core_worker_server_.Run();
-
-  RAY_LOG(ERROR) << "Starting server on " << core_worker_server_.GetPort();
 
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
@@ -773,7 +772,6 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "handle asign task";
   if (worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
@@ -806,7 +804,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                           rpc::WorkerLeaseGrantedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "got least grant";
+  RAY_LOG(ERROR) << "got lease req";
   task_execution_service_.post([=] {
     direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
   });
