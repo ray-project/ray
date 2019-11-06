@@ -8,6 +8,13 @@ import time
 import types
 
 import ray
+from ray.streaming.config import Config
+from ray.streaming.queue.streaming_queue import QueueLinkImpl
+from ray.streaming.queue.memory_queue import MemQueueLinkImpl
+import ray.streaming.queue.queue_utils as queue_utils
+from ray.streaming.communication import DataChannel, DataInput
+from ray.streaming.communication import DataOutput, QueueConfig
+from ray.streaming.streaming import Environment
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
@@ -38,29 +45,17 @@ class OperatorInstance(object):
         the operator instance.
     """
 
-    def __init__(self, instance_id, input_gate, output_gate,
+    def __init__(self, operator, instance_id, input_channels, output_channels,
                  state_keeper=None):
+        self.operator = operator
         self.key_index = None  # Index for key selection
         self.key_attribute = None  # Attribute name for key selection
         self.instance_id = instance_id
-        self.input = input_gate
-        self.output = output_gate
+        self.input_channels = input_channels
+        self.output_channels = output_channels
         # Handle(s) to one or more user-defined actors
         # that can retrieve actor's state
         self.state_keeper = state_keeper
-        # Enable writes
-        for channel in self.output.forward_channels:
-            channel.queue.enable_writes()
-        for channels in self.output.shuffle_channels:
-            for channel in channels:
-                channel.queue.enable_writes()
-        for channels in self.output.shuffle_key_channels:
-            for channel in channels:
-                channel.queue.enable_writes()
-        for channels in self.output.round_robin_channels:
-            for channel in channels:
-                channel.queue.enable_writes()
-        # TODO (john): Add more channel types here
 
     # Registers actor's handle so that the actor can schedule itself
     def register_handle(self, actor_handle):
@@ -73,6 +68,19 @@ class OperatorInstance(object):
     # Used for attribute-based key extraction, e.g. for classes
     def attribute_based_selector(self, record):
         return vars(record)[self.key_attribute]
+
+    def init(self, env: Environment):
+        """init streaming actor"""
+        self.env = env
+        if self.env.config.queue_type == Config.MEMORY_QUEUE:
+            self.queue_link = QueueLinkImpl()
+        else:
+            self.queue_link = MemQueueLinkImpl()
+        self.input_gate = DataInput(self.queue_link, self.input_channels)
+        self.output_gate = DataOutput(self.queue_link, self.output_channels, self.operator.partitioning_strategies)
+        # start
+        self.input_gate.init()
+        self.output_gate.init()
 
     # Starts the actor
     def start(self):
@@ -90,13 +98,13 @@ class ReadTextFile(OperatorInstance):
 
     def __init__(self,
                  instance_id,
-                 operator_metadata,
+                 operator,
                  input_gate,
                  output_gate,
                  state_keepers=None):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate,
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate,
                                   state_keepers)
-        self.filepath = operator_metadata.other_args
+        self.filepath = operator.other_args
         # TODO (john): Handle possible exception here
         self.reader = open(self.filepath, "r")
 
@@ -106,12 +114,10 @@ class ReadTextFile(OperatorInstance):
             record = self.reader.readline()
             # Reader returns empty string ('') on EOF
             if not record:
-                # Flush any remaining records to plasma and close the file
-                self.output._flush(close=True)
+                self.output.close()
                 self.reader.close()
                 return
-            self.output._push(
-                record[:-1])  # Push after removing newline characters
+            self.output.push(record[:-1])  # Push after removing newline characters
 
 
 # Map actor
@@ -127,10 +133,10 @@ class Map(OperatorInstance):
         map_fn (function): The user-defined function.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
-        self.map_fn = operator_metadata.logic
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
+        self.map_fn = operator.logic
 
     # Applies the mapper each record of the input stream(s)
     # and pushes resulting records to the output stream(s)
@@ -138,13 +144,10 @@ class Map(OperatorInstance):
         start = time.time()
         elements = 0
         while True:
-            record = self.input._pull()
+            record = self.input.pull()
             if record is None:
-                self.output._flush(close=True)
-                logger.debug("[map {}] read/writes per second: {}".format(
-                    self.instance_id, elements / (time.time() - start)))
-                return
-            self.output._push(self.map_fn(record))
+                continue
+            self.output.push(self.map_fn(record))
             elements += 1
 
 
@@ -161,20 +164,19 @@ class FlatMap(OperatorInstance):
         flatmap_fn (function): The user-defined function.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
-        self.flatmap_fn = operator_metadata.logic
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
+        self.flatmap_fn = operator.logic
 
     # Applies the splitter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def start(self):
         while True:
-            record = self.input._pull()
+            record = self.input.pull()
             if record is None:
-                self.output._flush(close=True)
-                return
-            self.output._push_all(self.flatmap_fn(record))
+                continue
+            self.output.push_all(self.flatmap_fn(record))
 
 
 # Filter actor
@@ -190,21 +192,20 @@ class Filter(OperatorInstance):
         filter_fn (function): The user-defined boolean function.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
-        self.filter_fn = operator_metadata.logic
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
+        self.filter_fn = operator.logic
 
     # Applies the filter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def start(self):
         while True:
-            record = self.input._pull()
-            if record is None:  # Close channel and return
-                self.output._flush(close=True)
-                return
+            record = self.input.pull()
+            if record is None:
+                continue
             if self.filter_fn(record):
-                self.output._push(record)
+                self.output.push(record)
 
 
 # Inspect actor
@@ -218,21 +219,20 @@ class Inspect(OperatorInstance):
          inspect_fn (function): The user-defined inspect logic.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
-        self.inspect_fn = operator_metadata.logic
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
+        self.inspect_fn = operator.logic
 
         # Applies the inspect logic (e.g. print) to the records of
         # the input stream(s)
         # and leaves stream unaffected by simply pushing the records to
         # the output stream(s)
         while True:
-            record = self.input._pull()
+            record = self.input.pull()
             if record is None:
-                self.output._flush(close=True)
-                return
-            self.output._push(record)
+                continue
+            self.output.push(record)
             self.inspect_fn(record)
 
 
@@ -249,13 +249,13 @@ class Reduce(OperatorInstance):
         state (dict): A mapping from keys to values.
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate,
-                                  operator_metadata.state_actor)
-        self.reduce_fn = operator_metadata.logic
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate,
+                                  operator.state_actor)
+        self.reduce_fn = operator.logic
         # Set the attribute selector
-        self.attribute_selector = operator_metadata.other_args
+        self.attribute_selector = operator.other_args
         if self.attribute_selector is None:
             self.attribute_selector = _identity
         elif isinstance(self.attribute_selector, int):
@@ -273,11 +273,9 @@ class Reduce(OperatorInstance):
     # Outputs the result as (key,new value)
     def start(self):
         while True:
-            record = self.input._pull()
+            record = self.input.pull()
             if record is None:
-                self.output._flush(close=True)
-                del self.state
-                return
+                continue
             key, rest = record
             new_value = self.attribute_selector(rest)
             # TODO (john): Is there a way to update state with
@@ -288,7 +286,7 @@ class Reduce(OperatorInstance):
                 self.state[key] = new_value
             except KeyError:  # Key does not exist in state
                 self.state.setdefault(key, new_value)
-            self.output._push((key, new_value))
+            self.output.push((key, new_value))
 
         # Returns the state of the actor
         def get_state(self):
@@ -305,11 +303,11 @@ class KeyBy(OperatorInstance):
         (assuming tuple records).
     """
 
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
         # Set the key selector
-        self.key_selector = operator_metadata.other_args
+        self.key_selector = operator.other_args
         if isinstance(self.key_selector, int):
             self.key_index = self.key_selector
             self.key_selector = self.index_based_selector
@@ -322,35 +320,34 @@ class KeyBy(OperatorInstance):
     # The actual partitioning is done by the output gate
     def start(self):
         while True:
-            record = self.input._pull()
+            record = self.input.pull()
             if record is None:
-                self.output._flush(close=True)
-                return
+                continue
             key = self.key_selector(record)
-            self.output._push((key, record))
+            self.output.push((key, record))
 
 
 # A custom source actor
 @ray.remote
 class Source(OperatorInstance):
-    def __init__(self, instance_id, operator_metadata, input_gate,
+    def __init__(self, instance_id, operator, input_gate,
                  output_gate):
-        OperatorInstance.__init__(self, instance_id, input_gate, output_gate)
+        OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
         # The user-defined source with a get_next() method
-        self.source = operator_metadata.other_args
+        self.source = operator.other_args
 
     # Starts the source by calling get_next() repeatedly
     def start(self):
         start = time.time()
         elements = 0
         while True:
-            next = self.source.get_next()
-            if next is None:
-                self.output._flush(close=True)
+            record = self.source.get_next()
+            if not record:
                 logger.debug("[writer {}] puts per second: {}".format(
                     self.instance_id, elements / (time.time() - start)))
+                self.output.close()
                 return
-            self.output._push(next)
+            self.output.push(record)
             elements += 1
 
 
