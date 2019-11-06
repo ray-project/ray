@@ -53,7 +53,7 @@ message ReturnObject {
   bytes metadata = 3;
 }
 
-message DirectActorAssignTaskRequest {
+message PushTaskRequest {
   // The task to be pushed.
   TaskSpec task_spec = 1;
   // The sequence number of the task for this client. This must increase
@@ -63,12 +63,12 @@ message DirectActorAssignTaskRequest {
   int64 sequence_number = 2;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
-  // to cancel any DirectActorAssignTaskRequests with seqno <= this value, rather than
+  // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
   int64 client_processed_up_to = 3;
 }
 
-message DirectActorAssignTaskReply {
+message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
 }
@@ -92,12 +92,11 @@ message WorkerLeaseGrantedRequest {
 message WorkerLeaseGrantedReply {
 }
 
-service WorkerService {
-  // Push a task to a worker.
+service CoreWorkerService {
+  // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
-  // Push a task to a direct-call actor.
-  rpc DirectActorAssignTask(DirectActorAssignTaskRequest)
-      returns (DirectActorAssignTaskReply);
+  // Push a task directly to this worker from another.
+  rpc PushTask(PushTaskRequest) returns (PushTaskReply);
   // Notify wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);

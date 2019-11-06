@@ -584,7 +584,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   rpc::NodeManagerGrpcService node_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
-  /// as well as all `WorkerTaskClient`s.
+  /// as well as all `CoreWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
 
   /// Map from node ids to clients of the remote node managers.

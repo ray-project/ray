@@ -9,7 +9,7 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker/direct_actor_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 
@@ -72,7 +72,7 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // XXX this uses the direct actor submitter to push the task
-  void PushTask(const WorkerAddress &addr, rpc::DirectActorClient &client,
+  void PushTask(const WorkerAddress &addr, rpc::CoreWorkerClient &client,
                 std::unique_ptr<rpc::PushTaskRequest> request);
 
   // Reference to the shared raylet client for leasing workers.
@@ -91,7 +91,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  absl::flat_hash_map<WorkerAddress, std::unique_ptr<rpc::DirectActorClient>>
+  absl::flat_hash_map<WorkerAddress, std::unique_ptr<rpc::CoreWorkerClient>>
       client_cache_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.

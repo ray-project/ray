@@ -22,8 +22,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   const auto task_id = task_spec.TaskId();
   const auto num_returns = task_spec.NumReturns();
 
-  auto request = std::unique_ptr<rpc::DirectActorAssignTaskRequest>(
-      new rpc::DirectActorAssignTaskRequest);
+  auto request = std::unique_ptr<rpc::PushTaskRequest>(
+      new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
@@ -49,7 +49,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    DirectActorAssignTask(*client, std::move(request), actor_id, task_id, num_returns);
+    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -106,8 +106,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
-  std::shared_ptr<rpc::WorkerTaskClient> grpc_client =
-      std::make_shared<rpc::WorkerTaskClient>(ip_address, port, client_call_manager_);
+  std::shared_ptr<rpc::CoreWorkerClient> grpc_client =
+      std::make_shared<rpc::CoreWorkerClient>(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.
@@ -117,22 +117,22 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     auto request = std::move(requests.front());
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    DirectActorAssignTask(*client, std::move(request), actor_id, task_id, num_returns);
+    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
     requests.pop_front();
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DirectActorAssignTask(
-    rpc::WorkerTaskClient &client,
-    std::unique_ptr<rpc::DirectActorAssignTaskRequest> request, const ActorID &actor_id,
+void CoreWorkerDirectActorTaskSubmitter::PushTask(
+    rpc::CoreWorkerClient &client,
+    std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
     const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
-  auto status = client.DirectActorAssignTask(
+  auto status = client.PushTask(
       std::move(request),
       [this, actor_id, task_id, num_returns](
-          Status status, const rpc::DirectActorAssignTaskReply &reply) {
+          Status status, const rpc::PushTaskReply &reply) {
         {
           std::unique_lock<std::mutex> guard(mutex_);
           waiting_reply_tasks_[actor_id].erase(task_id);
@@ -194,7 +194,6 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    boost::asio::io_service &rpc_io_service, rpc::GrpcServer &server,
     const TaskHandler &task_handler, const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
       task_handler_(task_handler),
@@ -214,9 +213,9 @@ void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurren
   }
 }
 
-void CoreWorkerDirectActorTaskReceiver::HandleDirectActorAssignTask(
-    const rpc::DirectActorAssignTaskRequest &request,
-    rpc::DirectActorAssignTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
+    const rpc::PushTaskRequest &request,
+    rpc::PushTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();

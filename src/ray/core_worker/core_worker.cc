@@ -83,7 +83,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       heartbeat_timer_(io_service_),
-      worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
+      core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
@@ -113,16 +113,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            worker_context_, raylet_client_, task_execution_service_, worker_server_,
-            execute_task));
+            raylet_client_, execute_task, exit_handler));
   }
   direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
       new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                            worker_server_, execute_task,
-                                            exit_handler));
+                                            execute_task, exit_handler));
 
   // Start RPC server after all the task receivers are properly initialized.
-  worker_server_.Run();
+  core_worker_server_.Run();
 
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
@@ -132,7 +130,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, worker_server_.GetPort()));
+      language_, core_worker_server_.GetPort()));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_actor_task_receiver_ != nullptr) {
     direct_actor_task_receiver_->Init(*raylet_client_);
@@ -786,11 +784,11 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
   }
 }
 
-void CoreWorker::HandleDirectActorAssignTask(
-    const rpc::DirectActorAssignTaskRequest &request,
-    rpc::DirectActorAssignTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandlePushTask(
+    const rpc::PushTaskRequest &request,
+    rpc::PushTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
   task_execution_service_.post([=] {
-    direct_actor_task_receiver_->HandleDirectActorAssignTask(request, reply,
+    direct_actor_task_receiver_->HandlePushTask(request, reply,
                                                              send_reply_callback);
   });
 }
@@ -803,6 +801,12 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     direct_actor_task_receiver_->HandleDirectActorCallArgWaitComplete(
         request, reply, send_reply_callback);
   });
+}
+
+void CoreWorker::HandleWorkerLeaseGranted(
+    const rpc::WorkerLeaseGrantedRequest &request,
+    rpc::WorkerLeaseGrantedReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
 }
 
 }  // namespace ray
