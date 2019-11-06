@@ -6,10 +6,6 @@
 
 namespace {
 
-// The max allowed size in bytes of a return object from direct actor calls.
-// Objects larger than this size will be spilled to plasma.
-const int kMaxDirectCallObjectSize = 100000;
-
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
@@ -659,7 +655,7 @@ Status CoreWorker::AllocateReturnObjects(
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
       if (worker_context_.CurrentActorUseDirectCall() &&
-          data_sizes[i] < kMaxDirectCallObjectSize) {
+          data_sizes[i] < RayConfig::instance().max_direct_call_object_size) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(

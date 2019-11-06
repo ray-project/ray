@@ -7,7 +7,8 @@ import "src/ray/protobuf/common.proto";
 message ReturnObject {
   // Object ID.
   bytes object_id = 1;
-  // If set, indicates the data is in plasma instead of inline.
+  // If set, indicates the data is in plasma instead of inline. This
+  // means that data and metadata will be empty.
   bool in_plasma = 2;
   // Data of the object.
   bytes data = 3;
