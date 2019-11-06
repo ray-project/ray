@@ -49,7 +49,7 @@ class StreamingReader : public StreamingCommon {
   int64_t last_message_ts_;
   int64_t last_message_latency_;
   int64_t last_bundle_unit_;
-  
+
   ObjectID last_read_q_id_;
 
   static const uint32_t kReadItemTimeout;
@@ -70,8 +70,7 @@ class StreamingReader : public StreamingCommon {
             const std::vector<uint64_t> &queue_seq_ids,
             const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval);
 
-  void Init(const std::vector<ObjectID> &input_ids,
-            int64_t timer_interval);
+  void Init(const std::vector<ObjectID> &input_ids, int64_t timer_interval);
   /*!
    * get latest message from input queues
    * @param timeout_ms
@@ -85,14 +84,14 @@ class StreamingReader : public StreamingCommon {
    */
   void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
 
-    /*!
+  /*!
    * notify input queues to clear data before the offset.
    * used when checkpoint is done.
    * @param qid
    * @param offset
    */
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
-  
+
   void Stop();
 
   StreamingReader();
@@ -116,8 +115,8 @@ class StreamingReaderDirectCall : public StreamingReader {
  public:
   StreamingReaderDirectCall(CoreWorker *core_worker,
                             const std::vector<ObjectID> &queue_ids,
-                            const std::vector<ActorID> &actor_ids,
-                            RayFunction async_func, RayFunction sync_func)
+                            const std::vector<ActorID> &actor_ids, RayFunction async_func,
+                            RayFunction sync_func)
       : core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
                           reinterpret_cast<uint64_t>(core_worker_));

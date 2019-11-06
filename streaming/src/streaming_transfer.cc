@@ -27,9 +27,12 @@ StreamingQueueProducer::StreamingQueueProducer(std::shared_ptr<Config> &transfer
   STREAMING_CHECK(queue_writer_ != nullptr) << "Create queue writer failed.";
 }
 
-StreamingQueueProducer::~StreamingQueueProducer() { STREAMING_LOG(INFO) << "Producer Destory"; }
+StreamingQueueProducer::~StreamingQueueProducer() {
+  STREAMING_LOG(INFO) << "Producer Destory";
+}
 
-StreamingStatus StreamingQueueProducer::CreateTransferChannel(ProducerChannelInfo &channel_info) {
+StreamingStatus StreamingQueueProducer::CreateTransferChannel(
+    ProducerChannelInfo &channel_info) {
   auto status = CreateQueue(channel_info);
   if (StreamingStatus::OK != status) {
     // failed queues should be cleaned up in case of old data exists in downstream.
@@ -40,8 +43,8 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(ProducerChannelInf
   uint64_t queue_last_seq_id = 0;
   uint64_t last_message_id_in_queue = 0;
 
-    last_message_id_in_queue = FetchLastMessageIdFromQueueForStreamingQueue(
-        channel_info.channel_id, queue_last_seq_id);
+  last_message_id_in_queue = FetchLastMessageIdFromQueueForStreamingQueue(
+      channel_info.channel_id, queue_last_seq_id);
 
   if (!last_message_id_in_queue) {
     if (last_message_id_in_queue < channel_info.current_message_id) {
@@ -70,20 +73,19 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(ProducerChannelInf
 StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel_info) {
   auto &channel_id = channel_info.channel_id;
   bool is_queue_found = queue_writer_->IsQueueFoundInLocal(channel_id);
-  STREAMING_LOG(INFO) << "Queue [" << channel_id
-                      << "], queue exists: " << is_queue_found;
+  STREAMING_LOG(INFO) << "Queue [" << channel_id << "], queue exists: " << is_queue_found;
 
   ray::Status status;
 
-    // recreate & clear the queue
-    queue_writer_->CleanupSubscription(channel_id);
-    status = queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
-                                        channel_info.actor_id, false, true);
+  // recreate & clear the queue
+  queue_writer_->CleanupSubscription(channel_id);
+  status = queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
+                                      channel_info.actor_id, false, true);
 
   if (status.code() != StatusCode::OK) {
-      STREAMING_LOG(ERROR) << "Create queue [" << channel_id
-                           << "] failed of msg: " << status.message();
-      RAY_CHECK_OK(status);
+    STREAMING_LOG(ERROR) << "Create queue [" << channel_id
+                         << "] failed of msg: " << status.message();
+    RAY_CHECK_OK(status);
   }
 
   STREAMING_LOG(INFO) << "q id => " << channel_id << ", queue size => "
@@ -92,8 +94,8 @@ StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel
   return StreamingStatus::OK;
 }
 
-uint64_t StreamingQueueProducer::FetchLastMessageIdFromQueue(const ObjectID &queue_id,
-                                                     uint64_t &last_queue_seq_id) {
+uint64_t StreamingQueueProducer::FetchLastMessageIdFromQueue(
+    const ObjectID &queue_id, uint64_t &last_queue_seq_id) {
   uint32_t data_size;
   std::shared_ptr<uint8_t> data = nullptr;
   queue_writer_->GetLastQueueItem(queue_id, data, data_size, last_queue_seq_id);
@@ -110,8 +112,8 @@ uint64_t StreamingQueueProducer::FetchLastMessageIdFromQueue(const ObjectID &que
 
 uint64_t StreamingQueueProducer::FetchLastMessageIdFromQueueForStreamingQueue(
     const ObjectID &queue_id, uint64_t &last_queue_seq_id) {
-    last_queue_seq_id = 0;
-    return 0;
+  last_queue_seq_id = 0;
+  return 0;
 }
 
 StreamingStatus StreamingQueueProducer::DestroyTransferChannel(
@@ -120,13 +122,14 @@ StreamingStatus StreamingQueueProducer::DestroyTransferChannel(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueProducer::ClearTransferCheckpoint(ProducerChannelInfo &channel_info,
-                                                        uint64_t checkpoint_id,
-                                                        uint64_t checkpoint_offset) {
+StreamingStatus StreamingQueueProducer::ClearTransferCheckpoint(
+    ProducerChannelInfo &channel_info, uint64_t checkpoint_id,
+    uint64_t checkpoint_offset) {
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueProducer::RefreshChannelInfo(ProducerChannelInfo &channel_info) {
+StreamingStatus StreamingQueueProducer::RefreshChannelInfo(
+    ProducerChannelInfo &channel_info) {
   uint64_t min_consumed_id = 0;
   queue_writer_->GetMinConsumedSeqID(channel_info.channel_id, min_consumed_id);
   if (min_consumed_id != static_cast<uint64_t>(-1)) {
@@ -135,18 +138,17 @@ StreamingStatus StreamingQueueProducer::RefreshChannelInfo(ProducerChannelInfo &
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueProducer::NotfiyChannelConsumed(ProducerChannelInfo &channel_info,
-                                                      uint64_t channel_offset) {
+StreamingStatus StreamingQueueProducer::NotfiyChannelConsumed(
+    ProducerChannelInfo &channel_info, uint64_t channel_offset) {
   Status st =
       queue_writer_->SetQueueEvictionLimit(channel_info.channel_id, channel_offset);
   STREAMING_CHECK(st.code() == StatusCode::OK)
-      << " exception in clear barrier in writerwith client returned => "
-      << st.message();
+      << " exception in clear barrier in writerwith client returned => " << st.message();
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueProducer::ProduceItemToChannel(ProducerChannelInfo &channel_info,
-                                                     uint8_t *data, uint32_t data_size) {
+StreamingStatus StreamingQueueProducer::ProduceItemToChannel(
+    ProducerChannelInfo &channel_info, uint8_t *data, uint32_t data_size) {
   Status status = queue_writer_->PushQueueItem(channel_info.channel_id,
                                                channel_info.current_seq_id + 1, data,
                                                data_size, current_sys_time_ms());
@@ -196,9 +198,12 @@ StreamingQueueConsumer::StreamingQueueConsumer(std::shared_ptr<Config> &transfer
   STREAMING_CHECK(queue_reader_ != nullptr) << "Create queue reader failed.";
 }
 
-StreamingQueueConsumer::~StreamingQueueConsumer() { STREAMING_LOG(INFO) << "Consumer Destroy"; }
+StreamingQueueConsumer::~StreamingQueueConsumer() {
+  STREAMING_LOG(INFO) << "Consumer Destroy";
+}
 
-StreamingStatus StreamingQueueConsumer::CreateTransferChannel(ConsumerChannelInfo &channel_info) {
+StreamingStatus StreamingQueueConsumer::CreateTransferChannel(
+    ConsumerChannelInfo &channel_info) {
   // subscribe next seq id from checkpoint id
   // pull remote queue to local store if scheduler connection is set
   bool success =
@@ -216,30 +221,29 @@ StreamingStatus StreamingQueueConsumer::DestroyTransferChannel(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueConsumer::ClearTransferCheckpoint(ConsumerChannelInfo &channel_info,
-                                                        uint64_t checkpoint_id,
-                                                        uint64_t checkpoint_offset) {
+StreamingStatus StreamingQueueConsumer::ClearTransferCheckpoint(
+    ConsumerChannelInfo &channel_info, uint64_t checkpoint_id,
+    uint64_t checkpoint_offset) {
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueConsumer::RefreshChannelInfo(ConsumerChannelInfo &channel_info) {
+StreamingStatus StreamingQueueConsumer::RefreshChannelInfo(
+    ConsumerChannelInfo &channel_info) {
   auto &queue_info = channel_info.queue_info;
   queue_reader_->GetLastSeqID(channel_info.channel_id, queue_info.last_seq_id);
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
-                                                       uint64_t &offset_id,
-                                                       uint8_t *&data,
-                                                       uint32_t &data_size,
-                                                       uint32_t timeout) {
+StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(
+    ConsumerChannelInfo &channel_info, uint64_t &offset_id, uint8_t *&data,
+    uint32_t &data_size, uint32_t timeout) {
   auto st = queue_reader_->GetQueueItem(channel_info.channel_id, data, data_size,
                                         offset_id, timeout);
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueConsumer::NotfiyChannelConsumed(ConsumerChannelInfo &channel_info,
-                                                      uint64_t offset_id) {
+StreamingStatus StreamingQueueConsumer::NotfiyChannelConsumed(
+    ConsumerChannelInfo &channel_info, uint64_t offset_id) {
   queue_reader_->NotifyConsumedItem(channel_info.channel_id, offset_id);
   return StreamingStatus::OK;
 }

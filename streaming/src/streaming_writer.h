@@ -25,23 +25,30 @@ class StreamingWriter : public StreamingCommon {
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;
 
-  // This property is for debug if transfering blocked.
-  // The verbose log in timer will report and show which channel is active,
-  // which helps us to find some useful channel informations.
-  ObjectID last_write_q_id_;
-  static constexpr uint32_t kQueueItemMaxBlocks = 10;
-
  protected:
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
   std::shared_ptr<Config> transfer_config_;
 
  private:
-  bool WriteAllToChannel(ProducerChannelInfo *channel_info);
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
 
+  // \\param channel_info
+  // \\param buffer_remain
+  // Two conditions in this function:
+  // 1. Send the transient buffer to channel if there is already some data in.
+  // 2. Colleting data from ring buffer, then put them into a bundle and
+  //    serilizing it to bytes object in transient buffer. Finally do 1.
   StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
                                        uint64_t &buffer_remain);
 
+  // Start the loop forward thread for collecting messages from all channels.
+  // Invoking stack:
+  // WriterLoopForward
+  //   -- WriteChannelProcess
+  //      -- WriteBufferToChannel
+  //        -- CollectFromRingBuffer
+  //        -- WriteTransientBufferToChannel
+  //   -- WriteEmptyMessage(if WriteChannelProcess return empty state)
   void WriterLoopForward();
 
   /*!
@@ -52,6 +59,8 @@ class StreamingWriter : public StreamingCommon {
    */
   StreamingStatus WriteEmptyMessage(ProducerChannelInfo &channel_info);
 
+  // \\param channel_info
+  // Flush all data from transient buffer to channel for transporting.
   StreamingStatus WriteTransientBufferToChannel(ProducerChannelInfo &channel_info);
 
   bool CollectFromRingBuffer(ProducerChannelInfo &channel_info, uint64_t &buffer_remain);
@@ -69,7 +78,6 @@ class StreamingWriter : public StreamingCommon {
   /*!
    * @brief streaming writer client initialization without raylet/local sheduler
    * @param queue_id_vec queue id vector
-   * queueid
    * @param channel_message_id_vec channel seq id is related with message checkpoint
    * @param queue_size queue size (memory size not length)
    */
@@ -81,10 +89,8 @@ class StreamingWriter : public StreamingCommon {
    * @brief To increase throughout, we employed an output buffer for message
    * transformation,
    * which means we merge a lot of message to a message bundle and no message will be
-   * pushed
-   * into queue directly util daemon thread does this action. Additionally, writing will
-   * block
-   * when buffer ring is full.
+   * pushed into queue directly util daemon thread does this action.
+   * Additionally, writing will block when buffer ring is full.
    * @param q_id
    * @param data
    * @param data_size
@@ -104,8 +110,8 @@ class StreamingWriterDirectCall : public StreamingWriter {
  public:
   StreamingWriterDirectCall(CoreWorker *core_worker,
                             const std::vector<ObjectID> &queue_ids,
-                            const std::vector<ActorID> &actor_ids,
-                            RayFunction async_func, RayFunction sync_func)
+                            const std::vector<ActorID> &actor_ids, RayFunction async_func,
+                            RayFunction sync_func)
       : core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
                           reinterpret_cast<uint64_t>(core_worker_));
