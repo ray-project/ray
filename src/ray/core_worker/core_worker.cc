@@ -23,6 +23,10 @@ void BuildCommonTaskSpec(
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
+      if (transport_type == ray::TaskTransportType::RAYLET) {
+        RAY_CHECK(!arg.GetReference().IsDirectActorType())
+            << "NotImplemented: passing direct call objects to other tasks";
+      }
       builder.AddByRefArg(arg.GetReference());
     } else {
       builder.AddByValueArg(arg.GetValue());
@@ -182,11 +186,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           *raylet_client_, *direct_actor_submitter_,
           std::unique_ptr<CoreWorkerMemoryStoreProvider>(
               new CoreWorkerMemoryStoreProvider(memory_store_))));
-  direct_actor_task_receiver_->worker_lease_granted_ = [this](const std::string &addr,
-                                                              int port) {
-    RAY_CHECK(direct_task_submitter_ != nullptr);
-    direct_task_submitter_->HandleWorkerLeaseGranted(addr, port);
-  };
 }
 
 CoreWorker::~CoreWorker() {
@@ -803,6 +802,11 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 
 void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                           rpc::WorkerLeaseGrantedReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {}
+                                          rpc::SendReplyCallback send_reply_callback) {
+  task_execution_service_.post([=] {
+    direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
+  });
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
 
 }  // namespace ray

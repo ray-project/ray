@@ -365,16 +365,8 @@ class CoreWorkerDirectActorTaskReceiver {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
-  // TODO(ekl) move this to direct task transport
-  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
-                                rpc::WorkerLeaseGrantedReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
-
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
-
-  // XXX fix this
-  std::function<void(const std::string &, int)> worker_lease_granted_ = nullptr;
 
  private:
   // Worker context.

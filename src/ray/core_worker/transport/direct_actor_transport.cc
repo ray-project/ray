@@ -245,11 +245,11 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       request.sequence_number(), request.client_processed_up_to(),
       [this, reply, send_reply_callback, task_spec]() {
         auto num_returns = task_spec.NumReturns();
+        RAY_CHECK(num_returns > 0);
         if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
           // Decrease to account for the dummy object id.
           num_returns--;
         }
-        RAY_CHECK(num_returns > 0);
 
         // TODO(edoakes): resource IDs are currently kept track of in the raylet,
         // need to come up with a solution for this.
@@ -296,14 +296,6 @@ void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
   waiter_->OnWaitComplete(request.tag());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
-void CoreWorkerDirectActorTaskReceiver::HandleWorkerLeaseGranted(
-    const rpc::WorkerLeaseGrantedRequest &request, rpc::WorkerLeaseGrantedReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  RAY_CHECK(worker_lease_granted_ != nullptr);
-  worker_lease_granted_(request.address(), request.port());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

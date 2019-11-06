@@ -153,7 +153,6 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
       auto &callbacks = async_callback_it->second;
       async_callbacks.insert(async_callbacks.begin(), callbacks.begin(), callbacks.end());
       object_async_get_requests_.erase(async_callback_it);
-      should_add_entry = false;
     }
 
     if (should_add_entry) {

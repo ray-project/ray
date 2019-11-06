@@ -313,30 +313,24 @@ class CoreWorker {
                                const std::vector<std::shared_ptr<Buffer>> &metadatas,
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
-  /* Handlers for the worker's gRPC server. These are executed on the io_service_ and post
-   * work to the appropriate event loop.
+  /**
+   * The following methods are handlers for the core worker's gRPC server, which follow
+   * a macro-generated call convention. These are executed on the io_service_ and
+   * post work to the appropriate event loop.
    */
 
-  /// Handle an "AssignTask" event corresponding to scheduling a normal or an actor task
-  /// on this worker from the raylet.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "PushTask" event corresponding to scheduling an actor task
-  /// on this worker from another worker.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "PushTask" event corresponding to the raylet notifiying this
-  /// worker that an argument is ready.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "WorkerLeaseGranted" event corresponding to the raylet notifiying this
-  /// worker that a worker lease is granted.
   void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                 rpc::WorkerLeaseGrantedReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);

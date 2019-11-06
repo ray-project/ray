@@ -39,6 +39,12 @@ class CoreWorkerMemoryStore {
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
 
+  /// Asynchronously get an object from the object store. The object will not be removed
+  /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \param[in] callback The callback to run with the reference to the retrieved
+  ///            object value once available.
   void GetAsync(const ObjectID &object_id,
                 std::function<void(std::shared_ptr<RayObject>)> callback);
 

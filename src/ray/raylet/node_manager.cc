@@ -2000,8 +2000,8 @@ bool NodeManager::AssignTask(const Task &task) {
   ResourceIdSet resource_id_set =
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
-  if (task.on_dispatch_ != nullptr) {
-    task.on_dispatch_(worker, initial_config_.node_manager_address, worker->Port());
+  if (task.OnDispatch() != nullptr) {
+    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
     finish_assign_task_callback(Status::OK());
   } else {
     worker->AssignTask(task, resource_id_set, finish_assign_task_callback);

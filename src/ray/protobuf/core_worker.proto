@@ -60,6 +60,8 @@ message PushTaskRequest {
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
+  // If set to -1, ordering is disabled and the task executes immediately.
+  // This mode of behaviour is used for direct task submission only.
   int64 sequence_number = 2;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
