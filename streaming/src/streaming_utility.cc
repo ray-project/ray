@@ -34,5 +34,12 @@ void StreamingUtility::Split(const ray::ObjectID &q_id,
   }
 }
 
+std::string StreamingUtility::Qid2EdgeInfo(const ray::ObjectID &q_id) {
+  std::vector<std::string> str_vec;
+  Split(q_id, str_vec);
+  STREAMING_CHECK(str_vec.size() == 2);
+  return str_vec[0] + "-" + str_vec[1];
+}
+
 }  // namespace streaming
 }  // namespace ray

@@ -100,19 +100,51 @@ cc_binary(
 )
 
 cc_binary(
+    name = "streaming_message_ring_buffer_tests",
+    srcs = [
+        "test/streaming_message_ring_buffer_tests.cc",
+    ],
+    includes = [
+        "streaming/src/test",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+cc_binary(
+    name = "streaming_message_serialization_tests",
+    srcs = [
+        "test/streaming_message_serialization_tests.cc",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+
+cc_binary(
     name = "streaming_writer_tests_with_streamingqueue",
     srcs = [
         "test/streaming_writer_tests_with_streamingqueue.cc",
         "test/streaming_queue_tests_base.h",
-    ],
-    includes = [
-        "streaming/src/test",
     ],
     copts = ["-Itest/"],
     deps = [
         ":streaming_lib",
     ],
 )
+
+cc_binary(
+    name = "streaming_utility_tests",
+    srcs = [
+        "test/streaming_utility_tests.cc",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
 
 genrule(
     name = "copy_jni_h",
@@ -150,3 +182,4 @@ filegroup(
     }),
     visibility = ["//visibility:public"],
 )
+

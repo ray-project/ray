@@ -6,9 +6,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 
 import org.ray.api.Ray;
+import org.ray.api.id.ActorId;
 import org.ray.api.runtime.RayRuntime;
 import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.RayNativeRuntime;
@@ -78,7 +80,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
   }
 
   @Override
-  public QueueConsumer registerQueueConsumer(Collection<String> inputQueues, Map<String, Long> inputActorHandls) {
+  public QueueConsumer registerQueueConsumer(Collection<String> inputQueues, Map<String, ActorId> inputActorIdsMap) {
     if (this.consumerInstance != null) {
       return consumerInstance;
     }
@@ -89,9 +91,9 @@ public class StreamingQueueLinkImpl implements QueueLink {
     }
     long[] plasmaQueueSeqIds = new long[inputQueues.size()];
     long[] streamingMsgIds = new long[inputQueues.size()];
-    long[] nativeActorHandles = new long[inputQueues.size()];
     // Using ArrayList to ensure both qid and actorhandle are in same order.
     Collection<String> inputQueueIds = new ArrayList<>();
+    Collection<ActorId> inputActorIds = new ArrayList<>();
 
     int i = 0;
     for (String queue : inputQueues) {
@@ -104,17 +106,17 @@ public class StreamingQueueLinkImpl implements QueueLink {
       }
       plasmaQueueSeqIds[i] = offsetInfo.getSeqId();
       streamingMsgIds[i] = offsetInfo.getStreamingMsgId();
-      nativeActorHandles[i] = inputActorHandls.get(queue);
       inputQueueIds.add(queue);
+      inputActorIds.add(inputActorIdsMap.get(queue));
       inputCheckpoints.put(queue, offsetInfo);
       i++;
     }
 
-    LOG.info("register consumer, isRecreate:{}, queues:{}, seqIds: {}, conf={}, nativeActorHandles: {}",
-        isRecreate, inputQueueIds, plasmaQueueSeqIds, configuration, nativeActorHandles);
+    LOG.info("register consumer, isRecreate:{}, queues:{}, seqIds: {}, conf={}, inputActorIds: {}",
+        isRecreate, inputQueueIds, plasmaQueueSeqIds, configuration, inputActorIds);
     try {
       this.consumerInstance = new QueueConsumerImpl(newConsumer(
-          nativeCoreWorker, nativeActorHandles,
+          nativeCoreWorker, QueueUtils.actorIdListToByteArray(inputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
           QueueUtils.stringQueueIdListToByteArray(inputQueueIds),
           plasmaQueueSeqIds, streamingMsgIds,
@@ -131,15 +133,15 @@ public class StreamingQueueLinkImpl implements QueueLink {
   }
 
   @Override
-  public QueueProducer registerQueueProducer(Collection<String> outputQueues, Map<String, Long> outputActorHandles) {
+  public QueueProducer registerQueueProducer(Collection<String> outputQueues, Map<String, ActorId> outputActorIdsMap) {
     if (this.producerInstance != null) {
       return producerInstance;
     }
 
-    long[] nativeActorHandles = new long[outputQueues.size()];
     long[] creatorTypes = new long[outputQueues.size()];
     // Using ArrayList to ensure both qid and actorhandle are in same order.
     Collection<String> outputQueueIds = new ArrayList<>();
+    Collection<ActorId> outputActorIds = new ArrayList<>();
 
     int i = 0;
     for (String queue : outputQueues) {
@@ -151,8 +153,8 @@ public class StreamingQueueLinkImpl implements QueueLink {
       if (lastAbnormalQueues.contains(queue)) {
         creatorTypes[i] = 2;
       }
-      nativeActorHandles[i] = outputActorHandles.get(queue);
       outputQueueIds.add(queue);
+      outputActorIds.add(outputActorIdsMap.get(queue));
       i++;
     }
 
@@ -170,11 +172,11 @@ public class StreamingQueueLinkImpl implements QueueLink {
     // convert to ordered list
     byte[][] qidCopyList = QueueUtils.stringQueueIdListToByteArray(outputQueueIds);
 
-    LOG.info("register producer, createType: {}, queues:{}, msgIds: {}, conf={}, nativeActorHandles:{}",
-        creatorTypes, outputQueueIds, msgIds, configuration, nativeActorHandles);
+    LOG.info("register producer, createType: {}, queues:{}, msgIds: {}, conf={}, outputActorIds:{}",
+        creatorTypes, outputQueueIds, msgIds, configuration, outputActorIds);
     try {
       this.producerInstance = new QueueProducerImpl(newProducer(
-          nativeCoreWorker, nativeActorHandles,
+          nativeCoreWorker, QueueUtils.actorIdListToByteArray(outputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
           qidCopyList, QueueUtils.longToPrimitives(msgIds),
           Long.parseLong(configuration.get(QueueConfigKeys.QUEUE_SIZE)),
@@ -236,7 +238,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
 
   private native long newConsumer(
       long coreWorker,
-      long[] nativeActorHandles,
+      byte[][] inputActorIds,
       FunctionDescriptor asyncFunction,
       FunctionDescriptor syncFunction,
       byte[][] inputQueueIds,
@@ -249,7 +251,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
 
   private native long newProducer(
       long coreWorker,
-      long[] nativeActorHandles,
+      byte[][] outputActorIds,
       FunctionDescriptor asyncFunction,
       FunctionDescriptor syncFunction,
       byte[][] outputQueueIds,

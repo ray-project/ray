@@ -13,7 +13,7 @@ extern "C" {
  * Signature: (J[JLorg/ray/runtime/functionmanager/FunctionDescriptor;Lorg/ray/runtime/functionmanager/FunctionDescriptor;[[B[J[JJZ[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer
-  (JNIEnv *, jobject, jlong, jlongArray, jobject, jobject, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray);
+  (JNIEnv *, jobject, jlong, jobjectArray, jobject, jobject, jobjectArray, jlongArray, jlongArray, jlong, jboolean, jbyteArray);
 
 /*
  * Class:     org_ray_streaming_queue_impl_StreamingQueueLinkImpl
@@ -21,7 +21,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl
  * Signature: (J[JLorg/ray/runtime/functionmanager/FunctionDescriptor;Lorg/ray/runtime/functionmanager/FunctionDescriptor;[[B[JJ[J[B)J
  */
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer
-  (JNIEnv *, jobject, jlong, jlongArray, jobject, jobject, jobjectArray, jlongArray, jlong, jlongArray, jbyteArray);
+  (JNIEnv *, jobject, jlong, jobjectArray, jobject, jobject, jobjectArray, jlongArray, jlong, jlongArray, jbyteArray);
 
 /*
  * Class:     org_ray_streaming_queue_impl_StreamingQueueLinkImpl

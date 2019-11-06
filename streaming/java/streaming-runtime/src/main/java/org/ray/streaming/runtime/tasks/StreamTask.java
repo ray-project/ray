@@ -8,6 +8,7 @@ import java.util.Set;
 
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
+import org.ray.api.id.ActorId;
 import org.ray.runtime.actor.NativeRayActor;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.core.graph.ExecutionEdge;
@@ -72,18 +73,18 @@ public abstract class StreamTask implements Runnable {
     List<ExecutionEdge> outputEdges = executionNode.getOutputEdges();
     List<Collector> collectors = new ArrayList<>();
     for (ExecutionEdge edge : outputEdges) {
-      Map<String, Long> outputHandles = new HashMap<>();
+      Map<String, ActorId> outputActorIds = new HashMap<>();
       Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getTargetNodeId());
       taskId2Worker.forEach((targetTaskId, targetActor) -> {
         String queueName = QueueUtils.genQueueName(taskId, targetTaskId, executionGraph.getBuildTime());
-        outputHandles.put(queueName, getNativeActorHandle(targetActor));
+        outputActorIds.put(queueName, targetActor.getId());
       });
 
-      Set<String> queueIds = outputHandles.keySet();
-      if (!outputHandles.isEmpty()) {
+      Set<String> queueIds = outputActorIds.keySet();
+      if (!outputActorIds.isEmpty()) {
         LOG.info("Register queue producer, queues {}.", queueIds);
-        QueueProducer producer = queueLink.registerQueueProducer(queueIds, outputHandles);
+        QueueProducer producer = queueLink.registerQueueProducer(queueIds, outputActorIds);
         producers.put(edge, producer);
         collectors.add(new OutputCollector(queueIds, producer, edge.getPartition()));
       }
@@ -91,19 +92,19 @@ public abstract class StreamTask implements Runnable {
 
     // queue consumer
     List<ExecutionEdge> inputEdges = executionNode.getInputsEdges();
-    Map<String, Long> inputHandles = new HashMap<>();
+    Map<String, ActorId> inputActorIds = new HashMap<>();
     for (ExecutionEdge edge : inputEdges) {
       Map<Integer, RayActor<JobWorker>> taskId2Worker = executionGraph
           .getTaskId2WorkerByNodeId(edge.getSrcNodeId());
       taskId2Worker.forEach((srcTaskId, srcActor) -> {
         String queueName = QueueUtils.genQueueName(srcTaskId, taskId, executionGraph.getBuildTime());
-        inputHandles.put(queueName, getNativeActorHandle(srcActor));
+        inputActorIds.put(queueName, srcActor.getId());
       });
     }
-    if (!inputHandles.isEmpty()) {
-      Set<String> queueIds = inputHandles.keySet();
+    if (!inputActorIds.isEmpty()) {
+      Set<String> queueIds = inputActorIds.keySet();
       LOG.info("Register queue consumer, queues {}.", queueIds);
-      consumer = queueLink.registerQueueConsumer(queueIds, inputHandles);
+      consumer = queueLink.registerQueueConsumer(queueIds, inputActorIds);
     }
 
     RuntimeContext runtimeContext = new RayRuntimeContext(
@@ -111,15 +112,6 @@ public abstract class StreamTask implements Runnable {
 
     processor.open(collectors, runtimeContext);
 
-  }
-
-  // return 0 in SINGLE_PROCESS mode
-  private static long getNativeActorHandle(RayActor actor) {
-    if (actor instanceof NativeRayActor) {
-      return ((NativeRayActor) actor).getNativeActorHandle();
-    } else {
-      return 0;
-    }
   }
 
   protected abstract void init() throws Exception;

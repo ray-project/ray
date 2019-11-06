@@ -70,7 +70,13 @@ class StreamingMessage : public StreamingSerializable {
    * @param seq_id message id
    * @param message_type
    */
-  StreamingMessage(std::shared_ptr<uint8_t> data, uint32_t data_size, uint64_t seq_id,
+  StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size, uint64_t seq_id,
+                   StreamingMessageType message_type);
+
+  StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size, uint64_t seq_id,
+                   StreamingMessageType message_type);
+
+  StreamingMessage(const uint8_t *data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 
   StreamingMessage(const StreamingMessage &);
