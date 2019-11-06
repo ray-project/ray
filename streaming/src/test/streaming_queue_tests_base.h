@@ -177,7 +177,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
-    Status wait_st = driver.Objects().Wait(return_ids, 1, 5 * 1000, &wait_results);
+    Status wait_st = driver.Wait(return_ids, 1, 5 * 1000, &wait_results);
     if (!wait_st.ok()) {
       STREAMING_LOG(ERROR) << "Wait fail.";
       return false;
@@ -188,7 +188,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
       return false;
     }
 
-    Status get_st = driver.Objects().Get(return_ids, -1, &results);
+    Status get_st = driver.Get(return_ids, -1, &results);
     if (!get_st.ok()) {
       STREAMING_LOG(ERROR) << "Get fail.";
       return false;
@@ -307,9 +307,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   void SetUp() {}
 
   void TearDown() {}
-
-  // Test tore provider.
-  void TestStoreProvider(StoreProviderType type);
 
   // Test normal tasks.
   void TestNormalTask(const std::unordered_map<std::string, double> &resources);
