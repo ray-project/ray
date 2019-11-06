@@ -5,14 +5,17 @@ from __future__ import print_function
 import logging
 import sys
 import uuid
+import time
 
 import networkx as nx
 
+import ray
 from ray.streaming.communication import DataChannel, DataInput
 from ray.streaming.communication import DataOutput, QueueConfig
 from ray.streaming.operator import Operator, OpType
 from ray.streaming.operator import PScheme, PStrategy
 import ray.streaming.operator_instance as operator_instance
+from ray.streaming.config import Config
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -52,9 +55,10 @@ class Config(object):
          dataflow operator (default: 1)
     """
 
-    def __init__(self, parallelism=1):
+    def __init__(self, parallelism=1, queue_type=Config.MEMORY_QUEUE):
         self.queue_config = QueueConfig()
         self.parallelism = parallelism
+        self.queue_type = queue_type
         # ...
 
 
@@ -89,84 +93,60 @@ class Environment(object):
         self.topo_cleaned = False
         # Handles to all actors in the physical dataflow
         self.actor_handles = []
+        # execution graph build time: milliseconds since epoch
+        self.build_time = 0
 
     # Constructs and deploys a Ray actor of a specific type
     # TODO (john): Actor placement information should be specified in
     # the environment's configuration
-    def __generate_actor(self, instance_id, operator, input, output):
+    def __generate_actor(self, instance_id, operator, input_channels, output_channels):
         """Generates an actor that will execute a particular instance of
         the logical operator
 
         Attributes:
             instance_id (UUID): The id of the instance the actor will execute.
             operator (Operator): The metadata of the logical operator.
-            input (DataInput): The input gate that manages input channels of
-            the instance (see: DataInput in communication.py).
-            input (DataOutput): The output gate that manages output channels
-            of the instance (see: DataOutput in communication.py).
+            input_channels (input channels): The input channels of the instance.
+            output_channels (output channels): The output channels of the instance.
         """
         actor_id = (operator.id, instance_id)
         # Record the physical dataflow graph (for debugging purposes)
-        self.__add_channel(actor_id, input, output)
+        self.__add_channel(actor_id, output_channels)
         # Select actor to construct
+        actor_handle = None
         if operator.type == OpType.Source:
-            source = operator_instance.Source.remote(actor_id, operator, input,
-                                                     output)
-            source.register_handle.remote(source)
-            return source.start.remote()
+            actor_handle = operator_instance.Source.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.Map:
-            map = operator_instance.Map.remote(actor_id, operator, input,
-                                               output)
-            map.register_handle.remote(map)
-            return map.start.remote()
+            actor_handle = operator_instance.Map.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.FlatMap:
-            flatmap = operator_instance.FlatMap.remote(actor_id, operator,
-                                                       input, output)
-            flatmap.register_handle.remote(flatmap)
-            return flatmap.start.remote()
+            actor_handle = operator_instance.FlatMap.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.Filter:
-            filter = operator_instance.Filter.remote(actor_id, operator, input,
-                                                     output)
-            filter.register_handle.remote(filter)
-            return filter.start.remote()
+            actor_handle = operator_instance.Filter.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.Reduce:
-            reduce = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                     output)
-            reduce.register_handle.remote(reduce)
-            return reduce.start.remote()
+            actor_handle = operator_instance.Reduce.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.TimeWindow:
             pass
         elif operator.type == OpType.KeyBy:
-            keyby = operator_instance.KeyBy.remote(actor_id, operator, input,
-                                                   output)
-            keyby.register_handle.remote(keyby)
-            return keyby.start.remote()
+            actor_handle = operator_instance.KeyBy.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.Sum:
-            sum = operator_instance.Reduce.remote(actor_id, operator, input,
-                                                  output)
+            actor_handle = operator_instance.Reduce.remote(actor_id, operator, input_channels, output_channels)
             # Register target handle at state actor
             state_actor = operator.state_actor
             if state_actor is not None:
-                state_actor.register_target.remote(sum)
-            # Register own handle
-            sum.register_handle.remote(sum)
-            return sum.start.remote()
+                state_actor.register_target.remote(actor_handle)
         elif operator.type == OpType.Sink:
             pass
         elif operator.type == OpType.Inspect:
-            inspect = operator_instance.Inspect.remote(actor_id, operator,
-                                                       input, output)
-            inspect.register_handle.remote(inspect)
-            return inspect.start.remote()
+            actor_handle = operator_instance.Inspect.remote(actor_id, operator, input_channels, output_channels)
         elif operator.type == OpType.ReadTextFile:
             # TODO (john): Colocate the source with the input file
-            read = operator_instance.ReadTextFile.remote(
-                actor_id, operator, input, output)
-            read.register_handle.remote(read)
-            return read.start.remote()
+            actor_handle = operator_instance.ReadTextFile.remote(
+                actor_id, operator, input_channels, output_channels)
         else:  # TODO (john): Add support for other types of operators
             sys.exit("Unrecognized or unsupported {} operator type.".format(
                 operator.type))
+        actor_handle.register_handle.remote(actor_handle)
+        return actor_handle
 
     # Constructs and deploys a Ray actor for each instance of
     # the given operator
@@ -201,19 +181,18 @@ class Environment(object):
             log = "Constructed {} input and {} output channels "
             log += "for the {}-th instance of the {} operator."
             logger.debug(log.format(len(ip), len(op), i, operator.type))
-            input_gate = DataInput(ip)
-            output_gate = DataOutput(op, operator.partitioning_strategies)
-            handle = self.__generate_actor(i, operator, input_gate,
-                                           output_gate)
+            handle = self.__generate_actor(i, operator, ip, op)
             if handle:
                 handles.append(handle)
         return handles
 
     # Adds a channel/edge to the physical dataflow graph
-    def __add_channel(self, actor_id, input, output):
-        for dest_actor_id in output._destination_actor_ids():
+    def __add_channel(self, actor_id, output_channels):
+        for channel in output_channels:
+            dest_actor_id = (channel.dst_operator_id, channel.dst_instance_id)
             self.physical_topo.add_edge(actor_id, dest_actor_id)
 
+    # TODO(chaokunyang) remove channels, and use queue instead.
     # Generates all required data channels between an operator
     # and its downstream operators
     def _generate_channels(self, operator):
@@ -305,6 +284,7 @@ class Environment(object):
     # Constructs and deploys the physical dataflow
     def execute(self):
         """Deploys and executes the physical dataflow."""
+        self.build_time = int(time.time() * 1000)
         self._collect_garbage()  # Make sure everything is clean
         # TODO (john): Check if dataflow has any 'logical inconsistencies'
         # For example, if there is a forward partitioning strategy but
@@ -328,8 +308,19 @@ class Environment(object):
             if handles:
                 self.actor_handles.extend(handles)
             upstream_channels.update(downstream_channels)
-        logger.debug("Running...")
-        return self.actor_handles
+
+        logger.info("init...")
+        # init
+        for actor_handle in self.actor_handles:
+            assert ray.get(actor_handle.init.remote(self)) is True
+
+        logger.info("running...")
+        # start
+        exec_handles = []
+        for actor_handle in self.actor_handles:
+            exec_handles.append(actor_handle.start.remote())
+
+        return exec_handles
 
     # Prints the logical dataflow graph
     def print_logical_graph(self):

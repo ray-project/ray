@@ -7,7 +7,8 @@ import logging
 import sys
 
 from ray.streaming.operator import PStrategy
-from ray.streaming.batched_queue import BatchedQueue
+import ray.streaming.queue.queue_utils as queue_utils
+import pickle
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -48,12 +49,11 @@ class DataChannel(object):
         self.dst_operator_id = dst_operator_id
         self.src_instance_id = src_instance_id
         self.dst_instance_id = dst_instance_id
-        self.queue = BatchedQueue(
-            max_size=self.env.config.queue_config.max_size,
-            max_batch_size=self.env.config.queue_config.max_batch_size,
-            max_batch_time=self.env.config.queue_config.max_batch_time,
-            prefetch_depth=self.env.config.queue_config.prefetch_depth,
-            background_flush=self.env.config.queue_config.background_flush)
+        self.str_qid = queue_utils.generate_qid(src_instance_id, dst_instance_id, env.build_time)
+
+    def str_qid(self):
+        """return qid for this channel"""
+        return self.str_qid
 
     def __repr__(self):
         return "({},{},{},{})".format(
@@ -78,7 +78,9 @@ class DataInput(object):
          closed (True) or not (False).
     """
 
-    def __init__(self, channels):
+    def __init__(self, queue_link, channels):
+        self.queue_link = queue_link
+        self.consumer = None  # created in `init` method
         self.input_channels = channels
         self.channel_index = 0
         self.max_index = len(channels)
@@ -86,40 +88,18 @@ class DataInput(object):
             self.input_channels)  # Tracks the channels that have been closed
         self.all_closed = False
 
-    # Fetches records from input channels in a round-robin fashion
-    # TODO (john): Make sure the instance is not blocked on any of its input
-    # channels
-    # TODO (john): In case of input skew, it might be better to pull from
-    # the largest queue more often
-    def _pull(self):
-        while True:
-            if self.max_index == 0:
-                # TODO (john): We should detect this earlier
-                return None
-            # Channel to pull from
-            channel = self.input_channels[self.channel_index]
-            self.channel_index += 1
-            if self.channel_index == self.max_index:  # Reset channel index
-                self.channel_index = 0
-            if self.closed[self.channel_index - 1]:
-                continue  # Channel has been 'closed', check next
-            record = channel.queue.read_next()
-            logger.debug("Actor ({},{}) pulled '{}'.".format(
-                channel.src_operator_id, channel.src_instance_id, record))
-            if record is None:
-                # Mark channel as 'closed' and pull from the next open one
-                self.closed[self.channel_index - 1] = True
-                self.all_closed = True
-                for flag in self.closed:
-                    if flag is False:
-                        self.all_closed = False
-                        break
-                if not self.all_closed:
-                    continue
-            # Returns 'None' iff all input channels are 'closed'
-            return record
+    def init(self):
+        qids = [channel.str_qid for channel in self.input_channels]
+        self.consumer = self.queue_link.register_queue_consumer(qids)
+
+    def pull(self):
+        # pull from queue
+        queue_item = self.consumer.pull(100)
+        msg_data = queue_item.body()
+        return pickle.loads(msg_data)
 
 
+# TODO(chaokunyang) lift queue up to DataOutput instead of channel
 # Selects output channel(s) and pushes data
 class DataOutput(object):
     """An output gate of an operator instance.
@@ -141,7 +121,9 @@ class DataOutput(object):
          least one shuffle_key_channel.
     """
 
-    def __init__(self, channels, partitioning_schemes):
+    def __init__(self, queue_link, channels, partitioning_schemes):
+        self.queue_link = queue_link
+        self.producer = None  # created in `init` method
         self.key_selector = None
         self.round_robin_indexes = [0]
         self.partitioning_schemes = partitioning_schemes
@@ -198,71 +180,31 @@ class DataOutput(object):
         # A KeyedDataStream can only be shuffled by key
         assert not (self.shuffle_exists and self.shuffle_key_exists)
 
-    # Flushes any remaining records in the output channels
-    # 'close' indicates whether we should also 'close' the channel (True)
-    # by propagating 'None'
-    # or just flush the remaining records to plasma (False)
-    def _flush(self, close=False):
-        """Flushes remaining output records in the output queues to plasma.
+    def init(self):
+        """init DataOutput which creates QueueProducer"""
+        qids = [channel.str_qid for channel in self.input_channels]
+        self.producer = self.queue_link.register_queue_producer(qids)
+
+    def close(self):
+        """Close the channel (True) by propagating 'None'
 
         None is used as special type of record that is propagated from sources
         to sink to notify that the end of data in a stream.
-
-        Attributes:
-             close (bool): A flag denoting whether the channel should be
-             also marked as 'closed' (True) or not (False) after flushing.
         """
-        for channel in self.forward_channels:
-            if close is True:
-                channel.queue.put_next(None)
-            channel.queue._flush_writes()
-        for channels in self.shuffle_channels:
-            for channel in channels:
-                if close is True:
-                    channel.queue.put_next(None)
-                channel.queue._flush_writes()
-        for channels in self.shuffle_key_channels:
-            for channel in channels:
-                if close is True:
-                    channel.queue.put_next(None)
-                channel.queue._flush_writes()
-        for channels in self.round_robin_channels:
-            for channel in channels:
-                if close is True:
-                    channel.queue.put_next(None)
-                channel.queue._flush_writes()
-        # TODO (john): Add more channel types
-
-    # Returns all destination actor ids
-    def _destination_actor_ids(self):
-        destinations = []
-        for channel in self.forward_channels:
-            destinations.append((channel.dst_operator_id,
-                                 channel.dst_instance_id))
-        for channels in self.shuffle_channels:
-            for channel in channels:
-                destinations.append((channel.dst_operator_id,
-                                     channel.dst_instance_id))
-        for channels in self.shuffle_key_channels:
-            for channel in channels:
-                destinations.append((channel.dst_operator_id,
-                                     channel.dst_instance_id))
-        for channels in self.round_robin_channels:
-            for channel in channels:
-                destinations.append((channel.dst_operator_id,
-                                     channel.dst_instance_id))
-        # TODO (john): Add more channel types
-        return destinations
+        for channel in self.forward_channels + self.shuffle_channels + \
+                       self.shuffle_key_channels + self.round_robin_channels:
+            self.producer.produce(channel.str_qid(), None)
 
     # Pushes the record to the output
     # Each individual output queue flushes batches to plasma periodically
     # based on 'batch_max_size' and 'batch_max_time'
-    def _push(self, record):
+    def push(self, record):
+        channels = []
         # Forward record
         for channel in self.forward_channels:
             logger.debug("[writer] Push record '{}' to channel {}".format(
                 record, channel))
-            channel.queue.put_next(record)
+            channels.append(channel)
         # Forward record
         index = 0
         for channels in self.round_robin_channels:
@@ -272,7 +214,7 @@ class DataOutput(object):
             channel = channels[self.round_robin_indexes[index]]
             logger.debug("[writer] Push record '{}' to channel {}".format(
                 record, channel))
-            channel.queue.put_next(record)
+            channels.append(channel)
             index += 1
         # Hash-based shuffling by key
         if self.shuffle_key_exists:
@@ -284,7 +226,7 @@ class DataOutput(object):
                 logger.debug(
                     "[key_shuffle] Push record '{}' to channel {}".format(
                         record, channel))
-                channel.queue.put_next(record)
+                channels.append(channel)
         elif self.shuffle_exists:  # Hash-based shuffling per destination
             h = _hash(record)
             for channels in self.shuffle_channels:
@@ -292,44 +234,21 @@ class DataOutput(object):
                 channel = channels[h % num_instances]
                 logger.debug("[shuffle] Push record '{}' to channel {}".format(
                     record, channel))
-                channel.queue.put_next(record)
+                channels.append(channel)
         else:  # TODO (john): Handle rescaling
             pass
+
+        msg_data = pickle.dumps(record)
+        for channel in channels:
+            # send data to queue
+            self.producer.produce(channel.str_qid(), msg_data)
 
     # Pushes a list of records to the output
     # Each individual output queue flushes batches to plasma periodically
     # based on 'batch_max_size' and 'batch_max_time'
-    def _push_all(self, records):
-        # Forward records
+    def push_all(self, records):
         for record in records:
-            for channel in self.forward_channels:
-                logger.debug("[writer] Push record '{}' to channel {}".format(
-                    record, channel))
-                channel.queue.put_next(record)
-        # Hash-based shuffling by key per destination
-        if self.shuffle_key_exists:
-            for record in records:
-                key, _ = record
-                h = _hash(key)
-                for channels in self.shuffle_channels:
-                    num_instances = len(channels)  # Downstream instances
-                    channel = channels[h % num_instances]
-                    logger.debug(
-                        "[key_shuffle] Push record '{}' to channel {}".format(
-                            record, channel))
-                    channel.queue.put_next(record)
-        elif self.shuffle_exists:  # Hash-based shuffling per destination
-            for record in records:
-                h = _hash(record)
-                for channels in self.shuffle_channels:
-                    num_instances = len(channels)  # Downstream instances
-                    channel = channels[h % num_instances]
-                    logger.debug(
-                        "[shuffle] Push record '{}' to channel {}".format(
-                            record, channel))
-                    channel.queue.put_next(record)
-        else:  # TODO (john): Handle rescaling
-            pass
+            self.push(record)
 
 
 # Batched queue configuration
