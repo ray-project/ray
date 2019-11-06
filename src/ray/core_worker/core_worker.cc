@@ -6,37 +6,6 @@
 
 namespace {
 
-void BuildCommonTaskSpec(
-    ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
-    const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
-    const ray::RayFunction &function, const std::vector<ray::TaskArg> &args,
-    uint64_t num_returns,
-    const std::unordered_map<std::string, double> &required_resources,
-    const std::unordered_map<std::string, double> &required_placement_resources,
-    ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
-  // Build common task spec.
-  builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
-                            function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, num_returns, required_resources,
-                            required_placement_resources);
-  // Set task arguments.
-  for (const auto &arg : args) {
-    if (arg.IsPassedByReference()) {
-      builder.AddByRefArg(arg.GetReference());
-    } else {
-      builder.AddByValueArg(arg.GetValue());
-    }
-  }
-
-  // Compute return IDs.
-  return_ids->resize(num_returns);
-  for (size_t i = 0; i < num_returns; i++) {
-    (*return_ids)[i] =
-        ObjectID::ForTaskReturn(task_id, i + 1,
-                                /*transport_type=*/static_cast<int>(transport_type));
-  }
-}
-
 // Group object ids according the the corresponding store providers.
 void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
                                    absl::flat_hash_set<ObjectID> *plasma_object_ids,
@@ -480,10 +449,10 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, task_options.num_returns, task_options.resources,
-                      {}, TaskTransportType::RAYLET, return_ids);
+  builder.BuildCommonTaskSpec(
+      worker_context_.GetCurrentJobID(), task_id, worker_context_.GetCurrentTaskID(),
+      next_task_index, GetCallerId(), function, args, task_options.num_returns,
+      task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
   return raylet_client_->SubmitTask(builder.Build());
 }
 
@@ -499,9 +468,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
-      next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,
+  builder.BuildCommonTaskSpec(
+      job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(), next_task_index,
+      GetCallerId(), function, args, 1, actor_creation_options.resources,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
@@ -536,10 +505,10 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
-  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, num_returns, task_options.resources, {},
-                      transport_type, return_ids);
+  builder.BuildCommonTaskSpec(actor_handle->CreationJobID(), actor_task_id,
+                              worker_context_.GetCurrentTaskID(), next_task_index,
+                              GetCallerId(), function, args, num_returns,
+                              task_options.resources, {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
@@ -592,10 +561,10 @@ void CoreWorker::SubscribeActorUpdates(const ActorID &actor_id) {
           actor_data.ip_address(), actor_data.port());
     } break;
     case gcs::ActorTableData::RECONSTRUCTING: {
-      actor_manager_->OnActorFailed(actor_id);
+      actor_manager_->OnActorFailed(actor_id, /*terminal=*/false);
     } break;
     case gcs::ActorTableData::DEAD: {
-      actor_manager_->OnActorDead(actor_id);
+      actor_manager_->OnActorFailed(actor_id, /*terminal=*/true);
       RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(actor_id, nullptr));
     } break;
     default:

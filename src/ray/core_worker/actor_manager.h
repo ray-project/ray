@@ -77,15 +77,16 @@ class ActorManager {
   void OnActorLocationChanged(const ActorID &actor_id, const ClientID &node_id,
                               const std::string &ip_address, const int port);
 
-  /// Handler for recoverable failure of an actor that we have a reference to.
+  /// Handler for failure of an actor that we have a reference to.
+  ///
+  /// Terminal failures are ones where the actor was explicitly terminated by
+  /// the application. If the failure was not terminal, we own the actor, and
+  /// we have not restarted the actor max reconstructions times yet, then we
+  /// will try to restart the actor via the ActorCreationCallback.
   ///
   /// \param[in] actor_id The ID of the actor.
-  void OnActorFailed(const ActorID &actor_id);
-
-  /// Handler for terminal failure of an actor that we have a reference to.
-  ///
-  /// \param[in] actor_id The ID of the actor.
-  void OnActorDead(const ActorID &actor_id);
+  /// \param[in] terminal Whether the failure was terminal.
+  void OnActorFailed(const ActorID &actor_id, bool terminal);
 
  private:
   /// Interface to the class that maintains RPC clients to the actors.

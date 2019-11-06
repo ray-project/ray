@@ -4,6 +4,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/core_worker/common.h"
 #include "ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -124,6 +125,35 @@ class TaskSpecBuilder {
         previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
     return *this;
+  }
+
+  void BuildCommonTaskSpec(
+      const JobID &job_id, const TaskID &task_id, const TaskID &current_task_id,
+      const int task_index, const TaskID &caller_id, const ray::RayFunction &function,
+      const std::vector<ray::TaskArg> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
+    // Build common task spec.
+    SetCommonTaskSpec(task_id, function.GetLanguage(), function.GetFunctionDescriptor(),
+                      job_id, current_task_id, task_index, caller_id, num_returns,
+                      required_resources, required_placement_resources);
+    // Set task arguments.
+    for (const auto &arg : args) {
+      if (arg.IsPassedByReference()) {
+        AddByRefArg(arg.GetReference());
+      } else {
+        AddByValueArg(arg.GetValue());
+      }
+    }
+
+    // Compute return IDs.
+    return_ids->resize(num_returns);
+    for (size_t i = 0; i < num_returns; i++) {
+      (*return_ids)[i] =
+          ObjectID::ForTaskReturn(task_id, i + 1,
+                                  /*transport_type=*/static_cast<int>(transport_type));
+    }
   }
 
  private:

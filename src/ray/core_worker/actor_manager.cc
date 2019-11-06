@@ -49,37 +49,45 @@ void ActorManager::OnActorLocationChanged(const ActorID &actor_id,
   direct_actor_clients_.ConnectActor(actor_id, ip_address, port);
 }
 
-void ActorManager::OnActorFailed(const ActorID &actor_id) {
+void ActorManager::OnActorFailed(const ActorID &actor_id, bool terminal) {
   auto it = actor_handles_.find(actor_id);
   RAY_CHECK(it != actor_handles_.end());
 
-  // We have to reset the actor handle since the next instance of the
-  // actor will not have the last sequence number that we sent.
-  // TODO: Remove the flag for direct calls. We do not reset for the
-  // raylet codepath because it tries to replay all tasks since the last
-  // actor checkpoint.
-  it->second->MarkFailed(/*reset_task_counter=*/it->second->IsDirectCallActor());
+  if (terminal) {
+    it->second->MarkDead();
+  } else {
+    // We have to reset the actor handle since the next instance of the
+    // actor will not have the last sequence number that we sent.
+    // TODO: Remove the flag for direct calls. We do not reset for the
+    // raylet codepath because it tries to replay all tasks since the last
+    // actor checkpoint.
+    it->second->MarkFailed(/*reset_task_counter=*/it->second->IsDirectCallActor());
+  }
   direct_actor_clients_.DisconnectActor(actor_id);
 
   // If we are the actor's creator, restart it.
   auto child_it = children_actors_.find(actor_id);
   if (child_it != children_actors_.end()) {
     child_it->second.num_lifetimes++;
-    // Restart the actor.
-    RAY_LOG(ERROR) << "Attempting to restart failed actor " << actor_id << ", attempt #"
-                   << child_it->second.num_lifetimes;
-    actor_creation_callback_(actor_id, child_it->second.actor_creation_spec,
-                             child_it->second.num_lifetimes);
+    auto &spec = child_it->second.actor_creation_spec;
+    if (!terminal && child_it->second.num_lifetimes <= spec.MaxActorReconstructions()) {
+      // We own the actor, it was not a terminal failure, and we haven't
+      // restarted the actor up to max reconstructions times yet. Restart the
+      // actor.
+      RAY_LOG(ERROR) << "Attempting to restart failed actor " << actor_id << ", attempt #"
+                     << child_it->second.num_lifetimes;
+      actor_creation_callback_(actor_id, child_it->second.actor_creation_spec,
+                               child_it->second.num_lifetimes);
+    } else {
+      // The actor is dead. We cannot erase the actor handle here because
+      // clients can still submit tasks to dead actors.
+      it->second->MarkDead();
+      // TODO: For actor process failures, we depend on the raylet to mark it
+      // as DEAD in the GCS once we've hit max_reconstructions. Once the actor
+      // table is refactored so that the order of entries does not matter, we
+      // should mark the actor as DEAD here instead.
+    }
   }
-}
-
-void ActorManager::OnActorDead(const ActorID &actor_id) {
-  auto it = actor_handles_.find(actor_id);
-  RAY_CHECK(it != actor_handles_.end());
-  // We cannot erase the actor handle here because clients can still
-  // submit tasks to dead actors.
-  it->second->MarkDead();
-  direct_actor_clients_.DisconnectActor(actor_id);
 }
 
 }  // namespace ray
