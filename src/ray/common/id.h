@@ -294,7 +294,7 @@ class ObjectID : public BaseID<ObjectID> {
     return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR);
   }
 
-  /// Return this object id with a changed trasnport type.
+  /// Return this object id with a changed transport type.
   ///
   /// \return Copy of this object id with the specified transport type.
   ObjectID WithTransportType(TaskTransportType transport_type) const;
