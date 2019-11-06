@@ -62,7 +62,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     } catch (IOException e) {
       throw new RuntimeException("Failed to create the log directory.", e);
     }
-    nativeSetup(rayConfig.logDir);
+    nativeSetup(rayConfig.logDir, rayConfig.rayletConfigParameters);
     Runtime.getRuntime().addShutdownHook(new Thread(RayNativeRuntime::nativeShutdownHook));
   }
 
@@ -197,7 +197,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeDestroyCoreWorker(long nativeCoreWorkerPointer);
 
-  private static native void nativeSetup(String logDir);
+  private static native void nativeSetup(String logDir, Map<String, String> rayletConfigParameters);
 
   private static native void nativeShutdownHook();
 

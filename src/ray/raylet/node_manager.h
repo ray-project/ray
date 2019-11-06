@@ -70,6 +70,8 @@ struct NodeManagerConfig {
   std::string temp_dir;
   /// The path of this ray session dir.
   std::string session_dir;
+  /// The raylet config list of this node.
+  std::unordered_map<std::string, std::string> raylet_config;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler {

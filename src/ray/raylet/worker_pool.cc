@@ -46,10 +46,12 @@ WorkerPool::WorkerPool(boost::asio::io_service &io_service, int num_workers,
                        int maximum_startup_concurrency,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
+                       const std::unordered_map<std::string, std::string> &raylet_config,
                        std::function<void()> starting_worker_timeout_callback)
     : io_service_(&io_service),
       maximum_startup_concurrency_(maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
+      raylet_config_(raylet_config),
       starting_worker_timeout_callback_(starting_worker_timeout_callback) {
   RAY_CHECK(maximum_startup_concurrency > 0);
 #ifndef _WIN32
@@ -172,23 +174,46 @@ Process WorkerPool::StartWorkerProcess(const Language &language,
                                    options.end());
         ++dynamic_option_index;
       }
-    } else {
-      size_t num_workers_index = token.find(kWorkerNumWorkersPlaceholder);
-      if (num_workers_index != std::string::npos) {
-        std::string arg = token;
-        worker_command_args.push_back(arg.replace(num_workers_index,
-                                                  strlen(kWorkerNumWorkersPlaceholder),
-                                                  std::to_string(workers_to_start)));
-        num_workers_arg_replaced = true;
-      } else {
-        worker_command_args.push_back(token);
-      }
+      continue;
     }
+
+    if (token == kWorkerRayletConfigPlaceholder) {
+      switch (language) {
+      case Language::JAVA:
+        for (auto &entry : raylet_config_) {
+          std::string arg;
+          arg.append("-Dray.raylet.config.");
+          arg.append(entry.first);
+          arg.append("=");
+          if (entry.first == "num_workers_per_process_java") {
+            arg.append(std::to_string(workers_to_start));
+            num_workers_arg_replaced = true;
+          } else {
+            arg.append(entry.second);
+          }
+          worker_command_args.push_back(arg);
+        }
+        if (!num_workers_arg_replaced) {
+          worker_command_args.push_back(
+              "-Dray.raylet.config.num_workers_per_process_java=" +
+              std::to_string(workers_to_start));
+          num_workers_arg_replaced = true;
+        }
+        break;
+      default:
+        RAY_LOG(FATAL)
+            << "Raylet config placeholder is not supported for workrer language "
+            << language;
+      }
+      continue;
+    }
+
+    worker_command_args.push_back(token);
   }
   RAY_CHECK(num_workers_arg_replaced || state.num_workers_per_process == 1)
       << "Expect to start " << state.num_workers_per_process << " workers per "
       << Language_Name(language) << " worker process. But the "
-      << kWorkerNumWorkersPlaceholder << "placeholder is not found in worker command.";
+      << kWorkerRayletConfigPlaceholder << " placeholder is not found in worker command.";
 
   Process proc = StartProcess(worker_command_args);
   RAY_LOG(DEBUG) << "Started worker process of " << workers_to_start

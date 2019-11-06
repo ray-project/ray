@@ -99,6 +99,7 @@ int main(int argc, char *argv[]) {
     static_resource_conf[resource_name] = std::stod(resource_quantity);
   }
 
+  node_manager_config.raylet_config = raylet_config;
   node_manager_config.resource_config = ray::ResourceSet(std::move(static_resource_conf));
   RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                  << node_manager_config.resource_config.ToString();

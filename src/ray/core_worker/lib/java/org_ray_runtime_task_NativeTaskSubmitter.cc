@@ -51,27 +51,14 @@ inline std::vector<ray::TaskArg> ToTaskArgs(JNIEnv *env, jobject args) {
 inline std::unordered_map<std::string, double> ToResources(JNIEnv *env,
                                                            jobject java_resources) {
   std::unordered_map<std::string, double> resources;
-  if (java_resources) {
-    jobject entry_set = env->CallObjectMethod(java_resources, java_map_entry_set);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    jobject iterator = env->CallObjectMethod(entry_set, java_set_iterator);
-    RAY_CHECK_JAVA_EXCEPTION(env);
-    while (env->CallBooleanMethod(iterator, java_iterator_has_next)) {
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      jobject map_entry = env->CallObjectMethod(iterator, java_iterator_next);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      auto java_key = (jstring)env->CallObjectMethod(map_entry, java_map_entry_get_key);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      std::string key = JavaStringToNativeString(env, java_key);
-      auto java_value = env->CallObjectMethod(map_entry, java_map_entry_get_value);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      double value = env->CallDoubleMethod(java_value, java_double_double_value);
-      RAY_CHECK_JAVA_EXCEPTION(env);
-      resources.emplace(key, value);
-    }
-    RAY_CHECK_JAVA_EXCEPTION(env);
-  }
-  return resources;
+  return JavaMapToNativeMap<std::string, double>(
+      env, java_resources,
+      [](JNIEnv *env, jobject java_key) {
+        return JavaStringToNativeString(env, (jstring)java_key);
+      },
+      [](JNIEnv *env, jobject java_value) {
+        return env->CallDoubleMethod(java_value, java_double_double_value);
+      });
 }
 
 inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptions) {

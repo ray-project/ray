@@ -35,10 +35,11 @@ Java_org_ray_runtime_RayNativeRuntime_nativeDestroyCoreWorker(JNIEnv *, jclass, 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime
  * Method:    nativeSetup
- * Signature: (Ljava/lang/String;)V
+ * Signature: (Ljava/lang/String;Ljava/util/Map;)V
  */
 JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeSetup(JNIEnv *, jclass,
-                                                                         jstring);
+                                                                         jstring,
+                                                                         jobject);
 
 /*
  * Class:     org_ray_runtime_RayNativeRuntime
