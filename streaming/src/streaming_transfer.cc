@@ -1,4 +1,5 @@
 #include "streaming_transfer.h"
+#include <unordered_map>
 namespace ray {
 namespace streaming {
 
@@ -138,7 +139,7 @@ StreamingStatus StreamingQueueProducer::RefreshChannelInfo(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueProducer::NotfiyChannelConsumed(
+StreamingStatus StreamingQueueProducer::NotifyChannelConsumed(
     ProducerChannelInfo &channel_info, uint64_t channel_offset) {
   Status st =
       queue_writer_->SetQueueEvictionLimit(channel_info.channel_id, channel_offset);
@@ -242,7 +243,7 @@ StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingQueueConsumer::NotfiyChannelConsumed(
+StreamingStatus StreamingQueueConsumer::NotifyChannelConsumed(
     ConsumerChannelInfo &channel_info, uint64_t offset_id) {
   queue_reader_->NotifyConsumedItem(channel_info.channel_id, offset_id);
   return StreamingStatus::OK;
@@ -254,6 +255,81 @@ StreamingStatus StreamingQueueConsumer::WaitChannelsReady(
   queue_reader_->WaitQueuesInCluster(channels, timeout, abnormal_channels);
   if (abnormal_channels.size()) {
     return StreamingStatus::WaitQueueTimeOut;
+  }
+  return StreamingStatus::OK;
+}
+
+// For mock queue transfer
+struct MockQueueItem {
+  uint64_t seq_id;
+  uint32_t data_size;
+  std::shared_ptr<uint8_t> data;
+};
+
+struct MockQueue {
+  std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBufferImpl<MockQueueItem>>>
+      message_buffer_;
+  std::unordered_map<ObjectID, std::shared_ptr<AbstractRingBufferImpl<MockQueueItem>>>
+      consumed_buffer_;
+};
+static MockQueue mock_queue;
+
+StreamingStatus MockProducer::CreateTransferChannel(ProducerChannelInfo &channel_info) {
+  mock_queue.message_buffer_[channel_info.channel_id] =
+      std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(500);
+  mock_queue.consumed_buffer_[channel_info.channel_id] =
+      std::make_shared<RingBufferImplThreadSafe<MockQueueItem>>(500);
+  return StreamingStatus::OK;
+}
+
+StreamingStatus MockProducer::DestroyTransferChannel(ProducerChannelInfo &channel_info) {
+  mock_queue.message_buffer_.erase(channel_info.channel_id);
+  mock_queue.consumed_buffer_.erase(channel_info.channel_id);
+  return StreamingStatus::OK;
+}
+
+StreamingStatus MockProducer::ProduceItemToChannel(ProducerChannelInfo &channel_info,
+                                                   uint8_t *data, uint32_t data_size) {
+  auto &ring_buffer = mock_queue.message_buffer_[channel_info.channel_id];
+  if (ring_buffer->Full()) {
+    return StreamingStatus::OutOfMemory;
+  }
+  MockQueueItem item;
+  item.seq_id = channel_info.current_seq_id + 1;
+  item.data.reset(new uint8_t[data_size]);
+  item.data_size = data_size;
+  std::memcpy(item.data.get(), data, data_size);
+  ring_buffer->Push(item);
+  return StreamingStatus::OK;
+}
+
+StreamingStatus MockConsumer::ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
+                                                     uint64_t &offset_id, uint8_t *&data,
+                                                     uint32_t &data_size,
+                                                     uint32_t timeout) {
+  auto &channel_id = channel_info.channel_id;
+  if (mock_queue.message_buffer_.find(channel_id) == mock_queue.message_buffer_.end()) {
+    return StreamingStatus::NoSuchItem;
+  }
+
+  if (mock_queue.message_buffer_[channel_id]->Empty()) {
+    return StreamingStatus::NoSuchItem;
+  }
+  MockQueueItem item = mock_queue.message_buffer_[channel_id]->Front();
+  mock_queue.message_buffer_[channel_id]->Pop();
+  mock_queue.consumed_buffer_[channel_id]->Push(item);
+  offset_id = item.seq_id;
+  data = item.data.get();
+  data_size = item.data_size;
+  return StreamingStatus::OK;
+}
+
+StreamingStatus MockConsumer::NotifyChannelConsumed(ConsumerChannelInfo &channel_info,
+                                                    uint64_t offset_id) {
+  auto &channel_id = channel_info.channel_id;
+  auto &ring_buffer = mock_queue.consumed_buffer_[channel_id];
+  while (!ring_buffer->Empty() && ring_buffer->Front().seq_id <= offset_id) {
+    ring_buffer->Pop();
   }
   return StreamingStatus::OK;
 }

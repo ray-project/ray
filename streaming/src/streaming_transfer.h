@@ -23,7 +23,7 @@ class ProducerTransfer {
   virtual StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels,
                                             uint32_t timeout,
                                             std::vector<ObjectID> &abnormal_channels) = 0;
-  virtual StreamingStatus NotfiyChannelConsumed(ProducerChannelInfo &channel_info,
+  virtual StreamingStatus NotifyChannelConsumed(ProducerChannelInfo &channel_info,
                                                 uint64_t channel_offset) = 0;
 
  protected:
@@ -44,7 +44,7 @@ class ConsumerTransfer {
                                                  uint64_t &offset_id, uint8_t *&data,
                                                  uint32_t &data_size,
                                                  uint32_t timeout) = 0;
-  virtual StreamingStatus NotfiyChannelConsumed(ConsumerChannelInfo &channel_info,
+  virtual StreamingStatus NotifyChannelConsumed(ConsumerChannelInfo &channel_info,
                                                 uint64_t offset_id) = 0;
   virtual StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels,
                                             uint32_t timeout,
@@ -58,13 +58,9 @@ class MockProducer : public ProducerTransfer {
  public:
   MockProducer(std::shared_ptr<Config> &transfer_config)
       : ProducerTransfer(transfer_config){};
-  StreamingStatus CreateTransferChannel(ProducerChannelInfo &channel_info) {
-    return StreamingStatus::OK;
-  }
+  StreamingStatus CreateTransferChannel(ProducerChannelInfo &channel_info);
 
-  StreamingStatus DestroyTransferChannel(ProducerChannelInfo &channel_info) {
-    return StreamingStatus::OK;
-  }
+  StreamingStatus DestroyTransferChannel(ProducerChannelInfo &channel_info);
 
   StreamingStatus ClearTransferCheckpoint(ProducerChannelInfo &channel_info,
                                           uint64_t checkpoint_id,
@@ -77,14 +73,13 @@ class MockProducer : public ProducerTransfer {
   }
 
   StreamingStatus ProduceItemToChannel(ProducerChannelInfo &channel_info, uint8_t *data,
-                                       uint32_t data_size) {
-    return StreamingStatus::OK;
-  }
+                                       uint32_t data_size);
+
   StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels, uint32_t timeout,
                                     std::vector<ObjectID> &abnormal_channels) {
     return StreamingStatus::OK;
   }
-  StreamingStatus NotfiyChannelConsumed(ProducerChannelInfo &channel_info,
+  StreamingStatus NotifyChannelConsumed(ProducerChannelInfo &channel_info,
                                         uint64_t channel_offset) {
     return StreamingStatus::OK;
   }
@@ -110,13 +105,10 @@ class MockConsumer : public ConsumerTransfer {
   }
   StreamingStatus ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
                                          uint64_t &offset_id, uint8_t *&data,
-                                         uint32_t &data_size, uint32_t timeout) {
-    return StreamingStatus::OK;
-  }
-  StreamingStatus NotfiyChannelConsumed(ConsumerChannelInfo &channel_info,
-                                        uint64_t offset_id) {
-    return StreamingStatus::OK;
-  }
+                                         uint32_t &data_size, uint32_t timeout);
+  StreamingStatus NotifyChannelConsumed(ConsumerChannelInfo &channel_info,
+                                        uint64_t offset_id);
+
   StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels, uint32_t timeout,
                                     std::vector<ObjectID> &abnormal_channels) {
     return StreamingStatus::OK;
@@ -137,7 +129,7 @@ class StreamingQueueProducer : public ProducerTransfer {
                                        uint32_t data_size);
   StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels, uint32_t timeout,
                                     std::vector<ObjectID> &abnormal_channels);
-  StreamingStatus NotfiyChannelConsumed(ProducerChannelInfo &channel_info,
+  StreamingStatus NotifyChannelConsumed(ProducerChannelInfo &channel_info,
                                         uint64_t offset_id);
 
  private:
@@ -174,7 +166,7 @@ class StreamingQueueConsumer : public ConsumerTransfer {
   StreamingStatus ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
                                          uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout);
-  StreamingStatus NotfiyChannelConsumed(ConsumerChannelInfo &channel_info,
+  StreamingStatus NotifyChannelConsumed(ConsumerChannelInfo &channel_info,
                                         uint64_t offset_id);
   StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels, uint32_t timeout,
                                     std::vector<ObjectID> &abnormal_channels);

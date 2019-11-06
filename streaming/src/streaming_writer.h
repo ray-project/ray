@@ -19,13 +19,12 @@ namespace streaming {
 class StreamingWriter : public StreamingCommon {
  private:
   std::shared_ptr<std::thread> loop_thread_;
-  // ProducerTransfer is middle broker for data transporting.
-  std::shared_ptr<ProducerTransfer> transfer_;
-
   // One channel have unique identity.
   std::vector<ObjectID> output_queue_ids_;
 
  protected:
+  // ProducerTransfer is middle broker for data transporting.
+  std::shared_ptr<ProducerTransfer> transfer_;
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
   std::shared_ptr<Config> transfer_config_;
 
@@ -104,6 +103,9 @@ class StreamingWriter : public StreamingCommon {
   void Run();
 
   void Stop();
+
+ protected:
+  virtual void InitTransfer();
 };
 
 class StreamingWriterDirectCall : public StreamingWriter {
@@ -124,6 +126,11 @@ class StreamingWriterDirectCall : public StreamingWriter {
   }
 
   virtual ~StreamingWriterDirectCall() { core_worker_ = nullptr; }
+
+ protected:
+  virtual void InitTransfer() {
+    transfer_.reset(new StreamingQueueProducer(transfer_config_));
+  }
 
  private:
   CoreWorker *core_worker_;

@@ -33,7 +33,6 @@ struct StreamingReaderMsgPtrComparator {
 
 class StreamingReader : public StreamingCommon {
  private:
-  std::shared_ptr<ConsumerTransfer> transfer_;
   std::vector<ObjectID> input_queue_ids_;
 
   std::vector<ObjectID> unready_queue_ids_;
@@ -55,6 +54,7 @@ class StreamingReader : public StreamingCommon {
   static const uint32_t kReadItemTimeout;
 
  protected:
+  std::shared_ptr<ConsumerTransfer> transfer_;
   std::unordered_map<ObjectID, ConsumerChannelInfo> channel_info_map_;
   std::shared_ptr<Config> transfer_config_;
 
@@ -97,6 +97,9 @@ class StreamingReader : public StreamingCommon {
   StreamingReader();
   virtual ~StreamingReader();
 
+ protected:
+  virtual void InitTransfer();
+
  private:
   StreamingStatus InitChannel();
 
@@ -129,6 +132,11 @@ class StreamingReaderDirectCall : public StreamingReader {
   }
 
   virtual ~StreamingReaderDirectCall() { core_worker_ = nullptr; }
+
+ protected:
+  virtual void InitTransfer() {
+    transfer_ = std::make_shared<StreamingQueueConsumer>(transfer_config_);
+  }
 
  private:
   CoreWorker *core_worker_;

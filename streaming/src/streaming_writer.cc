@@ -32,7 +32,6 @@ void StreamingWriter::WriterLoopForward() {
           min_passby_message_ts =
               std::min(channel_info.message_pass_by_ts, min_passby_message_ts);
           empty_messge_send_count++;
-        } else {
         }
       } else if (StreamingStatus::FullChannel == write_status) {
       } else {
@@ -155,7 +154,7 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
-  transfer_.reset(new StreamingQueueProducer(transfer_config_));
+  this->InitTransfer();
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     // init channelIdGenerator or create it
@@ -286,6 +285,10 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
 }
 
 void StreamingWriter::Stop() { channel_state_ = StreamingChannelState::Interrupted; }
+
+void StreamingWriter::InitTransfer() {
+  transfer_.reset(new MockProducer(transfer_config_));
+}
 
 }  // namespace streaming
 }  // namespace ray

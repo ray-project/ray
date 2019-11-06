@@ -122,6 +122,17 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "streaming_mock_transfer",
+    srcs = [
+        "test/streaming_mock_transfer.cc",
+    ],
+    deps = [
+        ":streaming_lib",
+    ],
+)
+
+
 
 cc_binary(
     name = "streaming_writer_tests_with_streamingqueue",

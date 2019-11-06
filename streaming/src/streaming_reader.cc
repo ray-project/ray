@@ -32,6 +32,10 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   }
 }
 
+void StreamingReader::InitTransfer() {
+  transfer_ = std::make_shared<MockConsumer>(transfer_config_);
+}
+
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   ray::JobID job_id =
@@ -43,7 +47,7 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
 
-  transfer_ = std::make_shared<StreamingQueueConsumer>(transfer_config_);
+  this->InitTransfer();
 
   last_fetched_queue_item_ = nullptr;
   timer_interval_ = timer_interval;
@@ -264,7 +268,7 @@ void StreamingReader::GetOffsetInfo(
 
 void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
                                          uint64_t offset) {
-  transfer_->NotfiyChannelConsumed(channel_info, offset);
+  transfer_->NotifyChannelConsumed(channel_info, offset);
   if (offset == channel_info.queue_info.last_seq_id) {
     STREAMING_LOG(DEBUG) << "notify seq id equal to last seq id => " << offset;
   }
