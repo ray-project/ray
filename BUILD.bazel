@@ -326,6 +326,7 @@ cc_library(
             "src/ray/core_worker/store_provider/*.cc",
             "src/ray/core_worker/store_provider/memory_store/*.cc",
             "src/ray/core_worker/transport/*.cc",
+            "src/ray/rpc/worker/*.cc",
         ],
         exclude = [
             "src/ray/core_worker/*_test.cc",

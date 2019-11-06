@@ -20,12 +20,21 @@
 #include "ray/rpc/worker/worker_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
+/// The set of gRPC handlers and their associated level of concurrency. If you want to
+/// add a new call to the worker gRPC server, first change src/ray/protobuf/worker.proto,
+/// then add a new RAY_CORE_WORKER_RPC_HANDLER here, then add the implementation to the
+/// CoreWorker class below.
+#define RAY_CORE_WORKER_RPC_HANDLERS                      \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)              \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorAssignTask, 100) \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
+
 namespace ray {
 
 /// The root class that contains all the core and language-independent functionalities
 /// of the worker. This class is supposed to be used to implement app-language (Java,
 /// Python, etc) workers.
-class CoreWorker : public rpc::WorkerTaskHandler {
+class CoreWorker {
   // Callback that must be implemented and provided by the language-specific worker
   // frontend to execute tasks and return their results.
   using TaskExecutionCallback = std::function<Status(
@@ -282,20 +291,28 @@ class CoreWorker : public rpc::WorkerTaskHandler {
   /// \return void.
   void StartExecutingTasks();
 
-  /* TODO: gRPC stuff */
+  /* Handlers for the worker's gRPC server. These are executed on the io_service_ and post
+   * work to the appropriate event loop.
+   */
 
+  /// Handle an "AssignTask" event corresponding to scheduling a normal or an actor task
+  /// on this worker from the raylet.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
+                        rpc::SendReplyCallback send_reply_callback);
 
+  /// Handle a "DirectActorAssignTask" event corresponding to scheduling an actor task
+  /// on this worker from another worker.
   void HandleDirectActorAssignTask(const rpc::DirectActorAssignTaskRequest &request,
                                    rpc::DirectActorAssignTaskReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+                                   rpc::SendReplyCallback send_reply_callback);
 
+  /// Handle a "DirectActorAssignTask" event corresponding to the raylet notifiying this
+  /// worker that an argument is ready.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+      rpc::SendReplyCallback send_reply_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.

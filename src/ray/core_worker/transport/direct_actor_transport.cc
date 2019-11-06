@@ -5,15 +5,6 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-bool HasByReferenceArgs(const TaskSpecification &spec) {
-  for (size_t i = 0; i < spec.NumArgs(); ++i) {
-    if (spec.ArgIdCount(i) > 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service,
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
