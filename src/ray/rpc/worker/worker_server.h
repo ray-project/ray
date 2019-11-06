@@ -4,8 +4,8 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 
-#include "src/ray/protobuf/worker.grpc.pb.h"
-#include "src/ray/protobuf/worker.pb.h"
+#include "src/ray/protobuf/core_worker.grpc.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 

@@ -12,8 +12,8 @@
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/logging.h"
-#include "src/ray/protobuf/worker.grpc.pb.h"
-#include "src/ray/protobuf/worker.pb.h"
+#include "src/ray/protobuf/core_worker.grpc.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 namespace rpc {

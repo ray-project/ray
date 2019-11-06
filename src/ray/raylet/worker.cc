@@ -4,8 +4,8 @@
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
-#include "src/ray/protobuf/worker.grpc.pb.h"
-#include "src/ray/protobuf/worker.pb.h"
+#include "src/ray/protobuf/core_worker.grpc.pb.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 
 namespace ray {
 

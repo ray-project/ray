@@ -78,14 +78,14 @@ cc_proto_library(
 )
 
 proto_library(
-    name = "worker_proto",
-    srcs = ["src/ray/protobuf/worker.proto"],
+    name = "core_worker_proto",
+    srcs = ["src/ray/protobuf/core_worker.proto"],
     deps = [":common_proto"],
 )
 
 cc_proto_library(
     name = "worker_cc_proto",
-    deps = ["worker_proto"],
+    deps = ["core_worker_proto"],
 )
 
 proto_library(
@@ -171,7 +171,7 @@ cc_library(
 # Worker gRPC lib.
 cc_grpc_library(
     name = "worker_cc_grpc",
-    srcs = [":worker_proto"],
+    srcs = [":core_worker_proto"],
     grpc_only = True,
     deps = [":worker_cc_proto"],
 )

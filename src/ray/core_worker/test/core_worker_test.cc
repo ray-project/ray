@@ -13,8 +13,8 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 
 #include "ray/raylet/raylet_client.h"
+#include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "src/ray/protobuf/worker.pb.h"
 #include "src/ray/util/test_util.h"
 
 #include <boost/asio.hpp>

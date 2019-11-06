@@ -21,12 +21,13 @@
 #include "ray/rpc/worker/worker_server.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
-/// add a new call to the worker gRPC server, first change src/ray/protobuf/worker.proto,
-/// then add a new RAY_CORE_WORKER_RPC_HANDLER here, then add the implementation to the
-/// CoreWorker class below.
-#define RAY_CORE_WORKER_RPC_HANDLERS                      \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)              \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorAssignTask, 100) \
+/// add a new call to the worker gRPC server, do the following:
+/// 1) Add the rpc to the WorkerService in core_worker.proto, e.g., "ExampleCall"
+/// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
+/// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
+#define RAY_CORE_WORKER_RPC_HANDLERS                       \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)               \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorAssignTask, 9999) \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
 
 namespace ray {
@@ -104,7 +105,9 @@ class CoreWorker {
   // in the heartbeat messsage.
   void RemoveActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
 
-  /* Public methods related to storing and retrieving objects. */
+  ///
+  /// Public methods related to storing and retrieving objects.
+  ///
 
   /// Set options for this client's interactions with the object store.
   ///
@@ -207,7 +210,9 @@ class CoreWorker {
   /// \return std::string The string describing memory usage.
   std::string MemoryUsageString();
 
-  /* Public methods related to task submission. */
+  ///
+  /// Public methods related to task submission.
+  ///
 
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
@@ -277,7 +282,9 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
-  /* Public methods related to task execution. Should not be used by driver processes. */
+  ///
+  /// Public methods related to task execution. Should not be used by driver processes.
+  ///
 
   const ActorID &GetActorId() const { return actor_id_; }
 
@@ -338,7 +345,9 @@ class CoreWorker {
   /// Send the list of active object IDs to the raylet.
   void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
 
-  /* Private methods related to task submission. */
+  ///
+  /// Private methods related to task submission.
+  ///
 
   /// Give this worker a handle to an actor.
   ///
@@ -360,7 +369,9 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  /* Private methods related to task execution. Should not be used by driver processes. */
+  ///
+  /// Private methods related to task execution. Should not be used by driver processes.
+  ///
 
   /// Execute a task.
   ///
@@ -440,7 +451,9 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
-  /* Fields related to ref counting objects. */
+  ///
+  /// Fields related to ref counting objects.
+  ///
 
   /// Protects access to the set of active object ids. Since this set is updated
   /// very frequently, it is faster to lock around accesses rather than serialize
@@ -454,7 +467,9 @@ class CoreWorker {
   /// last time it was sent to the raylet.
   bool active_object_ids_updated_ GUARDED_BY(object_ref_mu_) = false;
 
-  /* Fields related to storing and retrieving objects. */
+  ///
+  /// Fields related to storing and retrieving objects.
+  ///
 
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
@@ -465,7 +480,9 @@ class CoreWorker {
   /// In-memory store interface.
   std::unique_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
 
-  /* Fields related to task submission. */
+  ///
+  /// Fields related to task submission.
+  ///
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
@@ -473,7 +490,9 @@ class CoreWorker {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
-  /* Fields related to task execution. */
+  ///
+  /// Fields related to task execution.
+  ///
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
@@ -498,7 +517,7 @@ class CoreWorker {
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
-  /// The rpc service for `WorkerTaskService`.
+  /// Common rpc service for all worker modules.
   rpc::WorkerGrpcService grpc_service_;
 
   // Interface that receives tasks from direct actor calls.
