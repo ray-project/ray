@@ -357,7 +357,8 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
             arg_metadata = dynamic_pointer_cast[
                 CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size(), True))
+                        <uint8_t*>(
+                            metadata_str.data()), metadata_str.size(), True))
             args_vector.push_back(
                 CTaskArg.PassByValue(
                     make_shared[CRayObject](arg_data, arg_metadata)))
@@ -441,8 +442,7 @@ cdef deserialize_args(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
                 args.append(data)
-            elif (c_args[i].get().HasMetadata()
-                and Buffer.make(
+            elif (c_args[i].get().HasMetadata() and Buffer.make(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == PICKLE_BUFFER_METADATA):
                 # This is a pickled "simple python value" argument.

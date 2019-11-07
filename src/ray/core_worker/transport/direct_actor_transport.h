@@ -231,7 +231,7 @@ class SchedulingQueue {
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<ObjectID> &dependencies = {}) {
     if (seq_no == -1) {
-      seq_no = next_seq_no_;  // schedule immediately
+      seq_no = next_seq_no_;  // A value of -1 means no ordering constraint.
     }
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
