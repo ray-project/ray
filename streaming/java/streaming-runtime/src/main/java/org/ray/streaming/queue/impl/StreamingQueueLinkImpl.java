@@ -21,13 +21,14 @@ import org.ray.streaming.queue.QueueLink;
 import org.ray.streaming.queue.QueueProducer;
 import org.ray.streaming.queue.QueueUtils;
 import org.ray.streaming.runtime.JobWorker;
+import org.ray.streaming.util.JniUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class StreamingQueueLinkImpl implements QueueLink {
 
   static {
-    System.loadLibrary("streaming_java");
+    JniUtils.loadLibrary("streaming_java");
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingQueueLinkImpl.class);
@@ -87,7 +88,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
 
     boolean isRecreate = false;
     if (configuration.containsKey(QueueConfigKeys.IS_RECREATE)) {
-      isRecreate = Boolean.valueOf(configuration.get(QueueConfigKeys.IS_RECREATE));
+      isRecreate = Boolean.parseBoolean(configuration.get(QueueConfigKeys.IS_RECREATE));
     }
     long[] plasmaQueueSeqIds = new long[inputQueues.size()];
     long[] streamingMsgIds = new long[inputQueues.size()];
