@@ -721,7 +721,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       }
     } else if (!worker_context_.CurrentActorUseDirectCall()) {
       if (!Put(*return_objects->at(i), return_ids[i]).ok()) {
-        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
+        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
       }
     }
