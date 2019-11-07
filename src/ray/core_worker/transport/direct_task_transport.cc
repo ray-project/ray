@@ -51,6 +51,7 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
   // This is deleted when the last dependency fetch callback finishes.
   std::shared_ptr<TaskState> state =
       std::shared_ptr<TaskState>(new TaskState{task, std::move(local_dependencies)});
+  num_pending_ += 1;
 
   for (const auto &obj_id : state->local_dependencies) {
     in_memory_store_.GetAsync(
@@ -63,6 +64,7 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
             DoInlineObjectValue(obj_id, obj, state->task);
             if (state->local_dependencies.empty()) {
               complete = true;
+              num_pending_ -= 1;
             }
           }
           if (complete) {

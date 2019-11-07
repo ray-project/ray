@@ -20,11 +20,11 @@ struct TaskState {
   absl::flat_hash_set<ObjectID> local_dependencies;
 };
 
-// This class is thread-safe. TODO(ekl) expose metrics.
+// This class is thread-safe.
 class LocalDependencyResolver {
  public:
   LocalDependencyResolver(CoreWorkerMemoryStoreProvider &store_provider)
-      : in_memory_store_(store_provider) {}
+      : in_memory_store_(store_provider), num_pending_(0) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -36,9 +36,16 @@ class LocalDependencyResolver {
   void ResolveDependencies(const TaskSpecification &task,
                            std::function<void()> on_complete);
 
+  /// Return the number of tasks pending dependency resolution.
+  /// TODO(ekl) this should be exposed in worker stats.
+  int NumPending() const { return num_pending_; }
+
  private:
   /// The store provider.
   CoreWorkerMemoryStoreProvider &in_memory_store_;
+
+  /// Number of tasks pending dependency resolution.
+  std::atomic<int> num_pending_;
 
   /// Protects against concurrent access to internal state.
   absl::Mutex mu_;

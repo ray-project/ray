@@ -28,6 +28,7 @@ TEST(DirectTaskTransportTest, TestIgnorePlasmaDependencies) {
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
+  ASSERT_EQ(resolver.NumPending(), 0);
 }
 
 TEST(DirectTaskTransportTest, TestInlineLocalDependencies) {
@@ -49,6 +50,7 @@ TEST(DirectTaskTransportTest, TestInlineLocalDependencies) {
   ASSERT_FALSE(task.ArgByRef(1));
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
+  ASSERT_EQ(resolver.NumPending(), 0);
 }
 
 TEST(DirectTaskTransportTest, TestInlinePendingDependencies) {
@@ -63,6 +65,7 @@ TEST(DirectTaskTransportTest, TestInlinePendingDependencies) {
   task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  ASSERT_EQ(resolver.NumPending(), 1);
   ASSERT_TRUE(!ok);
   store.Put(*data, obj1);
   store.Put(*data, obj2);
@@ -71,6 +74,7 @@ TEST(DirectTaskTransportTest, TestInlinePendingDependencies) {
   ASSERT_FALSE(task.ArgByRef(1));
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
+  ASSERT_EQ(resolver.NumPending(), 0);
 }
 
 }  // namespace ray
