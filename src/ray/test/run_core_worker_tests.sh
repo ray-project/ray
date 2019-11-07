@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
+bazel build -c dbg --config=asan "//:core_worker_test" "//:mock_worker" "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
@@ -24,9 +24,9 @@ fi
 
 REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
-STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
-RAYLET_EXEC="./bazel-bin/raylet"
-MOCK_WORKER_EXEC="./bazel-bin/mock_worker"
+STORE_EXEC="$(bazel info -c dbg --config=asan bazel-bin)/external/plasma/plasma_store_server"
+RAYLET_EXEC="$(bazel info -c dbg --config=asan bazel-bin)/raylet"
+MOCK_WORKER_EXEC="$(bazel info -c dbg --config=asan bazel-bin)/mock_worker"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true
@@ -38,7 +38,7 @@ sleep 2s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
 sleep 2s
 # Run tests.
-./bazel-bin/core_worker_test $STORE_EXEC $RAYLET_EXEC $MOCK_WORKER_EXEC
+bazel run -c dbg --config=asan //:core_worker_test $STORE_EXEC $RAYLET_EXEC $MOCK_WORKER_EXEC
 sleep 1s
 bazel run //:redis-cli -- -p 6379 shutdown
 bazel run //:redis-cli -- -p 6380 shutdown
