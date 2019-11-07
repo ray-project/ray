@@ -469,21 +469,18 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
 
+  // TODO(ekl) offload task building onto a thread pool for performance
+  BuildCommonTaskSpec(
+      builder, worker_context_.GetCurrentJobID(), task_id,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), function, args,
+      task_options.num_returns, task_options.resources, {},
+      task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
+      return_ids);
   if (task_options.is_direct_call) {
-    // TODO(ekl) offload task building onto a thread pool for performance
-    BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                        worker_context_.GetCurrentTaskID(), next_task_index,
-                        GetCallerId(), function, args, task_options.num_returns,
-                        task_options.resources, {}, TaskTransportType::DIRECT,
-                        return_ids);
     return direct_task_submitter_->SubmitTask(builder.Build());
+  } else {
+    return raylet_client_->SubmitTask(builder.Build());
   }
-
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, task_options.num_returns, task_options.resources,
-                      {}, TaskTransportType::RAYLET, return_ids);
-  return raylet_client_->SubmitTask(builder.Build());
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,

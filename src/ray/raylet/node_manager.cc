@@ -1201,7 +1201,7 @@ void NodeManager::ProcessRequestWorkerLeaseMessage(
       client_worker = worker_pool_.GetRegisteredDriver(client);
     }
     if (client_worker == nullptr) {
-      RAY_LOG(ERROR) << "Lost worker for lease request " << client;
+      RAY_LOG(ERROR) << "TODO: Lost worker for lease request " << client;
     } else {
       client_worker->WorkerLeaseGranted(address, port);
       leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
@@ -1217,16 +1217,7 @@ void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   RAY_LOG(DEBUG) << "Return worker " << worker_port;
   std::shared_ptr<Worker> worker = leased_workers_[worker_port];
   leased_workers_.erase(worker_port);
-  RAY_CHECK(worker != nullptr);
-  RAY_CHECK(!worker->GetAssignedTaskId().IsNil());
-  FinishAssignedTask(*worker);
-  worker_pool_.PushWorker(worker);
-  // Local resource availability changed: invoke scheduling policy for local node.
-  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(
-      local_queues_.GetResourceLoad());
-  // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasksByClass());
+  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(

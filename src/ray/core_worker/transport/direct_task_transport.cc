@@ -83,6 +83,9 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(const TaskSpecification &task_s
     auto msg = task_spec.GetMutableMessage();
     request->mutable_task_spec()->Swap(&msg);
     queued_tasks_.push_back(std::move(request));
+    // The task is now queued and will be picked up by the next leased or newly
+    // idle worker. We are guaranteed a worker will show up since we called
+    // RequestNewWorkerIfNeeded() earlier while holding mu_.
   });
   return Status::OK();
 }
@@ -98,7 +101,7 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &
 
     auto it = client_cache_.find(addr);
     if (it == client_cache_.end()) {
-      client_cache_[addr] = std::unique_ptr<rpc::CoreWorkerClient>(
+      client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClient>(
           new rpc::CoreWorkerClient(address, port, client_call_manager_));
       RAY_LOG(INFO) << "Connected to " << address << ":" << port;
     }
@@ -144,6 +147,7 @@ void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
   }
 }
 
+// TODO(ekl) consider reconsolidating with DirectActorTransport.
 void CoreWorkerDirectTaskSubmitter::PushTask(
     const WorkerAddress &addr, rpc::CoreWorkerClient &client,
     std::unique_ptr<rpc::PushTaskRequest> request) {

@@ -20,7 +20,7 @@ struct TaskState {
   absl::flat_hash_set<ObjectID> local_dependencies;
 };
 
-// This class is thread-safe.
+// This class is thread-safe. TODO(ekl) expose metrics.
 class LocalDependencyResolver {
  public:
   LocalDependencyResolver(RayletClient &raylet_client,
@@ -62,9 +62,16 @@ class CoreWorkerDirectTaskSubmitter {
         resolver_(raylet_client, *in_memory_store_) {}
 
   /// Schedule a task for direct submission to a worker.
+  ///
+  /// \param[in] task_spec The task to schedule.
   Status SubmitTask(const TaskSpecification &task_spec);
 
-  /// Callback for when the raylet grants us a worker lease.
+  /// Callback for when the raylet grants us a worker lease. The worker is returned
+  /// to the raylet once it finishes its task and either the lease term has
+  /// expired, or there is no more work it can take on.
+  ///
+  /// \param[in] address The address of the worker.
+  /// \param[in] port The port of the worker.
   void HandleWorkerLeaseGranted(const std::string &address, int port);
 
  private:
@@ -101,7 +108,7 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  absl::flat_hash_map<WorkerAddress, std::unique_ptr<rpc::CoreWorkerClient>> client_cache_
+  absl::flat_hash_map<WorkerAddress, std::shared_ptr<rpc::CoreWorkerClient>> client_cache_
       GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.

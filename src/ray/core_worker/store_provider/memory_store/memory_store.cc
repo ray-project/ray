@@ -118,7 +118,7 @@ void CoreWorkerMemoryStore::GetAsync(
       object_async_get_requests_[object_id].push_back(callback);
     }
   }
-  // call outside lock
+  // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
     callback(ptr);
   }
@@ -136,6 +136,13 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
       return Status::ObjectExists("object already exists in the memory store");
     }
 
+    auto async_callback_it = object_async_get_requests_.find(object_id);
+    if (async_callback_it != object_async_get_requests_.end()) {
+      auto &callbacks = async_callback_it->second;
+      async_callbacks.insert(async_callbacks.begin(), callbacks.begin(), callbacks.end());
+      object_async_get_requests_.erase(async_callback_it);
+    }
+
     bool should_add_entry = true;
     auto object_request_iter = object_get_requests_.find(object_id);
     if (object_request_iter != object_get_requests_.end()) {
@@ -148,19 +155,13 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
       }
     }
 
-    auto async_callback_it = object_async_get_requests_.find(object_id);
-    if (async_callback_it != object_async_get_requests_.end()) {
-      auto &callbacks = async_callback_it->second;
-      async_callbacks.insert(async_callbacks.begin(), callbacks.begin(), callbacks.end());
-      object_async_get_requests_.erase(async_callback_it);
-    }
-
     if (should_add_entry) {
       // If there is no existing get request, then add the `RayObject` to map.
       objects_.emplace(object_id, object_entry);
     }
   }
 
+  // It's important for performance to run the callbacks outside the lock.
   for (const auto &cb : async_callbacks) {
     cb(object_entry);
   }
