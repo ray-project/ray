@@ -323,7 +323,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
-  // gets at the provider plasma.
+  // gets at the provider plasma. Once we get the objects from plasma, we flip
+  // the transport type again and return them for the original direct call ids.
   absl::flat_hash_set<ObjectID> promoted_plasma_ids;
   for (const auto &pair : result_map) {
     if (pair.second->IsInPlasmaError()) {

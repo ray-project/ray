@@ -19,7 +19,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
     : io_service_(io_service),
       client_call_manager_(io_service),
-      store_provider_(std::move(store_provider)) {}
+      in_memory_store_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
@@ -162,7 +162,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
                 const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
             auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
             RAY_CHECK_OK(
-                store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+                in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
           } else {
             std::shared_ptr<LocalMemoryBuffer> data_buffer;
             if (return_object.data().size() > 0) {
@@ -178,8 +178,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
                       reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
                   return_object.metadata().size());
             }
-            RAY_CHECK_OK(
-                store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
+            RAY_CHECK_OK(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer),
+                                               object_id));
           }
         }
       });
@@ -199,7 +199,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
