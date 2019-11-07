@@ -63,7 +63,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     return call->GetStatus();
   }
 
-  /// Push a task.
+  /// Push an actor task directly to a worker.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
@@ -83,6 +83,19 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     }
     SendRequests();
     return ray::Status::OK();
+  }
+
+  /// Similar to PushTask, but sets no ordering constraint. This is used to push
+  /// non-actor tasks directly to a worker.
+  ray::Status PushTaskImmediate(std::unique_ptr<PushTaskRequest> request,
+                                const ClientCallback<PushTaskReply> &callback) {
+    request->set_sequence_number(-1);
+    request->set_client_processed_up_to(-1);
+    auto call = client_call_manager_
+                    .CreateCall<CoreWorkerService, PushTaskRequest, PushTaskReply>(
+                        *stub_, &CoreWorkerService::Stub::PrepareAsyncPushTask, *request,
+                        callback);
+    return call->GetStatus();
   }
 
   /// Notify a wait has completed for direct actor call arguments.
@@ -115,17 +128,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
                                         WorkerLeaseGrantedReply>(
             *stub_, &CoreWorkerService::Stub::PrepareAsyncWorkerLeaseGranted, request,
             callback);
-    return call->GetStatus();
-  }
-
-  ray::Status PushTaskImmediate(std::unique_ptr<PushTaskRequest> request,
-                                const ClientCallback<PushTaskReply> &callback) {
-    request->set_sequence_number(-1);
-    request->set_client_processed_up_to(-1);
-    auto call = client_call_manager_
-                    .CreateCall<CoreWorkerService, PushTaskRequest, PushTaskReply>(
-                        *stub_, &CoreWorkerService::Stub::PrepareAsyncPushTask, *request,
-                        callback);
     return call->GetStatus();
   }
 

@@ -125,13 +125,33 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   worker_request_pending_ = true;
 }
 
+void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
+                                                      int num_returns,
+                                                      const rpc::ErrorType &error_type) {
+  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
+                 << ", error_type: " << ErrorType_Name(error_type);
+  for (int i = 0; i < num_returns; i++) {
+    const auto object_id = ObjectID::ForTaskReturn(
+        task_id, /*index=*/i + 1,
+        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+    std::string meta = std::to_string(static_cast<int>(error_type));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+  }
+}
+
 void CoreWorkerDirectTaskSubmitter::PushTask(
     const WorkerAddress &addr, rpc::CoreWorkerClient &client,
     std::unique_ptr<rpc::PushTaskRequest> request) {
+  auto task_id = TaskID::FromBinary(request->task_spec().task_id());
+  auto num_returns = request->task_spec().num_returns();
   auto status = client.PushTaskImmediate(
-      std::move(request), [this, addr](Status status, const rpc::PushTaskReply &reply) {
+      std::move(request),
+      [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(FATAL) << "Task failed with error: " << status;
+          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED);
+          return;
         }
         for (int i = 0; i < reply.return_objects_size(); i++) {
           const auto &return_object = reply.return_objects(i);

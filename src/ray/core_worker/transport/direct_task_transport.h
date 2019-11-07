@@ -14,7 +14,9 @@
 namespace ray {
 
 struct TaskState {
+  /// The task to be run.
   const TaskSpecification task;
+  /// The remaining dependencies to resolve for this task.
   absl::flat_hash_set<ObjectID> local_dependencies;
 };
 
@@ -59,20 +61,29 @@ class CoreWorkerDirectTaskSubmitter {
         store_provider_(std::move(store_provider)),
         resolver_(raylet_client, *store_provider_) {}
 
+  /// Schedule a task for direct submission to a worker.
   Status SubmitTask(const TaskSpecification &task_spec);
 
-  // gRPC callback from raylet
+  /// Callback for when the raylet grants us a worker lease.
   void HandleWorkerLeaseGranted(const std::string &address, int port);
 
  private:
+  /// Schedule more work onto an idle worker or return it back to the raylet if
+  /// no more tasks are queued for submission.
   void WorkerIdle(const WorkerAddress &addr);
 
+  /// Request a new worker from the raylet if no such requests are currently in
+  /// flight.
   void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // XXX this uses the direct actor submitter to push the task
+  /// Push a task to a specific worker.
   void PushTask(const WorkerAddress &addr, rpc::CoreWorkerClient &client,
                 std::unique_ptr<rpc::PushTaskRequest> request);
+
+  /// Mark a direct call as failed by storing errors for its return objects.
+  void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
+                         const rpc::ErrorType &error_type);
 
   // Reference to the shared raylet client for leasing workers.
   RayletClient &raylet_client_;
