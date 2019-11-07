@@ -179,7 +179,7 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 RAW_BUFFER_METADATA = b"RAW"
 # A constant used as object metadata to indicate the object is pickled. This
 # format is only ever used for Python inline task argument values.
-PICKLE_BUFFER_METADATA = b"PKKKK"
+PICKLE_BUFFER_METADATA = b"PICKLE"
 # A constant used as object metadata to indicate the object is pickle5 format.
 PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
