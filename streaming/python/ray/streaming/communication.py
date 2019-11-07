@@ -86,9 +86,8 @@ class DataInput(object):
         self.input_channels = channels
         self.channel_index = 0
         self.max_index = len(channels)
-        self.closed = [False] * len(
-            self.input_channels)  # Tracks the channels that have been closed
-        self.all_closed = False
+        # Tracks the channels that have been closed. qid: close status
+        self.closed = {}
 
     def init(self):
         qids = [channel.str_qid for channel in self.input_channels]
@@ -102,7 +101,11 @@ class DataInput(object):
             queue_item = self.consumer.pull(100)
         msg_data = queue_item.body()
         if msg_data is None:
-            return None
+            self.closed[queue_item.queue_id] = True
+            if len(self.closed) == len(self.input_channels):
+                return None
+            else:
+                return self.pull()
         else:
             return pickle.loads(msg_data)
 
