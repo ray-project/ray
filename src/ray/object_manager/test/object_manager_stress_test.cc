@@ -95,7 +95,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::FromRandom().Hex());
     store_id_2 = StartStore(UniqueID::FromRandom().Hex());
 
-    uint pull_timeout_ms = 1000;
+    unsigned int pull_timeout_ms = 1000;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     int push_timeout_ms = 10000;
 
@@ -193,7 +193,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   };
 
   int async_loop_index = -1;
-  uint num_expected_objects;
+  size_t num_expected_objects;
 
   std::vector<TransferPattern> async_loop_patterns = {
       TransferPattern::PUSH_A_B,
@@ -254,7 +254,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void TransferTestNext() {
     async_loop_index += 1;
-    if ((uint)async_loop_index < async_loop_patterns.size()) {
+    if ((size_t)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
       TransferTestExecute(100, 3 * std::pow(10, 3) - 1, pattern);
     } else {
@@ -305,12 +305,12 @@ class StressTestObjectManager : public TestObjectManagerBase {
                   << static_cast<int>(async_loop_patterns[async_loop_index]) << " "
                   << v1.size() << " " << elapsed;
     ASSERT_TRUE(v1.size() == v2.size());
-    for (uint i = 0; i < v1.size(); ++i) {
+    for (size_t i = 0; i < v1.size(); ++i) {
       ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
     }
 
     // Compare objects and their hashes.
-    for (uint i = 0; i < v1.size(); ++i) {
+    for (size_t i = 0; i < v1.size(); ++i) {
       ObjectID object_id_2 = v2[i];
       ObjectID object_id_1 =
           v1[std::distance(v1.begin(), std::find(v1.begin(), v1.end(), v2[i]))];
@@ -333,9 +333,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
     if (transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PUSH ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE) {
-      num_expected_objects = (uint)2 * num_trials;
+      num_expected_objects = (size_t)2 * num_trials;
     } else {
-      num_expected_objects = (uint)num_trials;
+      num_expected_objects = (size_t)num_trials;
     }
 
     start_time = current_time_ms();
