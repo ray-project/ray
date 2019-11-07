@@ -146,6 +146,10 @@ streaming/java/**/.settings
 streaming/java/**/.project
 streaming/java/**/.classpath
 
+# streaming/java
+streaming/java/streaming-runtime/native_dependencies/
+streaming/java/streaming-runtime/src/main/java/org/ray/streaming/queue/generated/
+
 # python virtual env
 venv
 
