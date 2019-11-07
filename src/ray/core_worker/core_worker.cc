@@ -804,7 +804,6 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                           rpc::WorkerLeaseGrantedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(ERROR) << "got lease req";
   task_execution_service_.post([=] {
     direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
   });

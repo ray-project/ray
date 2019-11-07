@@ -4,6 +4,7 @@
 #include <google/protobuf/map.h>
 #include <google/protobuf/repeated_field.h>
 #include <grpcpp/grpcpp.h>
+#include <sstream>
 #include "status.h"
 
 namespace ray {
@@ -64,7 +65,11 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   if (grpc_status.ok()) {
     return Status::OK();
   } else {
-    return Status::IOError(grpc_status.error_message());
+    std::stringstream msg;
+    msg << grpc_status.error_code();
+    msg << ": ";
+    msg << grpc_status.error_message();
+    return Status::IOError(msg.str());
   }
 }
 
