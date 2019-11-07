@@ -9,11 +9,17 @@ import com.google.common.base.FinalizableReferenceQueue;
 import com.google.common.collect.Sets;
 import sun.nio.ch.DirectBuffer;
 
+import org.ray.streaming.runtime.util.JniUtils;
+
 public class QueueID {
   public static final int ID_LENGTH = 20;
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
   // This ensures that the FinalizablePhantomReference itself is not garbage-collected.
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
+
+  static {
+    JniUtils.loadLibrary("streaming_java");
+  }
 
   private final byte[] bytes;
   private final String strID;

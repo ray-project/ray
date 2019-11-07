@@ -13,16 +13,20 @@ public class JniUtils {
   private static final Logger LOGGER = LoggerFactory.getLogger(JniUtils.class);
 
   public static void loadLibrary(String libraryName) {
-    LOGGER.debug("Loading native library {}.", libraryName);
-    // Load native library.
-    String fileName = System.mapLibraryName(libraryName);
-    String libPath = null;
-    try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
-      libPath = libFile.getFile().getAbsolutePath();
-      System.load(libPath);
+    try {
+      System.loadLibrary(libraryName);
+    } catch (UnsatisfiedLinkError error) {
+      LOGGER.debug("Loading native library {}.", libraryName);
+      // Load native library.
+      String fileName = System.mapLibraryName(libraryName);
+      String libPath = null;
+      try (FileUtil.TempFile libFile = FileUtil.getTempFileFromResource(fileName)) {
+        libPath = libFile.getFile().getAbsolutePath();
+        System.load(libPath);
+      }
+      LOGGER.debug("Native library loaded.");
+      resetLibraryPath(libPath);
     }
-    LOGGER.debug("Native library loaded.");
-    resetLibraryPath(libPath);
   }
 
   /**
