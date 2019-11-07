@@ -7,8 +7,6 @@ namespace streaming {
 static constexpr int TASK_OPTION_RETURN_NUM_0 = 0;
 static constexpr int TASK_OPTION_RETURN_NUM_1 = 1;
 
-std::shared_ptr<Transport> TransportFactory::instance_ = nullptr;
-std::mutex TransportFactory::mutex_;
 const uint32_t Message::MagicNum = 0xBABA0510;
 
 std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
@@ -73,12 +71,8 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   uint64_t seq_id = message->seq_id();
   uint64_t length = message->length();
   bool raw = message->raw();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " seq_id:" << seq_id
-                       << " queue_id:" << queue_id << " length:" << length
-                       << " raw: " << raw;
-
   bytes += *fbs_length;
+
   /// COPY
   std::shared_ptr<LocalMemoryBuffer> buffer =
       std::make_shared<LocalMemoryBuffer>(bytes, (size_t)length, true);
@@ -107,9 +101,6 @@ std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *byt
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
   uint64_t seq_id = message->seq_id();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
-                       << " seq_id:" << seq_id;
 
   std::shared_ptr<NotificationMessage> notify_msg =
       std::make_shared<NotificationMessage>(src_actor_id, dst_actor_id, queue_id, seq_id);
@@ -134,8 +125,6 @@ std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
   ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  STREAMING_LOG(INFO) << "src_actor_id:" << src_actor_id
-                      << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id;
 
   std::shared_ptr<CheckMessage> check_msg =
       std::make_shared<CheckMessage>(src_actor_id, dst_actor_id, queue_id);
@@ -161,10 +150,6 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
   queue::flatbuf::StreamingQueueError err_code = message->err_code();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
-                       << " err_code:"
-                       << queue::flatbuf::EnumNameStreamingQueueError(err_code);
 
   std::shared_ptr<CheckRspMessage> check_rsp_msg =
       std::make_shared<CheckRspMessage>(src_actor_id, dst_actor_id, queue_id, err_code);
@@ -192,9 +177,6 @@ std::shared_ptr<PullRequestMessage> PullRequestMessage::FromBytes(uint8_t *bytes
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
   uint64_t seq_id = message->seq_id();
   bool async = message->async();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
-                       << " seq_id:" << seq_id << " async: " << async;
 
   std::shared_ptr<PullRequestMessage> pull_msg =
       std::make_shared<PullRequestMessage>(src_actor_id, dst_actor_id, queue_id, seq_id, async);
@@ -226,11 +208,6 @@ std::shared_ptr<PullDataMessage> PullDataMessage::FromBytes(uint8_t *bytes) {
   uint64_t last_seq_id = message->last_seq_id();
   uint64_t length = message->length();
   bool raw = message->raw();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id
-                       << " first_seq_id:" << first_seq_id << " seq_id:" << seq_id
-                       << " last_seq_id:" << last_seq_id << " queue_id:" << queue_id
-                       << " length:" << length;
 
   bytes += *fbs_length;
   /// COPY
@@ -261,10 +238,6 @@ std::shared_ptr<PullResponseMessage> PullResponseMessage::FromBytes(uint8_t *byt
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
   queue::flatbuf::StreamingQueueError err_code = message->err_code();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id
-                       << " err_code:"
-                       << queue::flatbuf::EnumNameStreamingQueueError(err_code);
 
   std::shared_ptr<PullResponseMessage> pull_rsp_msg =
       std::make_shared<PullResponseMessage>(src_actor_id, dst_actor_id, queue_id,
@@ -291,8 +264,6 @@ std::shared_ptr<ResubscribeMessage> ResubscribeMessage::FromBytes(uint8_t *bytes
   ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id;
 
   std::shared_ptr<ResubscribeMessage> resub_msg =
       std::make_shared<ResubscribeMessage>(src_actor_id, dst_actor_id, queue_id);
@@ -317,8 +288,6 @@ std::shared_ptr<GetLastMsgIdMessage> GetLastMsgIdMessage::FromBytes(uint8_t *byt
   ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
   ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id;
 
   std::shared_ptr<GetLastMsgIdMessage> get_last_msg_id_msg =
       std::make_shared<GetLastMsgIdMessage>(src_actor_id, dst_actor_id, queue_id);
@@ -348,13 +317,10 @@ std::shared_ptr<GetLastMsgIdRspMessage> GetLastMsgIdRspMessage::FromBytes(
   uint64_t seq_id = message->seq_id();
   uint64_t msg_id = message->msg_id();
   queue::flatbuf::StreamingQueueError err_code = message->err_code();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id << " queue_id:" << queue_id;
 
   std::shared_ptr<GetLastMsgIdRspMessage> get_last_msg_id_rsp_msg =
       std::make_shared<GetLastMsgIdRspMessage>(src_actor_id, dst_actor_id, queue_id,
                                                seq_id, msg_id, err_code);
-
   return get_last_msg_id_rsp_msg;
 }
 
@@ -402,10 +368,6 @@ std::shared_ptr<TestInitMsg> TestInitMsg::FromBytes(
   std::string test_suite_name = message->test_suite_name()->str();
   std::string test_name = message->test_name()->str();
   uint64_t param = message->param();
-  STREAMING_LOG(DEBUG) << "src_actor_id:" << src_actor_id
-                       << " dst_actor_id:" << dst_actor_id
-                       << " test_suite_name: " << test_suite_name
-                       << " test_name: " << test_name;
 
   std::shared_ptr<TestInitMsg> test_init_msg =
       std::make_shared<TestInitMsg>(role, src_actor_id, dst_actor_id, actor_handle_serialized, queue_ids, rescale_queue_ids, test_suite_name, test_name, param);
@@ -429,8 +391,6 @@ std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(
       flatbuffers::GetRoot<queue::flatbuf::StreamingQueueTestCheckStatusRspMsg>(bytes);
   std::string test_name = message->test_name()->str();
   bool status = message->status();
-  STREAMING_LOG(DEBUG) << "test_name: " << test_name
-                       << " status: " << status;
 
   std::shared_ptr<TestCheckStatusRspMsg> test_check_msg =
       std::make_shared<TestCheckStatusRspMsg>(test_name, status);
@@ -439,15 +399,7 @@ std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(
 }
 
 void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
-  /// org.ray.streaming.runtime.JobWorker
-  /// onStreamingTransfer
-  /// ()V
   STREAMING_LOG(INFO) << "DirectCallTransport::Send buffer size: " << buffer->Size();
-  //  RayFunction func{ray::Language::JAVA,
-  //  {"org.ray.streaming.runtime.JobWorker",
-  //                                         "onStreamingTransfer", "()V"}};
-  //  RayFunction func{ray::Language::JAVA, {"org.ray.streaming.runtime.JobWorker",
-  //                                         "onStreamingTransfer", "([B)V"}};
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_0, resources};
 
@@ -460,25 +412,16 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
 
   STREAMING_CHECK(core_worker_ != nullptr);
-  // STREAMING_CHECK(peer_actor_handle_ != nullptr);
   std::vector<ObjectID> return_ids;
-  STREAMING_LOG(INFO) << "DirectCallTransport::Send before peer_actor_id_" << peer_actor_id_;
-  STREAMING_LOG(INFO) << "is direct call actor";
   ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, async_func_, args,
                                                          options, &return_ids);
-  if (st.ok()) {
-    STREAMING_LOG(INFO) << "SubmitActorTask success.";
-  } else {
-    STREAMING_LOG(INFO) << "SubmitActorTask fail. " << st;
+  if (!st.ok()) {
+    STREAMING_LOG(ERROR) << "SubmitActorTask fail. " << st;
   }
 }
 
 std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
-  STREAMING_LOG(INFO) << "DirectCallTransport::SendForResult buffer size: "
-                      << buffer->Size();
-  //  RayFunction func{ray::Language::JAVA, {"org.ray.streaming.runtime.JobWorker",
-  //                                         "onStreamingTransferSync", "([B)[B"}};
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_1, resources};
 
@@ -491,16 +434,11 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
       TaskArg::PassByValue(std::make_shared<RayObject>(buffer, meta, true)));
 
   STREAMING_CHECK(core_worker_ != nullptr);
-  // STREAMING_CHECK(peer_actor_handle_ != nullptr);
   std::vector<ObjectID> return_ids;
-  STREAMING_LOG(DEBUG) << "DirectCallTransport::SendForResult before";
-  STREAMING_LOG(DEBUG) << "is direct call actor";
   ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, sync_func_, args,
                                                          options, &return_ids);
-  if (st.ok()) {
-    STREAMING_LOG(DEBUG) << "SubmitActorTask success.";
-  } else {
-    STREAMING_LOG(DEBUG) << "SubmitActorTask fail.";
+  if (!st.ok()) {
+    STREAMING_LOG(ERROR) << "SubmitActorTask fail.";
   }
 
   std::vector<bool> wait_results;
@@ -511,9 +449,8 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
     return nullptr;
   }
   STREAMING_CHECK(wait_results.size() >= 1);
-  // STREAMING_CHECK(wait_results[0]);
   if (!wait_results[0]) {
-    STREAMING_LOG(WARNING) << "Wait direct call fail.";
+    STREAMING_LOG(ERROR) << "Wait direct call fail.";
     return nullptr;
   }
 
@@ -524,11 +461,10 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
   }
   STREAMING_CHECK(results.size() >= 1);
   if (results[0]->IsException()) {
-    STREAMING_LOG(INFO) << "peer actor may has exceptions, should retry.";
+    STREAMING_LOG(ERROR) << "peer actor may has exceptions, should retry.";
     return nullptr;
   }
   STREAMING_CHECK(results[0]->HasData());
-  STREAMING_LOG(DEBUG) << "SendForResult result[0] DataSize: " << results[0]->GetSize();
   /// TODO: size 4 means byte[] array size 1, we will remove this by adding flatbuf
   /// command.
   if (results[0]->GetSize() == 4) {
@@ -562,6 +498,5 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::Recv() {
   STREAMING_CHECK(false) << "Should not be called.";
   return nullptr;
 }
-
 }  // namespace streaming
 }  // namespace ray

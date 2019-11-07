@@ -31,7 +31,6 @@ class QueueWriter {
   Status PushSync(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                   uint32_t data_size, uint64_t timestamp,
                   bool raw = false /*only for test*/);
-  void NotifyResubscribe(const ObjectID &queue_id);
   uint64_t GetLastQueueItem(const ObjectID &queue_id);
   void GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id, uint64_t &last_queue_seq_id);
 
@@ -111,8 +110,6 @@ class QueueManager {
   /// Wait all queues in queue_ids vector ready, until timeout.
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                   std::vector<ObjectID> &failed_queues, QueueType type);
-
-  void NotifyResubscribe(const ObjectID &queue_id);
 
   // NOTE: Pull queue from downstream to upstream, is an optional feature,
   // to simplify the implementation, not supported.

@@ -16,7 +16,6 @@ void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
   STREAMING_LOG(INFO) << "QueueWriter::CreateQueue";
   auto queue = manager_->CreateUpQueue(queue_id, actor_id, peer_actor_id, size, clear);
   STREAMING_CHECK(queue != nullptr);
-  STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
 
   manager_->UpdateUpActor(queue_id, actor_id);
   manager_->UpdateDownActor(queue_id, peer_actor_id);
@@ -26,6 +25,7 @@ void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
     manager_->GetPeerLastMsgId(queue_id, last_queue_msg_id, last_queue_seq_id);
     queue->SetPeerLastIds(last_queue_msg_id, last_queue_seq_id);
   }
+  STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
 }
 
 bool QueueWriter::IsQueueExist(const ObjectID &queue_id) {
@@ -39,29 +39,10 @@ void QueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t limit
   queue->SetQueueEvictionLimit(limit);
 }
 
-/// Not implemented in MemoryTransport
 void QueueWriter::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                              std::vector<ObjectID> &failed_queues) {
   STREAMING_LOG(INFO) << "QueueWriter::WaitQueues timeout_ms: " << timeout_ms;
   manager_->WaitQueues(queue_ids, timeout_ms, failed_queues, DOWNSTREAM);
-  // TODO: should parallel check
-  //  std::vector<ObjectID> return_ids;
-  //  for(auto & queue_id: queue_ids) {
-  //    auto it = writer_queues_.find(queue_id);
-  //    RAY_CHECK(it != writer_queues_.end());
-  //    return_ids.push_back(it->second->CheckAsync());
-  //  }
-  //
-  //  std::vector<bool> results;
-  //  int i = 0;
-  //  // TODO:
-  //  // core_worker_->Objects()->Wait(return_ids, return_ids.size(), timeout_ms,
-  //  results);
-  //
-  //  std::copy_if(queue_ids.begin(), queue_ids.end(), std::back_inserter(failed_queues),
-  //      [&i, &results](ObjectID) {
-  //        return !results[i++];
-  //      });
 }
 
 uint64_t QueueWriter::GetMinConsumedSeqID(const ObjectID &queue_id) {
@@ -96,10 +77,6 @@ Status QueueWriter::PushSync(const ObjectID &queue_id, uint64_t seq_id, uint8_t 
   return status;
 }
 
-void QueueWriter::NotifyResubscribe(const ObjectID &queue_id) {
-  manager_->NotifyResubscribe(queue_id);
-}
-
 /// Just return invalid seq_id because we do not pull data from downstream
 uint64_t QueueWriter::GetLastQueueItem(const ObjectID &queue_id) {
   return QUEUE_INVALID_SEQ_ID;
@@ -125,9 +102,6 @@ bool QueueReader::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
 
   std::vector<ObjectID> queue_ids;
   queue_ids.push_back(queue_id);
-  //std::vector<ObjectID> failed_queues;
-  //manager_->WaitQueues(queue_ids, 60000, failed_queues, UPSTREAM);
-  //STREAMING_CHECK(0 == failed_queues.size());
 
   if (start_seq_id != 1) {
     STREAMING_LOG(INFO) << "Need pull data from upstream, start_seq_id: " << start_seq_id;
@@ -167,7 +141,7 @@ void QueueReader::GetQueueItem(const ObjectID &queue_id, uint8_t *&data,
 }
 
 void QueueReader::NotifyConsumedItem(const ObjectID &queue_id, uint64_t seq_id) {
-  STREAMING_LOG(INFO) << "QueueReader::NotifyConsumedItem";
+  STREAMING_LOG(DEBUG) << "QueueReader::NotifyConsumedItem";
   auto queue = manager_->GetDownQueue(queue_id);
   queue->OnConsumed(seq_id);
 }
@@ -187,7 +161,6 @@ void QueueReader::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t tim
 void QueueManager::Init() {
   /// TODO: do not start corresponding thread when queue not exist.
   boost::asio::io_service service;
-  STREAMING_LOG(INFO) << "Init: " << this;
   queue_thread_ = std::thread(&QueueManager::QueueThreadCallback, this);
 }
 
@@ -229,8 +202,6 @@ std::shared_ptr<ReaderQueue> QueueManager::CreateDownQueue(const ObjectID &queue
   STREAMING_LOG(INFO) << "CreateDownQueue: " << queue_id
                       << " " << peer_actor_id << "->" << actor_id;
   auto it = downstream_queues_.find(queue_id);
-  // RAY_CHECK(it == downstream_queues_.end()) << "duplicate to create queue: " <<
-  // queue_id;
   if (it != downstream_queues_.end()) {
     STREAMING_LOG(WARNING) << "Duplicate to create down queue!!!! " << queue_id;
     return it->second;
@@ -316,10 +287,8 @@ void QueueManager::DispatchMessageInternal(
   std::shared_ptr<Message> msg = ParseMessage(buffer);
   STREAMING_LOG(DEBUG) << "QueueManager::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
-                       << " peer actorid: " << msg->PeerActorId();
-
-  STREAMING_LOG(DEBUG) << "QueueManager::DispatchMessageInternal type: "
-                       << queue::flatbuf::EnumNameMessageType(msg->Type());
+                       << " peer actorid: " << msg->PeerActorId()
+                       << " type: " << queue::flatbuf::EnumNameMessageType(msg->Type());
 
   if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueNotificationMsg) {
     if (upstream_state_ != StreamingQueueState::Running) {
@@ -434,11 +403,8 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::DispatchMessageSync(
                     result = rst;
                     promise->Notify(ray::Status::OK());
                   }));
-  STREAMING_LOG(DEBUG) << "DispatchMessageSync Wait";
   Status st = promise->Wait();
   STREAMING_CHECK(st.ok());
-  STREAMING_LOG(DEBUG) << "DispatchMessageSync Wait return";
-  STREAMING_LOG(DEBUG) << "DispatchMessageSync result: size " << result->Size();
 
   return result;
 }
@@ -545,21 +511,6 @@ void QueueManager::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t ti
   }
 }
 
-void QueueManager::NotifyResubscribe(const ObjectID &queue_id) {
-  /// Send StreamingQueueResubscribeMsg to peer
-  auto it = actors_.find(queue_id);
-  STREAMING_CHECK(it != actors_.end());
-  /// NotifyResubscribe target actorid must be a downstream.
-  ActorID &peer_actor_id = it->second.second;
-
-  ResubscribeMessage msg(actor_id_, peer_actor_id, queue_id);
-  std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-  auto transport_it = GetOutTransport(queue_id);
-  STREAMING_CHECK(transport_it != nullptr);
-  transport_it->Send(std::move(buffer));
-}
-
 void QueueManager::UpdateUpActor(const ObjectID &queue_id, const ActorID &actor_id) {
   std::pair<ActorID, ActorID> actor_pair = std::make_pair(actor_id, ActorID::Nil());
   auto it = actors_.find(queue_id);
@@ -616,9 +567,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::OnCheckQueue(
     if (down_queue == downstream_queues_.end()) {
       STREAMING_LOG(WARNING) << "OnCheckQueue " << check_msg->QueueId() << " not found.";
       err_code = queue::flatbuf::StreamingQueueError::QUEUE_NOT_EXIST;
-      /// Queue hasn't been created, we can not send anything back to peer due to
-      //  no relevant transport. so just return.
-      // return null;
     }
   }
 
@@ -627,10 +575,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::OnCheckQueue(
   std::shared_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
 
   STREAMING_LOG(INFO) << "OnCheckQueue actor_id: " << check_msg->ActorId();
-  ;
-  //  auto it = GetOutTransport(check_msg->QueueId());
-  //  STREAMING_CHECK(it != nullptr);
-  //  it->Send(std::move(buffer));
 
   return buffer;
 }
