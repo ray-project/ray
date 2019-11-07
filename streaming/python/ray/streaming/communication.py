@@ -5,6 +5,7 @@ from __future__ import print_function
 import hashlib
 import logging
 import sys
+import time
 
 from ray.streaming.operator import PStrategy
 import ray.streaming.queue.queue_utils as queue_utils
@@ -35,26 +36,31 @@ class DataChannel(object):
     Attributes:
          env (Environment): The environment the channel belongs to.
          src_operator_id (UUID): The id of the source operator of the channel.
+         src_instance_id (int): The id of the source instance.
          dst_operator_id (UUID): The id of the destination operator of the
          channel.
-         src_instance_id (int): The id of the source instance.
          dst_instance_id (int): The id of the destination instance.
          queue (BatchedQueue): The batched queue used for data movement.
     """
 
-    def __init__(self, env, src_operator_id, dst_operator_id, src_instance_id,
+    def __init__(self, env, src_operator_id, src_instance_id, dst_operator_id,
                  dst_instance_id):
         self.env = env
         self.src_operator_id = src_operator_id
-        self.dst_operator_id = dst_operator_id
         self.src_instance_id = src_instance_id
+        self.dst_operator_id = dst_operator_id
         self.dst_instance_id = dst_instance_id
-        self.str_qid = queue_utils.generate_qid(src_instance_id, dst_instance_id, env.build_time)
+        from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_id)
+        to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_id)
+        self.str_qid = queue_utils.generate_qid(from_task_id, to_task_id,
+                                                env.execution_graph.build_time)
+        print(self)
 
     def __repr__(self):
-        return "({},{},{},{})".format(
-            self.src_operator_id, self.dst_operator_id, self.src_instance_id,
-            self.dst_instance_id)
+        return "(src({},{}),dst({},{}), qid({}))".format(
+            self.src_operator_id, self.src_instance_id,
+            self.dst_operator_id, self.dst_instance_id,
+            self.str_qid)
 
 
 # Pulls and merges data from multiple input channels
@@ -90,17 +96,21 @@ class DataInput(object):
 
     def pull(self):
         # pull from queue
-        queue_item = None
-        import time
+        queue_item = self.consumer.pull(100)
         while queue_item is None:
-            print("queue_item is None")
-            time.sleep(0.5)
+            time.sleep(0.001)
             queue_item = self.consumer.pull(100)
         msg_data = queue_item.body()
-        return pickle.loads(msg_data)
+        if msg_data is None:
+            return None
+        else:
+            return pickle.loads(msg_data)
+
+    def close(self):
+        self.consumer.stop()
+        self.consumer.close()
 
 
-# TODO(chaokunyang) lift queue up to DataOutput instead of channel
 # Selects output channel(s) and pushes data
 class DataOutput(object):
     """An output gate of an operator instance.
@@ -195,6 +205,8 @@ class DataOutput(object):
         """
         for channel in self.channels:
             self.producer.produce(channel.str_qid, None)
+        self.producer.stop()
+        self.producer.close()
 
     # Pushes the record to the output
     # Each individual output queue flushes batches to plasma periodically
@@ -242,7 +254,6 @@ class DataOutput(object):
         msg_data = pickle.dumps(record)
         for channel in target_channels:
             # send data to queue
-            print("produce data: ", record, "qid: ", channel.str_qid)
             self.producer.produce(channel.str_qid, msg_data)
 
     # Pushes a list of records to the output

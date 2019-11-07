@@ -33,10 +33,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()
-    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
-    ray.register_custom_serializer(OpType, use_pickle=True)
-    ray.register_custom_serializer(PStrategy, use_pickle=True)
+    ray.init(local_mode=True)
+    # ray.register_custom_serializer(BatchedQueue, use_pickle=True)
+    # ray.register_custom_serializer(OpType, use_pickle=True)
+    # ray.register_custom_serializer(PStrategy, use_pickle=True)
 
     # A Ray streaming environment with the default configuration
     env = Environment()
@@ -46,14 +46,15 @@ if __name__ == "__main__":
     stream = env.read_text_file(args.input_file) \
                 .shuffle() \
                 .flat_map(splitter) \
-                .set_parallelism(4) \
+                .set_parallelism(1) \
                 .filter(filter_fn) \
-                .set_parallelism(2) \
+                .set_parallelism(1) \
                 .inspect(print)     # Prints the contents of the
     # stream to stdout
     start = time.time()
     env_handle = env.execute()
     ray.get(env_handle)  # Stay alive until execution finishes
     end = time.time()
+    # time.sleep(1000)
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

@@ -21,11 +21,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
 
-# Generates UUIDs
-def _generate_uuid():
-    return uuid.uuid4()
-
-
 # Rolling sum's logic
 def _sum(value_1, value_2):
     return value_1 + value_2
@@ -62,54 +57,31 @@ class Config(object):
         # ...
 
 
-# The execution environment for a streaming job
-class Environment(object):
-    """A streaming environment.
-
-    This class is responsible for constructing the logical and the
-    physical dataflow.
-
-    Attributes:
-         logical_topo (DiGraph): The user-defined logical topology in
-         NetworkX DiGRaph format.
-         (See: https://networkx.github.io)
-         physical_topo (DiGraph): The physical topology in NetworkX
-         DiGRaph format. The physical dataflow is constructed by the
-         environment based on logical_topo.
-         operators (dict): A mapping from operator ids to operator metadata
-         (See: Operator in operator.py).
-         config (Config): The environment's configuration.
-         topo_cleaned (bool): A flag that indicates whether the logical
-         topology is garbage collected (True) or not (False).
-         actor_handles (list): A list of all Ray actor handles that execute
-         the streaming dataflow.
-    """
-
-    def __init__(self, config=Config()):
-        self.logical_topo = nx.DiGraph()  # DAG
+class ExecutionGraph:
+    def __init__(self, env):
+        self.env = env
         self.physical_topo = nx.DiGraph()  # DAG
-        self.operators = {}  # operator id --> operator object
-        self.config = config  # Environment's configuration
-        self.topo_cleaned = False
         # Handles to all actors in the physical dataflow
         self.actor_handles = []
         # execution graph build time: milliseconds since epoch
         self.build_time = 0
+        self.task_id_counter = 0
+        self.task_ids = {}
 
     # Constructs and deploys a Ray actor of a specific type
     # TODO (john): Actor placement information should be specified in
     # the environment's configuration
-    def __generate_actor(self, instance_id, operator, input_channels, output_channels):
+    def __generate_actor(self, instance_index, operator, input_channels, output_channels):
         """Generates an actor that will execute a particular instance of
         the logical operator
 
         Attributes:
-            instance_id (UUID): The id of the instance the actor will execute.
+            instance_index: The index of the instance the actor will execute.
             operator (Operator): The metadata of the logical operator.
             input_channels (input channels): The input channels of the instance.
             output_channels (output channels): The output channels of the instance.
         """
-        actor_id = (operator.id, instance_id)
+        actor_id = (operator.id, instance_index)
         # Record the physical dataflow graph (for debugging purposes)
         self.__add_channel(actor_id, output_channels)
         # Select actor to construct
@@ -211,25 +183,112 @@ class Environment(object):
         channels = {}  # destination operator id -> channels
         strategies = operator.partitioning_strategies
         for dst_operator, p_scheme in strategies.items():
-            num_dest_instances = self.operators[dst_operator].num_instances
+            num_dest_instances = self.env.operators[dst_operator].num_instances
             entry = channels.setdefault(dst_operator, [])
             if p_scheme.strategy == PStrategy.Forward:
                 for i in range(operator.num_instances):
                     # ID of destination instance to connect
                     id = i % num_dest_instances
-                    channel = DataChannel(self, operator.id, dst_operator, i,
-                                          id)
+                    channel = DataChannel(self.env, operator.id, i, dst_operator, id)
                     entry.append(channel)
             elif p_scheme.strategy in all_to_all_strategies:
                 for i in range(operator.num_instances):
                     for j in range(num_dest_instances):
-                        channel = DataChannel(self, operator.id, dst_operator,
-                                              i, j)
+                        channel = DataChannel(self.env, operator.id, i, dst_operator, j)
                         entry.append(channel)
             else:
                 # TODO (john): Add support for other partitioning strategies
                 sys.exit("Unrecognized or unsupported partitioning strategy.")
         return channels
+
+    def _gen_task_id(self):
+        task_id = self.task_id_counter
+        self.task_id_counter += 1
+        return task_id
+
+    def get_task_id(self, op_id, op_instance_id):
+        return self.task_ids[(op_id, op_instance_id)]
+
+    # Prints the physical dataflow graph
+    def print_physical_graph(self):
+        logger.info("===================================")
+        logger.info("======Physical Dataflow Graph======")
+        logger.info("===================================")
+        # Print all data channels between operator instances
+        log = "(Source Operator ID,Source Operator Name,Source Instance ID)"
+        log += " --> "
+        log += "(Destination Operator ID,Destination Operator Name,"
+        log += "Destination Instance ID)"
+        logger.info(log)
+        for src_actor_id, dst_actor_id in self.physical_topo.edges:
+            src_operator_id, src_instance_id = src_actor_id
+            dst_operator_id, dst_instance_id = dst_actor_id
+            logger.info("({},{},{}) --> ({},{},{})".format(
+                src_operator_id, self.env.operators[src_operator_id].name,
+                src_instance_id, dst_operator_id,
+                self.env.operators[dst_operator_id].name, dst_instance_id))
+
+    def build_graph(self):
+        self.build_time = int(time.time() * 1000)
+        # gen auto-incremented unique task id for every operator instance
+        for node in nx.topological_sort(self.env.logical_topo):
+            operator = self.env.operators[node]
+            for i in range(operator.num_instances):
+                operator_instance_id = (operator.id, i)
+                self.task_ids[operator_instance_id] = self._gen_task_id()
+        # Each operator instance is implemented as a Ray actor
+        # Actors are deployed in topological order, as we traverse the
+        # logical dataflow from sources to sinks. At each step, data
+        # producers wait for acknowledge from consumers before starting
+        # generating data.
+        upstream_channels = {}
+        for node in nx.topological_sort(self.env.logical_topo):
+            operator = self.env.operators[node]
+            # Generate downstream data channels
+            downstream_channels = self._generate_channels(operator)
+            # Instantiate Ray actors
+            handles = self.__generate_actors(operator, upstream_channels,
+                                             downstream_channels)
+            if handles:
+                self.actor_handles.extend(handles)
+            upstream_channels.update(downstream_channels)
+
+
+# The execution environment for a streaming job
+class Environment(object):
+    """A streaming environment.
+
+    This class is responsible for constructing the logical and the
+    physical dataflow.
+
+    Attributes:
+         logical_topo (DiGraph): The user-defined logical topology in
+         NetworkX DiGRaph format.
+         (See: https://networkx.github.io)
+         physical_topo (DiGraph): The physical topology in NetworkX
+         DiGRaph format. The physical dataflow is constructed by the
+         environment based on logical_topo.
+         operators (dict): A mapping from operator ids to operator metadata
+         (See: Operator in operator.py).
+         config (Config): The environment's configuration.
+         topo_cleaned (bool): A flag that indicates whether the logical
+         topology is garbage collected (True) or not (False).
+         actor_handles (list): A list of all Ray actor handles that execute
+         the streaming dataflow.
+    """
+
+    def __init__(self, config=Config()):
+        self.logical_topo = nx.DiGraph()  # DAG
+        self.operators = {}  # operator id --> operator object
+        self.config = config  # Environment's configuration
+        self.topo_cleaned = False
+        self.operator_id_counter = 0
+        self.execution_graph = None  # set when executed
+
+    def gen_operator_id(self):
+        op_id = self.operator_id_counter
+        self.operator_id_counter += 1
+        return op_id
 
     # An edge denotes a flow of data between logical operators
     # and may correspond to multiple data channels in the physical dataflow
@@ -263,7 +322,7 @@ class Environment(object):
     # reading from Kafka, text files, etc.
     # TODO (john): Handle case where environment parallelism is set
     def source(self, source):
-        source_id = _generate_uuid()
+        source_id = self.gen_operator_id()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = Operator(
             source_id, OpType.Source, "Source", other=source)
@@ -275,7 +334,7 @@ class Environment(object):
     # e.g. sources reading from Kafka, text files, etc.
     # TODO (john): Handle case where environment parallelism is set
     def read_text_file(self, filepath):
-        source_id = _generate_uuid()
+        source_id = self.gen_operator_id()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = Operator(
             source_id, OpType.ReadTextFile, "Read Text File", other=filepath)
@@ -284,7 +343,6 @@ class Environment(object):
     # Constructs and deploys the physical dataflow
     def execute(self):
         """Deploys and executes the physical dataflow."""
-        self.build_time = int(time.time() * 1000)
         self._collect_garbage()  # Make sure everything is clean
         # TODO (john): Check if dataflow has any 'logical inconsistencies'
         # For example, if there is a forward partitioning strategy but
@@ -292,32 +350,17 @@ class Environment(object):
         # upstream instances, some of the downstream instances will not be
         # used at all
 
-        # Each operator instance is implemented as a Ray actor
-        # Actors are deployed in topological order, as we traverse the
-        # logical dataflow from sources to sinks. At each step, data
-        # producers wait for acknowledge from consumers before starting
-        # generating data.
-        upstream_channels = {}
-        for node in nx.topological_sort(self.logical_topo):
-            operator = self.operators[node]
-            # Generate downstream data channels
-            downstream_channels = self._generate_channels(operator)
-            # Instantiate Ray actors
-            handles = self.__generate_actors(operator, upstream_channels,
-                                             downstream_channels)
-            if handles:
-                self.actor_handles.extend(handles)
-            upstream_channels.update(downstream_channels)
-
+        self.execution_graph = ExecutionGraph(self)
+        self.execution_graph.build_graph()
         logger.info("init...")
         # init
-        for actor_handle in self.actor_handles:
+        for actor_handle in self.execution_graph.actor_handles:
             assert ray.get(actor_handle.init.remote(self)) is True
 
         logger.info("running...")
         # start
         exec_handles = []
-        for actor_handle in self.actor_handles:
+        for actor_handle in self.execution_graph.actor_handles:
             exec_handles.append(actor_handle.start.remote())
 
         return exec_handles
@@ -340,25 +383,6 @@ class Environment(object):
             for downstream_node in downstream_neighbors:
                 self.operators[downstream_node].print()
 
-    # Prints the physical dataflow graph
-    def print_physical_graph(self):
-        logger.info("===================================")
-        logger.info("======Physical Dataflow Graph======")
-        logger.info("===================================")
-        # Print all data channels between operator instances
-        log = "(Source Operator ID,Source Operator Name,Source Instance ID)"
-        log += " --> "
-        log += "(Destination Operator ID,Destination Operator Name,"
-        log += "Destination Instance ID)"
-        logger.info(log)
-        for src_actor_id, dst_actor_id in self.physical_topo.edges:
-            src_operator_id, src_instance_id = src_actor_id
-            dst_operator_id, dst_instance_id = dst_actor_id
-            logger.info("({},{},{}) --> ({},{},{})".format(
-                src_operator_id, self.operators[src_operator_id].name,
-                src_instance_id, dst_operator_id,
-                self.operators[dst_operator_id].name, dst_instance_id))
-
 
 # TODO (john): We also need KeyedDataStream and WindowedDataStream as
 # subclasses of DataStream to prevent ill-defined logical dataflows
@@ -380,14 +404,16 @@ class DataStream(object):
          is_partitioned (bool): Denotes if there is a partitioning strategy
          (e.g. shuffle) for the stream or not (default stategy: Forward).
     """
+    stream_id_counter = 0
 
     def __init__(self,
                  environment,
                  source_id=None,
                  dest_id=None,
                  is_partitioned=False):
-        self.id = _generate_uuid()
         self.env = environment
+        self.id = DataStream.stream_id_counter
+        DataStream.stream_id_counter += 1
         self.src_operator_id = source_id
         self.dst_operator_id = dest_id
         # True if a partitioning strategy for this stream exists,
@@ -439,17 +465,14 @@ class DataStream(object):
         src_operator = self.env.operators[self.src_operator_id]
         if self.is_partitioned is True:
             partitioning, _ = src_operator._get_partition_strategy(self.id)
-            src_operator._set_partition_strategy(_generate_uuid(),
-                                                 partitioning, operator.id)
+            src_operator._set_partition_strategy(self.id, partitioning, operator.id)
         elif src_operator.type == OpType.KeyBy:
             # Set the output partitioning strategy to shuffle by key
             partitioning = PScheme(PStrategy.ShuffleByKey)
-            src_operator._set_partition_strategy(_generate_uuid(),
-                                                 partitioning, operator.id)
+            src_operator._set_partition_strategy(self.id, partitioning, operator.id)
         else:  # No partitioning strategy has been defined - set default
             partitioning = PScheme(PStrategy.Forward)
-            src_operator._set_partition_strategy(_generate_uuid(),
-                                                 partitioning, operator.id)
+            src_operator._set_partition_strategy(self.id, partitioning, operator.id)
         return self.__expand()
 
     # Sets the level of parallelism for an operator, i.e. its total
@@ -516,7 +539,7 @@ class DataStream(object):
              map_fn (function): The user-defined logic of the map.
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.Map,
             name,
             map_fn,
@@ -532,7 +555,7 @@ class DataStream(object):
              (e.g. split()).
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.FlatMap,
             "FlatMap",
             flatmap_fn,
@@ -549,7 +572,7 @@ class DataStream(object):
              (assuming tuple records).
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.KeyBy,
             "KeyBy",
             other=key_selector,
@@ -565,7 +588,7 @@ class DataStream(object):
              (assuming tuple records).
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.Reduce,
             "Sum",
             reduce_fn,
@@ -581,7 +604,7 @@ class DataStream(object):
              (assuming tuple records).
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.Sum,
             "Sum",
             _sum,
@@ -600,7 +623,7 @@ class DataStream(object):
              window_width_ms (int): The length of the window in ms.
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.TimeWindow,
             "TimeWindow",
             num_instances=self.env.config.parallelism,
@@ -615,7 +638,7 @@ class DataStream(object):
              filter_fn (function): The user-defined filter function.
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.Filter,
             "Filter",
             filter_fn,
@@ -625,7 +648,7 @@ class DataStream(object):
     # TODO (john): Registers window join operator to the environment
     def window_join(self, other_stream, join_attribute, window_width):
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.WindowJoin,
             "WindowJoin",
             num_instances=self.env.config.parallelism)
@@ -639,7 +662,7 @@ class DataStream(object):
              inspect_logic (function): The user-defined inspect function.
         """
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.Inspect,
             "Inspect",
             inspect_logic,
@@ -652,7 +675,7 @@ class DataStream(object):
     def sink(self):
         """Closes the stream with a sink operator."""
         op = Operator(
-            _generate_uuid(),
+            self.env.gen_operator_id(),
             OpType.Sink,
             "Sink",
             num_instances=self.env.config.parallelism)

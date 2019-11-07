@@ -52,19 +52,19 @@ public class QueueUtils {
   /**
    * generate queue name, which must be 20 character
    *
-   * @param fromTaskIndex actor which write into queue
-   * @param toTaskIndex   actor which read from queue
+   * @param fromTaskId actor which write into queue
+   * @param toTaskId   actor which read from queue
    * @return queue name
    */
-  public static String genQueueName(int fromTaskIndex, int toTaskIndex, long ts) {
+  public static String genQueueName(int fromTaskId, int toTaskId, long ts) {
     /*
       | Queue Head | Timestamp | Empty | From  |  To    |
       | 8 bytes    |  4bytes   | 4bytes| 2bytes| 2bytes |
     */
-    Preconditions.checkArgument(fromTaskIndex < Short.MAX_VALUE,
-        "fromTaskIndex %d is larger than %d", fromTaskIndex, Short.MAX_VALUE);
-    Preconditions.checkArgument(toTaskIndex < Short.MAX_VALUE,
-        "toTaskIndex %d is larger than %d", fromTaskIndex, Short.MAX_VALUE);
+    Preconditions.checkArgument(fromTaskId < Short.MAX_VALUE,
+        "fromTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
+    Preconditions.checkArgument(toTaskId < Short.MAX_VALUE,
+        "toTaskId %d is larger than %d", fromTaskId, Short.MAX_VALUE);
     byte[] queueName = new byte[20];
 
     for (int i = 11; i >= 8; i--) {
@@ -72,10 +72,10 @@ public class QueueUtils {
       ts >>= 8;
     }
 
-    queueName[16] = (byte) ((fromTaskIndex & 0xffff) >> 8);
-    queueName[17] = (byte) (fromTaskIndex & 0xff);
-    queueName[18] = (byte) ((toTaskIndex & 0xffff) >> 8);
-    queueName[19] = (byte) (toTaskIndex & 0xff);
+    queueName[16] = (byte) ((fromTaskId & 0xffff) >> 8);
+    queueName[17] = (byte) (fromTaskId & 0xff);
+    queueName[18] = (byte) ((toTaskId & 0xffff) >> 8);
+    queueName[19] = (byte) (toTaskId & 0xff);
 
     return QueueUtils.qidBytesToString(queueName);
   }

@@ -85,10 +85,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     titles_file = str(args.titles_file)
 
-    ray.init()
-    ray.register_custom_serializer(BatchedQueue, use_pickle=True)
-    ray.register_custom_serializer(OpType, use_pickle=True)
-    ray.register_custom_serializer(PStrategy, use_pickle=True)
+    ray.init(local_mode=True)
+    # ray.register_custom_serializer(BatchedQueue, use_pickle=True)
+    # ray.register_custom_serializer(OpType, use_pickle=True)
+    # ray.register_custom_serializer(PStrategy, use_pickle=True)
 
     # A Ray streaming environment with the default configuration
     env = Environment()
