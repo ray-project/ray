@@ -15,7 +15,7 @@ RAY_HOME: The root directory of Ray project.
 """
 
 # constants declarations
-PACKAGE_DECLARATION = "package org.ray.streaming.queue.generated;"
+PACKAGE_DECLARATION = "package org.ray.streaming.runtime.generated;"
 
 
 def add_package(file):
@@ -45,5 +45,5 @@ if __name__ == "__main__":
     print(sys.argv)
     ray_home = sys.argv[1]
     root_path = os.path.join(
-        ray_home, "streaming/java/streaming-runtime/src/main/java/org/ray/streaming/queue/generated")
+        ray_home, "streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated")
     add_package_declarations(root_path)

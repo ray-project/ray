@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.function.Function;
-import org.ray.streaming.runtime.context.RuntimeContext;
+import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.message.KeyRecord;
 import org.ray.streaming.message.Record;
 

@@ -117,13 +117,13 @@ genrule(
         ":modify_generated_java_flatbuffers_files_py_tool",
     ],
     outs = [
-        "streaming-runtime/src/main/java/org/ray/streaming/queue/generated/" + file
+        "streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/" + file
             for file in flatbuffers_generated_files
     ],
     cmd = """
         for f in $(locations //streaming/java:streaming_java_fbs); do
             chmod +w $$f
-            mv -f $$f $(@D)/streaming-runtime/src/main/java/org/ray/streaming/queue/generated
+            mv -f $$f $(@D)/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
         done
         python $$(pwd)/streaming/java/modify_generated_java_flatbuffers_files.py $(@D)/../..
     """,
@@ -175,7 +175,7 @@ genrule(
             cp $$f $$NATIVE_DEPS_DIR
         done
         # Copy flatbuffer-generated files.
-        GENERATED_DIR=$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/queue/generated
+        GENERATED_DIR=$$WORK_DIR/streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
         # Copy flatbuffers-generated files

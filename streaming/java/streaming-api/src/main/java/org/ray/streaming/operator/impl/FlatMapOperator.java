@@ -5,7 +5,7 @@ import java.util.List;
 import org.ray.streaming.api.collector.CollectionCollector;
 import org.ray.streaming.api.collector.Collector;
 import org.ray.streaming.api.function.impl.FlatMapFunction;
-import org.ray.streaming.runtime.context.RuntimeContext;
+import org.ray.streaming.api.context.RuntimeContext;
 import org.ray.streaming.message.Record;
 import org.ray.streaming.operator.OneInputOperator;
 import org.ray.streaming.operator.StreamOperator;
