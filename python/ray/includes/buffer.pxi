@@ -21,7 +21,7 @@ cdef class Buffer:
         Py_ssize_t strides
 
     @staticmethod
-    cdef make(const shared_ptr[CBuffer] buffer):
+    cdef make(const shared_ptr[CBuffer]& buffer):
         cdef Buffer self = Buffer.__new__(Buffer)
         self.buffer = buffer
         self.shape = <Py_ssize_t>self.size
