@@ -223,7 +223,9 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   }
 
   // Wait for remaining objects (or timeout).
-  get_request->Wait(timeout_ms);
+  if (!get_request->Wait(timeout_ms)) {
+    return Status::TimedOut("Get timed out: object(s) not ready.");
+  }
 
   {
     absl::MutexLock lock(&mu_);

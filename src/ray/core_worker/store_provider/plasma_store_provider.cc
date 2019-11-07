@@ -33,6 +33,7 @@ Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                            &data));
   // data could be a nullptr if the ObjectID already existed, but this does
   // not throw an error.
+
   if (data != nullptr) {
     if (object.HasData()) {
       memcpy(data->Data(), object.GetData()->Data(), object.GetData()->Size());
@@ -172,6 +173,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;
       should_break = remaining_timeout <= 0;
+    } else if (timeout_ms > 0) {
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
+      return Status::TimedOut("Get timed out: object(s) not ready.");
     }
 
     size_t previous_size = remaining.size();
