@@ -14,8 +14,10 @@ build --http_timeout_scaling=5.0
 # Address sanitizer configuration:
 build:asan --strip=never
 build:asan --copt -fsanitize=address
+build:asan --copt -fsanitize=undefined
+build:asan --copt -fsanitize=thread
 build:asan --copt -DADDRESS_SANITIZER
-build:asan --copt -O1
+build:asan --copt -O2
 build:asan --copt -g
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
