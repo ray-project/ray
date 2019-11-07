@@ -6,6 +6,7 @@ import logging
 import sys
 import time
 import types
+import threading
 
 import ray
 from ray.streaming.communication import DataInput
@@ -83,8 +84,17 @@ class OperatorInstance(object):
 
     # Starts the actor
     def start(self):
+        self.t = threading.Thread(target=self.run, daemon=True)
+        self.t.start()
+        self.t.join()
+
+    # run
+    def run(self):
         pass
 
+    def close(self):
+        self.input_gate.close()
+        self.output_gate.close()
 
 # A source actor that reads a text file line by line
 @ray.remote
@@ -108,12 +118,12 @@ class ReadTextFile(OperatorInstance):
         self.reader = open(self.filepath, "r")
 
     # Read input file line by line
-    def start(self):
+    def run(self):
         while True:
             record = self.reader.readline()
             # Reader returns empty string ('') on EOF
             if not record:
-                self.output_gate.close()
+                self.close()
                 self.reader.close()
                 return
             self.output_gate.push(record[:-1])  # Push after removing newline characters
@@ -139,13 +149,14 @@ class Map(OperatorInstance):
 
     # Applies the mapper each record of the input stream(s)
     # and pushes resulting records to the output stream(s)
-    def start(self):
+    def run(self):
         start = time.time()
         elements = 0
         while True:
             record = self.input_gate.pull()
             if record is None:
-                continue
+                self.close()
+                return
             self.output_gate.push(self.map_fn(record))
             elements += 1
 
@@ -170,11 +181,12 @@ class FlatMap(OperatorInstance):
 
     # Applies the splitter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
-    def start(self):
+    def run(self):
         while True:
             record = self.input_gate.pull()
             if record is None:
-                continue
+                self.close()
+                return
             self.output_gate.push_all(self.flatmap_fn(record))
 
 
@@ -198,14 +210,14 @@ class Filter(OperatorInstance):
 
     # Applies the filter to the records of the input stream(s)
     # and pushes resulting records to the output stream(s)
-    def start(self):
+    def run(self):
         while True:
             record = self.input_gate.pull()
             if record is None:
-                continue
+                self.close()
+                return
             if self.filter_fn(record):
                 self.output_gate.push(record)
-
 
 # Inspect actor
 @ray.remote
@@ -223,7 +235,7 @@ class Inspect(OperatorInstance):
         OperatorInstance.__init__(self, operator, instance_id, input_gate, output_gate)
         self.inspect_fn = operator.logic
 
-    def start(self):
+    def run(self):
         # Applies the inspect logic (e.g. print) to the records of
         # the input stream(s)
         # and leaves stream unaffected by simply pushing the records to
@@ -231,7 +243,8 @@ class Inspect(OperatorInstance):
         while True:
             record = self.input_gate.pull()
             if record is None:
-                continue
+                self.close()
+                return
             self.output_gate.push(record)
             self.inspect_fn(record)
 
@@ -270,11 +283,12 @@ class Reduce(OperatorInstance):
     # Combines the input value for a key with the last reduced
     # value for that key to produce a new value.
     # Outputs the result as (key,new value)
-    def start(self):
+    def run(self):
         while True:
             record = self.input_gate.pull()
             if record is None:
-                continue
+                self.close()
+                return
             key, rest = record
             new_value = self.attribute_selector(rest)
             # TODO (john): Is there a way to update state with
@@ -287,9 +301,9 @@ class Reduce(OperatorInstance):
                 self.state.setdefault(key, new_value)
             self.output_gate.push((key, new_value))
 
-        # Returns the state of the actor
-        def get_state(self):
-            return self.state
+    # Returns the state of the actor
+    def get_state(self):
+        return self.state
 
 
 @ray.remote
@@ -317,11 +331,12 @@ class KeyBy(OperatorInstance):
             sys.exit("Unrecognized or unsupported key selector.")
 
     # The actual partitioning is done by the output gate
-    def start(self):
+    def run(self):
         while True:
             record = self.input_gate.pull()
             if record is None:
-                continue
+                self.close()
+                return
             key = self.key_selector(record)
             self.output_gate.push((key, record))
 
@@ -336,7 +351,7 @@ class Source(OperatorInstance):
         self.source = operator.other_args
 
     # Starts the source by calling get_next() repeatedly
-    def start(self):
+    def run(self):
         start = time.time()
         elements = 0
         while True:
@@ -344,7 +359,7 @@ class Source(OperatorInstance):
             if not record:
                 logger.debug("[writer {}] puts per second: {}".format(
                     self.instance_id, elements / (time.time() - start)))
-                self.output_gate.close()
+                self.close()
                 return
             self.output_gate.push(record)
             elements += 1
