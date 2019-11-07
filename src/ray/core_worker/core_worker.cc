@@ -18,7 +18,7 @@ void BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
                             task_index, caller_id, num_returns,
-                            transport_type == ray::TaskTransportType::DIRECT_ACTOR,
+                            transport_type == ray::TaskTransportType::DIRECT,
                             required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -61,7 +61,7 @@ void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
     // to whether it's from direct actor call before we can choose memory store provider.
     if (object_id.IsReturnObject() &&
         object_id.GetTransportType() ==
-            static_cast<uint8_t>(ray::TaskTransportType::DIRECT_ACTOR)) {
+            static_cast<uint8_t>(ray::TaskTransportType::DIRECT)) {
       memory_object_ids->insert(object_id);
     } else {
       plasma_object_ids->insert(object_id);
@@ -120,8 +120,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
         new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
                                               execute_task, exit_handler));
-    core_worker_server_.RegisterService(grpc_service_);
   }
+  core_worker_server_.RegisterService(grpc_service_);
 
   // Start RPC server after all the task receivers are properly initialized.
   core_worker_server_.Run();
@@ -473,7 +473,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
     BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                         worker_context_.GetCurrentTaskID(), next_task_index,
                         GetCallerId(), function, args, task_options.num_returns,
-                        task_options.resources, {}, TaskTransportType::DIRECT_ACTOR,
+                        task_options.resources, {}, TaskTransportType::DIRECT,
                         return_ids);
     return direct_task_submitter_->SubmitTask(builder.Build());
   }
@@ -530,7 +530,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   const bool is_direct_call = actor_handle->IsDirectCallActor();
   const TaskTransportType transport_type =
-      is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
+      is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET;
 
   // Build common task spec.
   TaskSpecBuilder builder;
@@ -643,7 +643,7 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (!worker_context_.CurrentActorUseDirectCall()) {
+      if (!worker_context_.CurrentTaskIsDirectCall()) {
         RAY_RETURN_NOT_OK(
             Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
         object_already_exists = !data_buffer;
@@ -708,7 +708,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
-    } else if (!worker_context_.CurrentActorUseDirectCall()) {
+    } else if (!worker_context_.CurrentTaskIsDirectCall()) {
       if (!Put(*return_objects[i], return_ids[i]).ok()) {
         RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
@@ -772,7 +772,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  if (worker_context_.CurrentActorUseDirectCall()) {
+  if (worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
     return;
@@ -804,9 +804,8 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
 void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                           rpc::WorkerLeaseGrantedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  task_execution_service_.post([=] {
-    direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
-  });
+  // Run this directly since the main thread may be tied up processing a task.
+  direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

@@ -174,7 +174,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(
         task_id, /*index=*/i + 1,
-        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
+        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
@@ -216,7 +216,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
+  if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
@@ -270,7 +270,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
           auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
-              /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
+              /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
           return_object->set_object_id(id.Binary());
           const auto &result = return_by_value[i];
           if (result->GetData() != nullptr) {

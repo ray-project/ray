@@ -280,9 +280,8 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
-      ASSERT_EQ(
-          static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
-          is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET);
+      ASSERT_EQ(static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
+                is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));

@@ -18,7 +18,7 @@
 
 namespace ray {
 
-enum class TaskTransportType { RAYLET, DIRECT_ACTOR };
+enum class TaskTransportType { RAYLET, DIRECT };
 
 class TaskID;
 class WorkerID;
@@ -291,7 +291,7 @@ class ObjectID : public BaseID<ObjectID> {
   ///
   /// \return True if this is a direct actor object return.
   bool IsDirectActorType() const {
-    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT_ACTOR);
+    return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT);
   }
 
   /// Get the transport type of this object.
