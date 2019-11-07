@@ -655,11 +655,13 @@ Status CoreWorker::AllocateReturnObjects(
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
       if (worker_context_.CurrentActorUseDirectCall() &&
-          data_sizes[i] < RayConfig::instance().max_direct_call_object_size) {
+          static_cast<int64_t>(data_sizes[i]) <
+              RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
-        RAY_RETURN_NOT_OK(
-            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
+        RAY_RETURN_NOT_OK(Create(
+            metadatas[i], data_sizes[i],
+            object_ids[i].WithTransportType(TaskTransportType::RAYLET), &data_buffer));
         object_already_exists = !data_buffer;
       }
     }
@@ -687,9 +689,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
+  const auto transport_type = worker_context_.CurrentActorUseDirectCall()
+                                  ? TaskTransportType::DIRECT_ACTOR
+                                  : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i));
+    return_ids.push_back(task_spec.ReturnId(i, transport_type));
   }
 
   Status status;
