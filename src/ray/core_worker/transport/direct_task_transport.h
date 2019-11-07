@@ -23,9 +23,8 @@ struct TaskState {
 // This class is thread-safe. TODO(ekl) expose metrics.
 class LocalDependencyResolver {
  public:
-  LocalDependencyResolver(RayletClient &raylet_client,
-                          CoreWorkerMemoryStoreProvider &store_provider)
-      : raylet_client_(raylet_client), in_memory_store_(store_provider) {}
+  LocalDependencyResolver(CoreWorkerMemoryStoreProvider &store_provider)
+      : in_memory_store_(store_provider) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -38,9 +37,6 @@ class LocalDependencyResolver {
                            std::function<void()> on_complete);
 
  private:
-  // Reference to the shared raylet client for waiting for deps.
-  RayletClient &raylet_client_;
-
   /// The store provider.
   CoreWorkerMemoryStoreProvider &in_memory_store_;
 
@@ -59,7 +55,7 @@ class CoreWorkerDirectTaskSubmitter {
       : raylet_client_(raylet_client),
         client_call_manager_(client_call_manager),
         in_memory_store_(std::move(store_provider)),
-        resolver_(raylet_client, *in_memory_store_) {}
+        resolver_(*in_memory_store_) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
