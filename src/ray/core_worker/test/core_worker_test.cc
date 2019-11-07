@@ -363,9 +363,9 @@ void CoreWorkerTest::TestActorReconstruction(
         RAY_LOG(INFO) << "killing worker";
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
-        // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, false, 30 * 1000 /* 30s */));
+        // Sleep for 1s while the actor is restarted, then wait for it to
+        // become alive again.
+        usleep(1000 * 1000);
         ASSERT_TRUE(
             WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
 
