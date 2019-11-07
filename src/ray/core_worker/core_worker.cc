@@ -352,7 +352,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     for (const auto &id : promoted_plasma_ids) {
       auto it = result_map.find(id);
       if (it != result_map.end()) {
-        result_map[id.WithTransportType(TaskTransportType::DIRECT_ACTOR)] = it->second;
+        result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
         result_map.erase(id);
       }
     }
@@ -672,13 +672,9 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (!worker_context_.CurrentTaskIsDirectCall() &&
+      if (worker_context_.CurrentTaskIsDirectCall() &&
           static_cast<int64_t>(data_sizes[i]) <
               RayConfig::instance().max_direct_call_object_size()) {
-        RAY_RETURN_NOT_OK(
-            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
-        object_already_exists = !data_buffer;
-      } else {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
       } else {
         RAY_RETURN_NOT_OK(Create(
@@ -711,8 +707,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
-  const auto transport_type = worker_context_.CurrentActorUseDirectCall()
-                                  ? TaskTransportType::DIRECT_ACTOR
+  const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
+                                  ? TaskTransportType::DIRECT
                                   : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
