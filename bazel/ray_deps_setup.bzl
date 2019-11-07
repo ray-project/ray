@@ -30,9 +30,9 @@ def ray_deps_setup():
 
     git_repository(
         name = "com_github_checkstyle_java",
-        commit = "85f37871ca03b9d3fee63c69c8107f167e24e77b",
-        remote = "https://github.com/ruifangChen/checkstyle_java",
-	      shallow_since = "1552542575 +0800",
+        commit = "ef367030d1433877a3360bbfceca18a5d0791bdd",
+        remote = "https://github.com/ray-project/checkstyle_java",
+        shallow_since = "1573090990 -0800",
     )
 
     git_repository(
