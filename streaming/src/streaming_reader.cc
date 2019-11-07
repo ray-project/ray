@@ -202,8 +202,10 @@ StreamingStatus StreamingReader::GetMergedMessageBundle(
 
 StreamingStatus StreamingReader::GetBundle(
     const uint32_t timeout_ms, std::shared_ptr<StreamingReaderBundle> &message) {
+  // Notify consumed every item in this mode.
   if (last_fetched_queue_item_) {
-    //  NotifyConsumed(last_fetched_queue_item_);
+    NotifyConsumedItem(channel_info_map_[last_fetched_queue_item_->from],
+                       last_fetched_queue_item_->seq_id);
   }
 
   // Get latest message util it meets two conditions :
@@ -246,7 +248,7 @@ StreamingStatus StreamingReader::GetBundle(
     RETURN_IF_NOT_OK(GetMergedMessageBundle(message, is_valid_break));
     if (!is_valid_break) {
       empty_bundle_cnt++;
-      // NotifyConsumed(message);
+      NotifyConsumedItem(channel_info_map_[message->from], message->seq_id);
     }
   }
   last_message_latency_ += current_sys_time_ms() - start_time;

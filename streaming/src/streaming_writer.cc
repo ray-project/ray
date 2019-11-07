@@ -141,7 +141,7 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   ray::JobID job_id =
       JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
 
-  STREAMING_LOG(INFO) << ", job name => " << config_.GetStreaming_job_name()
+  STREAMING_LOG(INFO) << "job name => " << config_.GetStreaming_job_name()
                       << ", log level => " << config_.GetStreaming_log_level()
                       << ", log path => " << config_.GetStreaming_log_path() << job_id;
 
@@ -244,7 +244,7 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
     StreamingMessagePtr &message_ptr = buffer_ptr->Front();
     uint32_t message_total_size = message_ptr->ClassBytesSize();
     if (!message_list.empty() &&
-        bundle_buffer_size + message_total_size > max_queue_item_size) {
+        bundle_buffer_size + message_total_size >= max_queue_item_size) {
       STREAMING_LOG(DEBUG) << "message total size " << message_total_size
                            << " max queue item size => " << max_queue_item_size;
       break;
