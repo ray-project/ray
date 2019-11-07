@@ -150,6 +150,10 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(nativeCoreWorkerPointer, taskExecutor);
   }
 
+  public long getNativeCoreWorkerPointer() {
+    return nativeCoreWorkerPointer;
+  }
+
   /**
    * Register this worker or driver to GCS.
    */
