@@ -7,7 +7,7 @@ import java.util.Map;
 import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayObject;
-import org.ray.streaming.cluster.ResourceManager;
+import org.ray.streaming.runtime.cluster.ResourceManager;
 import org.ray.streaming.runtime.core.graph.ExecutionGraph;
 import org.ray.streaming.runtime.core.graph.ExecutionNode;
 import org.ray.streaming.runtime.core.graph.ExecutionTask;
