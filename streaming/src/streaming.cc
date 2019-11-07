@@ -59,8 +59,7 @@ void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_l
   }
 }
 
-StreamingCommon::~StreamingCommon() {
-}
+StreamingCommon::~StreamingCommon() {}
 
 StreamingChannelState StreamingCommon::GetChannelState() { return channel_state_; }
 

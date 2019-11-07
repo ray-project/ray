@@ -91,7 +91,9 @@ class QueueItem {
 
 class NullQueueItem : public QueueItem {
  public:
-  NullQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, nullptr, 0, 0) {}
+  NullQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0) {}
+ private:
+  uint8_t data_[1];
 };
 typedef std::shared_ptr<QueueItem> QueueItemPtr;
 

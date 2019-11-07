@@ -11,11 +11,8 @@
 namespace ray {
 namespace streaming {
 
-constexpr uint32_t StreamingWriter::kQueueItemMaxBlocks;
-
 void StreamingWriter::WriterLoopForward() {
   STREAMING_CHECK(channel_state_ == StreamingChannelState::Running);
-  // Reload operator will be noly executed once if it's exactly same mode
   while (true) {
     int64_t min_passby_message_ts = std::numeric_limits<int64_t>::max();
     uint32_t empty_messge_send_count = 0;
@@ -35,7 +32,6 @@ void StreamingWriter::WriterLoopForward() {
           min_passby_message_ts =
               std::min(channel_info.message_pass_by_ts, min_passby_message_ts);
           empty_messge_send_count++;
-        } else {
         }
       } else if (StreamingStatus::FullChannel == write_status) {
       } else {
@@ -103,7 +99,6 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
                                                    StreamingMessageType message_type) {
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
-  last_write_q_id_ = q_id;
   // Write message id stands for current lastest message id and differs from
   // channel.current_message_id if it's barrier message.
   uint64_t &write_message_id = channel_info.current_message_id;
@@ -146,20 +141,15 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   ray::JobID job_id =
       JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
 
-  STREAMING_LOG(INFO) << "role => "
-                      << streaming::fbs::EnumNameStreamingRole(
-                             config_.GetStreaming_role())
-                      << ", strategy => "
-                      << ", job name => " << config_.GetStreaming_job_name()
+  STREAMING_LOG(INFO) << ", job name => " << config_.GetStreaming_job_name()
                       << ", log level => " << config_.GetStreaming_log_level()
-                      << ", log path => " << config_.GetStreaming_log_path() << job_id
-                      << ", unified map";
+                      << ", log path => " << config_.GetStreaming_log_path() << job_id;
 
   output_queue_ids_ = queue_id_vec;
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
-  transfer_.reset(new StreamingQueueProducer(transfer_config_));
+  this->InitTransfer();
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     // init channelIdGenerator or create it
@@ -173,7 +163,7 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   return StreamingStatus::OK;
 }
 
-StreamingWriter::StreamingWriter() { transfer_config_ = std::make_shared<Config>(); }
+StreamingWriter::StreamingWriter() : transfer_config_(new Config()) {}
 
 StreamingWriter::~StreamingWriter() {
   // Return if fail to init streaming writer
@@ -185,7 +175,6 @@ StreamingWriter::~StreamingWriter() {
     STREAMING_LOG(INFO) << "Writer loop thread waiting for join";
     loop_thread_->join();
   }
-  // DestroyChannel(output_queue_ids_);
   STREAMING_LOG(INFO) << "Writer client queue disconnect.";
 }
 
@@ -204,11 +193,10 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
     return StreamingStatus::SkipSendEmptyMessage;
   }
 
-  // Make an empty bundle, use old ts from reloaded meta if it's not nullptr
+  // Make an empty bundle, use old ts from reloaded meta if it's not nullptr.
   StreamingMessageBundlePtr bundle_ptr = std::make_shared<StreamingMessageBundle>(
       channel_info.current_message_id, current_sys_time_ms());
   auto &q_ringbuffer = channel_info.writer_ring_buffer;
-  // Store empty bundle in trasnsitentbuffer if it's exactly same mode
   q_ringbuffer->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(q_ringbuffer->GetTransientBufferMutable());
 
@@ -218,14 +206,10 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
   STREAMING_LOG(DEBUG) << "q_id =>" << q_id << " send empty message, meta info =>"
                        << bundle_ptr->ToString();
 
-  if (StreamingStatus::FullChannel == status) {
-    // Free transient buffer in non-EXACTLY_SAME strategy and we never care
-    // about whether empty was sent or not in that condition.
-    return status;
-  }
+  q_ringbuffer->FreeTransientBuffer();
+  RETURN_IF_NOT_OK(status);
   channel_info.current_seq_id++;
   channel_info.message_pass_by_ts = current_sys_time_ms();
-  q_ringbuffer->FreeTransientBuffer();
   return StreamingStatus::OK;
 }
 
@@ -240,17 +224,11 @@ StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
   auto transient_bundle_meta =
       StreamingMessageBundleMeta::FromBytes(buffer_ptr->GetTransientBuffer());
   bool is_barrier_bundle = transient_bundle_meta->IsBarrier();
-  // force delete if it's barrier bundle
+  // Force delete to avoid super block memory isn't released so long
+  // if it's barrier bundle.
   buffer_ptr->FreeTransientBuffer(is_barrier_bundle);
   channel_info.message_last_commit_id = transient_bundle_meta->GetLastMessageId();
   return StreamingStatus::OK;
-}
-
-void ReleaseMessages(const StreamingMessageBundlePtr &bundle) {
-  auto msg_list = bundle->GetMessageList();
-  STREAMING_LOG(DEBUG) << "message list size " << msg_list.size() << ", "
-                       << "bundle size " << bundle->ClassBytesSize();
-  msg_list.clear();
 }
 
 bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
@@ -296,13 +274,16 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
       bundle_buffer_size);
   buffer_ptr->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(buffer_ptr->GetTransientBufferMutable());
-  ReleaseMessages(bundle_ptr);
 
   STREAMING_CHECK(bundle_ptr->ClassBytesSize() == buffer_ptr->GetTransientBufferSize());
   return true;
 }
 
 void StreamingWriter::Stop() { channel_state_ = StreamingChannelState::Interrupted; }
+
+void StreamingWriter::InitTransfer() {
+  transfer_.reset(new MockProducer(transfer_config_));
+}
 
 }  // namespace streaming
 }  // namespace ray

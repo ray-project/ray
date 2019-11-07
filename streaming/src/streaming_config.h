@@ -107,7 +107,7 @@ class StreamingConfig {
   uint32_t GetStreaming_log_level() const;
 
   void SetStreaming_log_level(uint32_t streaming_log_level);
-  
+
   const std::string &GetQueue_type() const;
 
   void SetQueue_type(const std::string &queue_type);

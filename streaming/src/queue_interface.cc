@@ -106,7 +106,6 @@ Status StreamingQueueWriter::PushQueueItem(const ObjectID &queue_id, uint64_t se
 }
 
 bool StreamingQueueWriter::NotifyResubscribe(const ObjectID &queue_id) {
-  // queue_writer_->NotifyResubscribe(queue_id);
   RAY_LOG(INFO) << "Not implemented NotifyResubscribe";
   return true;
 }

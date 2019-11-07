@@ -110,7 +110,7 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &&, uint64_t, uint64_t,
                                   StreamingMessageBundleType, uint32_t raw_data_size = 0);
 
-  // Duplicated copy if no right reference in constructor.
+  // Duplicated copy if left reference in constructor.
   explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &, uint64_t, uint64_t,
                                   StreamingMessageBundleType, uint32_t raw_data_size = 0);
 

@@ -114,8 +114,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     ASSERT_TRUE(system(("rm -rf " + raylet_socket_name + ".pid").c_str()) == 0);
   }
 
-  void InitWorker(CoreWorker &driver, ActorID &self_actor_id,
-                  ActorID &peer_actor_id,
+  void InitWorker(CoreWorker &driver, ActorID &self_actor_id, ActorID &peer_actor_id,
                   const queue::flatbuf::StreamingQueueTestRole role,
                   const std::vector<ObjectID> &queue_ids,
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
@@ -128,9 +127,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str);
     STREAMING_CHECK(st.ok());
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;
-    TestInitMsg msg(role, self_actor_id, peer_actor_id,
-                    forked_serialized_str, queue_ids, rescale_queue_ids, suite_name,
-                    test_name, param);
+    TestInitMsg msg(role, self_actor_id, peer_actor_id, forked_serialized_str, queue_ids,
+                    rescale_queue_ids, suite_name, test_name, param);
 
     std::vector<TaskArg> args;
     args.emplace_back(
@@ -140,12 +138,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"init"}};
 
-    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options,
-                                                &return_ids));
+    RAY_CHECK_OK(driver.SubmitActorTask(self_actor_id, func, args, options, &return_ids));
   }
 
-  void SubmitTestToActor(CoreWorker &driver, ActorID &actor_id,
-                         const std::string test) {
+  void SubmitTestToActor(CoreWorker &driver, ActorID &actor_id, const std::string test) {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<TaskArg> args;
@@ -156,12 +152,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"execute_test", test}};
 
-    RAY_CHECK_OK(
-        driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
   }
 
-  bool CheckCurTest(CoreWorker &driver, ActorID &actor_id,
-                    const std::string test_name) {
+  bool CheckCurTest(CoreWorker &driver, ActorID &actor_id, const std::string test_name) {
     uint8_t data[8];
     auto buffer = std::make_shared<LocalMemoryBuffer>(data, 8, true);
     std::vector<TaskArg> args;
@@ -172,12 +166,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"check_current_test_status"}};
 
-    RAY_CHECK_OK(
-        driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
+    RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
     std::vector<bool> wait_results;
     std::vector<std::shared_ptr<RayObject>> results;
-    Status wait_st = driver.Objects().Wait(return_ids, 1, 5 * 1000, &wait_results);
+    Status wait_st = driver.Wait(return_ids, 1, 5 * 1000, &wait_results);
     if (!wait_st.ok()) {
       STREAMING_LOG(ERROR) << "Wait fail.";
       return false;
@@ -188,7 +181,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
       return false;
     }
 
-    Status get_st = driver.Objects().Get(return_ids, -1, &results);
+    Status get_st = driver.Get(return_ids, -1, &results);
     if (!get_st.ok()) {
       STREAMING_LOG(ERROR) << "Get fail.";
       return false;
@@ -221,9 +214,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     return message->Status();
   }
 
-  ActorID CreateActorHelper(
-      CoreWorker &worker, const std::unordered_map<std::string, double> &resources,
-      bool is_direct_call, uint64_t max_reconstructions) {
+  ActorID CreateActorHelper(CoreWorker &worker,
+                            const std::unordered_map<std::string, double> &resources,
+                            bool is_direct_call, uint64_t max_reconstructions) {
     std::unique_ptr<ActorHandle> actor_handle;
 
     // Test creating actor.
@@ -269,7 +262,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
     CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "", nullptr);
+                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "",
+                      nullptr);
 
     // Create writer and reader actors
     std::unordered_map<std::string, double> resources;
@@ -290,14 +284,14 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
     uint64_t slept_time_ms = 0;
     while (slept_time_ms < timeout_ms) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(5*1000));
+      std::this_thread::sleep_for(std::chrono::milliseconds(5 * 1000));
       STREAMING_LOG(INFO) << "Check test status.";
       if (CheckCurTest(driver, actor_id_writer, test_name) &&
           CheckCurTest(driver, actor_id_reader, test_name)) {
         STREAMING_LOG(INFO) << "Test Success, Exit.";
         return;
       }
-      slept_time_ms += 5*1000;
+      slept_time_ms += 5 * 1000;
     }
 
     EXPECT_TRUE(false);
@@ -307,9 +301,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   void SetUp() {}
 
   void TearDown() {}
-
-  // Test tore provider.
-  void TestStoreProvider(StoreProviderType type);
 
   // Test normal tasks.
   void TestNormalTask(const std::unordered_map<std::string, double> &resources);

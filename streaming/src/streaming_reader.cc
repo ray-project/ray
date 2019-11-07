@@ -32,18 +32,20 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   }
 }
 
+void StreamingReader::InitTransfer() {
+  transfer_ = std::make_shared<MockConsumer>(transfer_config_);
+}
+
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   ray::JobID job_id =
       JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
-  STREAMING_LOG(INFO) << "[Reader] driver id: " << job_id
-                      << ", raylet socket: " << config_.GetStreaming_raylet_socket_path()
-                      << ", " << input_ids.size() << " queue to init.";
+  STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
 
-  transfer_ = std::make_shared<StreamingQueueConsumer>(transfer_config_);
+  this->InitTransfer();
 
   last_fetched_queue_item_ = nullptr;
   timer_interval_ = timer_interval;
@@ -121,13 +123,15 @@ StreamingStatus StreamingReader::GetMessageFromChannel(
   last_read_q_id_ = qid;
   STREAMING_LOG(DEBUG) << "[Reader] send get request queue seq id => " << qid;
   while (StreamingChannelState::Running == channel_state_ && !message->data) {
-    transfer_->ConsumeItemFromChannel(channel_info, message->seq_id, message->data,
-                                      message->data_size, kReadItemTimeout);
+    auto status =
+        transfer_->ConsumeItemFromChannel(channel_info, message->seq_id, message->data,
+                                          message->data_size, kReadItemTimeout);
     channel_info.get_queue_item_times++;
     if (!message->data) {
-      STREAMING_LOG(INFO) << "[Reader] Queue " << qid
-                          << " get item timeout, resend notify "
-                          << channel_info.current_seq_id;
+      STREAMING_LOG(DEBUG) << "[Reader] Queue " << qid << " status " << status
+                           << " get item timeout, resend notify "
+                           << channel_info.current_seq_id;
+      // TODO(lingxuan.zlx): notify consumed when it's timeout.
     }
   }
   if (StreamingChannelState::Interrupted == channel_state_) {
@@ -264,7 +268,7 @@ void StreamingReader::GetOffsetInfo(
 
 void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
                                          uint64_t offset) {
-  transfer_->NotfiyChannelConsumed(channel_info, offset);
+  transfer_->NotifyChannelConsumed(channel_info, offset);
   if (offset == channel_info.queue_info.last_seq_id) {
     STREAMING_LOG(DEBUG) << "notify seq id equal to last seq id => " << offset;
   }

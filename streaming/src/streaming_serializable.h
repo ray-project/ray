@@ -5,6 +5,10 @@
 
 namespace ray {
 namespace streaming {
+// StreamingSerializable is supper class of message and bundle.
+// We assume there are specific implementation of serilize & deserlize functions.
+// Actually, serilization is member function and deserilization is
+// implemented as static function for creating object.
 class StreamingSerializable {
   virtual void ToBytes(uint8_t *) = 0;
   virtual uint32_t ClassBytesSize() = 0;

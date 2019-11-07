@@ -1,8 +1,6 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/store_provider/store_provider.h"
-#include "ray/core_worker/task_execution.h"
 #include "src/ray/util/test_util.h"
 
 #include "queue/streaming_queue_client.h"
@@ -319,8 +317,7 @@ class StreamingWorker {
     worker_ = std::make_shared<CoreWorker>(WorkerType::WORKER, Language::PYTHON,
                                            store_socket, raylet_socket, JobID::FromInt(1),
                                            gcs_options, "", "127.0.0.1",
-                                           std::bind(&StreamingWorker::ExecuteTask, this,
-                                                     _1, _2, _3, _4, _5, _6, _7, _8, _9));
+                                           std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8));
 
     ActorID actor_id = worker_->GetWorkerContext().GetCurrentActorID();
     std::shared_ptr<ray::streaming::QueueManager> queue_manager =
@@ -329,18 +326,18 @@ class StreamingWorker {
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
-  void Run() {
+  void StartExecutingTasks() {
     // Start executing tasks.
-    worker_->Execution().Run();
+    worker_->StartExecutingTasks();
   }
 
  private:
-  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
-                     const JobID &job_id, const ActorID &actor_id,
+   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
+                     const bool return_results_directly,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Only one arg param used in streaming.
     STREAMING_CHECK(args.size() == 1);
@@ -433,6 +430,6 @@ int main(int argc, char **argv) {
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
   ray::streaming::StreamingWorker worker(store_socket, raylet_socket, gcs_options);
-  worker.Run();
+  worker.StartExecutingTasks();
   return 0;
 }
