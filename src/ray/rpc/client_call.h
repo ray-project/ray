@@ -106,9 +106,9 @@ class ClientCallTag {
 /// \tparam Request Type of the request message.
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
-using PrepareAsyncFunction = std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> (
-    GrpcService::Stub::*)(grpc::ClientContext *context, const Request &request,
-                          grpc::CompletionQueue *cq);
+using PrepareAsyncFunction =
+    std::unique_ptr<grpc_impl::ClientAsyncResponseReader<Reply>> (GrpcService::Stub::*)(
+        grpc::ClientContext *context, const Request &request, grpc::CompletionQueue *cq);
 
 /// `ClientCallManager` is used to manage outgoing gRPC requests and the lifecycles of
 /// `ClientCall` objects.
