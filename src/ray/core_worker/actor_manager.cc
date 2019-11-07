@@ -12,15 +12,19 @@ Status ActorManager::GetActorHandle(const ActorID &actor_id,
   return Status::OK();
 }
 
-void ActorManager::RegisterChildActor(const ray::TaskSpecification &spec) {
+Status ActorManager::RegisterChildActor(const ray::TaskSpecification &spec) {
   const ActorID &actor_id = spec.ActorCreationId();
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, spec.JobId(), /*actor_cursor=*/spec.ActorDummyObject(),
       spec.GetLanguage(), spec.IsDirectCall(), spec.FunctionDescriptor()));
-  RAY_CHECK(AddActorHandle(std::move(actor_handle)))
-      << "Actor " << actor_id << " already exists";
+  if (!AddActorHandle(std::move(actor_handle))) {
+    return Status::Invalid("Tried to create an actor that already exists.");
+  }
   auto inserted = children_actors_.insert({actor_id, ChildActor(spec)});
-  RAY_CHECK(inserted.second) << "Child actor already exists";
+  if (!inserted.second) {
+    return Status::Invalid("Tried to create an actor that already exists.");
+  }
+  return Status::OK();
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
@@ -68,16 +72,16 @@ void ActorManager::OnActorFailed(const ActorID &actor_id, bool terminal) {
   // If we are the actor's creator, restart it.
   auto child_it = children_actors_.find(actor_id);
   if (child_it != children_actors_.end()) {
-    child_it->second.num_lifetimes++;
+    child_it->second.num_restarts++;
     auto &spec = child_it->second.actor_creation_spec;
-    if (!terminal && child_it->second.num_lifetimes <= spec.MaxActorReconstructions()) {
+    if (!terminal && child_it->second.num_restarts <= spec.MaxActorReconstructions()) {
       // We own the actor, it was not a terminal failure, and we haven't
       // restarted the actor up to max reconstructions times yet. Restart the
       // actor.
       RAY_LOG(ERROR) << "Attempting to restart failed actor " << actor_id << ", attempt #"
-                     << child_it->second.num_lifetimes;
+                     << child_it->second.num_restarts;
       actor_creation_callback_(actor_id, child_it->second.actor_creation_spec,
-                               child_it->second.num_lifetimes);
+                               child_it->second.num_restarts);
     } else {
       // The actor is dead. We cannot erase the actor handle here because
       // clients can still submit tasks to dead actors.

@@ -10,7 +10,7 @@ namespace gcs {
 std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
     const TaskSpecification &task_spec, const std::string &ip_address, int port,
     const ClientID &node_id, gcs::ActorTableData::ActorState state,
-    uint32_t num_lifetimes) {
+    uint32_t num_restarts) {
   RAY_CHECK(task_spec.IsActorCreationTask());
   auto actor_id = task_spec.ActorCreationId();
   auto actor_info_ptr = std::make_shared<ray::gcs::ActorTableData>();
@@ -24,7 +24,7 @@ std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
   actor_info_ptr->set_max_reconstructions(task_spec.MaxActorReconstructions());
   actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
   // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_num_lifetimes(num_lifetimes);
+  actor_info_ptr->set_num_restarts(num_restarts);
   actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
   // Set the ip address & port, which could change after reconstruction.
   actor_info_ptr->set_ip_address(ip_address);
@@ -83,7 +83,7 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
   // reconstructions. This is followed optionally by a DEAD entry.
-  int log_length = 2 * (data_ptr->num_lifetimes());
+  int log_length = 2 * (data_ptr->num_restarts());
   if (data_ptr->state() != ActorTableData::ALIVE) {
     // RECONSTRUCTING or DEAD entries have an odd index.
     log_length += 1;

@@ -39,7 +39,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     pending_requests_[actor_id].emplace_back(std::move(request));
     RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
   } else {
-    // Submit request.
     DirectActorAssignTask(*it->second, std::move(request), actor_id, task_id,
                           num_returns);
   }

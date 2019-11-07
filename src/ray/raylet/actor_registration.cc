@@ -54,7 +54,7 @@ const int64_t ActorRegistration::GetMaxReconstructions() const {
 }
 
 const int64_t ActorRegistration::GetRemainingReconstructions() const {
-  return actor_table_data_.max_reconstructions() - actor_table_data_.num_lifetimes();
+  return actor_table_data_.max_reconstructions() - actor_table_data_.num_restarts();
 }
 
 const std::unordered_map<TaskID, ActorRegistration::FrontierLeaf>

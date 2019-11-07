@@ -2028,12 +2028,10 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // The actor did not resume from a checkpoint. Immediately notify the
     // other node managers that the actor has been created.
     HandleActorStateTransition(actor_id, ActorRegistration(*new_actor_info));
-    if (new_actor_info->num_lifetimes() > 0) {
-      // The actor was created before.
+    if (new_actor_info->num_restarts() > 0) {
       RAY_CHECK_OK(
           gcs_client_->Actors().AsyncUpdate(actor_id, new_actor_info, update_callback));
     } else {
-      // The actor was never created before.
       RAY_CHECK_OK(gcs_client_->Actors().AsyncRegister(new_actor_info, update_callback));
     }
 

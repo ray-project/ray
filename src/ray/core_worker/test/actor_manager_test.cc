@@ -67,7 +67,7 @@ void CreateChildActor(ActorManager &manager, uint64_t max_reconstructions,
   auto actor = MockActorCreationTask(max_reconstructions);
   *actor_id = actor.first;
   auto spec = actor.second;
-  manager.RegisterChildActor(spec);
+  RAY_CHECK_OK(manager.RegisterChildActor(spec));
 
   // Check that if we get the handle to the actor, it has no location.
   ActorHandle *handle;

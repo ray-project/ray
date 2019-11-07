@@ -67,14 +67,16 @@ class ActorHandle {
   /// should only be set to false for the raylet codepath.
   void MarkFailed(bool reset_task_counter);
 
-  /// Mark the actor as dead. The actor should never become alive again.
+  /// Mark the actor as dead. The actor should never become alive again. This
+  /// method is idempotent.
   void MarkDead();
 
  private:
   // Protobuf-defined persistent state of the actor handle.
   const ray::rpc::ActorHandle inner_;
 
-  /// The actor's state (alive, dead, reconstructing, or unknown).
+  /// The actor's state (alive, dead, reconstructing). We use an optional type
+  /// since we don't usually know the state of the actor initially.
   absl::optional<gcs::ActorTableData::ActorState> state_;
   /// Actor node location. Nil if we do not know whether the actor is alive or not.
   ClientID node_id_;

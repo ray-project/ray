@@ -103,8 +103,8 @@ message ActorTableData {
   ActorState state = 6;
   // Max number of times this actor should be reconstructed.
   uint64 max_reconstructions = 7;
-  // How many times this actor has been started before.
-  uint64 num_lifetimes = 8;
+  // How many times this actor has been restarted before.
+  uint64 num_restarts = 8;
   // The IP address of the node that the actor is running on.
   string ip_address = 9;
   // The port that the actor is listening on.

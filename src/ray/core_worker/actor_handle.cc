@@ -75,8 +75,6 @@ void ActorHandle::MarkFailed(bool reset_task_counter) {
 
 void ActorHandle::MarkDead() {
   state_ = gcs::ActorTableData::DEAD;
-  RAY_CHECK(state_.has_value());
-  RAY_CHECK(IsDead());
   node_id_ = ClientID::Nil();
 }
 

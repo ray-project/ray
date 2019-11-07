@@ -353,7 +353,7 @@ class CoreWorker {
   /// Subscribe to GCS updates about an actor. This should be called for all
   /// actors that we have a reference to.
   ///
-  /// \param actor_id The ID of the actor.
+  /// \param[in] actor_id The ID of the actor.
   void SubscribeActorUpdates(const ActorID &actor_id);
 
   ///
@@ -389,6 +389,8 @@ class CoreWorker {
                               std::vector<std::shared_ptr<RayObject>> *args,
                               std::vector<ObjectID> *arg_reference_ids);
 
+  /// Handler for a node (and all its associated workers) removed from the
+  /// cluster.
   void HandleNodeRemoved(const ClientID &node_id);
 
   /// Type of this worker (i.e., DRIVER or WORKER).
@@ -435,7 +437,7 @@ class CoreWorker {
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
 
-  // Manager for actors that we have created and/or references to.
+  // Manager for actors that we have created and/or have references to.
   std::unique_ptr<ActorManager> actor_manager_;
 
   // Thread that runs a boost::asio service to process IO events.

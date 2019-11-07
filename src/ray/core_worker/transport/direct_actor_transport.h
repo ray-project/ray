@@ -73,7 +73,8 @@ class CoreWorkerDirectActorTaskSubmitter : public DirectActorClientsInterface {
   void DisconnectActor(const ActorID &actor_id);
 
   /// Treat a task as failed.
-  /// TODO(swang): This should be moved to the CoreWorker.
+  /// TODO(swang): This should be moved to the CoreWorker so that the worker
+  /// can fail non-actor tasks.
   ///
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.

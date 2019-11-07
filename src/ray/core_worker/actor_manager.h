@@ -10,6 +10,11 @@ namespace ray {
 /// create (child actors).
 class ActorManager {
  public:
+  // Called if a failed actor needs to be restarted.
+  ///
+  /// \param[in] actor_id The ID of the actor to restart.
+  /// \param[in] spec The spec of the actor creation task.
+  /// \param[in] num_restarts The number of times the actor has been restarted.
   using ActorCreationCallback = const std::function<void(
       const ActorID &, const ray::TaskSpecification &, uint64_t)>;
 
@@ -27,10 +32,10 @@ class ActorManager {
     /// entry and restart the actor if the actor fails.
     const ray::TaskSpecification actor_creation_spec;
     /// How many times this actor has been alive before.
-    uint64_t num_lifetimes = 0;
+    uint64_t num_restarts = 0;
 
     bool CanRestart() const {
-      return actor_creation_spec.MaxActorReconstructions() - num_lifetimes > 0;
+      return num_restarts < actor_creation_spec.MaxActorReconstructions();
     }
   };
 
@@ -38,7 +43,7 @@ class ActorManager {
     return children_actors_;
   }
 
-  const absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> &Handles() const {
+  const absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> &ActorHandles() const {
     return actor_handles_;
   }
 
@@ -62,7 +67,8 @@ class ActorManager {
   /// \param[in] spec The spec for the actor creation task. If the child actor
   /// dies and max reconstructions is nonzero, then this task should be
   /// resubmitted to recreate the actor via the ActorCreationCallback.
-  void RegisterChildActor(const ray::TaskSpecification &spec);
+  /// \return Status::Invalid if we already had a handle to the same actor.
+  Status RegisterChildActor(const ray::TaskSpecification &spec);
 
   /// Clear all state for actors. This should be called by non-actors when
   /// completing a task.

@@ -164,7 +164,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       // TODO(swang): Mark the actor as DEAD in the GCS. This is
       // currently hard to do because the GCS first expects an ALIVE
       // entry in the actor's log before we add the DEAD entry.
-      RAY_LOG(WARNING) << "Failed to restart actor " << actor_id;
+      RAY_LOG(ERROR) << "Failed to restart actor " << actor_id;
+    } else {
+      RAY_LOG(ERROR) << "Restart for actor " << actor_id << ", attempt #" << num_lifetimes
+                     << " successful, waiting for new location";
     }
   };
   actor_manager_ = std::unique_ptr<ActorManager>(
@@ -213,7 +216,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   main_thread_task_id_ = task_id;
   // Clear all actor state at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
-    for (const auto &handle : actor_manager_->Handles()) {
+    for (const auto &handle : actor_manager_->ActorHandles()) {
       RAY_CHECK_OK(gcs_client_.Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
     actor_manager_->Clear();
@@ -479,7 +482,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.is_detached);
   const ray::TaskSpecification spec = builder.Build();
   RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(spec));
-  actor_manager_->RegisterChildActor(spec);
+  RAY_RETURN_NOT_OK(actor_manager_->RegisterChildActor(spec));
   SubscribeActorUpdates(actor_id);
   *return_actor_id = actor_id;
   return Status::OK();
@@ -729,7 +732,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 
 void CoreWorker::HandleNodeRemoved(const ClientID &node_id) {
   // TODO(swang): For orphaned actors, move failure detection to the raylet monitor.
-  for (const auto &handle : actor_manager_->Handles()) {
+  for (const auto &handle : actor_manager_->ActorHandles()) {
     if (handle.second->NodeId() == node_id) {
       const auto &actor_id = handle.first;
       auto child_it = actor_manager_->Children().find(actor_id);
@@ -743,7 +746,7 @@ void CoreWorker::HandleNodeRemoved(const ClientID &node_id) {
                              : gcs::ActorTableData::DEAD;
         std::shared_ptr<gcs::ActorTableData> data = gcs::CreateActorTableData(
             child_it->second.actor_creation_spec, "", 0, ClientID::Nil(), new_state,
-            child_it->second.num_lifetimes);
+            child_it->second.num_restarts);
         auto done = [actor_id](Status status) {
           if (!status.ok()) {
             // Only the owner should update the actor as failed.
