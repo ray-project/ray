@@ -10,8 +10,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/gcs/tables.h"
 #include "ray/protobuf/core_worker.pb.h"
-#include "ray/rpc/client_call.h"
-#include "ray/rpc/worker/direct_actor_client.h"
 
 namespace ray {
 
