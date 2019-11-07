@@ -167,7 +167,7 @@ std::vector<ObjectID> InsertTaskChain(LineageCache &lineage_cache,
     inserted_tasks.push_back(task);
     arguments.clear();
     for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
-      arguments.push_back(task.GetTaskSpecification().ReturnId(j));
+      arguments.push_back(task.GetTaskSpecification().ReturnIdForPlasma(j));
     }
   }
   return arguments;
@@ -321,7 +321,7 @@ TEST_F(LineageCacheTest, TestEvictChain) {
   for (int i = 0; i < 3; i++) {
     auto task = ExampleTask(arguments, 1);
     tasks.push_back(task);
-    arguments = {task.GetTaskSpecification().ReturnId(0)};
+    arguments = {task.GetTaskSpecification().ReturnIdForPlasma(0)};
   }
 
   Lineage uncommitted_lineage;
@@ -374,7 +374,7 @@ TEST_F(LineageCacheTest, TestEvictManyParents) {
   for (int i = 0; i < 10; i++) {
     auto task = ExampleTask({}, 1);
     parent_tasks.push_back(task);
-    arguments.push_back(task.GetTaskSpecification().ReturnId(0));
+    arguments.push_back(task.GetTaskSpecification().ReturnIdForPlasma(0));
     auto lineage = CreateSingletonLineage(task);
     lineage_cache_.AddUncommittedLineage(task.GetTaskSpecification().TaskId(), lineage);
   }
@@ -525,7 +525,7 @@ TEST_F(LineageCacheTest, TestEvictionUncommittedChildren) {
   // Add more tasks to the lineage cache that will remain local. Each of these
   // tasks is dependent one of the tasks that was forwarded above.
   for (const auto &task : tasks) {
-    auto return_id = task.GetTaskSpecification().ReturnId(0);
+    auto return_id = task.GetTaskSpecification().ReturnIdForPlasma(0);
     auto dependent_task = ExampleTask({return_id}, 1);
     auto lineage = CreateSingletonLineage(dependent_task);
     lineage_cache_.AddUncommittedLineage(dependent_task.GetTaskSpecification().TaskId(),

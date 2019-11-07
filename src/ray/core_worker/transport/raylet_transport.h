@@ -13,7 +13,7 @@ class CoreWorkerRayletTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_by_value)>;
+      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
                                const TaskHandler &task_handler,

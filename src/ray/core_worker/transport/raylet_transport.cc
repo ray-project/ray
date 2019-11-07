@@ -51,8 +51,6 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     exit_handler_();
     return;
   }
-  // Raylet transport doesn't currently support returning objects inline.
-  RAY_CHECK(results.size() == 0);
 
   RAY_LOG(DEBUG) << "Assigned task " << task_spec.TaskId() << " finished execution.";
 
