@@ -59,37 +59,35 @@ class StreamingReader : public StreamingCommon {
   std::shared_ptr<Config> transfer_config_;
 
  public:
-  /*!
-   * init Streaming reader
-   * @param store_path
-   * @param input_ids
-   * @param queue_seq_ids
-   * @param raylet_client
-   */
+  ///  Init Streaming reader. For exception status throwing, we do not init
+  ///  in constructor. Actually, There are only reigster somethings in this
+  ///  function.
+  ///  \param store_path
+  ///  \param input_ids
+  ///  \param queue_seq_ids
+  ///  \param raylet_client
+  ///
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<uint64_t> &queue_seq_ids,
             const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval);
 
   void Init(const std::vector<ObjectID> &input_ids, int64_t timer_interval);
-  /*!
-   * get latest message from input queues
-   * @param timeout_ms
-   * @param message, return the latest message
-   */
+
+  ///  Get latest message from input queues
+  ///  \param timeout_ms
+  ///  \param message, return the latest message
   StreamingStatus GetBundle(const uint32_t timeout_ms,
                             std::shared_ptr<StreamingReaderBundle> &message);
 
-  /*!
-   * get offset infomation
-   */
+  ///  Get offset infomation about channels for checkpoint.
+  ///  \param offset_map (return value)
   void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
 
-  /*!
-   * notify input queues to clear data before the offset.
-   * used when checkpoint is done.
-   * @param qid
-   * @param offset
-   */
+  ///  Notify input queues to clear data its seq id is equal or less than offset.
+  ///  It's used when checkpoint is done.
+  ///  \param channel_info
+  ///  \param offset
+  ///
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
 
   void Stop();
@@ -101,6 +99,10 @@ class StreamingReader : public StreamingCommon {
   virtual void InitTransfer();
 
  private:
+  /// One item from every channel will be popped out, then collecting
+  /// them to a merged queue. High prioprity items will be fetched one by one.
+  ///  When item pop from one channel where must produce new item for placeholder
+  ///  in merged queue.
   StreamingStatus InitChannel();
 
   StreamingStatus InitChannelMerger();
