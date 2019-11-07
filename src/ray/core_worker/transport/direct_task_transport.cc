@@ -48,7 +48,9 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
     return;
   }
 
-  TaskState *state = new TaskState{task, std::move(local_dependencies)};
+  // This is deleted when the last dependency fetch callback finishes.
+  std::shared_ptr<TaskState> state = std::shared_ptr<TaskState>(
+      new TaskState{task, std::move(local_dependencies)});
 
   for (const auto &obj_id : state->local_dependencies) {
     store_provider_.GetAsync(
@@ -65,7 +67,6 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
           }
           if (complete) {
             on_complete();
-            delete state;
           }
         });
   }
