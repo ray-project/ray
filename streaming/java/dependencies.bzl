@@ -5,6 +5,7 @@ def gen_streaming_java_deps():
         name = "ray_streaming_maven",
         artifacts = [
             "com.google.guava:guava:27.0.1-jre",
+            "com.github.davidmoten:flatbuffers-java:1.9.0.1",
             "de.ruedigermoeller:fst:2.57",
             "org.slf4j:slf4j-api:1.7.12",
             "org.slf4j:slf4j-log4j12:1.7.25",

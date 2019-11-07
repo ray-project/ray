@@ -24,8 +24,9 @@ def add_package(file):
 
     if "FlatBuffers" not in lines[0]:
         return
-
-    lines.insert(1, PACKAGE_DECLARATION + os.linesep)
+    assert "package" in lines[2]
+    lines.pop(2)
+    lines.insert(1, PACKAGE_DECLARATION)
     with open(file, "w") as file_handler:
         for line in lines:
             file_handler.write(line)
