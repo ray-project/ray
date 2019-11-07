@@ -48,26 +48,24 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
 
   TaskState *state = new TaskState{task, std::move(local_dependencies)};
 
-  if (!state->local_dependencies.empty()) {
-    for (const auto &obj_id : state->local_dependencies) {
-      store_provider_.GetAsync(
-          obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
-            RAY_CHECK(obj != nullptr);
-            bool complete = false;
-            {
-              absl::MutexLock lock(&mu_);
-              state->local_dependencies.erase(obj_id);
-              DoInlineObjectValue(obj_id, obj, state->task);
-              if (state->local_dependencies.empty()) {
-                complete = true;
-              }
+  for (const auto &obj_id : state->local_dependencies) {
+    store_provider_.GetAsync(
+        obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
+          RAY_CHECK(obj != nullptr);
+          bool complete = false;
+          {
+            absl::MutexLock lock(&mu_);
+            state->local_dependencies.erase(obj_id);
+            DoInlineObjectValue(obj_id, obj, state->task);
+            if (state->local_dependencies.empty()) {
+              complete = true;
             }
-            if (complete) {
-              on_complete();
-              delete state;
-            }
-          });
-    }
+          }
+          if (complete) {
+            on_complete();
+            delete state;
+          }
+        });
   }
 }
 

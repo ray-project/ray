@@ -1190,6 +1190,29 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+def test_direct_call_simple(ray_start_regular):
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    f_direct = f.options(is_direct_call=True)
+    assert ray.get(f_direct.remote(2)) == 3
+    assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+        range(1, 101))
+
+
+def test_direct_call_chain(ray_start_regular):
+    @ray.remote
+    def g(x):
+        return x + 1
+
+    g_direct = g.options(is_direct_call=True)
+    x = 0
+    for _ in range(100):
+        x = g_direct.remote(x)
+    assert ray.get(x) == 100
+
+
 def test_direct_actor_enabled(ray_start_regular):
     @ray.remote
     class Actor(object):

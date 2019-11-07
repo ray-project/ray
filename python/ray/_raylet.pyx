@@ -92,6 +92,7 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
+    PICKLE_BUFFER_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
 
@@ -333,6 +334,7 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
 cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
+        c_string metadata_str = PICKLE_BUFFER_METADATA
         shared_ptr[CBuffer] arg_data
         shared_ptr[CBuffer] arg_metadata
 
@@ -352,6 +354,10 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
                         <uint8_t*>(pickled_str.data()),
                         pickled_str.size(),
                         True))
+            arg_metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(metadata_str.data()), metadata_str.size(), True))
             args_vector.push_back(
                 CTaskArg.PassByValue(
                     make_shared[CRayObject](arg_data, arg_metadata)))
@@ -435,15 +441,19 @@ cdef deserialize_args(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
                 args.append(data)
+            elif (c_args[i].get().HasMetadata()
+                and Buffer.make(
+                    c_args[i].get().GetMetadata()).to_pybytes()
+                    == PICKLE_BUFFER_METADATA):
+                # This is a pickled "simple python value" argument.
+                args.append(pickle.loads(data.to_pybytes()))
             else:
-                try:
-                    args.append(pickle.loads(data.to_pybytes()))
-                except Exception:  # XXX handle inline RayObjects properly
-                    by_reference_ids.append(
-                        ObjectID(arg_reference_ids[i].Binary()))
-                    by_reference_indices.append(i)
-                    by_reference_objects.push_back(c_args[i])
-                    args.append(None)
+                # This is a Ray object inlined by the direct task submitter.
+                by_reference_ids.append(
+                    ObjectID(arg_reference_ids[i].Binary()))
+                by_reference_indices.append(i)
+                by_reference_objects.push_back(c_args[i])
+                args.append(None)
         # Passed by reference.
         else:
             by_reference_ids.append(
