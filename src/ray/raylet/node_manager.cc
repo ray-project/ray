@@ -701,11 +701,9 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     RAY_LOG(INFO) << "Refreshing " << object_id.Hex();
     plasma_ids.push_back(object_id.ToPlasmaId());
   }
-  /*
   if (!store_client_.Refresh(plasma_ids).ok()) {
     RAY_LOG(WARNING) << "Failed to refresh active object IDs in plasma.";
   }
-  */
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
