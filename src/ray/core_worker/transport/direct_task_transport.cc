@@ -2,6 +2,8 @@
 
 namespace ray {
 
+// TODO(ekl) add unit tests for local dep resolver
+
 void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> value,
                          const TaskSpecification &task) {
   auto &msg = task.GetMutableMessage();
@@ -68,6 +70,8 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
         });
   }
 }
+
+// TODO(ekl) add unit tests for direct task submitter
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
