@@ -103,8 +103,8 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &
 
     auto it = client_cache_.find(addr);
     if (it == client_cache_.end()) {
-      client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClient>(
-          new rpc::CoreWorkerClient(address, port, client_call_manager_));
+      client_cache_[addr] =
+          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
       RAY_LOG(INFO) << "Connected to " << address << ":" << port;
     }
   }
@@ -151,13 +151,14 @@ void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
 
 // TODO(ekl) consider reconsolidating with DirectActorTransport.
 void CoreWorkerDirectTaskSubmitter::PushTask(
-    const WorkerAddress &addr, rpc::CoreWorkerClient &client,
+    const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
     std::unique_ptr<rpc::PushTaskRequest> request) {
   auto task_id = TaskID::FromBinary(request->task_spec().task_id());
   auto num_returns = request->task_spec().num_returns();
   auto status = client.PushTaskImmediate(
       std::move(request),
       [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
+        WorkerIdle(addr);
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED);
           return;
@@ -181,7 +182,6 @@ void CoreWorkerDirectTaskSubmitter::PushTask(
           }
           RAY_CHECK_OK(
               in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
-          WorkerIdle(addr);
         }
       });
   RAY_CHECK_OK(status);

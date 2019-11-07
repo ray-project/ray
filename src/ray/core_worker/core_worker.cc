@@ -171,7 +171,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          *raylet_client_, *client_call_manager_,
+          *raylet_client_,
+          [this](WorkerAddress addr) {
+            return new rpc::CoreWorkerClient(addr.first, addr.second,
+                                             *client_call_manager_);
+          },
           std::unique_ptr<CoreWorkerMemoryStoreProvider>(
               new CoreWorkerMemoryStoreProvider(memory_store_))));
 }

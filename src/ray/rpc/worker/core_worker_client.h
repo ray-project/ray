@@ -33,8 +33,63 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
   return size;
 }
 
+/// Abstract client interface for testing.
+class CoreWorkerClientInterface {
+ public:
+  /// Assign a task to the work.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual ray::Status AssignTask(const AssignTaskRequest &request,
+                         const ClientCallback<AssignTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  /// Push an actor task directly to a worker.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual ray::Status PushTask(
+      std::unique_ptr<PushTaskRequest> request,
+      const ClientCallback<PushTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  /// Similar to PushTask, but sets no ordering constraint. This is used to push
+  /// non-actor tasks directly to a worker.
+  virtual ray::Status PushTaskImmediate(
+      std::unique_ptr<PushTaskRequest> request,
+                                const ClientCallback<PushTaskReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  /// Notify a wait has completed for direct actor call arguments.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual ray::Status DirectActorCallArgWaitComplete(
+      const DirectActorCallArgWaitCompleteRequest &request,
+      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
+  /// Grants a worker to the client.
+  ///
+  /// \param[in] request The request message.
+  /// \param[in] callback The callback function that handles reply.
+  /// \return if the rpc call succeeds
+  virtual ray::Status WorkerLeaseGranted(
+      const WorkerLeaseGrantedRequest &request,
+      const ClientCallback<WorkerLeaseGrantedReply> &callback) {
+    return Status::NotImplemented("");
+  }
+};
+
 /// Client used for communicating with a remote worker server.
-class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
+class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, public CoreWorkerClientInterface {
  public:
   /// Constructor.
   ///
@@ -49,13 +104,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     stub_ = CoreWorkerService::NewStub(channel);
   };
 
-  /// Assign a task to the work.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
   ray::Status AssignTask(const AssignTaskRequest &request,
-                         const ClientCallback<AssignTaskReply> &callback) {
+                         const ClientCallback<AssignTaskReply> &callback) override {
     auto call =
         client_call_manager_
             .CreateCall<CoreWorkerService, AssignTaskRequest, AssignTaskReply>(
@@ -63,14 +113,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     return call->GetStatus();
   }
 
-  /// Push an actor task directly to a worker.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
   ray::Status PushTask(
       std::unique_ptr<PushTaskRequest> request,
-      const ClientCallback<PushTaskReply> &callback) {
+      const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -85,10 +130,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     return ray::Status::OK();
   }
 
-  /// Similar to PushTask, but sets no ordering constraint. This is used to push
-  /// non-actor tasks directly to a worker.
   ray::Status PushTaskImmediate(std::unique_ptr<PushTaskRequest> request,
-                                const ClientCallback<PushTaskReply> &callback) {
+                                const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     auto call = client_call_manager_
@@ -98,14 +141,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     return call->GetStatus();
   }
 
-  /// Notify a wait has completed for direct actor call arguments.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
   ray::Status DirectActorCallArgWaitComplete(
       const DirectActorCallArgWaitCompleteRequest &request,
-      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
+      const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) override {
     auto call =
         client_call_manager_
             .CreateCall<CoreWorkerService, DirectActorCallArgWaitCompleteRequest,
@@ -115,14 +153,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient> {
     return call->GetStatus();
   }
 
-  /// Grants a worker to the client.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
   ray::Status WorkerLeaseGranted(
       const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) {
+      const ClientCallback<WorkerLeaseGrantedReply> &callback) override {
     auto call =
         client_call_manager_.CreateCall<CoreWorkerService, WorkerLeaseGrantedRequest,
                                         WorkerLeaseGrantedReply>(

@@ -52,15 +52,16 @@ class LocalDependencyResolver {
 };
 
 typedef std::pair<std::string, int> WorkerAddress;
+typedef std::function<rpc::CoreWorkerClientInterface *(WorkerAddress)> ClientFactory;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(
-      RayletClient &raylet_client, rpc::ClientCallManager &client_call_manager,
+      RayletClient &raylet_client, ClientFactory client_factory,
       std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : raylet_client_(raylet_client),
-        client_call_manager_(client_call_manager),
+        client_factory_(client_factory),
         in_memory_store_(std::move(store_provider)),
         resolver_(*in_memory_store_) {}
 
@@ -88,7 +89,7 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
-  void PushTask(const WorkerAddress &addr, rpc::CoreWorkerClient &client,
+  void PushTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
                 std::unique_ptr<rpc::PushTaskRequest> request);
 
   /// Mark a direct call as failed by storing errors for its return objects.
@@ -98,8 +99,8 @@ class CoreWorkerDirectTaskSubmitter {
   // Reference to the shared raylet client for leasing workers.
   RayletClient &raylet_client_;
 
-  /// The shared `ClientCallManager` object.
-  rpc::ClientCallManager &client_call_manager_;
+  /// Factory for producing new core worker clients.
+  ClientFactory client_factory_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
@@ -111,8 +112,8 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  absl::flat_hash_map<WorkerAddress, std::shared_ptr<rpc::CoreWorkerClient>> client_cache_
-      GUARDED_BY(mu_);
+  absl::flat_hash_map<WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      client_cache_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
   bool worker_request_pending_ GUARDED_BY(mu_) = false;
