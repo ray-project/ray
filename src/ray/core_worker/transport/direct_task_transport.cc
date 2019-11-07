@@ -95,9 +95,8 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &
 
     auto it = client_cache_.find(addr);
     if (it == client_cache_.end()) {
-      client_cache_[addr] =
-          std::unique_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
-              address, port, direct_actor_submitter_.CallManager()));
+      client_cache_[addr] = std::unique_ptr<rpc::CoreWorkerClient>(
+          new rpc::CoreWorkerClient(address, port, client_call_manager_));
       RAY_LOG(INFO) << "Connected to " << address << ":" << port;
     }
   }

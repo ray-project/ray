@@ -52,11 +52,10 @@ typedef std::pair<std::string, int> WorkerAddress;
 class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(
-      RayletClient &raylet_client,
-      CoreWorkerDirectActorTaskSubmitter &direct_actor_submitter,
+      RayletClient &raylet_client, rpc::ClientCallManager &client_call_manager,
       std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : raylet_client_(raylet_client),
-        direct_actor_submitter_(direct_actor_submitter),
+        client_call_manager_(client_call_manager),
         store_provider_(std::move(store_provider)),
         resolver_(raylet_client, *store_provider_) {}
 
@@ -78,8 +77,8 @@ class CoreWorkerDirectTaskSubmitter {
   // Reference to the shared raylet client for leasing workers.
   RayletClient &raylet_client_;
 
-  // Reference to direct actor submitter.
-  CoreWorkerDirectActorTaskSubmitter &direct_actor_submitter_;
+  /// The shared `ClientCallManager` object.
+  rpc::ClientCallManager &client_call_manager_;
 
   /// The store provider.
   std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;

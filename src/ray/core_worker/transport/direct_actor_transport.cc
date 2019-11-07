@@ -6,10 +6,9 @@ using ray::rpc::ActorTableData;
 namespace ray {
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
-    boost::asio::io_service &io_service,
+    rpc::ClientCallManager &client_call_manager,
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-    : io_service_(io_service),
-      client_call_manager_(io_service),
+    : client_call_manager_(client_call_manager),
       store_provider_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(

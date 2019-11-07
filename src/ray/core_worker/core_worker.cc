@@ -86,6 +86,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
+      client_call_manager_(new rpc::ClientCallManager(io_service_)),
       heartbeat_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
@@ -179,12 +180,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // TODO(edoakes): why don't we just share the memory store provider?
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(
-          io_service_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
-                           new CoreWorkerMemoryStoreProvider(memory_store_))));
+          *client_call_manager_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
+                                     new CoreWorkerMemoryStoreProvider(memory_store_))));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          *raylet_client_, *direct_actor_submitter_,
+          *raylet_client_, *client_call_manager_,
           std::unique_ptr<CoreWorkerMemoryStoreProvider>(
               new CoreWorkerMemoryStoreProvider(memory_store_))));
 }

@@ -41,7 +41,7 @@ struct ActorStateData {
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      boost::asio::io_service &io_service,
+      rpc::ClientCallManager &client_call_manager,
       std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
@@ -55,9 +55,6 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] actor_id The ID of the actor whose status has changed.
   /// \param[in] actor_data The actor's new status information.
   void HandleActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
-
-  // XXX
-  rpc::ClientCallManager &CallManager() { return client_call_manager_; }
 
  private:
   /// Push a task to a remote actor via the given client.
@@ -100,11 +97,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
-
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
+  /// The shared `ClientCallManager` object.
+  rpc::ClientCallManager &client_call_manager_;
 
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
