@@ -40,7 +40,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
   } else {
     // Submit request.
-    DirectActorAssignTask(*it->second, std::move(request), actor_id, task_id, num_returns);
+    DirectActorAssignTask(*it->second, std::move(request), actor_id, task_id,
+                          num_returns);
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -65,7 +66,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     auto request = std::move(requests.front());
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    DirectActorAssignTask(*rpc_client, std::move(request), actor_id, task_id, num_returns);
+    DirectActorAssignTask(*rpc_client, std::move(request), actor_id, task_id,
+                          num_returns);
     requests.pop_front();
   }
 }
