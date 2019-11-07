@@ -34,11 +34,14 @@ class ReferenceCounter {
                        std::shared_ptr<std::vector<ObjectID>> dependencies)
       LOCKS_EXCLUDED(mutex_);
 
+  /// Returns the total number of ObjectIDs currently in scope.
+  size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
+
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
-  std::unordered_set<ObjectID> GetAllInScopeObjectIDs() LOCKS_EXCLUDED(mutex_);
+  std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
 
   /// Dumps information about all currently tracked references to RAY_LOG(DEBUG).
-  void LogDebugString() LOCKS_EXCLUDED(mutex_);
+  void LogDebugString() const LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Helper function with the same semantics as AddReference to allow adding a reference
@@ -52,9 +55,12 @@ class ReferenceCounter {
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Protects access to the reference counting state.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   /// Holds all direct reference counts and dependency information for tracked ObjectIDs.
+  /// Dependencies are stored as shared_ptrs because the same set of dependencies can be
+  /// shared among multiple entries. For example, when a task has multiple return values,
+  /// the entry for each return ObjectID depends on all task dependencies.
   absl::flat_hash_map<ObjectID, std::pair<size_t, std::shared_ptr<std::vector<ObjectID>>>>
       object_id_refs_ GUARDED_BY(mutex_);
 };

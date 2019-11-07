@@ -22,13 +22,16 @@ void ReferenceCounter::SetDependencies(
 
   auto entry = object_id_refs_.find(object_id);
   if (entry == object_id_refs_.end()) {
+    // If the entry doesn't exist, we initialize the direct reference count to zero
+    // because this corresponds to a submitted task whose return ObjectID will be created
+    // in the frontend language, incrementing the reference count.
     object_id_refs_[object_id] = std::make_pair(0, dependencies);
   } else {
     RAY_CHECK(!entry->second.second);
     entry->second.second = dependencies;
   }
 
-  for (auto &dependency_id : *dependencies) {
+  for (const ObjectID &dependency_id : *dependencies) {
     AddReferenceInternal(dependency_id);
   }
 }
@@ -48,7 +51,7 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id) {
   if (--entry->second.first == 0) {
     // If the reference count reached 0, decrease the reference count for each dependency.
     if (entry->second.second) {
-      for (ObjectID &pending_task_object_id : *entry->second.second) {
+      for (const ObjectID &pending_task_object_id : *entry->second.second) {
         RemoveReferenceRecursive(pending_task_object_id);
       }
     }
@@ -56,7 +59,12 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id) {
   }
 }
 
-std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() {
+size_t ReferenceCounter::NumObjectIDsInScope() const {
+  absl::MutexLock lock(&mutex_);
+  return object_id_refs_.size();
+}
+
+std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() const {
   absl::MutexLock lock(&mutex_);
   std::unordered_set<ObjectID> in_scope_object_ids;
   in_scope_object_ids.reserve(object_id_refs_.size());
@@ -66,7 +74,7 @@ std::unordered_set<ObjectID> ReferenceCounter::GetAllInScopeObjectIDs() {
   return in_scope_object_ids;
 }
 
-void ReferenceCounter::LogDebugString() {
+void ReferenceCounter::LogDebugString() const {
   absl::MutexLock lock(&mutex_);
 
   RAY_LOG(DEBUG) << "ReferenceCounter state:";
@@ -75,14 +83,14 @@ void ReferenceCounter::LogDebugString() {
     return;
   }
 
-  for (auto entry : object_id_refs_) {
+  for (const auto &entry : object_id_refs_) {
     RAY_LOG(DEBUG) << "\t" << entry.first.Hex();
     RAY_LOG(DEBUG) << "\t\treference count: " << entry.second.first;
     RAY_LOG(DEBUG) << "\t\tdependencies: ";
     if (!entry.second.second) {
       RAY_LOG(DEBUG) << "\t\t\tNULL";
     } else {
-      for (ObjectID &pending_task_object_id : *entry.second.second) {
+      for (const ObjectID &pending_task_object_id : *entry.second.second) {
         RAY_LOG(DEBUG) << "\t\t\t" << pending_task_object_id.Hex();
       }
     }
