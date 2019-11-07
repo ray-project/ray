@@ -141,14 +141,9 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   ray::JobID job_id =
       JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
 
-  STREAMING_LOG(INFO) << "role => "
-                      << streaming::fbs::EnumNameStreamingRole(
-                             config_.GetStreaming_role())
-                      << ", strategy => "
-                      << ", job name => " << config_.GetStreaming_job_name()
+  STREAMING_LOG(INFO) << ", job name => " << config_.GetStreaming_job_name()
                       << ", log level => " << config_.GetStreaming_log_level()
-                      << ", log path => " << config_.GetStreaming_log_path() << job_id
-                      << ", unified map";
+                      << ", log path => " << config_.GetStreaming_log_path() << job_id;
 
   output_queue_ids_ = queue_id_vec;
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
