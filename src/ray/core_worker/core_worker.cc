@@ -711,6 +711,15 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
+  if (task_spec.IsNormalTask() && reference_counter_.NumObjectIDsInScope() != 0) {
+    RAY_LOG(ERROR)
+        << "There were " << reference_counter_.NumObjectIDsInScope()
+        << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
+        << ". This is either caused by keeping references to ObjectIDs in Python between "
+           "tasks (e.g., in global variables) or indicates a problem with Ray's "
+           "reference counting, and may cause problems in the object store.";
+  }
+
   SetCurrentTaskId(TaskID::Nil());
   worker_context_.ResetCurrentTask(task_spec);
   return status;
