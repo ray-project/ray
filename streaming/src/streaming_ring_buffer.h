@@ -17,16 +17,15 @@
 namespace ray {
 namespace streaming {
 
-/*!
- * @brief Since limitation of streaming-queue, we mayn't sent
- * queue item successful once, so streaming transient buffer is token for
- * transient memory util messages are accpeted by streaming-queue.
- */
+/// Since limitation of streaming-queue, we mayn't sent queue item 
+/// successful once, so streaming transient buffer is token for
+/// transient memory util messages are accpeted by streaming-queue.
+
 
 class StreamingTransientBuffer {
  private:
   std::shared_ptr<uint8_t> transient_buffer_;
-  // bufferSize is length of last serialization data
+  // BufferSize is length of last serialization data.
   uint32_t transient_buffer_size_ = 0;
   uint32_t max_transient_buffer_size_ = 0;
   bool transient_flag_ = false;
@@ -44,11 +43,10 @@ class StreamingTransientBuffer {
 
   inline uint8_t *GetTransientBufferMutable() const { return transient_buffer_.get(); }
 
-  /*!``
-   * @brief To reuse transient buffer, we will realloc buffer memory if size of needed
-   * message bundle raw data is greater-than original buffer size.
-   * @param size buffer size
-   */
+  ///  To reuse transient buffer, we will realloc buffer memory if size of needed
+  ///  message bundle raw data is greater-than original buffer size.
+  ///  \param size buffer size
+  ///
   inline void ReallocTransientBuffer(uint32_t size) {
     transient_buffer_size_ = size;
     transient_flag_ = true;
@@ -64,13 +62,11 @@ class StreamingTransientBuffer {
   inline void FreeTransientBuffer(bool is_force = false) {
     transient_buffer_size_ = 0;
     transient_flag_ = false;
-    /*
-     * Transient buffer always holds max size buffer among all messages, which is
-     * wasteful.
-     * So expiration time is considerable idea to release large buffer if this transient
-     * buffer
-     * pointer hold it in long time.
-     */
+
+    // Transient buffer always holds max size buffer among all messages, which is wasteful.
+    // So expiration time is considerable idea to release large buffer if this transient
+    // buffer pointer hold it in long time.
+    
     if (is_force) {
       max_transient_buffer_size_ = 0;
       transient_buffer_.reset();
