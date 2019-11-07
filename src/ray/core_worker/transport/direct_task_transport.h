@@ -25,7 +25,7 @@ class LocalDependencyResolver {
  public:
   LocalDependencyResolver(RayletClient &raylet_client,
                           CoreWorkerMemoryStoreProvider &store_provider)
-      : raylet_client_(raylet_client), store_provider_(store_provider) {}
+      : raylet_client_(raylet_client), in_memory_store_(store_provider) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -42,7 +42,7 @@ class LocalDependencyResolver {
   RayletClient &raylet_client_;
 
   /// The store provider.
-  CoreWorkerMemoryStoreProvider &store_provider_;
+  CoreWorkerMemoryStoreProvider &in_memory_store_;
 
   /// Protects against concurrent access to internal state.
   absl::Mutex mu_;
@@ -58,8 +58,8 @@ class CoreWorkerDirectTaskSubmitter {
       std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : raylet_client_(raylet_client),
         client_call_manager_(client_call_manager),
-        store_provider_(std::move(store_provider)),
-        resolver_(raylet_client, *store_provider_) {}
+        in_memory_store_(std::move(store_provider)),
+        resolver_(raylet_client, *in_memory_store_) {}
 
   /// Schedule a task for direct submission to a worker.
   Status SubmitTask(const TaskSpecification &task_spec);
@@ -92,7 +92,7 @@ class CoreWorkerDirectTaskSubmitter {
   rpc::ClientCallManager &client_call_manager_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;

@@ -49,11 +49,11 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
   }
 
   // This is deleted when the last dependency fetch callback finishes.
-  std::shared_ptr<TaskState> state = std::shared_ptr<TaskState>(
-      new TaskState{task, std::move(local_dependencies)});
+  std::shared_ptr<TaskState> state =
+      std::shared_ptr<TaskState>(new TaskState{task, std::move(local_dependencies)});
 
   for (const auto &obj_id : state->local_dependencies) {
-    store_provider_.GetAsync(
+    in_memory_store_.GetAsync(
         obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
           bool complete = false;
@@ -140,7 +140,7 @@ void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
@@ -174,7 +174,7 @@ void CoreWorkerDirectTaskSubmitter::PushTask(
                 return_object.metadata().size());
           }
           RAY_CHECK_OK(
-              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
+              in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
           WorkerIdle(addr);
         }
       });
