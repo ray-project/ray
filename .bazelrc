@@ -15,7 +15,6 @@ build --http_timeout_scaling=5.0
 build:asan --strip=never
 build:asan --copt -fsanitize=address
 build:asan --copt -fsanitize=undefined
-build:asan --copt -fsanitize=thread
 build:asan --copt -DADDRESS_SANITIZER
 build:asan --copt -O2
 build:asan --copt -g
