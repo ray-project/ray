@@ -33,6 +33,21 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+class Address(object):
+
+    def __init__(self, hostname=None, pid=None):
+        self.hostname = hostname
+        self.pid = pid
+
+    def __str__(self):
+        if not self.pid:
+            return ""
+        elif self.hostname == os.uname()[1]:
+            return "pid={}".format(self.pid)
+        else:
+            return "{}:{}".format(self.hostname, self.pid)
+
+
 class ExportFormat(object):
     """Describes the format to export the trial Trainable.
 
@@ -122,7 +137,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
-        self.node_ip = None
+        self.address = Address()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
@@ -173,6 +188,10 @@ class Trial(object):
         ]
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
+
+    @property
+    def node_ip(self):
+        return self.address.hostname
 
     @property
     def checkpoint(self):
@@ -229,7 +248,6 @@ class Trial(object):
 
     def close_logger(self):
         """Close logger."""
-
         if self.result_logger:
             self.result_logger.close()
             self.result_logger = None
@@ -320,7 +338,7 @@ class Trial(object):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
-        self.node_ip = result.get("node_ip")
+        self.address = Address(result.get("node_ip"), result.get("pid"))
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)

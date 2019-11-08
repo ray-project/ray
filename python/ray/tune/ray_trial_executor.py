@@ -17,11 +17,12 @@ from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, Checkpoint, Address
 from ray.tune.resources import Resources
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
@@ -147,7 +148,7 @@ class RayTrialExecutor(TrialExecutor):
 
         # Clear the Trial's node IP (will be updated later on result)
         # since we don't know where the remote runner is placed.
-        trial.node_ip = None
+        trial.address = Address()
         logger.info("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
@@ -217,12 +218,11 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Reusing actor for {}".format(trial.runner))
                     self._cached_actor = trial.runner
                 else:
-                    logger.debug(
-                        "Destroying actor for trial {}.".format(trial))
+                    logger.debug("Trial %s: Destroying actor.", trial)
                     trial.runner.stop.remote()
                     trial.runner.__ray_terminate__.remote()
         except Exception:
-            logger.exception("Trial %s: Error stopping runner.", str(trial))
+            logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)
         finally:
             trial.runner = None
@@ -278,7 +278,7 @@ class RayTrialExecutor(TrialExecutor):
         self._stop_trial(
             trial, error=error, error_msg=error_msg, stop_logger=stop_logger)
         if prior_status == Trial.RUNNING:
-            logger.debug("Returning resources for Trial %s.", str(trial))
+            logger.debug("Trial %s: Returning resources.", trial)
             self._return_resources(trial.resources)
             out = self._find_item(self._running, trial)
             for result_id in out:
@@ -286,7 +286,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def continue_training(self, trial):
         """Continues the training of this trial."""
-
         self._train(trial)
 
     def pause_trial(self, trial):
@@ -295,7 +294,6 @@ class RayTrialExecutor(TrialExecutor):
         If trial is in-flight, preserves return value in separate queue
         before pausing, which is restored when Trial is resumed.
         """
-
         trial_future = self._find_item(self._running, trial)
         if trial_future:
             self._paused[trial_future[0]] = trial

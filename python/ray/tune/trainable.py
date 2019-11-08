@@ -410,7 +410,7 @@ class Trainable(object):
 
     def stop(self):
         """Releases all resources used by this trainable."""
-
+        self._result_logger.flush()
         self._result_logger.close()
         self._stop()
 

@@ -51,13 +51,15 @@ class TrialExecutor(object):
             trial (Trial): Trial to checkpoint.
         """
         if trial.checkpoint.storage == Checkpoint.MEMORY:
-            logger.debug("Not saving data for trial w/ memory checkpoint.")
+            logger.debug("Trial %s: Not saving data for memory checkpoint.",
+                         trial)
             return
         try:
-            logger.debug("Saving trial metadata.")
+            logger.debug("Trial %s: Saving trial metadata.", trial)
             self._cached_trial_state[trial.trial_id] = trial.__getstate__()
         except Exception:
-            logger.exception("Error checkpointing trial metadata.")
+            logger.exception("Trial %s: Error checkpointing trial metadata.",
+                             trial)
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""

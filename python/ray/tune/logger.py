@@ -429,14 +429,12 @@ class UnifiedLogger(Logger):
     def close(self):
         for _logger in self._loggers:
             _logger.close()
-        if not self._log_syncer.sync_down():
-            logger.warning("%s: Post-close sync skipped.", self.trial)
 
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
         if not self._log_syncer.sync_down():
-            logger.warning("%s: Post-flush sync skipped.", self.trial)
+            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
 
     def sync_up(self):
         return self._log_syncer.sync_up()
