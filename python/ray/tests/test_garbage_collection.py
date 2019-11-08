@@ -24,6 +24,8 @@ def test_basic_gc(shutdown_only):
     @ray.remote
     class Actor(object):
         def __init__(self):
+            # Hold a long-lived reference to a ray.put object. This should not
+            # be garbage collected while the actor is alive.
             self.large_object = ray.put(
                 np.zeros(25 * 1024 * 1024, dtype=np.uint8), weakref=True)
 
@@ -31,8 +33,10 @@ def test_basic_gc(shutdown_only):
             return ray.get(self.large_object)
 
     actor = Actor.remote()
-    ray.get(actor.get_large_object.remote())
 
+    # Fill up the object store with short-lived objects. These should be
+    # evicted before the long-lived object whose reference is held by
+    # the actor.
     for batch in range(10):
         intermediate_result = shuffle.remote(
             np.zeros(10 * 1024 * 1024, dtype=np.uint8))
