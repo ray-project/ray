@@ -491,11 +491,11 @@ def test_version_mismatch(shutdown_only):
 
 
 def test_warning_monitor_died(ray_start_2_cpus):
-    # Wait for the monitor process to start.
     @ray.remote
     def f():
         pass
 
+    # Wait for the monitor process to start.
     ray.get(f.remote())
     time.sleep(1)
 
