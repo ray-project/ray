@@ -180,47 +180,6 @@ class SerializationContext(object):
                 pickle=False,
                 custom_serializer=actor_handle_serializer,
                 custom_deserializer=actor_handle_deserializer)
-
-            for error_cls in RAY_EXCEPTION_TYPES:
-                self.register_custom_serializer(
-                    error_cls,
-                    use_dict=True,
-                    local=True,
-                    job_id=worker.current_job_id,
-                    class_id=error_cls.__module__ + ". " + error_cls.__name__,
-                )
-                # Tell Ray to serialize lambdas with pickle.
-            self.register_custom_serializer(
-                type(lambda: 0),
-                use_pickle=True,
-                local=True,
-                job_id=worker.current_job_id,
-                class_id="lambda")
-            # Tell Ray to serialize types with pickle.
-            self.register_custom_serializer(
-                type(int),
-                use_pickle=True,
-                local=True,
-                job_id=worker.current_job_id,
-                class_id="type")
-            # Tell Ray to serialize RayParameters as dictionaries. This is
-            # used when passing around actor handles.
-            self.register_custom_serializer(
-                ray.signature.RayParameter,
-                use_dict=True,
-                local=True,
-                job_id=worker.current_job_id,
-                class_id="ray.signature.RayParameter")
-            # Tell Ray to serialize StringIO with pickle. We do this because
-            # Ray's default __dict__ serialization is incorrect for this type
-            # (the object's __dict__ is empty and therefore doesn't
-            # contain the full state of the object).
-            self.register_custom_serializer(
-                io.StringIO,
-                use_pickle=True,
-                local=True,
-                job_id=worker.current_job_id,
-                class_id="io.StringIO")
             self.pyarrow_context = serialization_context
         else:
             self._register_cloudpickle_serializer(
@@ -242,6 +201,45 @@ class SerializationContext(object):
             for id_type in ray._raylet._ID_TYPES:
                 self._register_cloudpickle_serializer(id_type, id_serializer,
                                                       id_deserializer)
+
+    def initialize(self):
+        """ Register custom serializers """
+        if not self.worker.use_pickle:
+            for error_cls in RAY_EXCEPTION_TYPES:
+                self.register_custom_serializer(
+                    error_cls,
+                    use_dict=True,
+                    local=True,
+                    class_id=error_cls.__module__ + ". " + error_cls.__name__,
+                )
+                # Tell Ray to serialize lambdas with pickle.
+            self.register_custom_serializer(
+                type(lambda: 0),
+                use_pickle=True,
+                local=True,
+                class_id="lambda")
+            # Tell Ray to serialize types with pickle.
+            self.register_custom_serializer(
+                type(int),
+                use_pickle=True,
+                local=True,
+                class_id="type")
+            # Tell Ray to serialize RayParameters as dictionaries. This is
+            # used when passing around actor handles.
+            self.register_custom_serializer(
+                ray.signature.RayParameter,
+                use_dict=True,
+                local=True,
+                class_id="ray.signature.RayParameter")
+            # Tell Ray to serialize StringIO with pickle. We do this because
+            # Ray's default __dict__ serialization is incorrect for this type
+            # (the object's __dict__ is empty and therefore doesn't
+            # contain the full state of the object).
+            self.register_custom_serializer(
+                io.StringIO,
+                use_pickle=True,
+                local=True,
+                class_id="io.StringIO")
 
     def _register_cloudpickle_serializer(self, cls, custom_serializer,
                                          custom_deserializer):
@@ -518,7 +516,7 @@ class SerializationContext(object):
                 # In some cases, we may want to use the last user-defined
                 # serializers and ignore subsequent calls to
                 # register_custom_serializer that were made by the system.
-                context.serialization_context.register_type(
+                context.pyarrow_context.register_type(
                     cls,
                     class_id,
                     pickle=use_pickle,
