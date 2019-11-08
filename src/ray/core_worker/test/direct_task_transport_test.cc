@@ -12,7 +12,7 @@ namespace ray {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  ray::Status PushActorTask(
+  ray::Status PushNormalTask(
       std::unique_ptr<rpc::PushTaskRequest> request,
       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
