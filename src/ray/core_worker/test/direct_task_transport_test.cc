@@ -12,7 +12,7 @@ namespace ray {
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  ray::Status PushTaskImmediate(
+  ray::Status PushActorTask(
       std::unique_ptr<rpc::PushTaskRequest> request,
       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
     callbacks.push_back(callback);
@@ -57,6 +57,7 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  // We ignore and don't block on plasma dependencies.
   ASSERT_TRUE(ok);
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
@@ -68,6 +69,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
+  // Ensure the data is already present in the local store.
   store.Put(*data, obj1);
   store.Put(*data, obj2);
   TaskSpecification task;
@@ -75,6 +77,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
+  // Tests that the task proto was rewritten to have inline argument values.
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
   ASSERT_FALSE(task.ArgByRef(1));
@@ -99,6 +102,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ASSERT_TRUE(!ok);
   store.Put(*data, obj1);
   store.Put(*data, obj2);
+  // Tests that the task proto was rewritten to have inline argument values after
+  // resolution completes.
   ASSERT_TRUE(ok);
   ASSERT_FALSE(task.ArgByRef(0));
   ASSERT_FALSE(task.ArgByRef(1));
@@ -121,7 +126,7 @@ TEST(DirectTaskTranportTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client.num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
-  submitter.HandleWorkerLeaseGranted("localhost", 1234);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1234));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
 
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
@@ -138,7 +143,8 @@ TEST(DirectTaskTranportTest, TestHandleTaskFailure) {
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  submitter.HandleWorkerLeaseGranted("localhost", 1234);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1234));
+  // Simulate a system failure, i.e., worker died unexpectedly.
   worker_client->callbacks[0](Status::IOError("oops"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client.num_workers_returned, 1);
@@ -163,17 +169,17 @@ TEST(DirectTaskTranportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(raylet_client.num_workers_requested, 1);
 
   // Task 1 is pushed; worker 2 is requested.
-  submitter.HandleWorkerLeaseGranted("localhost", 1000);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1000));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client.num_workers_requested, 2);
 
   // Task 2 is pushed; worker 3 is requested.
-  submitter.HandleWorkerLeaseGranted("localhost", 1001);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1001));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   ASSERT_EQ(raylet_client.num_workers_requested, 3);
 
   // Task 3 is pushed; no more workers requested.
-  submitter.HandleWorkerLeaseGranted("localhost", 1002);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1002));
   ASSERT_EQ(worker_client->callbacks.size(), 3);
   ASSERT_EQ(raylet_client.num_workers_requested, 3);
 
@@ -203,7 +209,7 @@ TEST(DirectTaskTranportTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client.num_workers_requested, 1);
 
   // Task 1 is pushed.
-  submitter.HandleWorkerLeaseGranted("localhost", 1000);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1000));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client.num_workers_requested, 2);
 
@@ -222,7 +228,7 @@ TEST(DirectTaskTranportTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client.num_workers_returned, 1);
 
   // The second lease request is returned immediately.
-  submitter.HandleWorkerLeaseGranted("localhost", 1001);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1001));
   ASSERT_EQ(raylet_client.num_workers_returned, 2);
 }
 
@@ -242,7 +248,7 @@ TEST(DirectTaskTranportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client.num_workers_requested, 1);
 
   // Task 1 is pushed.
-  submitter.HandleWorkerLeaseGranted("localhost", 1000);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1000));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client.num_workers_requested, 2);
 
@@ -252,7 +258,7 @@ TEST(DirectTaskTranportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client.num_workers_returned, 1);
 
   // Task 2 runs successfully on the second worker.
-  submitter.HandleWorkerLeaseGranted("localhost", 1001);
+  submitter.HandleWorkerLeaseGranted(std::make_pair("localhost", 1001));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client.num_workers_returned, 2);

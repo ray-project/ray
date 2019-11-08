@@ -75,9 +75,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// to the raylet once it finishes its task and either the lease term has
   /// expired, or there is no more work it can take on.
   ///
-  /// \param[in] address The address of the worker.
-  /// \param[in] port The port of the worker.
-  void HandleWorkerLeaseGranted(const std::string &address, int port);
+  /// \param[in] addr The (addr, port) pair identifying the worker.
+  void HandleWorkerLeaseGranted(const WorkerAddress addr);
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if

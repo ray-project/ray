@@ -85,10 +85,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(const TaskSpecification &task_s
   return Status::OK();
 }
 
-void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &address,
-                                                             int port) {
-  WorkerAddress addr = std::make_pair(address, port);
-
+void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress addr) {
   // Setup client state for this worker.
   {
     absl::MutexLock lock(&mu_);
@@ -98,7 +95,7 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &
     if (it == client_cache_.end()) {
       client_cache_[addr] =
           std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
-      RAY_LOG(INFO) << "Connected to " << address << ":" << port;
+      RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
     }
   }
 

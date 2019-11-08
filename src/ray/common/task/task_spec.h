@@ -22,6 +22,8 @@ typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClassDescriptor;
 typedef int SchedulingClass;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
+/// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
+/// instead `const TaskSpecification`, since this class is actually mutable.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
   /// Construct an empty task specification. This should not be used directly.
