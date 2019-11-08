@@ -52,7 +52,8 @@ class SerializedObject(object):
 
 class Pickle5SerializedObject(SerializedObject):
     def __init__(self, inband, writer):
-        super().__init__(ray_constants.PICKLE5_BUFFER_METADATA)
+        super(Pickle5SerializedObject,
+              self).__init__(ray_constants.PICKLE5_BUFFER_METADATA)
         self.inband = inband
         self.writer = writer
         # cached total bytes
@@ -67,7 +68,7 @@ class Pickle5SerializedObject(SerializedObject):
 
 class ArrowSerializedObject(SerializedObject):
     def __init__(self, serialized_object):
-        super().__init__(b"")
+        super(ArrowSerializedObject, self).__init__(b"")
         self.serialized_object = serialized_object
 
     @property
@@ -77,7 +78,8 @@ class ArrowSerializedObject(SerializedObject):
 
 class RawSerializedObject(SerializedObject):
     def __init__(self, value):
-        super().__init__(ray_constants.RAW_BUFFER_METADATA)
+        super(RawSerializedObject,
+              self).__init__(ray_constants.RAW_BUFFER_METADATA)
         self.value = value
 
     @property
