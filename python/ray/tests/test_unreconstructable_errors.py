@@ -33,8 +33,12 @@ class TestUnreconstructableErrors(unittest.TestCase):
 
         x_id = f.remote(None)
         ray.get(x_id)
+        # Hold references to the ray.put objects so they aren't LRU'd.
+        oids = []
         for _ in range(400):
-            ray.get([f.remote(np.zeros(10000)) for _ in range(50)])
+            new_oids = [f.remote(np.zeros(10000)) for _ in range(50)]
+            oids.extend(new_oids)
+            ray.get(new_oids)
         self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))
 
