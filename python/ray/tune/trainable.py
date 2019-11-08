@@ -292,7 +292,8 @@ class Trainable(object):
                 "timesteps_total": self._timesteps_total,
                 "time_total": self._time_total,
                 "episodes_total": self._episodes_total,
-                "saved_as_dict": saved_as_dict
+                "saved_as_dict": saved_as_dict,
+                "ray_version": ray.__version__
             }, f)
         return checkpoint_path
 

@@ -11,8 +11,6 @@
 
 namespace ray {
 
-class CoreWorker;
-
 /// The class provides implementations for accessing local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
 /// actor call (see direct_actor_transport.cc).
@@ -27,6 +25,8 @@ class CoreWorkerMemoryStoreProvider {
              const TaskID &task_id,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
+
+  Status Contains(const ObjectID &object_id, bool *has_object);
 
   /// Note that `num_objects` must equal to number of items in `object_ids`.
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,

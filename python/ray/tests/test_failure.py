@@ -490,13 +490,17 @@ def test_version_mismatch(shutdown_only):
     ray.__version__ = ray_version
 
 
-def test_warning_monitor_died(shutdown_only):
-    ray.init(num_cpus=0)
+def test_warning_monitor_died(ray_start_2_cpus):
+    @ray.remote
+    def f():
+        pass
 
-    time.sleep(1)  # Make sure the monitor has started.
+    # Wait for the monitor process to start.
+    ray.get(f.remote())
+    time.sleep(1)
 
     # Cause the monitor to raise an exception by pushing a malformed message to
-    # Redis. This will probably kill the raylets and the raylet_monitor in
+    # Redis. This will probably kill the raylet and the raylet_monitor in
     # addition to the monitor.
     fake_id = 20 * b"\x00"
     malformed_message = "asdf"

@@ -1000,17 +1000,17 @@ cdef class CoreWorker:
             c_actor_id, &output))
         return output
 
-    def add_active_object_id(self, ObjectID object_id):
+    def add_object_id_reference(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().AddActiveObjectID(c_object_id)
+        self.core_worker.get().AddObjectIDReference(c_object_id)
 
-    def remove_active_object_id(self, ObjectID object_id):
+    def remove_object_id_reference(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
-        self.core_worker.get().RemoveActiveObjectID(c_object_id)
+        self.core_worker.get().RemoveObjectIDReference(c_object_id)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(

@@ -72,7 +72,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index, size_t id_index) const;
 
-  ObjectID ReturnId(size_t return_index) const;
+  ObjectID ReturnId(size_t return_index, TaskTransportType transport_type) const;
+
+  ObjectID ReturnIdForPlasma(size_t return_index) const {
+    return ReturnId(return_index, TaskTransportType::RAYLET);
+  }
 
   const uint8_t *ArgData(size_t arg_index) const;
 
