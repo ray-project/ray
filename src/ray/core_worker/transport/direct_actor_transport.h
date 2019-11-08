@@ -40,9 +40,8 @@ struct ActorStateData {
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(
-      rpc::ClientCallManager &client_call_manager,
-      std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider);
+  CoreWorkerDirectActorTaskSubmitter(rpc::ClientCallManager &client_call_manager,
+                                     CoreWorkerMemoryStoreProvider store_provider);
 
   /// Submit a task to an actor for execution.
   ///
@@ -121,7 +120,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
+  CoreWorkerMemoryStoreProvider &in_memory_store_;
 
   friend class CoreWorkerTest;
 };

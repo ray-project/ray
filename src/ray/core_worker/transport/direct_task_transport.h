@@ -52,18 +52,19 @@ class LocalDependencyResolver {
 };
 
 typedef std::pair<std::string, int> WorkerAddress;
-typedef std::function<rpc::CoreWorkerClientInterface *(WorkerAddress)> ClientFactory;
+typedef std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(WorkerAddress)>
+    ClientFactory;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(
-      RayletClient &raylet_client, ClientFactory client_factory,
-      std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-      : raylet_client_(raylet_client),
+  CoreWorkerDirectTaskSubmitter(WorkerLeaseInterface &lease_client,
+                                ClientFactory client_factory,
+                                CoreWorkerMemoryStoreProvider store_provider)
+      : lease_client_(lease_client),
         client_factory_(client_factory),
-        in_memory_store_(std::move(store_provider)),
-        resolver_(*in_memory_store_) {}
+        in_memory_store_(store_provider),
+        resolver_(in_memory_store_) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -80,8 +81,9 @@ class CoreWorkerDirectTaskSubmitter {
 
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
-  /// no more tasks are queued for submission.
-  void WorkerIdle(const WorkerAddress &addr);
+  /// no more tasks are queued for submission. If an error was encountered
+  /// processing the worker, we don't attempt to re-use the worker.
+  void WorkerIdle(const WorkerAddress &addr, bool was_error);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight.
@@ -90,20 +92,20 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Push a task to a specific worker.
   void PushTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
-                std::unique_ptr<rpc::PushTaskRequest> request);
+                const TaskSpecification &task_spec);
 
   /// Mark a direct call as failed by storing errors for its return objects.
   void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                          const rpc::ErrorType &error_type);
 
-  // Reference to the shared raylet client for leasing workers.
-  RayletClient &raylet_client_;
+  // Client that can be used to lease and return workers.
+  WorkerLeaseInterface &lease_client_;
 
   /// Factory for producing new core worker clients.
   ClientFactory client_factory_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
+  CoreWorkerMemoryStoreProvider &in_memory_store_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
@@ -119,7 +121,7 @@ class CoreWorkerDirectTaskSubmitter {
   bool worker_request_pending_ GUARDED_BY(mu_) = false;
 
   // Tasks that are queued for execution in this submitter..
-  std::deque<std::unique_ptr<rpc::PushTaskRequest>> queued_tasks_ GUARDED_BY(mu_);
+  std::deque<TaskSpecification> queued_tasks_ GUARDED_BY(mu_);
 };
 
 };  // namespace ray

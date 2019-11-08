@@ -2,8 +2,6 @@
 
 namespace ray {
 
-// TODO(ekl) add unit tests for local dep resolver
-
 void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> value,
                          const TaskSpecification &task) {
   auto &msg = task.GetMutableMessage();
@@ -74,17 +72,12 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
   }
 }
 
-// TODO(ekl) add unit tests for direct task submitter
-
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     // TODO(ekl) should have a queue per distinct resource type required
     absl::MutexLock lock(&mu_);
     RequestNewWorkerIfNeeded(task_spec);
-    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-    auto msg = task_spec.GetMutableMessage();
-    request->mutable_task_spec()->Swap(&msg);
-    queued_tasks_.push_back(std::move(request));
+    queued_tasks_.push_back(task_spec);
     // The task is now queued and will be picked up by the next leased or newly
     // idle worker. We are guaranteed a worker will show up since we called
     // RequestNewWorkerIfNeeded() earlier while holding mu_.
@@ -110,17 +103,22 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &
   }
 
   // Try to assign it work.
-  WorkerIdle(addr);
+  WorkerIdle(addr, /*error=*/false);
 }
 
-void CoreWorkerDirectTaskSubmitter::WorkerIdle(const WorkerAddress &addr) {
+void CoreWorkerDirectTaskSubmitter::WorkerIdle(const WorkerAddress &addr,
+                                               bool was_error) {
   absl::MutexLock lock(&mu_);
-  if (queued_tasks_.empty()) {
-    RAY_CHECK_OK(raylet_client_.ReturnWorker(addr.second));
+  if (queued_tasks_.empty() || was_error) {
+    RAY_CHECK_OK(lease_client_.ReturnWorker(addr.second));
   } else {
     auto &client = *client_cache_[addr];
-    PushTask(addr, client, std::move(queued_tasks_.front()));
+    PushTask(addr, client, queued_tasks_.front());
     queued_tasks_.pop_front();
+  }
+  // We have a queue of tasks, try to request more workers.
+  if (!queued_tasks_.empty()) {
+    RequestNewWorkerIfNeeded(queued_tasks_.front());
   }
 }
 
@@ -129,7 +127,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (worker_request_pending_) {
     return;
   }
-  RAY_CHECK_OK(raylet_client_.RequestWorkerLease(resource_spec));
+  RAY_CHECK_OK(lease_client_.RequestWorkerLease(resource_spec));
   worker_request_pending_ = true;
 }
 
@@ -145,20 +143,22 @@ void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_.Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
 // TODO(ekl) consider reconsolidating with DirectActorTransport.
-void CoreWorkerDirectTaskSubmitter::PushTask(
-    const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
-    std::unique_ptr<rpc::PushTaskRequest> request) {
-  auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-  auto num_returns = request->task_spec().num_returns();
+void CoreWorkerDirectTaskSubmitter::PushTask(const WorkerAddress &addr,
+                                             rpc::CoreWorkerClientInterface &client,
+                                             const TaskSpecification &task_spec) {
+  auto task_id = task_spec.TaskId();
+  auto num_returns = task_spec.NumReturns();
+  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+  request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   auto status = client.PushTaskImmediate(
       std::move(request),
       [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
-        WorkerIdle(addr);
+        WorkerIdle(addr, /*error=*/!status.ok());
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED);
           return;
@@ -181,7 +181,7 @@ void CoreWorkerDirectTaskSubmitter::PushTask(
                 return_object.metadata().size());
           }
           RAY_CHECK_OK(
-              in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
+              in_memory_store_.Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   RAY_CHECK_OK(status);

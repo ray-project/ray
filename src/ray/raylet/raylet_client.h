@@ -62,7 +62,21 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient {
+/// Interface for leasing workers. Abstract for testing.
+class WorkerLeaseInterface {
+ public:
+  /// Requests a worker from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) = 0;
+
+  /// Returns a worker to the raylet.
+  /// \param worker_port The local port of the worker on the raylet node.
+  /// \return ray::Status
+  virtual ray::Status ReturnWorker(int worker_port) = 0;
+};
+
+class RayletClient : public WorkerLeaseInterface {
  public:
   /// Connect to the raylet.
   ///
@@ -182,15 +196,11 @@ class RayletClient {
   /// \return ray::Status
   ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
-  /// Requests a worker from the raylet. The callback will be sent via gRPC.
-  /// \param resource_spec Resources that should be allocated for the worker.
-  /// \return ray::Status
-  ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec);
+  /// Implements WorkerLeaseInterface.
+  ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) override;
 
-  /// Returns a worker to the raylet.
-  /// \param worker_port The local port of the worker on the raylet node.
-  /// \return ray::Status
-  ray::Status ReturnWorker(int worker_port);
+  /// Implements WorkerLeaseInterface.
+  ray::Status ReturnWorker(int worker_port) override;
 
   Language GetLanguage() const { return language_; }
 

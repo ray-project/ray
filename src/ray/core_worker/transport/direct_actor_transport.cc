@@ -7,9 +7,8 @@ namespace ray {
 
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     rpc::ClientCallManager &client_call_manager,
-    std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-    : client_call_manager_(client_call_manager),
-      in_memory_store_(std::move(store_provider)) {}
+    CoreWorkerMemoryStoreProvider store_provider)
+    : client_call_manager_(client_call_manager), in_memory_store_(store_provider) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
@@ -152,7 +151,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
                 const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
             auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
             RAY_CHECK_OK(
-                in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+                in_memory_store_.Put(RayObject(nullptr, meta_buffer), object_id));
           } else {
             std::shared_ptr<LocalMemoryBuffer> data_buffer;
             if (return_object.data().size() > 0) {
@@ -168,8 +167,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
                       reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
                   return_object.metadata().size());
             }
-            RAY_CHECK_OK(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer),
-                                               object_id));
+            RAY_CHECK_OK(
+                in_memory_store_.Put(RayObject(data_buffer, metadata_buffer), object_id));
           }
         }
       });
@@ -189,7 +188,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_.Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 

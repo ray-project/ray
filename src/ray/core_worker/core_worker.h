@@ -482,7 +482,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// In-memory store interface.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
+  CoreWorkerMemoryStoreProvider memory_store_provider_;
 
   ///
   /// Fields related to task submission.
