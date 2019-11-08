@@ -352,10 +352,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                                   &result_map, &got_exception));
     for (const auto &id : promoted_plasma_ids) {
       auto it = result_map.find(id);
-      if (it != result_map.end()) {
+      if (it == result_map.end()) {
+        result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
+      } else {
         result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
-        result_map.erase(id);
       }
+      result_map.erase(id);
     }
     for (const auto &pair : result_map) {
       RAY_CHECK(!pair.second->IsInPlasmaError());
@@ -739,13 +741,13 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
       continue;
     }
     if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i]).ok()) {
-        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
+      if (!Seal(return_ids[i].WithTransportType(TaskTransportType::RAYLET)).ok()) {
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
     } else if (!worker_context_.CurrentTaskIsDirectCall()) {
       if (!Put(*return_objects->at(i), return_ids[i]).ok()) {
-        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to put object "
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
       }
     }
