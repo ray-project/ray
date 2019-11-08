@@ -34,14 +34,14 @@ TEST(StreamingMockTransfer, mock_produce_consume) {
   EXPECT_EQ(status, StreamingStatus::NoSuchItem);
 }
 
-class StreamingExchangeTest : public ::testing::Test {
+class StreamingTransferTest : public ::testing::Test {
  public:
-  StreamingExchangeTest() {
+  StreamingTransferTest() {
     writer = std::make_shared<StreamingWriter>();
     reader = std::make_shared<StreamingReader>();
   }
-  virtual ~StreamingExchangeTest() = default;
-  void InitExchange(int channel_num = 1) {
+  virtual ~StreamingTransferTest() = default;
+  void InitTransfer(int channel_num = 1) {
     for (int i = 0; i < channel_num; ++i) {
       queue_vec.push_back(ObjectID::FromRandom());
     }
@@ -50,7 +50,7 @@ class StreamingExchangeTest : public ::testing::Test {
     writer->Init(queue_vec, channel_id_vec, queue_size_vec);
     reader->Init(queue_vec, channel_id_vec, queue_size_vec, -1);
   }
-  void DestroyExchange() {
+  void DestroyTransfer() {
     writer.reset();
     reader.reset();
   }
@@ -61,8 +61,8 @@ class StreamingExchangeTest : public ::testing::Test {
   std::vector<ObjectID> queue_vec;
 };
 
-TEST_F(StreamingExchangeTest, exchange_single_channel_test) {
-  InitExchange();
+TEST_F(StreamingTransferTest, exchange_single_channel_test) {
+  InitTransfer();
   writer->Run();
   uint8_t data[4] = {1, 2, 3, 0xff};
   uint32_t data_size = 4;
@@ -75,9 +75,9 @@ TEST_F(StreamingExchangeTest, exchange_single_channel_test) {
   EXPECT_EQ(std::memcmp(message->RawData(), data, data_size), 0);
 }
 
-TEST_F(StreamingExchangeTest, exchange_multichannel_test) {
+TEST_F(StreamingTransferTest, exchange_multichannel_test) {
   int channel_num = 4;
-  InitExchange(4);
+  InitTransfer(4);
   writer->Run();
   for (int i = 0; i < channel_num; ++i) {
     uint8_t data[4] = {1, 2, 3, (uint8_t)i};
@@ -91,6 +91,38 @@ TEST_F(StreamingExchangeTest, exchange_multichannel_test) {
     auto &message = message_list.front();
     EXPECT_EQ(std::memcmp(message->RawData(), data, data_size), 0);
   }
+}
+
+TEST_F(StreamingTransferTest, exchange_consumed_test) {
+  InitTransfer();
+  writer->Run();
+  uint32_t data_size = 8196;
+  std::shared_ptr<uint8_t> data(new uint8_t[data_size]);
+  auto func = [data, data_size](int index) { std::fill_n(data.get(), data_size, index); };
+
+  int num = 10000;
+  std::thread write_thread([this, data, data_size, &func, num]() {
+    for (uint32_t i = 0; i < num; ++i) {
+      func(i);
+      writer->WriteMessageToBufferRing(queue_vec[0], data.get(), data_size);
+    }
+  });
+
+  std::list<StreamingMessagePtr> read_message_list;
+  while (read_message_list.size() < num) {
+    std::shared_ptr<StreamingReaderBundle> msg;
+    reader->GetBundle(5000, msg);
+    StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
+    auto &message_list = bundle_ptr->GetMessageList();
+    std::copy(message_list.begin(), message_list.end(),
+              std::back_inserter(read_message_list));
+  }
+  int index = 0;
+  for (auto &message : read_message_list) {
+    func(index++);
+    EXPECT_EQ(std::memcmp(message->RawData(), data.get(), data_size), 0);
+  }
+  write_thread.join();
 }
 
 int main(int argc, char **argv) {

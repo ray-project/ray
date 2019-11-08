@@ -17,10 +17,9 @@
 namespace ray {
 namespace streaming {
 
-/// Since limitation of streaming-queue, we mayn't sent queue item 
+/// Since limitation of streaming-queue, we mayn't sent queue item
 /// successful once, so streaming transient buffer is token for
 /// transient memory util messages are accpeted by streaming-queue.
-
 
 class StreamingTransientBuffer {
  private:
@@ -63,10 +62,10 @@ class StreamingTransientBuffer {
     transient_buffer_size_ = 0;
     transient_flag_ = false;
 
-    // Transient buffer always holds max size buffer among all messages, which is wasteful.
-    // So expiration time is considerable idea to release large buffer if this transient
-    // buffer pointer hold it in long time.
-    
+    // Transient buffer always holds max size buffer among all messages, which is
+    // wasteful. So expiration time is considerable idea to release large buffer if this
+    // transient buffer pointer hold it in long time.
+
     if (is_force) {
       max_transient_buffer_size_ = 0;
       transient_buffer_.reset();
