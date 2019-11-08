@@ -284,6 +284,8 @@ class SerializationContext(object):
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return UnreconstructableError(ray.ObjectID(object_id.binary()))
             else:
+                assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
+                    "Tried to get object that has been promoted to plasma."
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
             try:
