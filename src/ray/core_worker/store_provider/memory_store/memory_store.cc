@@ -139,7 +139,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
     auto async_callback_it = object_async_get_requests_.find(object_id);
     if (async_callback_it != object_async_get_requests_.end()) {
       auto &callbacks = async_callback_it->second;
-      async_callbacks.insert(async_callbacks.begin(), callbacks.begin(), callbacks.end());
+      async_callbacks = std::move(callbacks);
       object_async_get_requests_.erase(async_callback_it);
     }
 

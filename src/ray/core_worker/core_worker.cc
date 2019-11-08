@@ -163,7 +163,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
-  // TODO(edoakes): why don't we just share the memory store provider?
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*client_call_manager_,
                                              memory_store_provider_));
