@@ -1,5 +1,5 @@
 #include <cstdlib>
-#include "org_ray_streaming_queue_impl_QueueConsumerImpl.h"
+#include "org_ray_streaming_runtime_queue_impl_QueueConsumerImpl.h"
 #include "streaming_writer.h"
 #include "streaming_jni_common.h"
 #include "streaming_reader.h"
@@ -7,7 +7,7 @@
 using namespace ray::streaming;
 using namespace ray;
 
-JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_getBundleNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_queue_impl_QueueConsumerImpl_getBundleNative
     (JNIEnv *env, jobject, jlong ptr, jlong timeoutMillis, jlong out, jlong meta_addr) {
   std::shared_ptr<ray::streaming::StreamingReaderBundle> msg;
   auto reader = reinterpret_cast<ray::streaming::StreamingReader *>(ptr);
@@ -44,13 +44,13 @@ JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_getBu
   std::memcpy(meta + kMessageBundleHeaderSize, msg->from.Data(), kUniqueIDSize);
 }
 
-JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_stopConsumerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_queue_impl_QueueConsumerImpl_stopConsumerNative
         (JNIEnv *env, jobject thisObj, jlong ptr) {
   auto reader = reinterpret_cast<StreamingReader *>(ptr);
   reader->Stop();
 }
 
-JNIEXPORT void JNICALL Java_org_ray_streaming_queue_impl_QueueConsumerImpl_closeConsumerNative
+JNIEXPORT void JNICALL Java_org_ray_streaming_runtime_queue_impl_QueueConsumerImpl_closeConsumerNative
     (JNIEnv *env, jobject thisObj, jlong ptr) {
   delete reinterpret_cast<StreamingReader *>(ptr);
 }

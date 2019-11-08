@@ -2,7 +2,7 @@
 #include <sstream>
 #include <string>
 
-#include "org_ray_streaming_queue_impl_StreamingQueueLinkImpl.h"
+#include "org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl.h"
 #include "streaming_reader.h"
 #include "streaming_jni_common.h"
 #include "queue/streaming_queue_client.h"
@@ -10,7 +10,7 @@
 using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
+Java_org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl_newConsumer(
     JNIEnv *env, jobject this_obj,
     jlong core_worker, jobjectArray actor_id_array,
     jobject async_func, jobject sync_func,
@@ -48,7 +48,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newConsumer(
 }
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
+Java_org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl_newProducer(
     JNIEnv *env, jobject this_obj,
     jlong core_worker, jobjectArray actor_id_vec,
     jobject async_func, jobject sync_func,
@@ -110,7 +110,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newProducer(
 
 
 JNIEXPORT jlong JNICALL 
-Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newMessageHandler(
+Java_org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl_newMessageHandler(
     JNIEnv *env, jobject this_obj, jlong core_worker) {
   ray::CoreWorker* core_worker_ptr = reinterpret_cast<ray::CoreWorker*>(core_worker);
   STREAMING_CHECK(nullptr != core_worker_ptr);
@@ -122,7 +122,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_newMessageHandler(
 }
 
 JNIEXPORT void JNICALL 
-Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransfer(
+Java_org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl_onQueueTransfer(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
   STREAMING_LOG(INFO) << "Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransfer";
   QueueClient* client = reinterpret_cast<QueueClient*>(ptr);
@@ -140,7 +140,7 @@ Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransfer(
 }
 
 JNIEXPORT jbyteArray JNICALL 
-Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransferSync(
+Java_org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl_onQueueTransferSync(
     JNIEnv *env, jobject this_obj, jlong ptr, jbyteArray bytes) {
   STREAMING_LOG(INFO) << "Java_org_ray_streaming_queue_impl_StreamingQueueLinkImpl_onQueueTransferSync";
   QueueClient* client = reinterpret_cast<QueueClient*>(ptr);
