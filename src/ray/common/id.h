@@ -44,7 +44,7 @@ using ObjectIDFlagsType = uint16_t;
 using ObjectIDIndexType = uint32_t;
 
 // Declaration.
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
+uint64_t MurmurHash64B (const void * key, int len, uint64_t seed);
 
 // Change the compiler alignment to 1 byte (default is 8).
 #pragma pack(push, 1)
@@ -425,7 +425,7 @@ size_t BaseID<T>::Hash() const {
   // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
   // default value 0)
   if (!hash_) {
-    hash_ = MurmurHash64A(Data(), T::Size(), 0);
+    hash_ = MurmurHash64B(Data(), T::Size(), 0);
   }
   return hash_;
 }
