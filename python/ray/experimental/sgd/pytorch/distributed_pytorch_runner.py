@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
-import os
 import torch.distributed as dist
 import torch.utils.data
 
@@ -15,27 +14,15 @@ logger = logging.getLogger(__name__)
 class DistributedPyTorchRunner(PyTorchRunner):
     """Manages a distributed PyTorch model replica."""
 
-    def __init__(self,
-                 model_creator,
-                 data_creator,
-                 optimizer_creator,
-                 config=None,
-                 batch_size=16,
-                 backend="gloo"):
+    def __init__(self, *args, backend="gloo", **kwargs):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
-            data_creator (dict -> Dataset, Dataset):  see pytorch_trainer.py.
-            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
-                see pytorch_trainer.py.
-            config (dict):  see pytorch_trainer.py.
-            batch_size (int): batch size used by one replica for an update.
-            backend (string):  see pytorch_trainer.py.
+            args: Arguments for the PyTorchRunner.
+            kwargs: Keyword arguments for the PyTorchRunner.
+            backend (string): backend used by distributed PyTorch.
         """
-
-        super(DistributedPyTorchRunner, self).__init__(
-            model_creator, data_creator, optimizer_creator, config, batch_size)
+        super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -50,7 +37,6 @@ class DistributedPyTorchRunner(PyTorchRunner):
         self._setup_training()
 
     def _setup_distributed_pytorch(self, url, world_rank, world_size):
-        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
             logger.debug(
@@ -67,54 +53,34 @@ class DistributedPyTorchRunner(PyTorchRunner):
         logger.debug("Creating model")
         self.model = self.model_creator(self.config)
         if torch.cuda.is_available():
-            self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model.cuda())
-        else:
-            self.model = torch.nn.parallel.DistributedDataParallelCPU(
-                self.model)
+            self.model = self.model.cuda()
+        self.model = torch.nn.parallel.DistributedDataParallel(self.model)
 
-        logger.debug("Creating optimizer")
-        self.criterion, self.optimizer = self.optimizer_creator(
-            self.model, self.config)
+        logger.debug("Creating optimizer.")
+        self.optimizer = self.optimizer_creator(self.model, self.config)
+        self.criterion = self.loss_creator(self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
-        self.training_set, self.validation_set = self.data_creator(self.config)
-
-        # TODO: make num_workers configurable
-        self.train_sampler = torch.utils.data.distributed.DistributedSampler(
-            self.training_set)
-        self.train_loader = torch.utils.data.DataLoader(
-            self.training_set,
-            batch_size=self.batch_size,
-            shuffle=(self.train_sampler is None),
-            num_workers=2,
-            pin_memory=False,
-            sampler=self.train_sampler)
-
-        self.validation_sampler = (
-            torch.utils.data.distributed.DistributedSampler(
-                self.validation_set))
-        self.validation_loader = torch.utils.data.DataLoader(
-            self.validation_set,
-            batch_size=self.batch_size,
-            shuffle=(self.validation_sampler is None),
-            num_workers=2,
-            pin_memory=False,
-            sampler=self.validation_sampler)
+        self.train_loader, self.validation_loader = self.data_creator(
+            self.batch_size, self.config)
 
     def step(self):
-        """Runs a training epoch and updates the model parameters."""
+        """Runs a training epoch and updates the model parameters.
+
+        Automatically sets epoch of sampler if possible.
+        """
         logger.debug("Starting step")
-        self.train_sampler.set_epoch(self.epoch)
+        if hasattr(self.train_loader.sampler, "set_epoch"):
+            self.train_loader.sampler.set_epoch(self.epoch)
         return super(DistributedPyTorchRunner, self).step()
 
     def get_state(self):
         """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
-            "model": self.model.module.state_dict(),
+            "model": self.model.module.cpu().state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "stats": self.stats()
         }

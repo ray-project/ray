@@ -5,21 +5,12 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-bool HasByReferenceArgs(const TaskSpecification &spec) {
-  for (size_t i = 0; i < spec.NumArgs(); ++i) {
-    if (spec.ArgIdCount(i) > 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service,
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
     : io_service_(io_service),
       client_call_manager_(io_service),
-      store_provider_(std::move(store_provider)) {}
+      in_memory_store_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
@@ -31,7 +22,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   const auto task_id = task_spec.TaskId();
   const auto num_returns = task_spec.NumReturns();
 
-  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+  auto request = std::unique_ptr<rpc::DirectActorAssignTaskRequest>(
+      new rpc::DirectActorAssignTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
@@ -57,7 +49,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
+    DirectActorAssignTask(*client, std::move(request), actor_id, task_id, num_returns);
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -114,8 +106,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
-  std::shared_ptr<rpc::DirectActorClient> grpc_client =
-      rpc::DirectActorClient::make(ip_address, port, client_call_manager_);
+  std::shared_ptr<rpc::WorkerTaskClient> grpc_client =
+      std::make_shared<rpc::WorkerTaskClient>(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.
@@ -125,20 +117,22 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     auto request = std::move(requests.front());
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
+    DirectActorAssignTask(*client, std::move(request), actor_id, task_id, num_returns);
     requests.pop_front();
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushTask(
-    rpc::DirectActorClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
-    const ActorID &actor_id, const TaskID &task_id, int num_returns) {
+void CoreWorkerDirectActorTaskSubmitter::DirectActorAssignTask(
+    rpc::WorkerTaskClient &client,
+    std::unique_ptr<rpc::DirectActorAssignTaskRequest> request, const ActorID &actor_id,
+    const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
-  auto status = client.PushTask(
-      std::move(request), [this, actor_id, task_id, num_returns](
-                              Status status, const rpc::PushTaskReply &reply) {
+  auto status = client.DirectActorAssignTask(
+      std::move(request),
+      [this, actor_id, task_id, num_returns](
+          Status status, const rpc::DirectActorAssignTaskReply &reply) {
         {
           std::unique_lock<std::mutex> guard(mutex_);
           waiting_reply_tasks_[actor_id].erase(task_id);
@@ -153,22 +147,34 @@ void CoreWorkerDirectActorTaskSubmitter::PushTask(
         for (int i = 0; i < reply.return_objects_size(); i++) {
           const auto &return_object = reply.return_objects(i);
           ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-          std::shared_ptr<LocalMemoryBuffer> data_buffer;
-          if (return_object.data().size() > 0) {
-            data_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.data().data())),
-                return_object.data().size());
+
+          if (return_object.in_plasma()) {
+            // Mark it as in plasma with a dummy object.
+            std::string meta =
+                std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+            auto metadata =
+                const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+            auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+            RAY_CHECK_OK(
+                in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+          } else {
+            std::shared_ptr<LocalMemoryBuffer> data_buffer;
+            if (return_object.data().size() > 0) {
+              data_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.data().data())),
+                  return_object.data().size());
+            }
+            std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+            if (return_object.metadata().size() > 0) {
+              metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
+                  return_object.metadata().size());
+            }
+            RAY_CHECK_OK(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer),
+                                               object_id));
           }
-          std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-          if (return_object.metadata().size() > 0) {
-            metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-                return_object.metadata().size());
-          }
-          RAY_CHECK_OK(
-              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   if (!status.ok()) {
@@ -187,7 +193,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
@@ -203,12 +209,9 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     rpc::GrpcServer &server, const TaskHandler &task_handler,
     const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
-      task_service_(main_io_service, *this),
       task_handler_(task_handler),
       exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {
-  server.RegisterService(task_service_);
-}
+      task_main_io_service_(main_io_service) {}
 
 void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
@@ -223,9 +226,9 @@ void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurren
   }
 }
 
-void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
-    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void CoreWorkerDirectActorTaskReceiver::HandleDirectActorAssignTask(
+    const rpc::DirectActorAssignTaskRequest &request,
+    rpc::DirectActorAssignTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
@@ -266,31 +269,38 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         // TODO(edoakes): resource IDs are currently kept track of in the raylet,
         // need to come up with a solution for this.
         ResourceMappingType resource_ids;
-        std::vector<std::shared_ptr<RayObject>> return_by_value;
-        auto status = task_handler_(task_spec, resource_ids, &return_by_value);
+        std::vector<std::shared_ptr<RayObject>> return_objects;
+        auto status = task_handler_(task_spec, resource_ids, &return_objects);
         if (status.IsSystemExit()) {
-          // In Python, SystemExit cannot be raised except on the main thread. To work
+          // In Python, SystemExit can only be raised on the main thread. To work
           // around this when we are executing tasks on worker threads, we re-post the
           // exit event explicitly on the main thread.
           task_main_io_service_.post([this]() { exit_handler_(); });
           return;
         }
-        RAY_CHECK(return_by_value.size() == num_returns)
-            << return_by_value.size() << "  " << num_returns;
+        RAY_CHECK(return_objects.size() == num_returns)
+            << return_objects.size() << "  " << num_returns;
 
-        for (size_t i = 0; i < return_by_value.size(); i++) {
+        for (size_t i = 0; i < return_objects.size(); i++) {
           auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
           return_object->set_object_id(id.Binary());
-          const auto &result = return_by_value[i];
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
+
+          // The object is nullptr if it already existed in the object store.
+          const auto &result = return_objects[i];
+          if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+            return_object->set_in_plasma(true);
+          } else {
+            if (result->GetData() != nullptr) {
+              return_object->set_data(result->GetData()->Data(),
+                                      result->GetData()->Size());
+            }
+            if (result->GetMetadata() != nullptr) {
+              return_object->set_metadata(result->GetMetadata()->Data(),
+                                          result->GetMetadata()->Size());
+            }
           }
         }
 

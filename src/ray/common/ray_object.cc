@@ -19,4 +19,13 @@ bool RayObject::IsException() {
   return false;
 }
 
+bool RayObject::IsInPlasmaError() {
+  if (metadata_ == nullptr) {
+    return false;
+  }
+  const std::string metadata(reinterpret_cast<const char *>(metadata_->Data()),
+                             metadata_->Size());
+  return metadata == std::to_string(ray::rpc::ErrorType::OBJECT_IN_PLASMA);
+}
+
 }  // namespace ray
