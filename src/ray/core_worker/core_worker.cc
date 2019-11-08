@@ -489,7 +489,7 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnId(i), task_deps);
+      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
     }
   }
 
