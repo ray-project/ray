@@ -10,7 +10,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
     : io_service_(io_service),
       client_call_manager_(io_service),
-      store_provider_(std::move(store_provider)) {}
+      in_memory_store_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
@@ -147,22 +147,34 @@ void CoreWorkerDirectActorTaskSubmitter::DirectActorAssignTask(
         for (int i = 0; i < reply.return_objects_size(); i++) {
           const auto &return_object = reply.return_objects(i);
           ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-          std::shared_ptr<LocalMemoryBuffer> data_buffer;
-          if (return_object.data().size() > 0) {
-            data_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.data().data())),
-                return_object.data().size());
+
+          if (return_object.in_plasma()) {
+            // Mark it as in plasma with a dummy object.
+            std::string meta =
+                std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+            auto metadata =
+                const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+            auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+            RAY_CHECK_OK(
+                in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+          } else {
+            std::shared_ptr<LocalMemoryBuffer> data_buffer;
+            if (return_object.data().size() > 0) {
+              data_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.data().data())),
+                  return_object.data().size());
+            }
+            std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+            if (return_object.metadata().size() > 0) {
+              metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
+                  return_object.metadata().size());
+            }
+            RAY_CHECK_OK(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer),
+                                               object_id));
           }
-          std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-          if (return_object.metadata().size() > 0) {
-            metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-                return_object.metadata().size());
-          }
-          RAY_CHECK_OK(
-              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   if (!status.ok()) {
@@ -181,7 +193,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
@@ -257,8 +269,8 @@ void CoreWorkerDirectActorTaskReceiver::HandleDirectActorAssignTask(
         // TODO(edoakes): resource IDs are currently kept track of in the raylet,
         // need to come up with a solution for this.
         ResourceMappingType resource_ids;
-        std::vector<std::shared_ptr<RayObject>> return_by_value;
-        auto status = task_handler_(task_spec, resource_ids, &return_by_value);
+        std::vector<std::shared_ptr<RayObject>> return_objects;
+        auto status = task_handler_(task_spec, resource_ids, &return_objects);
         if (status.IsSystemExit()) {
           // In Python, SystemExit can only be raised on the main thread. To work
           // around this when we are executing tasks on worker threads, we re-post the
@@ -266,22 +278,29 @@ void CoreWorkerDirectActorTaskReceiver::HandleDirectActorAssignTask(
           task_main_io_service_.post([this]() { exit_handler_(); });
           return;
         }
-        RAY_CHECK(return_by_value.size() == num_returns)
-            << return_by_value.size() << "  " << num_returns;
+        RAY_CHECK(return_objects.size() == num_returns)
+            << return_objects.size() << "  " << num_returns;
 
-        for (size_t i = 0; i < return_by_value.size(); i++) {
+        for (size_t i = 0; i < return_objects.size(); i++) {
           auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
           return_object->set_object_id(id.Binary());
-          const auto &result = return_by_value[i];
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
+
+          // The object is nullptr if it already existed in the object store.
+          const auto &result = return_objects[i];
+          if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+            return_object->set_in_plasma(true);
+          } else {
+            if (result->GetData() != nullptr) {
+              return_object->set_data(result->GetData()->Data(),
+                                      result->GetData()->Size());
+            }
+            if (result->GetMetadata() != nullptr) {
+              return_object->set_metadata(result->GetMetadata()->Data(),
+                                          result->GetMetadata()->Size());
+            }
           }
         }
 

@@ -64,6 +64,10 @@ class RayObject {
   /// Whether the object represents an exception.
   bool IsException();
 
+  /// Whether the object has been promoted to plasma (i.e., since it was too
+  /// large to return directly as part of a gRPC response).
+  bool IsInPlasmaError();
+
  private:
   std::shared_ptr<Buffer> data_;
   std::shared_ptr<Buffer> metadata_;

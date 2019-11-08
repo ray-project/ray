@@ -95,7 +95,7 @@ std::vector<Task> MakeTaskChain(int chain_size,
     task_chain.push_back(task);
     arguments.clear();
     for (size_t j = 0; j < task.GetTaskSpecification().NumReturns(); j++) {
-      arguments.push_back(task.GetTaskSpecification().ReturnId(j));
+      arguments.push_back(task.GetTaskSpecification().ReturnIdForPlasma(j));
     }
   }
   return task_chain;
@@ -245,7 +245,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskChain) {
     auto task = tasks.front();
     tasks.erase(tasks.begin());
     TaskID task_id = task.GetTaskSpecification().TaskId();
-    auto return_id = task.GetTaskSpecification().ReturnId(0);
+    auto return_id = task.GetTaskSpecification().ReturnIdForPlasma(0);
 
     task_dependency_manager_.UnsubscribeGetDependencies(task_id);
     // Simulate the object notifications for the task's return values.
@@ -305,7 +305,7 @@ TEST_F(TaskDependencyManagerTest, TestTaskForwarding) {
   // Get the first task.
   const auto task = tasks.front();
   TaskID task_id = task.GetTaskSpecification().TaskId();
-  ObjectID return_id = task.GetTaskSpecification().ReturnId(0);
+  ObjectID return_id = task.GetTaskSpecification().ReturnIdForPlasma(0);
   // Simulate forwarding the first task to a remote node.
   task_dependency_manager_.UnsubscribeGetDependencies(task_id);
   // The object returned by the first task should be considered remote once we
@@ -444,7 +444,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   // runnable.
   auto task = tasks.front();
   TaskID task_id = task.GetTaskSpecification().TaskId();
-  auto return_id = task.GetTaskSpecification().ReturnId(0);
+  auto return_id = task.GetTaskSpecification().ReturnIdForPlasma(0);
   task_dependency_manager_.UnsubscribeGetDependencies(task_id);
   // Simulate the object notifications for the task's return values.
   auto ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
@@ -469,7 +469,7 @@ TEST_F(TaskDependencyManagerTest, TestRemoveTasksAndRelatedObjects) {
   // Simulate the object notifications for the second task's return values.
   // Make sure that this does not return the third task, which should have been
   // removed.
-  return_id = tasks[1].GetTaskSpecification().ReturnId(0);
+  return_id = tasks[1].GetTaskSpecification().ReturnIdForPlasma(0);
   ready_tasks = task_dependency_manager_.HandleObjectLocal(return_id);
   ASSERT_TRUE(ready_tasks.empty());
 }
