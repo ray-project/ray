@@ -146,14 +146,14 @@ cdef class ObjectID(BaseID):
         # TODO(edoakes): there are dummy object IDs being created in
         # includes/task.pxi before the core worker is initialized.
         if hasattr(worker, "core_worker"):
-            worker.core_worker.add_active_object_id(self)
+            worker.core_worker.add_object_id_reference(self)
             self.in_core_worker = True
 
     def __dealloc__(self):
         if self.in_core_worker:
             try:
                 worker = ray.worker.global_worker
-                worker.core_worker.remove_active_object_id(self)
+                worker.core_worker.remove_object_id_reference(self)
             except Exception as e:
                 # There is a strange error in rllib that causes the above to
                 # fail. Somehow the global 'ray' variable corresponding to the

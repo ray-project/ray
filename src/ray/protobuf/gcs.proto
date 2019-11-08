@@ -283,4 +283,8 @@ enum ErrorType {
   OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
+  // Indicates that the object has been placed in plasma. This error shouldn't ever be
+  // exposed to user code; it is only used internally to indicate the result of a direct
+  // call has been placed in plasma.
+  OBJECT_IN_PLASMA = 4;
 }

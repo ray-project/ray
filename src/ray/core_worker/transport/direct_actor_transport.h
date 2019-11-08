@@ -113,7 +113,7 @@ class CoreWorkerDirectActorTaskSubmitter : public DirectActorClientsInterface {
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
+  std::unique_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
 };
 
 /// Object dependency and RPC state of an inbound request.
@@ -318,7 +318,7 @@ class CoreWorkerDirectActorTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_by_value)>;
+      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
                                     boost::asio::io_service &main_io_service,

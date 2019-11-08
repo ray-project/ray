@@ -3,7 +3,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
@@ -12,6 +11,7 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
@@ -98,13 +98,19 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  // Add this object ID to the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void AddActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  /// Increase the reference count for this object ID.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
+  void AddObjectIDReference(const ObjectID &object_id) {
+    reference_counter_.AddReference(object_id);
+  }
 
-  // Remove this object ID from the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void RemoveActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  /// Decrease the reference count for this object ID.
+  ///
+  /// \param[in] object_id The object ID to decrease the reference count for.
+  void RemoveObjectIDReference(const ObjectID &object_id) {
+    reference_counter_.RemoveReference(object_id);
+  }
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -171,7 +177,7 @@ class CoreWorker {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+  Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Return whether or not the object store contains the given object.
@@ -192,8 +198,8 @@ class CoreWorker {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, std::vector<bool> *results);
+  Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
+              const int64_t timeout_ms, std::vector<bool> *results);
 
   /// Delete a list of objects from the object store.
   ///
@@ -344,11 +350,14 @@ class CoreWorker {
   void Shutdown();
 
   /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
+  void ReportActiveObjectIDs();
 
   ///
   /// Private methods related to task submission.
   ///
+
+  /// Submit the task to the raylet and add its dependencies to the reference counter.
+  Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
 
   /// Subscribe to GCS updates about an actor. This should be called for all
   /// actors that we have a reference to.
@@ -369,7 +378,7 @@ class CoreWorker {
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const ResourceMappingType &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *return_by_value);
+                     std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
@@ -443,21 +452,8 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
-  ///
-  /// Fields related to ref counting objects.
-  ///
-
-  /// Protects access to the set of active object ids. Since this set is updated
-  /// very frequently, it is faster to lock around accesses rather than serialize
-  /// accesses via the event loop.
-  absl::Mutex object_ref_mu_;
-
-  /// Set of object IDs that are in scope in the language worker.
-  absl::flat_hash_set<ObjectID> active_object_ids_ GUARDED_BY(object_ref_mu_);
-
-  /// Indicates whether or not the active_object_ids map has changed since the
-  /// last time it was sent to the raylet.
-  bool active_object_ids_updated_ GUARDED_BY(object_ref_mu_) = false;
+  // Keeps track of object ID reference counts.
+  ReferenceCounter reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.

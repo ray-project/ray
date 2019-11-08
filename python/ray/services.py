@@ -12,10 +12,10 @@ import resource
 import socket
 import subprocess
 import sys
-import textwrap
 import time
 import redis
 
+import colorama
 import pyarrow
 # Ray modules
 import ray
@@ -1035,21 +1035,11 @@ def start_dashboard(host,
         ray_constants.PROCESS_TYPE_DASHBOARD,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}".format(
-        host if host == "127.0.0.1" else get_node_ip_address(), port)
-    print("\n" + "=" * 70)
-    print("View the dashboard at {}.".format(dashboard_url))
-    if host == "127.0.0.1":
-        note = (
-            "Note: If Ray is running on a remote node, you will need to set "
-            "up an SSH tunnel with local port forwarding in order to access "
-            "the dashboard in your browser, e.g. by running "
-            "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can set "
-            "webui_host=\"0.0.0.0\" in the call to ray.init() to allow direct "
-            "access from external machines.")
-        note = note.format(port, host, port)
-        print("\n".join(textwrap.wrap(note, width=70)))
-    print("=" * 70 + "\n")
+    dashboard_url = "{}:{}".format(
+        host if host != "0.0.0.0" else get_node_ip_address(), port)
+    logger.info("View the Ray dashboard at {}{}{}{}{}.".format(
+        colorama.Style.BRIGHT, colorama.Fore.GREEN, dashboard_url,
+        colorama.Fore.RESET, colorama.Style.NORMAL))
     return dashboard_url, process_info
 
 
