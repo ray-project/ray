@@ -138,6 +138,7 @@ class SerializationContext(object):
 
     def __init__(self, worker):
         self.worker = worker
+        self.use_pickle = worker.use_pickle
 
         def actor_handle_serializer(obj):
             return obj._serialization_helper(True)
@@ -261,6 +262,10 @@ class SerializationContext(object):
     def _deserialize_object_from_arrow(self, data, metadata, object_id):
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
+                if not self.use_pickle:
+                    raise ValueError("Receiving pickle5 serialized objects "
+                                     "while the serialization context is "
+                                     "using pyarrow as the backend.")
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
                     if len(buffers) > 0:
@@ -288,6 +293,10 @@ class SerializationContext(object):
                     "Tried to get object that has been promoted to plasma."
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
+            if self.use_pickle:
+                raise ValueError("Receiving plasma serialized objects "
+                                 "while the serialization context is "
+                                 "using pickle5 as the backend.")
             try:
                 # If data is not empty, deserialize the object.
                 return pyarrow.deserialize(data, self.pyarrow_context)
@@ -354,6 +363,7 @@ class SerializationContext(object):
                             data_metadata_pairs,
                             object_ids,
                             error_timeout=10):
+        pass
         assert len(data_metadata_pairs) == len(object_ids)
 
         start_time = time.time()
