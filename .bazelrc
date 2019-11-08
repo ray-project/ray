@@ -20,4 +20,5 @@ build:asan --copt -O2
 build:asan --copt -g
 build:asan --copt -fno-omit-frame-pointer
 build:asan --linkopt -fsanitize=address
+build:asan --linkopt -fsanitize=undefined
 build:asan --copt -Wno-macro-redefined
