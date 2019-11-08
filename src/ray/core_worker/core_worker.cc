@@ -1,7 +1,9 @@
-#include "ray/core_worker/core_worker.h"
+#include <cstdlib>
+
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace {
@@ -141,8 +143,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
   if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
-    heartbeat_timer_.expires_from_now(boost::asio::chrono::milliseconds(
-        RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
+    // Seed using current time.
+    std::srand(std::time(nullptr));
+    // Randomly choose a time from [0, timeout]) to send the first heartbeat to avoid all
+    // workers sending heartbeats at the same time.
+    int64_t heartbeat_timeout =
+        std::rand() % RayConfig::instance().worker_heartbeat_timeout_milliseconds();
+    heartbeat_timer_.expires_from_now(
+        boost::asio::chrono::milliseconds(heartbeat_timeout));
     heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   }
 
@@ -230,40 +238,19 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   }
 }
 
-void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  active_object_ids_.insert(object_id);
-  active_object_ids_updated_ = true;
-}
-
-void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  if (active_object_ids_.erase(object_id)) {
-    active_object_ids_updated_ = true;
-  } else {
-    RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
-  }
-}
-
 void CoreWorker::ReportActiveObjectIDs() {
-  absl::MutexLock lock(&object_ref_mu_);
-  // Only send a heartbeat when the set of active object IDs has changed because the
-  // raylet only modifies the set of IDs when it receives a heartbeat.
-  // TODO(edoakes): this is currently commented out because this heartbeat causes the
-  // workers to die when the raylet crashes unexpectedly. Without this, they could
-  // hang idle forever because they wait for the raylet to push tasks via gRPC.
-  // if (active_object_ids_updated_) {
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-  if (active_object_ids_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
-    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+  std::unordered_set<ObjectID> active_object_ids =
+      reference_counter_.GetAllInScopeObjectIDs();
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
+  if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << active_object_ids.size() << "object IDs are currently in scope. "
                      << "This may lead to required objects being garbage collected.";
   }
-  std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
-  if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
+
+  if (!raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
   }
-  // }
 
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
@@ -271,7 +258,6 @@ void CoreWorker::ReportActiveObjectIDs() {
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
-  active_object_ids_updated_ = false;
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -450,6 +436,33 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
+Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
+  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(task_spec));
+
+  size_t num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+    num_returns--;
+  }
+
+  std::shared_ptr<std::vector<ObjectID>> task_deps =
+      std::make_shared<std::vector<ObjectID>>();
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        task_deps->push_back(task_spec.ArgId(i, j));
+      }
+    }
+  }
+
+  if (task_deps->size() > 0) {
+    for (size_t i = 0; i < num_returns; i++) {
+      reference_counter_.SetDependencies(task_spec.ReturnId(i), task_deps);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
@@ -463,7 +476,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
                       {}, TaskTransportType::RAYLET, return_ids);
-  return raylet_client_->SubmitTask(builder.Build());
+  return SubmitTaskToRaylet(builder.Build());
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -494,9 +507,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
 
-  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(builder.Build()));
   *return_actor_id = actor_id;
-  return Status::OK();
+  return SubmitTaskToRaylet(builder.Build());
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -534,7 +546,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   if (is_direct_call) {
     status = direct_actor_submitter_->SubmitTask(builder.Build());
   } else {
-    status = raylet_client_->SubmitTask(builder.Build());
+    status = SubmitTaskToRaylet(builder.Build());
   }
   return status;
 }
@@ -697,6 +709,15 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     } else {
       return_by_value->push_back(return_objects[i]);
     }
+  }
+
+  if (task_spec.IsNormalTask() && reference_counter_.NumObjectIDsInScope() != 0) {
+    RAY_LOG(ERROR)
+        << "There were " << reference_counter_.NumObjectIDsInScope()
+        << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
+        << ". This is either caused by keeping references to ObjectIDs in Python between "
+           "tasks (e.g., in global variables) or indicates a problem with Ray's "
+           "reference counting, and may cause problems in the object store.";
   }
 
   SetCurrentTaskId(TaskID::Nil());
