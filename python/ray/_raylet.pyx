@@ -6,6 +6,7 @@
 from cpython.exc cimport PyErr_CheckSignals
 
 import numpy
+import gc
 import threading
 import time
 import logging
@@ -733,6 +734,7 @@ cdef class CoreWorker:
                 if attempt:
                     logger.warning("Waiting {} seconds for space to free up "
                                    "in the object store.".format(delay))
+                    gc.collect()
                     time.sleep(delay)
                     delay *= 2
                 else:
