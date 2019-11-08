@@ -56,7 +56,8 @@ class Cluster(object):
         output_info = ray.init(
             ignore_reinit_error=True,
             address=self.redis_address,
-            redis_password=self.redis_password)
+            redis_password=self.redis_password,
+            use_pickle=True)
         logger.info(output_info)
         self.connected = True
 
@@ -79,9 +80,9 @@ class Cluster(object):
             "num_cpus": 1,
             "num_gpus": 0,
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
-            "use_pickle": True
         }
         ray_params = ray.parameter.RayParams(**node_args)
+        ray_params.use_pickle = True
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
