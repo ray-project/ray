@@ -24,7 +24,7 @@ void BuildCommonTaskSpec(
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
       if (transport_type == ray::TaskTransportType::RAYLET) {
-        RAY_CHECK(!arg.GetReference().IsDirectActorType())
+        RAY_CHECK(!arg.GetReference().IsDirectCallType())
             << "NotImplemented: passing direct call objects to other tasks";
       }
       builder.AddByRefArg(arg.GetReference());
@@ -47,7 +47,7 @@ void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
                                    absl::flat_hash_set<ObjectID> *plasma_object_ids,
                                    absl::flat_hash_set<ObjectID> *memory_object_ids) {
   for (const auto &object_id : object_ids) {
-    if (object_id.IsDirectActorType()) {
+    if (object_id.IsDirectCallType()) {
       memory_object_ids->insert(object_id);
     } else {
       plasma_object_ids->insert(object_id);
@@ -379,7 +379,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
-  if (object_id.IsDirectActorType()) {
+  if (object_id.IsDirectCallType()) {
     // Note that the memory store returns false if the object value is
     // ErrorType::OBJECT_IN_PLASMA.
     RAY_RETURN_NOT_OK(memory_store_provider_.Contains(object_id, &found));

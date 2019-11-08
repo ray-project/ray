@@ -290,7 +290,7 @@ class ObjectID : public BaseID<ObjectID> {
   /// Return if this is a direct actor call object.
   ///
   /// \return True if this is a direct actor object return.
-  bool IsDirectActorType() const {
+  bool IsDirectCallType() const {
     return GetTransportType() == static_cast<uint8_t>(TaskTransportType::DIRECT);
   }
 

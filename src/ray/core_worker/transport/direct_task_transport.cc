@@ -36,7 +36,7 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
     if (count > 0) {
       RAY_CHECK(count <= 1) << "multi args not implemented";
       const auto &id = task.ArgId(i, 0);
-      if (id.IsDirectActorType()) {
+      if (id.IsDirectCallType()) {
         local_dependencies.insert(id);
       }
     }
