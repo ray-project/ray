@@ -102,12 +102,8 @@ if [ -z "$SKIP_PYARROW_INSTALL" ]; then
         --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
 fi
 
-PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}".format(*version))'`
-if [[ "$PYTHON_VERSION" == "3" ]]; then
-  export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
-else
-  export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
-fi
+export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
+export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
