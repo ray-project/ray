@@ -6,6 +6,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+WORKER_SERVICE = "ray-worker-service"
+
 
 def bootstrap_yarn(config):
     return config
