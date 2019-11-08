@@ -1,5 +1,5 @@
 #include "streaming_jni_common.h"
-#include "org_ray_streaming_queue_QueueID.h"
+#include "org_ray_streaming_runtime_queue_QueueID.h"
 using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL Java_org_ray_streaming_runtime_queue_QueueID_createNativeID(

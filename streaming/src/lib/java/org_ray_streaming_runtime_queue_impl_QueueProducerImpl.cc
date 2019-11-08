@@ -1,5 +1,5 @@
 #include <memory>
-#include "org_ray_streaming_queue_impl_QueueProducerImpl.h"
+#include "org_ray_streaming_runtime_queue_impl_QueueProducerImpl.h"
 #include "streaming_jni_common.h"
 
 using namespace ray::streaming;

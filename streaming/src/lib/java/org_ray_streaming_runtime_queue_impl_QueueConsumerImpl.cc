@@ -1,5 +1,5 @@
 #include <cstdlib>
-#include "org_ray_streaming_queue_impl_QueueConsumerImpl.h"
+#include "org_ray_streaming_runtime_queue_impl_QueueConsumerImpl.h"
 #include "streaming_writer.h"
 #include "streaming_jni_common.h"
 #include "streaming_reader.h"

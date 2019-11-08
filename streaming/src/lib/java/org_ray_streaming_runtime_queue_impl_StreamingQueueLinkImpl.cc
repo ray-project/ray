@@ -2,7 +2,7 @@
 #include <sstream>
 #include <string>
 
-#include "org_ray_streaming_queue_impl_StreamingQueueLinkImpl.h"
+#include "org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl.h"
 #include "streaming_reader.h"
 #include "streaming_jni_common.h"
 #include "queue/streaming_queue_client.h"
