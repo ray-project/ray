@@ -73,13 +73,13 @@ class YARNNodeProvider(NodeProvider):
 
     def _create_worker_node(self, node_config, tags, count):
         for _ in range(count):
-            container = self.app_client.add_container("ray-worker")
+            container = self.app_client.add_container(WORKER_SERVICE)
             self.nodes[container.id] = WorkerNode(container, tags)
 
     def create_node(self, node_config, tags, count):
         # todo: does this tag get set here?
-        if (TAG_RAY_NODE_TYPE in tags and
-                tags[TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD):
+        if (TAG_RAY_NODE_TYPE in tags
+                and tags[TAG_RAY_NODE_TYPE] == NODE_TYPE_HEAD):
             assert count == 1, "Can only create one head node."
             self._create_head_node(node_config, tags)
         else:
