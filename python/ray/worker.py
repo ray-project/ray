@@ -720,7 +720,7 @@ def _initialize_serialization(job_id, worker=global_worker):
     pyarrow.register_torch_serialization_handlers(serialization_context)
 
     def id_serializer(obj):
-        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
+        if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
             raise NotImplementedError(
                 "Objects produced by direct actor calls cannot be "
                 "passed to other tasks as arguments.")
