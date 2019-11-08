@@ -59,11 +59,11 @@ class SyncClient(object):
         raise NotImplementedError
 
     def wait(self):
-        """Wait on sync."""
+        """Wait for current sync to complete, if asynchronously started."""
         pass
 
     def reset(self):
-        """Reset state."""
+        """Resets state."""
         pass
 
 
@@ -181,6 +181,11 @@ class Syncer(object):
             self.sync_down()
 
     def sync_up(self):
+        """Attempts to start the sync-up to the remote path.
+
+        Returns:
+            Whether the sync (if feasible) was successfully started.
+        """
         result = False
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
@@ -192,6 +197,11 @@ class Syncer(object):
         return result
 
     def sync_down(self):
+        """Attempts to start the sync-down from the remote path.
+
+        Returns:
+             Whether the sync (if feasible) was successfully started.
+        """
         result = False
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
@@ -210,6 +220,7 @@ class Syncer(object):
         return True
 
     def wait(self):
+        """Waits for the sync client to complete the current sync."""
         self.sync_client.wait()
 
     def reset(self):

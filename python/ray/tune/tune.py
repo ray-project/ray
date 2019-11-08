@@ -119,8 +119,8 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket``).
+        upload_dir (str): Optional URI to sync training results to
+            (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
