@@ -6,10 +6,11 @@ from __future__ import print_function
 from collections import namedtuple
 
 import heapq
+import logging
 import os
 import shutil
 
-from ray.tune.error import TuneError
+logger = logging.getLogger(__name__)
 
 
 class Checkpoint(object):
@@ -102,15 +103,26 @@ class CheckpointManager(object):
                 "set to a key in the result dict.".format(
                     self._checkpoint_score_attr))
 
-        if len(self._best_checkpoints) < self.keep_checkpoints_num:
-            heapq.heappush(self._best_checkpoints, queue_item)
-            self._membership.add(checkpoint)
-        elif queue_item.priority >= self._best_checkpoints[0][0]:
-            _, worst = heapq.heappushpop(self._best_checkpoints, queue_item)
-            self._membership.add(checkpoint)
-            if worst in self._membership:
-                self._membership.remove(worst)
-            worst.delete()
+        try:
+            if len(self._best_checkpoints) < self.keep_checkpoints_num:
+                logger.info("Pushing priority=%s, value=%s",
+                            queue_item.priority,
+                            queue_item.value.value)
+                heapq.heappush(self._best_checkpoints, queue_item)
+                self._membership.add(checkpoint)
+            elif queue_item.priority >= self._best_checkpoints[0][0]:
+                logger.info("Push-pop priority=%s, value=%s",
+                            queue_item.priority,
+                            queue_item.value.value)
+                _, worst = heapq.heappushpop(self._best_checkpoints,
+                                             queue_item)
+                self._membership.add(checkpoint)
+                if worst in self._membership:
+                    self._membership.remove(worst)
+                worst.delete()
+        except Exception:
+            # TODO(ujvl): Identify heapq bug; remove this try-except block.
+            logger.exception("Failed to evaluate checkpoint.")
 
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint not in self._membership:
