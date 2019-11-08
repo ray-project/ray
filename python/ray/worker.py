@@ -417,7 +417,7 @@ class Worker(object):
                     self._deserialize_object_from_arrow(
                         data, metadata, object_id, serialization_context))
                 i += 1
-            except pyarrow.DeserializationCallbackError:
+            except serialization.DeserializationError:
                 # Wait a little bit for the import thread to import the class.
                 # If we currently have the worker lock, we need to release it
                 # so that the import thread can acquire it.
@@ -443,11 +443,14 @@ class Worker(object):
                                        serialization_context):
         if metadata:
             if metadata == ray_constants.PICKLE5_BUFFER_METADATA:
-                in_band, buffers = unpack_pickle5_buffers(data)
-                if len(buffers) > 0:
-                    return pickle.loads(in_band, buffers=buffers)
-                else:
-                    return pickle.loads(in_band)
+                try:
+                    in_band, buffers = unpack_pickle5_buffers(data)
+                    if len(buffers) > 0:
+                        return pickle.loads(in_band, buffers=buffers)
+                    else:
+                        return pickle.loads(in_band)
+                except pickle.PicklingError:
+                    raise serialization.DeserializationError()
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
                 if data is None:
@@ -465,8 +468,11 @@ class Worker(object):
             else:
                 assert False, "Unrecognized error type " + str(error_type)
         elif data:
-            # If data is not empty, deserialize the object.
-            return pyarrow.deserialize(data, serialization_context)
+            try:
+                # If data is not empty, deserialize the object.
+                return pyarrow.deserialize(data, serialization_context)
+            except pyarrow.DeserializationCallbackError:
+                raise serialization.DeserializationError()
         else:
             # Object isn't available in plasma.
             return plasma.ObjectNotAvailable
