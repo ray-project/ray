@@ -24,7 +24,7 @@ sys.path.insert(0, pickle5_path)
 # initialization of grpc if we import pyarrow at first.
 # NOTE(JoeyJiang): See https://github.com/ray-project/ray/issues/5219 for more
 # details.
-import ray._raylet
+import ray._raylet  # noqa: E402
 
 if "pyarrow" in sys.modules:
     raise ImportError("Ray must be imported before pyarrow because Ray "
