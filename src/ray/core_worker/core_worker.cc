@@ -72,7 +72,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       heartbeat_timer_(io_service_),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
-      memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
+      reference_counter_(std::make_shared<ReferenceCounter>()),
+      memory_store_(std::make_shared<CoreWorkerMemoryStore>(
+          RayConfig::instance().ref_counting_enabled() ? reference_counter_ : nullptr)),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       grpc_service_(io_service_, *this) {
@@ -226,7 +228,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 
 void CoreWorker::ReportActiveObjectIDs() {
   std::unordered_set<ObjectID> active_object_ids =
-      reference_counter_.GetAllInScopeObjectIDs();
+      reference_counter_->GetAllInScopeObjectIDs();
   RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
   if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
     RAY_LOG(WARNING) << active_object_ids.size() << "object IDs are currently in scope. "
@@ -489,7 +491,8 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
+      reference_counter_->SetDependencies(
+          task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
     }
   }
 
@@ -747,9 +750,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  if (task_spec.IsNormalTask() && reference_counter_.NumObjectIDsInScope() != 0) {
+  if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
     RAY_LOG(ERROR)
-        << "There were " << reference_counter_.NumObjectIDsInScope()
+        << "There were " << reference_counter_->NumObjectIDsInScope()
         << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
         << ". This is either caused by keeping references to ObjectIDs in Python between "
            "tasks (e.g., in global variables) or indicates a problem with Ray's "

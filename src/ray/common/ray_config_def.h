@@ -34,6 +34,10 @@ RAY_CONFIG(uint64_t, num_heartbeats_warning, 5)
 /// The duration between dumping debug info to logs, or -1 to disable.
 RAY_CONFIG(int64_t, debug_dump_period_milliseconds, 10000)
 
+/// Whether to enable precise refcounting. This is an experimental feature
+/// and currently only handles direct call objects.
+RAY_CONFIG(bool, ref_counting_enabled, true)
+
 /// Whether to enable fair queueing between task classes in raylet. When
 /// fair queueing is enabled, the raylet will try to balance the number
 /// of running tasks by class (i.e., function name). This prevents one

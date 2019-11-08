@@ -37,6 +37,12 @@ class ReferenceCounter {
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
+  /// Return whether this object has an active reference.
+  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Sets or resets the callback to run when an object is deleted.
+  void OnObjectDeleted(std::function<void(const ObjectID &)> callback);
+
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
 
@@ -63,6 +69,9 @@ class ReferenceCounter {
   /// the entry for each return ObjectID depends on all task dependencies.
   absl::flat_hash_map<ObjectID, std::pair<size_t, std::shared_ptr<std::vector<ObjectID>>>>
       object_id_refs_ GUARDED_BY(mutex_);
+
+  /// Callback to run on object deletion.
+  std::function<void(const ObjectID &)> on_delete_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

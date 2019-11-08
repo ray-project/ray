@@ -101,14 +101,14 @@ class CoreWorker {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddObjectIDReference(const ObjectID &object_id) {
-    reference_counter_.AddReference(object_id);
+    reference_counter_->AddReference(object_id);
   }
 
   /// Decrease the reference count for this object ID.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) {
-    reference_counter_.RemoveReference(object_id);
+    reference_counter_->RemoveReference(object_id);
   }
 
   ///
@@ -461,7 +461,7 @@ class CoreWorker {
   std::thread io_thread_;
 
   // Keeps track of object ID reference counts.
-  ReferenceCounter reference_counter_;
+  std::shared_ptr<ReferenceCounter> reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.

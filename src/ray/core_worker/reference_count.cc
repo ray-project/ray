@@ -56,7 +56,20 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id) {
       }
     }
     object_id_refs_.erase(object_id);
+    if (on_delete_ != nullptr) {
+      on_delete_(object_id);
+    }
   }
+}
+
+bool ReferenceCounter::HasReference(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  return object_id_refs_.find(object_id) != object_id_refs_.end();
+}
+
+void ReferenceCounter::OnObjectDeleted(std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  on_delete_ = callback;
 }
 
 size_t ReferenceCounter::NumObjectIDsInScope() const {
