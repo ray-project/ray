@@ -4,6 +4,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
+// Submit a task for execution.
 message SubmitTaskRequest {
   TaskSpec task_spec = 1;
 }

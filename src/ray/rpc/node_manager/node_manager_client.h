@@ -73,6 +73,7 @@ class NodeManagerWorkerClient
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
+  /// Submit a task.
   ray::Status SubmitTask(const SubmitTaskRequest &request,
                          const ClientCallback<SubmitTaskReply> &callback) {
     auto call = client_call_manager_
