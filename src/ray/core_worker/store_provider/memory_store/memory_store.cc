@@ -104,7 +104,12 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   return nullptr;
 }
 
-CoreWorkerMemoryStore::CoreWorkerMemoryStore() {}
+CoreWorkerMemoryStore::CoreWorkerMemoryStore(std::shared_ptr<ReferenceCounter> counter) {
+  if (counter != nullptr) {
+    ref_counter_ = counter;
+    ref_counter_->OnObjectDeleted([this](const ObjectID &obj_id) { Delete({obj_id}); });
+  }
+}
 
 Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
   std::unique_lock<std::mutex> lock(lock_);
@@ -242,13 +247,6 @@ bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
   auto it = objects_.find(object_id);
   // If obj is in plasma, we defer to the plasma store for the Contains() call.
   return it != objects_.end() && !it->second->IsInPlasmaError();
-}
-
-void CoreWorkerMemoryStore::EnableRefCounting(std::shared_ptr<ReferenceCounter> counter) {
-  std::unique_lock<std::mutex> lock(lock_);
-  RAY_CHECK(ref_counter_ == nullptr);
-  ref_counter_ = counter;
-  ref_counter_->OnObjectDeleted([this](const ObjectID &obj_id) { Delete({obj_id}); });
 }
 
 }  // namespace ray
