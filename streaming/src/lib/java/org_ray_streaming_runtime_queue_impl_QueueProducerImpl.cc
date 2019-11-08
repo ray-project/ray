@@ -5,7 +5,7 @@
 using namespace ray::streaming;
 
 JNIEXPORT jlong JNICALL
-Java_org_ray_streaming_queue_impl_QueueProducerImpl_writeMessageNative(
+Java_org_ray_streaming_runtime_queue_impl_QueueProducerImpl_writeMessageNative(
     JNIEnv *env, jobject, jlong writer_ptr, jlong qid_ptr, jlong address, jint size) {
   auto *writer_client = reinterpret_cast<StreamingWriter *>(writer_ptr);
   auto qid = *reinterpret_cast<ray::ObjectID *>(qid_ptr);
@@ -22,7 +22,7 @@ Java_org_ray_streaming_queue_impl_QueueProducerImpl_writeMessageNative(
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_queue_impl_QueueProducerImpl_stopProducerNative(
+Java_org_ray_streaming_runtime_queue_impl_QueueProducerImpl_stopProducerNative(
     JNIEnv *env, jobject thisObj, jlong ptr) {
   STREAMING_LOG(INFO) << "jni: stop producer.";
   StreamingWriter *writer_client = reinterpret_cast<StreamingWriter *>(ptr);
@@ -30,7 +30,7 @@ Java_org_ray_streaming_queue_impl_QueueProducerImpl_stopProducerNative(
 }
 
 JNIEXPORT void JNICALL
-Java_org_ray_streaming_queue_impl_QueueProducerImpl_closeProducerNative(
+Java_org_ray_streaming_runtime_queue_impl_QueueProducerImpl_closeProducerNative(
     JNIEnv *env, jobject thisObj, jlong ptr) {
   StreamingWriter *writer_client = reinterpret_cast<StreamingWriter *>(ptr);
   delete writer_client;
