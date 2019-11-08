@@ -127,6 +127,8 @@ class Node(object):
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
                 self._raylet_socket_name = address_info["raylet_socket_name"]
+                self._ray_params.node_manager_port = address_info[
+                    "node_manager_port"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -293,6 +295,11 @@ class Node(object):
     def raylet_socket_name(self):
         """Get the node's raylet socket name."""
         return self._raylet_socket_name
+
+    @property
+    def node_manager_port(self):
+        """Get the node manager's port."""
+        return self._ray_params.node_manager_port
 
     @property
     def address_info(self):

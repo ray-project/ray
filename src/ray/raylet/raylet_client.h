@@ -9,6 +9,7 @@
 
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -74,6 +75,7 @@ class RayletClient {
   /// \return The connection information.
   RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
+               std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                int port = -1);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
@@ -193,6 +195,9 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
+  /// gRPC client to the raylet. Right now, this is only used for a couple
+  /// request types.
+  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const bool is_worker_;
   const JobID job_id_;

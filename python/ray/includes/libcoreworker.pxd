@@ -55,6 +55,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
                     const c_string &log_dir, const c_string &node_ip_address,
+                    int node_manager_port,
                     CRayStatus (
                         CTaskType task_type,
                         const CRayFunction &ray_function,

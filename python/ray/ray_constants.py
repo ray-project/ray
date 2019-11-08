@@ -18,6 +18,8 @@ def env_integer(key, default):
 
 ID_SIZE = 20
 
+DEFAULT_NODE_MANAGER_PORT = 2080
+
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
 DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 20 * 10**9

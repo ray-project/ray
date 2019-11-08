@@ -153,6 +153,7 @@ def get_address_info_from_redis_helper(redis_address,
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
         "raylet_socket_name": relevant_client["RayletSocketName"],
+        "node_manager_port": relevant_client["NodeManagerPort"]
     }
 
 
