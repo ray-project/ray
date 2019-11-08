@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import time
 import logging
 
 import ray
@@ -40,3 +41,27 @@ def test_basic_gc(shutdown_only):
     # The ray.get below would fail with only LRU eviction, as the object
     # that was ray.put by the actor would have been evicted.
     ray.get(actor.get_large_object.remote())
+
+
+def test_pending_task_dependency(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024, use_pickle=True)
+
+    @ray.remote
+    def pending(input1, input2):
+        return
+
+    @ray.remote
+    def slow():
+        time.sleep(5)
+
+    np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+    # The object that is ray.put here will go out of scope immediately, so if
+    # pending task dependencies aren't considered, it will be evicted before
+    # the ray.get below due to the subsequent ray.puts that fill up the object
+    # store.
+    oid = pending.remote(ray.put(np_array), slow.remote())
+
+    for _ in range(2):
+        ray.put(np_array)
+
+    ray.get(oid)
