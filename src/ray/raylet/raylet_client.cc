@@ -227,7 +227,7 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   flatbuffers::FlatBufferBuilder fbb;
   ray::rpc::SubmitTaskRequest request;
-  request.set_task_spec(task_spec.Serialize());
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
 }
 

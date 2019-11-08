@@ -5,8 +5,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 
 message SubmitTaskRequest {
-  // The task specification to submit.
-  bytes task_spec = 1;
+  TaskSpec task_spec = 1;
 }
 
 message SubmitTaskReply {
