@@ -18,4 +18,7 @@
 * run `mvn clean install -Dmaven.test.skip=true`
 
 4. build ray streaming python
-`pip install -e . --verbose`
+```bash
+export PYTHON_BIN_PATH=`which python` 
+bazel build //streaming/python:_streaming
+```

@@ -726,6 +726,9 @@ cdef class CoreWorker:
         with nogil:
             self.core_worker.get().StartExecutingTasks()
 
+    def get_native_worker_ptr(self):
+        return <uint64_t>(self.core_worker.get())
+
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())
 

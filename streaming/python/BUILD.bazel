@@ -1,0 +1,13 @@
+load("@//bazel:cython_library.bzl", "pyx_library")
+
+pyx_library(
+    name = "_streaming",
+    srcs = glob([
+        "ray/streaming/_streaming.pyx",
+        "ray/streaming/includes/*.pxd",
+        "ray/streaming/includes/*.pxi",
+    ]),
+    deps = [
+        "//streaming/src:streaming_lib"
+    ],
+)

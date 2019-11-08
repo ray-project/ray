@@ -1,6 +1,8 @@
 import logging
 from queue import Queue
 
+from ray.function_manager import FunctionDescriptor
+
 import ray.streaming.queue.queue_utils as qutils
 from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
 from ray.streaming.config import Config
@@ -12,6 +14,7 @@ from ray.streaming.queue.queue_interface import QueueLink
 from ray.streaming.queue.queue_interface import QueueMessage
 from ray.streaming.queue.queue_interface import QueueProducer
 
+from ray.streaming.operator_instance import OperatorInstance
 
 class QueueMessageImpl(QueueMessage):
     """
@@ -58,12 +61,18 @@ class QueueLinkImpl(QueueLink):
         self.__configuration = dict()
         self.__input_checkpoints = dict()
         self.__output_checkpoints = dict()
+        self.sync_func = FunctionDescriptor(OperatorInstance.__module__,
+                                            "on_streaming_transfer", OperatorInstance.__name__)
+        self.async_func = FunctionDescriptor(OperatorInstance.__module__,
+                                             "on_streaming_transfer_sync", OperatorInstance.__name__)
 
     def set_configuration(self, conf):
         for (k, v) in conf.items():
             self.__configuration[k] = v
 
     def register_queue_consumer(self, input_queue_ids):
+
+
         input_queue_ids = qutils.qid_str_list_to_bytes_list(input_queue_ids)
         is_recreate = False
         if Config.IS_RECREATE in self.__configuration:
