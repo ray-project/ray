@@ -31,8 +31,8 @@ void GrpcServer::Run() {
   if (port_ > 0) {
     RAY_CHECK(PortNotInUse(port_))
         << "Port " << port_
-        << " specified by caller already in use. Try passing node_manager_port=0 into "
-           "ray.init() to pick a random port";
+        << " specified by caller already in use. Try passing node_manager_port=... into "
+           "ray.init() to pick a specific port";
   }
 
   grpc::ServerBuilder builder;

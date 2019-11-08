@@ -94,7 +94,7 @@ class RayParams(object):
                  redis_port=None,
                  redis_shard_ports=None,
                  object_manager_port=None,
-                 node_manager_port=ray_constants.DEFAULT_NODE_MANAGER_PORT,
+                 node_manager_port=None,
                  node_ip_address=None,
                  object_id_seed=None,
                  local_mode=False,
