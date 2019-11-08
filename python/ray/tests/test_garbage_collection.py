@@ -58,11 +58,11 @@ def test_pending_task_dependency(shutdown_only):
     def slow():
         time.sleep(5)
 
-    np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
     # The object that is ray.put here will go out of scope immediately, so if
     # pending task dependencies aren't considered, it will be evicted before
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
+    np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
     oid = pending.remote(ray.put(np_array), slow.remote())
 
     for _ in range(2):
