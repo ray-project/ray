@@ -66,9 +66,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushTask(rpc::CoreWorkerClient &client,
-                std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
-                const TaskID &task_id, int num_returns);
+  void PushActorTask(rpc::CoreWorkerClient &client,
+                     std::unique_ptr<rpc::PushTaskRequest> request,
+                     const ActorID &actor_id, const TaskID &task_id, int num_returns);
 
   /// Treat a task as failed.
   ///
@@ -326,16 +326,16 @@ class SchedulingQueue {
   friend class SchedulingQueueTest;
 };
 
-class CoreWorkerDirectActorTaskReceiver {
+class CoreWorkerDirectTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
       std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
-  CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    boost::asio::io_service &main_io_service,
-                                    const TaskHandler &task_handler,
-                                    const std::function<void()> &exit_handler);
+  CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
+                               boost::asio::io_service &main_io_service,
+                               const TaskHandler &task_handler,
+                               const std::function<void()> &exit_handler);
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);

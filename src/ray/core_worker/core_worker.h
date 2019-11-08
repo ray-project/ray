@@ -325,18 +325,22 @@ class CoreWorker {
    * post work to the appropriate event loop.
    */
 
+  /// Implements gRPC server handler.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
                       rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
   void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                 rpc::WorkerLeaseGrantedReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
@@ -524,7 +528,7 @@ class CoreWorker {
   rpc::CoreWorkerGrpcService grpc_service_;
 
   // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
+  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   friend class CoreWorkerTest;
 };

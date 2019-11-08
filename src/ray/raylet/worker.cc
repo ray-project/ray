@@ -179,9 +179,10 @@ void Worker::WorkerLeaseGranted(const std::string &address, int port) {
   request.set_address(address);
   request.set_port(port);
   auto status = rpc_client_->WorkerLeaseGranted(
-      request, [](Status status, const rpc::WorkerLeaseGrantedReply &reply) {
+      request, [address, port](Status status, const rpc::WorkerLeaseGrantedReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR) << "Failed to reply to lease request: " << status.ToString();
+          RAY_LOG(ERROR) << "Failed to reply to lease request: " << status.ToString()
+                         << " for " << address << ":" << port;
         }
       });
   if (!status.ok()) {

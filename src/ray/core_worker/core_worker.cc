@@ -101,19 +101,19 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                                  io_service_, gcs_client_);
 
   // Initialize task receivers.
-  auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
-                                std::placeholders::_2, std::placeholders::_3);
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
+    auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
+                                  std::placeholders::_2, std::placeholders::_3);
     raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
         new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task, exit_handler));
-    direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              execute_task, exit_handler));
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, task_execution_service_, execute_task, exit_handler));
   }
-  core_worker_server_.RegisterService(grpc_service_);
 
   // Start RPC server after all the task receivers are properly initialized.
+  core_worker_server_.RegisterService(grpc_service_);
   core_worker_server_.Run();
 
   // Initialize raylet client.
@@ -126,8 +126,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, core_worker_server_.GetPort()));
   // Unfortunately the raylet client has to be constructed after the receivers.
-  if (direct_actor_task_receiver_ != nullptr) {
-    direct_actor_task_receiver_->Init(*raylet_client_);
+  if (direct_task_receiver_ != nullptr) {
+    direct_task_receiver_->Init(*raylet_client_);
   }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
@@ -843,7 +843,7 @@ void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
   task_execution_service_.post([=] {
-    direct_actor_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
+    direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
 }
 
@@ -852,15 +852,16 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     rpc::DirectActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   task_execution_service_.post([=] {
-    direct_actor_task_receiver_->HandleDirectActorCallArgWaitComplete(
-        request, reply, send_reply_callback);
+    direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
+                                                                send_reply_callback);
   });
 }
 
 void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                           rpc::WorkerLeaseGrantedReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  // Run this directly since the main thread may be tied up processing a task.
+  // Run this directly since the main thread may be tied up processing a task and
+  // we need to still continue processing these scheduling operations in the backend.
   direct_task_submitter_->HandleWorkerLeaseGranted(request.address(), request.port());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

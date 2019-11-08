@@ -425,6 +425,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void ProcessRequestWorkerLeaseMessage(
       const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of ReturnWorkerMessage
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
   void ProcessReturnWorkerMessage(const uint8_t *message_data);
 
   /// Process client message of FetchOrReconstruct

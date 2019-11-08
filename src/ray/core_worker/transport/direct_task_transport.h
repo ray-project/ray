@@ -38,7 +38,7 @@ class LocalDependencyResolver {
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
-  int NumPending() const { return num_pending_; }
+  int NumPendingTasks() const { return num_pending_; }
 
  private:
   /// The store provider.
@@ -53,13 +53,13 @@ class LocalDependencyResolver {
 
 typedef std::pair<std::string, int> WorkerAddress;
 typedef std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(WorkerAddress)>
-    ClientFactory;
+    ClientFactoryFn;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(WorkerLeaseInterface &lease_client,
-                                ClientFactory client_factory,
+                                ClientFactoryFn client_factory,
                                 CoreWorkerMemoryStoreProvider store_provider)
       : lease_client_(lease_client),
         client_factory_(client_factory),
@@ -83,7 +83,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
   /// processing the worker, we don't attempt to re-use the worker.
-  void WorkerIdle(const WorkerAddress &addr, bool was_error);
+  void OnWorkerIdle(const WorkerAddress &addr, bool was_error);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight.
@@ -91,8 +91,8 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
-  void PushTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
-                const TaskSpecification &task_spec);
+  void PushNormalTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
+                      const TaskSpecification &task_spec);
 
   /// Mark a direct call as failed by storing errors for its return objects.
   void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
@@ -102,7 +102,7 @@ class CoreWorkerDirectTaskSubmitter {
   WorkerLeaseInterface &lease_client_;
 
   /// Factory for producing new core worker clients.
-  ClientFactory client_factory_;
+  ClientFactoryFn client_factory_;
 
   /// The store provider.
   CoreWorkerMemoryStoreProvider &in_memory_store_;

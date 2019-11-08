@@ -1205,7 +1205,7 @@ void NodeManager::ProcessRequestWorkerLeaseMessage(
       client_worker = worker_pool_.GetRegisteredDriver(client);
     }
     if (client_worker == nullptr) {
-      RAY_LOG(ERROR) << "TODO: Lost worker for lease request " << client;
+      RAY_LOG(FATAL) << "TODO: Lost worker for lease request " << client;
     } else {
       client_worker->WorkerLeaseGranted(address, port);
       leased_workers_[port] = std::static_pointer_cast<Worker>(granted);

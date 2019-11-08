@@ -103,17 +103,17 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const std::string &
   }
 
   // Try to assign it work.
-  WorkerIdle(addr, /*error=*/false);
+  OnWorkerIdle(addr, /*error=*/false);
 }
 
-void CoreWorkerDirectTaskSubmitter::WorkerIdle(const WorkerAddress &addr,
-                                               bool was_error) {
+void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
+                                                 bool was_error) {
   absl::MutexLock lock(&mu_);
   if (queued_tasks_.empty() || was_error) {
     RAY_CHECK_OK(lease_client_.ReturnWorker(addr.second));
   } else {
     auto &client = *client_cache_[addr];
-    PushTask(addr, client, queued_tasks_.front());
+    PushNormalTask(addr, client, queued_tasks_.front());
     queued_tasks_.pop_front();
   }
   // We have a queue of tasks, try to request more workers.
@@ -148,17 +148,17 @@ void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
 }
 
 // TODO(ekl) consider reconsolidating with DirectActorTransport.
-void CoreWorkerDirectTaskSubmitter::PushTask(const WorkerAddress &addr,
-                                             rpc::CoreWorkerClientInterface &client,
-                                             const TaskSpecification &task_spec) {
+void CoreWorkerDirectTaskSubmitter::PushNormalTask(const WorkerAddress &addr,
+                                                   rpc::CoreWorkerClientInterface &client,
+                                                   const TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
   auto num_returns = task_spec.NumReturns();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
-  auto status = client.PushTaskImmediate(
+  auto status = client.PushNormalTask(
       std::move(request),
       [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
-        WorkerIdle(addr, /*error=*/!status.ok());
+        OnWorkerIdle(addr, /*error=*/!status.ok());
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED);
           return;

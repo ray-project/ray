@@ -36,7 +36,7 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
-  /// Assign a task to the work.
+  /// This is called by the Raylet to assign a task to the worker.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
@@ -46,20 +46,20 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
-  /// Push an actor task directly to a worker.
+  /// Push an actor task directly from worker to worker.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual ray::Status PushTask(
+  virtual ray::Status PushActorTask(
       std::unique_ptr<PushTaskRequest> request,
       const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
 
-  /// Similar to PushTask, but sets no ordering constraint. This is used to push
-  /// non-actor tasks directly to a worker.
-  virtual ray::Status PushTaskImmediate(
+  /// Similar to PushActorTask, but sets no ordering constraint. This is used to
+  /// push non-actor tasks directly to a worker.
+  virtual ray::Status PushNormalTask(
       std::unique_ptr<PushTaskRequest> request,
                                 const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
@@ -113,7 +113,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
     return call->GetStatus();
   }
 
-  ray::Status PushTask(
+  ray::Status PushActorTask(
       std::unique_ptr<PushTaskRequest> request,
       const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
@@ -130,7 +130,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
     return ray::Status::OK();
   }
 
-  ray::Status PushTaskImmediate(std::unique_ptr<PushTaskRequest> request,
+  ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
                                 const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);

@@ -46,7 +46,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
+    PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -114,18 +114,18 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     auto request = std::move(requests.front());
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
+    PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);
     requests.pop_front();
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushTask(
+void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
-  auto status = client.PushTask(
+  auto status = client.PushActorTask(
       std::move(request), [this, actor_id, task_id, num_returns](
                               Status status, const rpc::PushTaskReply &reply) {
         {
@@ -199,7 +199,7 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
 }
 
-CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
+CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
     const TaskHandler &task_handler, const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
@@ -207,11 +207,11 @@ CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
       exit_handler_(exit_handler),
       task_main_io_service_(main_io_service) {}
 
-void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
+void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
 }
 
-void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
+void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
   if (max_concurrency != max_concurrency_) {
     RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
     RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
@@ -220,7 +220,7 @@ void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurren
   }
 }
 
-void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
+void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
@@ -307,7 +307,7 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
                   dependencies);
 }
 
-void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
+void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
     const rpc::DirectActorCallArgWaitCompleteRequest &request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {

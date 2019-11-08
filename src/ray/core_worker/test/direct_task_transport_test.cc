@@ -58,7 +58,7 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_TRUE(ok);
-  ASSERT_EQ(resolver.NumPending(), 0);
+  ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
@@ -80,7 +80,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ASSERT_FALSE(task.ArgByRef(1));
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
-  ASSERT_EQ(resolver.NumPending(), 0);
+  ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
@@ -95,7 +95,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
   bool ok = false;
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
-  ASSERT_EQ(resolver.NumPending(), 1);
+  ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
   store.Put(*data, obj1);
   store.Put(*data, obj2);
@@ -104,7 +104,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ASSERT_FALSE(task.ArgByRef(1));
   ASSERT_NE(task.ArgData(0), nullptr);
   ASSERT_NE(task.ArgData(1), nullptr);
-  ASSERT_EQ(resolver.NumPending(), 0);
+  ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
 TEST(DirectTaskTranportTest, TestSubmitOneTask) {

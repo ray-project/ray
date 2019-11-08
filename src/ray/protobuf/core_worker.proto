@@ -102,10 +102,10 @@ service CoreWorkerService {
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
   // Push a task directly to this worker from another.
   rpc PushTask(PushTaskRequest) returns (PushTaskReply);
-  // Notify wait for direct actor call args has completed.
+  // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
-  // Fulfill a worker lease request.
+  // Reply from raylet to fulfill a worker lease request.
   rpc WorkerLeaseGranted(WorkerLeaseGrantedRequest)
       returns (WorkerLeaseGrantedReply);
 }
