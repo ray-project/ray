@@ -197,7 +197,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   if (!remaining.empty() && timed_out) {
     RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
-    return Status::TimedOut("Get timed out: object(s) not ready.");
+    return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with

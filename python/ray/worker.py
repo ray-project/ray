@@ -316,6 +316,7 @@ class Worker(object):
                     "which is not an ray.ObjectID.".format(object_id))
 
         if self.mode == LOCAL_MODE:
+            # TODO(ujvl): Remove check when local mode moved to core worker.
             if timeout is not None:
                 raise ValueError(
                     "`get` must be called with timeout=None in local mode.")
@@ -1435,6 +1436,7 @@ def get(object_ids, timeout=None):
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
+        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
         values = worker.get_objects(object_ids, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
