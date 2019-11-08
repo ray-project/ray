@@ -698,7 +698,6 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
   std::vector<plasma::ObjectID> plasma_ids;
   plasma_ids.reserve(active_object_ids.size());
   for (const ObjectID &object_id : active_object_ids) {
-    RAY_LOG(INFO) << "Refreshing " << object_id.Hex();
     plasma_ids.push_back(object_id.ToPlasmaId());
   }
   if (!store_client_.Refresh(plasma_ids).ok()) {
