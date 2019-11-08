@@ -45,6 +45,12 @@ class CoreWorkerMemoryStore {
   /// \return Void.
   void Delete(const std::vector<ObjectID> &object_ids);
 
+  /// Check whether this store contains the object.
+  ///
+  /// \param[in] object_id The object to check.
+  /// \return Whether the store has the object.
+  bool Contains(const ObjectID &object_id);
+
  private:
   /// Map from object ID to `RayObject`.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_;

@@ -108,7 +108,7 @@ cdef class TaskSpec:
         return_id_list = []
         for i in range(self.task_spec.get().NumReturns()):
             return_id_list.append(
-                ObjectID(self.task_spec.get().ReturnId(i).Binary()))
+                ObjectID(self.task_spec.get().ReturnIdForPlasma(i).Binary()))
         return return_id_list
 
     def required_resources(self):
