@@ -59,23 +59,43 @@ class NodeSyncMixin(object):
         """Set the worker ip to sync logs from."""
         self.worker_ip = worker_ip
 
-    def _check_valid_worker_ip(self):
+    def has_remote_target(self):
+        """Returns whether the Syncer has a remote target."""
         if not self.worker_ip:
-            logger.debug("Worker ip unknown, skipping log sync for {}".format(
-                self._local_dir))
+            logger.debug("Worker IP unknown, skipping log sync for %s",
+                         self._local_dir)
             return False
         if self.worker_ip == self.local_ip:
-            logger.debug(
-                "Worker ip is local ip, skipping log sync for {}".format(
-                    self._local_dir))
+            logger.debug("Worker IP is local IP, skipping log sync for %s",
+                         self._local_dir)
             return False
         return True
+
+    def sync_up_if_needed(self):
+        if not self.has_remote_target():
+            return True
+        super(NodeSyncMixin, self).sync_up()
+
+    def sync_down_if_needed(self):
+        if not self.has_remote_target():
+            return True
+        super(NodeSyncMixin, self).sync_down()
+
+    def sync_down(self):
+        if not self.has_remote_target():
+            return True
+        return super(NodeSyncMixin, self).sync_down()
+
+    def sync_up(self):
+        if not self.has_remote_target():
+            return True
+        return super(NodeSyncMixin, self).sync_up()
 
     @property
     def _remote_path(self):
         ssh_user = get_ssh_user()
         global _log_sync_warned
-        if not self._check_valid_worker_ip():
+        if not self.has_remote_target():
             return
         if ssh_user is None:
             if not _log_sync_warned:

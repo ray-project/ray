@@ -616,7 +616,7 @@ class RayTrialExecutor(TrialExecutor):
                 with warn_if_slow("get_current_ip"):
                     worker_ip = get_with_timeout(
                         trial.runner.current_ip.remote())
-                    trial.node_ip = worker_ip
+                    trial.address = Address(worker_ip)
                 with warn_if_slow("sync_to_new_location"):
                     trial.sync_logger_to_new_location(worker_ip)
                 with warn_if_slow("restore_from_disk"):
