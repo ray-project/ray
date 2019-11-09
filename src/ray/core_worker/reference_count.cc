@@ -69,6 +69,7 @@ bool ReferenceCounter::HasReference(const ObjectID &object_id) {
 
 void ReferenceCounter::OnObjectDeleted(std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
+  RAY_CHECK(on_delete_ == nullptr);
   on_delete_ = callback;
 }
 
