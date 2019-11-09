@@ -515,7 +515,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     actor_handle.SetActorTaskSpec(builder, TaskTransportType::RAYLET,
                                   ObjectID::FromRandom());
 
-    const auto &task_spec = builder.Build();
+    auto task_spec = builder.Build();
 
     ASSERT_TRUE(task_spec.IsActorTask());
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
