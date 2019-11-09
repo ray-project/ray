@@ -51,7 +51,19 @@ class Checkpoint(object):
         return Checkpoint(Checkpoint.MEMORY, value)
 
 
-QueueItem = namedtuple("QueueItem", ["priority", "value"])
+class QueueItem(object):
+
+    def __init__(self, priority, value):
+        self.priority = priority
+        self.value = value
+
+    def __cmp__(self, other):
+        if self.priority == other.priority:
+            return 0
+        return -1 if self.priority < other.priority else 1
+
+    def __lt__(self, other):
+        return self.priority < other.priority
 
 
 class CheckpointManager(object):
@@ -103,26 +115,15 @@ class CheckpointManager(object):
                 "set to a key in the result dict.".format(
                     self._checkpoint_score_attr))
 
-        try:
-            if len(self._best_checkpoints) < self.keep_checkpoints_num:
-                logger.info("Pushing priority=%s, value=%s",
-                            queue_item.priority,
-                            queue_item.value.value)
-                heapq.heappush(self._best_checkpoints, queue_item)
-                self._membership.add(checkpoint)
-            elif queue_item.priority >= self._best_checkpoints[0][0]:
-                logger.info("Push-pop priority=%s, value=%s",
-                            queue_item.priority,
-                            queue_item.value.value)
-                _, worst = heapq.heappushpop(self._best_checkpoints,
-                                             queue_item)
-                self._membership.add(checkpoint)
-                if worst in self._membership:
-                    self._membership.remove(worst)
-                worst.delete()
-        except Exception:
-            # TODO(ujvl): Identify heapq bug; remove this try-except block.
-            logger.exception("Failed to evaluate checkpoint.")
+        if len(self._best_checkpoints) < self.keep_checkpoints_num:
+            heapq.heappush(self._best_checkpoints, queue_item)
+            self._membership.add(checkpoint)
+        elif queue_item.priority >= self._best_checkpoints[0].priority:
+            worst = heapq.heappushpop(self._best_checkpoints, queue_item).value
+            self._membership.add(checkpoint)
+            if worst in self._membership:
+                self._membership.remove(worst)
+            worst.delete()
 
         # Remove the old checkpoint if it isn't one of the best ones.
         if old_checkpoint not in self._membership:
