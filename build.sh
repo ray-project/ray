@@ -115,7 +115,8 @@ if [[ "$PYTHON_VERSION" == "3.6" ]]; then
   popd
 fi
 
-export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
+export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
+export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
