@@ -114,6 +114,7 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(std::shared_ptr<ReferenceCounter> c
 Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
   std::unique_lock<std::mutex> lock(lock_);
 
+  // Don't put it in the store, since we won't get a callback for deletion.
   if (ref_counter_ && !ref_counter_->HasReference(object_id)) {
     return Status::OK();
   }
