@@ -101,7 +101,9 @@ if [ -z "$SKIP_PYARROW_INSTALL" ]; then
         --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
         --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
 fi
-export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
+
+export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
+export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
   "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
