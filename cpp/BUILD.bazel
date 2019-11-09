@@ -1,0 +1,83 @@
+# Bazel build
+# C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
+
+cc_library(
+    name = "libray_api_hdr",
+    hdrs = glob([
+        "include/ray/*.h",
+        "include/ray/**/*.h",
+        "include/ray/**/**/*.h",
+    ]),
+    strip_include_prefix = "include",
+    deps = [
+        "@plasma//:plasma_client"
+    ],
+)
+
+cc_binary(
+    name = "libray_api.dylib",
+    srcs = glob([
+        "src/ray/api.cc",
+        "src/ray/api/*.cc",
+        "src/ray/api/*.h",
+        "src/ray/app/*.cc",
+        "src/ray/app/*.h",
+        "src/ray/runtime/*.cc",
+        "src/ray/runtime/*.h",
+        "src/ray/spi/*.cc",
+        "src/ray/spi/*.h",
+        "src/ray/util/*.cc",
+        "src/ray/util/*.h",
+        "src/ray/*.cc",
+        "src/ray/*.h",
+    ]),
+    deps = [
+        "libray_api_hdr",
+    ],
+    linkshared = 1,
+    linkstatic = 1,
+)
+
+cc_import(
+    name = "ray_api",
+    shared_library = "libray_api.dylib",
+)
+
+cc_binary(
+    name = "example",
+    testonly = 1,
+    srcs = [
+        "src/example/example.cc",
+        "src/example/example.h"
+        ],
+    deps = [
+        "ray_api",
+        "libray_api_hdr",
+    ],
+)
+
+cc_binary(
+    name = "apiTest",
+    testonly = 1,
+    srcs = [
+        "src/ray/test/apiTest.cc"
+        ],
+    deps = [
+        "ray_api",
+        "libray_api_hdr",
+        "@com_google_googletest//:gtest_main"
+    ],
+)
+
+cc_binary(
+    name = "wrapTest",
+    testonly = 1,
+    srcs = [
+        "src/ray/test/wrapTest.cc"
+        ],
+    deps = [
+        "ray_api",
+        "libray_api_hdr",
+        "@com_google_googletest//:gtest_main"
+    ],
+)
