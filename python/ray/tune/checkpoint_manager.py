@@ -58,6 +58,7 @@ class QueueItem(object):
         self.value = value
 
     def __cmp__(self, other):
+        # For python2.7 compatibility.
         if self.priority == other.priority:
             return 0
         return -1 if self.priority < other.priority else 1
