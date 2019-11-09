@@ -52,7 +52,6 @@ class Checkpoint(object):
 
 
 class QueueItem(object):
-
     def __init__(self, priority, value):
         self.priority = priority
         self.value = value

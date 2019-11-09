@@ -34,7 +34,6 @@ def date_str():
 
 
 class Address(object):
-
     def __init__(self, hostname=None, pid=None):
         self.hostname = hostname
         self.pid = pid
@@ -245,6 +244,7 @@ class Trial(object):
         """
         if self.result_logger:
             self.result_logger.sync_results_to_new_location(worker_ip)
+        self.address = Address(worker_ip)
 
     def close_logger(self):
         """Close logger."""

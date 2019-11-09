@@ -461,7 +461,8 @@ class UnifiedLogger(Logger):
                     "This should not occur.", self.trial)
             self._log_syncer.wait()
         else:
-            logger.warning("%s: Sync attempted to same IP %s", worker_ip)
+            logger.warning("Trial %s: Sync attempted to same IP %s",
+                           self.trial, worker_ip)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

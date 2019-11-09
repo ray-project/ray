@@ -172,9 +172,8 @@ class TrialExecutor(object):
                              trial.get_trainable_cls().resource_help(
                                  trial.config)))
             elif trial.status == Trial.PAUSED:
-                raise TuneError(
-                    "There are paused trials, but no more pending "
-                    "trials with sufficient resources.")
+                raise TuneError("There are paused trials, but no more pending "
+                                "trials with sufficient resources.")
 
     def get_next_available_trial(self):
         """Blocking call that waits until one result is ready.
