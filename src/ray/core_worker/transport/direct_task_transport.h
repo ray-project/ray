@@ -15,7 +15,7 @@ namespace ray {
 
 struct TaskState {
   /// The task to be run.
-  const TaskSpecification task;
+  TaskSpecification task;
   /// The remaining dependencies to resolve for this task.
   absl::flat_hash_set<ObjectID> local_dependencies;
 };
@@ -69,7 +69,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule a task for direct submission to a worker.
   ///
   /// \param[in] task_spec The task to schedule.
-  Status SubmitTask(const TaskSpecification &task_spec);
+  Status SubmitTask(TaskSpecification task_spec);
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned
   /// to the raylet once it finishes its task and either the lease term has
@@ -91,7 +91,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Push a task to a specific worker.
   void PushNormalTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
-                      const TaskSpecification &task_spec);
+                      TaskSpecification &task_spec);
 
   /// Mark a direct call as failed by storing errors for its return objects.
   void TreatTaskAsFailed(const TaskID &task_id, int num_returns,

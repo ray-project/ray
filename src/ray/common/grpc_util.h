@@ -40,7 +40,7 @@ class MessageWrapper {
   const Message &GetMessage() const { return *message_; }
 
   /// Get reference of the protobuf message.
-  Message &GetMutableMessage() const { return *message_; }
+  Message &GetMutableMessage() { return *message_; }
 
   /// Serialize the message to a string.
   const std::string Serialize() const { return message_->SerializeAsString(); }

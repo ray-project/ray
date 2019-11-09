@@ -10,8 +10,7 @@ CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     CoreWorkerMemoryStoreProvider store_provider)
     : client_call_manager_(client_call_manager), in_memory_store_(store_provider) {}
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
-    const TaskSpecification &task_spec) {
+Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
 
   RAY_CHECK(task_spec.IsActorTask());

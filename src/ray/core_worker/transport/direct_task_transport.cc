@@ -3,7 +3,7 @@
 namespace ray {
 
 void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> value,
-                         const TaskSpecification &task) {
+                         TaskSpecification &task) {
   auto &msg = task.GetMutableMessage();
   bool found = false;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -72,7 +72,7 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
   }
 }
 
-Status CoreWorkerDirectTaskSubmitter::SubmitTask(const TaskSpecification &task_spec) {
+Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     // TODO(ekl) should have a queue per distinct resource type required
     absl::MutexLock lock(&mu_);
@@ -147,7 +147,7 @@ void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
 // TODO(ekl) consider reconsolidating with DirectActorTransport.
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(const WorkerAddress &addr,
                                                    rpc::CoreWorkerClientInterface &client,
-                                                   const TaskSpecification &task_spec) {
+                                                   TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
   auto num_returns = task_spec.NumReturns();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
