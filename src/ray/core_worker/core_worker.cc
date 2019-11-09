@@ -122,9 +122,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       node_ip_address, node_manager_port, client_call_manager_);
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      std::move(grpc_client), raylet_socket,
+      WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, std::move(grpc_client), worker_server_.GetPort()));
+      language_, worker_server_.GetPort()));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_actor_task_receiver_ != nullptr) {
     direct_actor_task_receiver_->Init(*raylet_client_);
@@ -493,7 +494,8 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
+      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET),
+                                         task_deps);
     }
   }
 

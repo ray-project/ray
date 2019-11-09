@@ -201,11 +201,11 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
+RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+                           const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
-                           std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                            int port)
-    : grpc_client_(grpc_client),
+    : grpc_client_(std::move(grpc_client)),
       worker_id_(worker_id),
       is_worker_(is_worker),
       job_id_(job_id),
@@ -225,7 +225,6 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
   ray::rpc::SubmitTaskRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   return grpc_client_->SubmitTask(request, /*callback=*/nullptr);

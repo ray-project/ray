@@ -153,6 +153,9 @@ class Node(object):
             if (self._ray_params.node_manager_port is None
                     or self._ray_params.node_manager_port == 0):
                 # No port specified. Pick a random port for the raylet to use.
+                # NOTE: There is a possible but unlikely race condition where
+                # the port is bound by another process between now and when the
+                # raylet starts.
                 self._ray_params.node_manager_port = self._get_unused_port()
 
         # Start processes.
