@@ -272,7 +272,8 @@ class SerializationContext(object):
                         return pickle.loads(in_band, buffers=buffers)
                     else:
                         return pickle.loads(in_band)
-                except pickle.PicklingError:
+                # cloudpickle does not provide error types
+                except pickle.pickle.PicklingError:
                     raise DeserializationError()
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
