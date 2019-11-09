@@ -42,7 +42,7 @@ class CoreWorkerClientInterface {
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   virtual ray::Status AssignTask(const AssignTaskRequest &request,
-                         const ClientCallback<AssignTaskReply> &callback) {
+                                 const ClientCallback<AssignTaskReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -51,17 +51,15 @@ class CoreWorkerClientInterface {
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
-  virtual ray::Status PushActorTask(
-      std::unique_ptr<PushTaskRequest> request,
-      const ClientCallback<PushTaskReply> &callback) {
+  virtual ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+                                    const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
-  virtual ray::Status PushNormalTask(
-      std::unique_ptr<PushTaskRequest> request,
-                                const ClientCallback<PushTaskReply> &callback) {
+  virtual ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
+                                     const ClientCallback<PushTaskReply> &callback) {
     return Status::NotImplemented("");
   }
 
@@ -89,7 +87,8 @@ class CoreWorkerClientInterface {
 };
 
 /// Client used for communicating with a remote worker server.
-class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, public CoreWorkerClientInterface {
+class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
+                         public CoreWorkerClientInterface {
  public:
   /// Constructor.
   ///
@@ -106,16 +105,15 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
 
   ray::Status AssignTask(const AssignTaskRequest &request,
                          const ClientCallback<AssignTaskReply> &callback) override {
-    auto call =
-        client_call_manager_
-            .CreateCall<CoreWorkerService, AssignTaskRequest, AssignTaskReply>(
-                *stub_, &CoreWorkerService::Stub::PrepareAsyncAssignTask, request, callback);
+    auto call = client_call_manager_
+                    .CreateCall<CoreWorkerService, AssignTaskRequest, AssignTaskReply>(
+                        *stub_, &CoreWorkerService::Stub::PrepareAsyncAssignTask, request,
+                        callback);
     return call->GetStatus();
   }
 
-  ray::Status PushActorTask(
-      std::unique_ptr<PushTaskRequest> request,
-      const ClientCallback<PushTaskReply> &callback) override {
+  ray::Status PushActorTask(std::unique_ptr<PushTaskRequest> request,
+                            const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(request->task_spec().actor_task_spec().actor_counter());
     {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -131,7 +129,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
   }
 
   ray::Status PushNormalTask(std::unique_ptr<PushTaskRequest> request,
-                                const ClientCallback<PushTaskReply> &callback) override {
+                             const ClientCallback<PushTaskReply> &callback) override {
     request->set_sequence_number(-1);
     request->set_client_processed_up_to(-1);
     auto call = client_call_manager_
@@ -144,12 +142,11 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
   ray::Status DirectActorCallArgWaitComplete(
       const DirectActorCallArgWaitCompleteRequest &request,
       const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) override {
-    auto call =
-        client_call_manager_
-            .CreateCall<CoreWorkerService, DirectActorCallArgWaitCompleteRequest,
-                        DirectActorCallArgWaitCompleteReply>(
-                *stub_, &CoreWorkerService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
-                request, callback);
+    auto call = client_call_manager_.CreateCall<CoreWorkerService,
+                                                DirectActorCallArgWaitCompleteRequest,
+                                                DirectActorCallArgWaitCompleteReply>(
+        *stub_, &CoreWorkerService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
+        request, callback);
     return call->GetStatus();
   }
 
@@ -184,11 +181,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
       request->set_client_processed_up_to(max_finished_seq_no_);
       rpc_bytes_in_flight_ += task_size;
 
-      client_call_manager_.CreateCall<CoreWorkerService, PushTaskRequest,
-                                      PushTaskReply>(
+      client_call_manager_.CreateCall<CoreWorkerService, PushTaskRequest, PushTaskReply>(
           *stub_, &CoreWorkerService::Stub::PrepareAsyncPushTask, *request,
-          [this, this_ptr, seq_no, task_size, callback](
-              Status status, const rpc::PushTaskReply &reply) {
+          [this, this_ptr, seq_no, task_size, callback](Status status,
+                                                        const rpc::PushTaskReply &reply) {
             {
               std::lock_guard<std::mutex> lock(mutex_);
               if (seq_no > max_finished_seq_no_) {
@@ -218,8 +214,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>, 
   ClientCallManager &client_call_manager_;
 
   /// Queue of requests to send.
-  std::deque<std::pair<std::unique_ptr<PushTaskRequest>,
-                       ClientCallback<PushTaskReply>>>
+  std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
       send_queue_ GUARDED_BY(mutex_);
 
   /// The number of bytes currently in flight.

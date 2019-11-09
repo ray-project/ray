@@ -106,6 +106,5 @@ service CoreWorkerService {
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
   // Reply from raylet to fulfill a worker lease request.
-  rpc WorkerLeaseGranted(WorkerLeaseGrantedRequest)
-      returns (WorkerLeaseGrantedReply);
+  rpc WorkerLeaseGranted(WorkerLeaseGrantedRequest) returns (WorkerLeaseGrantedReply);
 }
