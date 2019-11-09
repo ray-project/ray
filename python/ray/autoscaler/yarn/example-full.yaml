@@ -81,6 +81,9 @@ provider:
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
 
+auth:
+    ssh_user: ubuntu
+
 # Kubernetes pod config for the head node pod.
 head_node: {}
 
@@ -97,7 +100,7 @@ file_mounts: {
 # List of commands that will be run before `setup_commands`. If docker is
 # enabled, these commands will run outside the container and before docker
 # is setup.
-initialization_commands: []
+initialization_commands: ["pip install ray"]
 
 # List of shell commands to run to set up nodes.
 setup_commands: []

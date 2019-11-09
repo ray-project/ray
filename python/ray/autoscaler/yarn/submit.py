@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import skein
 
-ray_start_script = "ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml"
+ray_start_script = "source /venv/bin/activate && ray start --head --block --redis-port=6379 --object-manager-port=8076 --autoscaling-config=/ray_bootstrap_config.yaml"
 
 
 def main():
@@ -14,7 +14,7 @@ def main():
     ray_master = skein.Master(
         resources=None,
         script=ray_start_script,
-        files={"ray_bootstrap_config.yaml": "example-full.yaml"})
+        files={"ray_bootstrap_config.yaml": "/home/rayonyarn/ray/python/ray/autoscaler/yarn/example-full.yaml"})
     worker_service = skein.Service(
         resources=skein.Resources(memory="1GiB", vcores=1),
         script="sleep infinity")
