@@ -333,24 +333,7 @@ class TrialRunner(object):
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
-            for trial in self._trials:
-                if trial.status == Trial.PENDING:
-                    if not self.has_resources(trial.resources):
-                        raise TuneError(
-                            ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster has only {}. "
-                             "Pass `queue_trials=True` in "
-                             "ray.tune.run() or on the command "
-                             "line to queue trials until the cluster scales "
-                             "up or resources become available. {}").format(
-                                 trial.resources.summary_string(),
-                                 self.trial_executor.resource_string(),
-                                 trial.get_trainable_cls().resource_help(
-                                     trial.config)))
-                elif trial.status == Trial.PAUSED:
-                    raise TuneError(
-                        "There are paused trials, but no more pending "
-                        "trials with sufficient resources.")
+            self.trial_executor.on_no_available_trials(runner)
 
         try:
             with warn_if_slow("experiment_checkpoint"):
