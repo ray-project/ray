@@ -12,7 +12,7 @@ max_workers: 2
 # The initial number of worker nodes to launch in addition to the head
 # node. When the cluster is first brought up (or when it is refreshed with a
 # subsequent `ray up`) this number of nodes will be started.
-initial_workers: 0
+initial_workers: 1
 
 # Whether or not to autoscale aggressively. If this is enabled, if at any point
 #   we would start more workers, we start at least enough to bring us to
@@ -82,7 +82,7 @@ provider:
             apiGroup: rbac.authorization.k8s.io
 
 auth:
-    ssh_user: ubuntu
+    ssh_user: rayonyarn
 
 # Kubernetes pod config for the head node pod.
 head_node: {}
@@ -119,4 +119,4 @@ head_start_ray_commands:
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --object-store-memory=104857600
