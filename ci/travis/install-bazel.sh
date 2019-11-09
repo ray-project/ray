@@ -16,7 +16,7 @@ else
   exit 1
 fi
 
-URL="https://github.com/bazelbuild/bazel/releases/download/0.26.1/bazel-0.26.1-installer-${platform}-x86_64.sh"
+URL="https://github.com/bazelbuild/bazel/releases/download/1.1.0/bazel-1.1.0-installer-${platform}-x86_64.sh"
 wget -O install.sh $URL
 chmod +x install.sh
 ./install.sh --user
