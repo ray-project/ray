@@ -56,6 +56,14 @@ class CoreWorkerMemoryStore {
   /// \return Whether the store has the object.
   bool Contains(const ObjectID &object_id);
 
+  /// Returns the number of objects in this store.
+  ///
+  /// \return Count of objects in the store.
+  int Size() {
+    std::lock_guard<std::mutex> lock(lock_);
+    return objects_.size();
+  }
+
  private:
   /// Map from object ID to `RayObject`.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_;
