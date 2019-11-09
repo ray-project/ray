@@ -142,6 +142,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   store.Put(id1, buffer);
   ASSERT_EQ(store.Size(), 1);
   rc->RemoveReference(id1);
+  ASSERT_EQ(store.Size(), 1);
   rc->RemoveReference(id1);
   ASSERT_EQ(store.Size(), 0);
 
