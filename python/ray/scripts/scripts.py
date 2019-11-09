@@ -233,7 +233,7 @@ def cli(logging_level, logging_format):
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
 @click.option(
-    "--use-pickle",
+    "--use-pickle/--no-use-pickle",
     is_flag=True,
     default=True,
     help="Use pickle for serialization.")
