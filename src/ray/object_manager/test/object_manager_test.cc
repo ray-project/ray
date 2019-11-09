@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 
+#include "ray/common/buffer.h"
 #include "ray/common/status.h"
 
 #include "ray/object_manager/object_manager.h"
@@ -148,7 +149,7 @@ class TestObjectManagerBase : public ::testing::Test {
     RAY_LOG(DEBUG) << "ObjectID Created: " << object_id;
     uint8_t metadata[] = {5};
     int64_t metadata_size = sizeof(metadata);
-    std::shared_ptr<Buffer> data;
+    std::shared_ptr<arrow::Buffer> data;
     RAY_ARROW_CHECK_OK(
         client.Create(object_id.ToPlasmaId(), data_size, metadata, metadata_size, &data));
     RAY_ARROW_CHECK_OK(client.Seal(object_id.ToPlasmaId()));
