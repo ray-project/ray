@@ -110,7 +110,7 @@ class BayesOptSearch(SuggestionAlgorithm):
         del self._live_trial_mapping[trial_id]
 
     def _process_result(self, trial_id, result, early_terminated=False):
-        if early_terminated and self.use_early_stopped is False:
+        if early_terminated and self._use_early_stopped is False:
             return
         self.optimizer.register(
             params=self._live_trial_mapping[trial_id],
