@@ -103,7 +103,7 @@ if [ -z "$SKIP_PYARROW_INSTALL" ]; then
 fi
 
 PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
-if [[ "$PYTHON_VERSION" == "3.6" ]]; then
+if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
   WORK_DIR=`mktemp -d`
   pushd $WORK_DIR
     git clone https://github.com/pitrou/pickle5-backport

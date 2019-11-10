@@ -435,7 +435,7 @@ class CloudPickler(Pickler):
     dispatch[types.MethodType] = _method_reduce
     dispatch[types.MappingProxyType] = _mappingproxy_reduce
     dispatch[weakref.WeakSet] = _weakset_reduce
-    if sys.version_info[:2] >= (3, 7):
+    if sys.version_info[:2] >= (3, 8):
         dispatch[types.CellType] = _cell_reduce
     else:
         dispatch[type(_make_empty_cell())] = _cell_reduce
