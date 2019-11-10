@@ -579,6 +579,9 @@ class Node(object):
         # The dashboard is Python3.x only.
         if PY3 and self._ray_params.include_webui:
             self.start_dashboard()
+        else:
+            logger.info(
+                "To enable the Ray Web UI, run `pip install ray[dashboard]`.")
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

@@ -267,16 +267,25 @@ ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_
   // Parse the flatbuffer object.
   auto reply_message = flatbuffers::GetRoot<ray::protocol::WaitReply>(reply.get());
   auto found = reply_message->found();
-  for (uint i = 0; i < found->size(); i++) {
+  for (size_t i = 0; i < found->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(found->Get(i)->str());
     result->first.push_back(object_id);
   }
   auto remaining = reply_message->remaining();
-  for (uint i = 0; i < remaining->size(); i++) {
+  for (size_t i = 0; i < remaining->size(); i++) {
     ObjectID object_id = ObjectID::FromBinary(remaining->Get(i)->str());
     result->second.push_back(object_id);
   }
   return ray::Status::OK();
+}
+
+ray::Status RayletClient::WaitForDirectActorCallArgs(
+    const std::vector<ObjectID> &object_ids, int64_t tag) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateWaitForDirectActorCallArgsRequest(
+      fbb, to_flatbuf(fbb, object_ids), tag);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::WaitForDirectActorCallArgsRequest, &fbb);
 }
 
 ray::Status RayletClient::PushError(const ray::JobID &job_id, const std::string &type,

@@ -36,6 +36,8 @@ class WorkerContext {
 
   bool CurrentActorUseDirectCall() const;
 
+  int CurrentActorMaxConcurrency() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
@@ -45,7 +47,8 @@ class WorkerContext {
   const WorkerID worker_id_;
   JobID current_job_id_;
   ActorID current_actor_id_;
-  bool current_actor_use_direct_call_;
+  bool current_actor_use_direct_call_ = false;
+  int current_actor_max_concurrency_;
 
  private:
   static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);

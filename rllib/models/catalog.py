@@ -504,7 +504,7 @@ class ModelCatalog(object):
                 state_in=state_in,
                 seq_lens=seq_lens)
 
-        obs_rank = len(input_dict["obs"].shape) - 1
+        obs_rank = len(input_dict["obs"].shape) - 1  # drops batch dim
 
         if obs_rank > 2:
             return VisionNetwork(input_dict, obs_space, action_space,
@@ -516,7 +516,7 @@ class ModelCatalog(object):
     @staticmethod
     def _get_v2_model(obs_space, options):
         options = options or MODEL_DEFAULTS
-        obs_rank = len(obs_space.shape) - 1
+        obs_rank = len(obs_space.shape)
 
         if options.get("use_lstm"):
             return None  # TODO: default LSTM v2 not implemented

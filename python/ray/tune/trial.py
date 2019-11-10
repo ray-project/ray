@@ -304,15 +304,14 @@ class Trial(object):
         self._checkpoint.value = None
 
     def should_recover(self):
-        """Returns whether the trial qualifies for restoring.
+        """Returns whether the trial qualifies for retrying.
 
-        This is if a checkpoint frequency is set and has not failed more than
-        max_failures. This may return true even when there may not yet
-        be a checkpoint.
+        This is if the trial has not failed more than max_failures. Note this
+        may return true even when there is no checkpoint, either because
+        `self.checkpoint_freq` is `0` or because the trial failed before
+        a checkpoint has been made.
         """
-        return (self.checkpoint_freq > 0
-                and (self.num_failures < self.max_failures
-                     or self.max_failures < 0))
+        return self.num_failures < self.max_failures or self.max_failures < 0
 
     def update_last_result(self, result, terminate=False):
         result.update(trial_id=self.trial_id, done=terminate)

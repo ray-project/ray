@@ -88,7 +88,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::FromRandom().Hex());
     store_id_2 = StartStore(UniqueID::FromRandom().Hex());
 
-    uint pull_timeout_ms = 1;
+    unsigned int pull_timeout_ms = 1;
     push_timeout_ms = 1000;
 
     // start first server
@@ -175,7 +175,7 @@ class TestObjectManagerBase : public ::testing::Test {
   std::string store_id_1;
   std::string store_id_2;
 
-  uint push_timeout_ms;
+  unsigned int push_timeout_ms;
 
   uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
 };
@@ -227,7 +227,7 @@ class TestObjectManager : public TestObjectManagerBase {
         });
     RAY_CHECK_OK(status);
 
-    uint data_size = 1000000;
+    size_t data_size = 1000000;
 
     // dummy_id is not local. The push function will timeout.
     ObjectID dummy_id = ObjectID::FromRandom();
@@ -251,8 +251,8 @@ class TestObjectManager : public TestObjectManagerBase {
   }
 
   void NotificationTestCompleteIfSatisfied() {
-    uint num_expected_objects1 = 1;
-    uint num_expected_objects2 = 2;
+    size_t num_expected_objects1 = 1;
+    size_t num_expected_objects2 = 2;
     if (v1.size() == num_expected_objects1 && v2.size() == num_expected_objects2) {
       SubscribeObjectThenWait();
     }
@@ -371,9 +371,9 @@ class TestObjectManager : public TestObjectManagerBase {
           RAY_LOG(DEBUG) << "remaining " << remaining.size();
 
           // Ensure object order is preserved for all invocations.
-          uint j = 0;
-          uint k = 0;
-          for (uint i = 0; i < object_ids.size(); ++i) {
+          size_t j = 0;
+          size_t k = 0;
+          for (size_t i = 0; i < object_ids.size(); ++i) {
             ObjectID oid = object_ids[i];
             // Make sure the object is in either the found vector or the remaining vector.
             if (j < found.size() && found[j] == oid) {

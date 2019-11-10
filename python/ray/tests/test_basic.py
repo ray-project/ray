@@ -805,6 +805,8 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -840,6 +842,8 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -881,6 +885,8 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1200,6 +1206,25 @@ def test_direct_actor_enabled(ray_start_regular):
     assert ray.get(obj_id) == 2
 
 
+def test_direct_actor_large_objects(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self):
+            time.sleep(1)
+            return np.zeros(10000000)
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    done, _ = ray.wait([obj_id])
+    assert len(done) == 1
+    assert ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert isinstance(ray.get(obj_id), np.ndarray)
+
+
 def test_direct_actor_errors(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1223,9 +1248,70 @@ def test_direct_actor_errors(ray_start_regular):
     with pytest.raises(Exception):
         ray.get(f.remote([a.f.remote(2)]))
 
-    # by ref args not implemented
-    with pytest.raises(ray.exceptions.RayletError):
-        a.f.remote(f.remote(2))
+
+def test_direct_actor_pass_by_ref(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return x
+
+    @ray.remote
+    def error():
+        sys.exit(0)
+
+    a = Actor._remote(is_direct_call=True)
+    assert ray.get(a.f.remote(f.remote(1))) == 2
+
+    fut = [a.f.remote(f.remote(i)) for i in range(100)]
+    assert ray.get(fut) == [i * 2 for i in range(100)]
+
+    # propagates errors for pass by ref
+    with pytest.raises(Exception):
+        ray.get(a.f.remote(error.remote()))
+
+
+def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            pass
+
+    a = Actor._remote(is_direct_call=True)
+
+    @ray.remote
+    def fast_value():
+        print("fast value")
+        pass
+
+    @ray.remote
+    def slow_value():
+        print("start sleep")
+        time.sleep(30)
+
+    @ray.remote
+    def runner(f):
+        print("runner", a, f)
+        return ray.get(a.f.remote(f.remote()))
+
+    runner.remote(slow_value)
+    time.sleep(1)
+    x2 = runner.remote(fast_value)
+    start = time.time()
+    ray.get(x2)
+    delta = time.time() - start
+    assert delta < 10, "did not skip slow value"
 
 
 def test_direct_actor_recursive(ray_start_regular):
@@ -1249,6 +1335,32 @@ def test_direct_actor_recursive(ray_start_regular):
     result, _ = ray.wait([c.f.remote(i) for i in range(100)], num_returns=100)
     result = ray.get(result)
     assert result == [x * 2 for x in range(100)]
+
+
+def test_direct_actor_concurrent(ray_start_regular):
+    @ray.remote
+    class Batcher(object):
+        def __init__(self):
+            self.batch = []
+            self.event = threading.Event()
+
+        def add(self, x):
+            self.batch.append(x)
+            if len(self.batch) >= 3:
+                self.event.set()
+            else:
+                self.event.wait()
+            return sorted(self.batch)
+
+    a = Batcher.options(is_direct_call=True, max_concurrency=3).remote()
+    x1 = a.add.remote(1)
+    x2 = a.add.remote(2)
+    x3 = a.add.remote(3)
+    r1 = ray.get(x1)
+    r2 = ray.get(x2)
+    r3 = ray.get(x3)
+    assert r1 == [1, 2, 3]
+    assert r1 == r2 == r3
 
 
 def test_wait(ray_start_regular):
@@ -1449,7 +1561,6 @@ def test_profiling_api(ray_start_2_cpus):
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
@@ -2831,7 +2942,11 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(
+        num_cpus=5,
+        num_gpus=3,
+        resources={"CustomResource": 1},
+        include_webui=False)
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -2916,6 +3031,7 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
     job_table = ray.jobs()
+    print(job_table)
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -3033,7 +3149,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
+    ray.init(num_cpus=1, job_id=dummy_driver_id, include_webui=False)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id

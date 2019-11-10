@@ -61,16 +61,20 @@ void ObjectStoreNotificationManager::ProcessStoreNotification(
         << "dmesg for previous errors: " << boost_to_ray_status(error).ToString();
   }
 
-  const auto &object_info =
-      flatbuffers::GetRoot<object_manager::protocol::ObjectInfo>(notification_.data());
-  const ObjectID object_id =
-      ObjectID::FromPlasmaIdBinary(object_info->object_id()->str());
-  if (object_info->is_deletion()) {
-    ProcessStoreRemove(object_id);
-  } else {
-    object_manager::protocol::ObjectInfoT result;
-    object_info->UnPackTo(&result);
-    ProcessStoreAdd(result);
+  const auto &object_notification =
+      flatbuffers::GetRoot<object_manager::protocol::PlasmaNotification>(
+          notification_.data());
+  for (size_t i = 0; i < object_notification->object_info()->size(); ++i) {
+    auto object_info = object_notification->object_info()->Get(i);
+    const ObjectID object_id =
+        ObjectID::FromPlasmaIdBinary(object_info->object_id()->str());
+    if (object_info->is_deletion()) {
+      ProcessStoreRemove(object_id);
+    } else {
+      object_manager::protocol::ObjectInfoT result;
+      object_info->UnPackTo(&result);
+      ProcessStoreAdd(result);
+    }
   }
   NotificationWait();
 }

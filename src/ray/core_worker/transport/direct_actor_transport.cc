@@ -5,28 +5,16 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-bool HasByReferenceArgs(const TaskSpecification &spec) {
-  for (size_t i = 0; i < spec.NumArgs(); ++i) {
-    if (spec.ArgIdCount(i) > 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     boost::asio::io_service &io_service,
     std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider)
     : io_service_(io_service),
       client_call_manager_(io_service),
-      store_provider_(std::move(store_provider)) {}
+      in_memory_store_(std::move(store_provider)) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
     const TaskSpecification &task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    return Status::Invalid("Direct actor call only supports by-value arguments");
-  }
 
   RAY_CHECK(task_spec.IsActorTask());
   const auto &actor_id = task_spec.ActorId();
@@ -34,7 +22,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
   const auto task_id = task_spec.TaskId();
   const auto num_returns = task_spec.NumReturns();
 
-  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+  auto request = std::unique_ptr<rpc::DirectActorAssignTaskRequest>(
+      new rpc::DirectActorAssignTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
   std::unique_lock<std::mutex> guard(mutex_);
@@ -60,7 +49,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(
 
     // Submit request.
     auto &client = rpc_clients_[actor_id];
-    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
+    DirectActorAssignTask(*client, std::move(request), actor_id, task_id, num_returns);
   } else {
     // Actor is dead, treat the task as failure.
     RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -84,7 +73,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     // Check if this actor is the one that we're interested, if we already have
     // a connection to the actor, or have pending requests for it, we should
     // create a new connection.
-    if (pending_requests_.count(actor_id) > 0) {
+    if (pending_requests_.count(actor_id) > 0 && rpc_clients_.count(actor_id) == 0) {
       ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
     }
   } else {
@@ -117,8 +106,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
 
 void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     const ActorID &actor_id, std::string ip_address, int port) {
-  std::shared_ptr<rpc::DirectActorClient> grpc_client =
-      rpc::DirectActorClient::make(ip_address, port, client_call_manager_);
+  std::shared_ptr<rpc::WorkerTaskClient> grpc_client =
+      std::make_shared<rpc::WorkerTaskClient>(ip_address, port, client_call_manager_);
   RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
 
   // Submit all pending requests.
@@ -128,47 +117,64 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
     auto request = std::move(requests.front());
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    PushTask(*client, std::move(request), actor_id, task_id, num_returns);
+    DirectActorAssignTask(*client, std::move(request), actor_id, task_id, num_returns);
     requests.pop_front();
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushTask(
-    rpc::DirectActorClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
-    const ActorID &actor_id, const TaskID &task_id, int num_returns) {
+void CoreWorkerDirectActorTaskSubmitter::DirectActorAssignTask(
+    rpc::WorkerTaskClient &client,
+    std::unique_ptr<rpc::DirectActorAssignTaskRequest> request, const ActorID &actor_id,
+    const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
-  auto status = client.PushTask(
-      std::move(request), [this, actor_id, task_id, num_returns](
-                              Status status, const rpc::PushTaskReply &reply) {
+  auto status = client.DirectActorAssignTask(
+      std::move(request),
+      [this, actor_id, task_id, num_returns](
+          Status status, const rpc::DirectActorAssignTaskReply &reply) {
         {
           std::unique_lock<std::mutex> guard(mutex_);
           waiting_reply_tasks_[actor_id].erase(task_id);
         }
         if (!status.ok()) {
+          // Note that this might be the __ray_terminate__ task, so we don't log
+          // loudly with ERROR here.
+          RAY_LOG(INFO) << "Task failed with error: " << status;
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED);
           return;
         }
         for (int i = 0; i < reply.return_objects_size(); i++) {
           const auto &return_object = reply.return_objects(i);
           ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-          std::shared_ptr<LocalMemoryBuffer> data_buffer;
-          if (return_object.data().size() > 0) {
-            data_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.data().data())),
-                return_object.data().size());
+
+          if (return_object.in_plasma()) {
+            // Mark it as in plasma with a dummy object.
+            std::string meta =
+                std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+            auto metadata =
+                const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+            auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+            RAY_CHECK_OK(
+                in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+          } else {
+            std::shared_ptr<LocalMemoryBuffer> data_buffer;
+            if (return_object.data().size() > 0) {
+              data_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.data().data())),
+                  return_object.data().size());
+            }
+            std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
+            if (return_object.metadata().size() > 0) {
+              metadata_buffer = std::make_shared<LocalMemoryBuffer>(
+                  const_cast<uint8_t *>(
+                      reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
+                  return_object.metadata().size());
+            }
+            RAY_CHECK_OK(in_memory_store_->Put(RayObject(data_buffer, metadata_buffer),
+                                               object_id));
           }
-          std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-          if (return_object.metadata().size() > 0) {
-            metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-                return_object.metadata().size());
-          }
-          RAY_CHECK_OK(
-              store_provider_->Put(RayObject(data_buffer, metadata_buffer), object_id));
         }
       });
   if (!status.ok()) {
@@ -187,7 +193,7 @@ void CoreWorkerDirectActorTaskSubmitter::TreatTaskAsFailed(
     std::string meta = std::to_string(static_cast<int>(error_type));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(store_provider_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
   }
 }
 
@@ -200,36 +206,55 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
 
 CoreWorkerDirectActorTaskReceiver::CoreWorkerDirectActorTaskReceiver(
     WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    rpc::GrpcServer &server, const TaskHandler &task_handler)
+    rpc::GrpcServer &server, const TaskHandler &task_handler,
+    const std::function<void()> &exit_handler)
     : worker_context_(worker_context),
-      task_service_(main_io_service, *this),
       task_handler_(task_handler),
-      task_main_io_service_(main_io_service) {
-  server.RegisterService(task_service_);
+      exit_handler_(exit_handler),
+      task_main_io_service_(main_io_service) {}
+
+void CoreWorkerDirectActorTaskReceiver::Init(RayletClient &raylet_client) {
+  waiter_.reset(new DependencyWaiterImpl(raylet_client));
 }
 
-void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
-    const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void CoreWorkerDirectActorTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
+  if (max_concurrency != max_concurrency_) {
+    RAY_LOG(INFO) << "Creating new thread pool of size " << max_concurrency;
+    RAY_CHECK(pool_ == nullptr) << "Cannot change max concurrency at runtime.";
+    pool_.reset(new BoundedExecutor(max_concurrency));
+    max_concurrency_ = max_concurrency;
+  }
+}
+
+void CoreWorkerDirectActorTaskReceiver::HandleDirectActorAssignTask(
+    const rpc::DirectActorAssignTaskRequest &request,
+    rpc::DirectActorAssignTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+  RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
   RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
-  if (HasByReferenceArgs(task_spec)) {
-    send_reply_callback(
-        Status::Invalid("Direct actor call only supports by value arguments"), nullptr,
-        nullptr);
-    return;
-  }
   if (task_spec.IsActorTask() && !worker_context_.CurrentActorUseDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
     return;
   }
+  SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
+
+  // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
+  // the raylet, which is a central bottleneck. In the future, we should inline
+  // dependencies that are small and already known to be local to the client.
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
+    int count = task_spec.ArgIdCount(i);
+    for (int j = 0; j < count; j++) {
+      dependencies.push_back(task_spec.ArgId(i, j));
+    }
+  }
 
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(),
-        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(task_main_io_service_)));
+        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+                                  task_main_io_service_, *waiter_, pool_)));
     it = result.first;
   }
   it->second->Add(
@@ -244,23 +269,38 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
         // TODO(edoakes): resource IDs are currently kept track of in the raylet,
         // need to come up with a solution for this.
         ResourceMappingType resource_ids;
-        std::vector<std::shared_ptr<RayObject>> results;
-        auto status = task_handler_(task_spec, resource_ids, &results);
-        RAY_CHECK(results.size() == num_returns) << results.size() << "  " << num_returns;
+        std::vector<std::shared_ptr<RayObject>> return_objects;
+        auto status = task_handler_(task_spec, resource_ids, &return_objects);
+        if (status.IsSystemExit()) {
+          // In Python, SystemExit can only be raised on the main thread. To work
+          // around this when we are executing tasks on worker threads, we re-post the
+          // exit event explicitly on the main thread.
+          task_main_io_service_.post([this]() { exit_handler_(); });
+          return;
+        }
+        RAY_CHECK(return_objects.size() == num_returns)
+            << return_objects.size() << "  " << num_returns;
 
-        for (size_t i = 0; i < results.size(); i++) {
+        for (size_t i = 0; i < return_objects.size(); i++) {
           auto return_object = reply->add_return_objects();
           ObjectID id = ObjectID::ForTaskReturn(
               task_spec.TaskId(), /*index=*/i + 1,
               /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT_ACTOR));
           return_object->set_object_id(id.Binary());
-          const auto &result = results[i];
-          if (result->GetData() != nullptr) {
-            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
-          }
-          if (result->GetMetadata() != nullptr) {
-            return_object->set_metadata(result->GetMetadata()->Data(),
-                                        result->GetMetadata()->Size());
+
+          // The object is nullptr if it already existed in the object store.
+          const auto &result = return_objects[i];
+          if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+            return_object->set_in_plasma(true);
+          } else {
+            if (result->GetData() != nullptr) {
+              return_object->set_data(result->GetData()->Data(),
+                                      result->GetData()->Size());
+            }
+            if (result->GetMetadata() != nullptr) {
+              return_object->set_metadata(result->GetMetadata()->Data(),
+                                          result->GetMetadata()->Size());
+            }
           }
         }
 
@@ -268,7 +308,17 @@ void CoreWorkerDirectActorTaskReceiver::HandlePushTask(
       },
       [send_reply_callback]() {
         send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
-      });
+      },
+      dependencies);
+}
+
+void CoreWorkerDirectActorTaskReceiver::HandleDirectActorCallArgWaitComplete(
+    const rpc::DirectActorCallArgWaitCompleteRequest &request,
+    rpc::DirectActorCallArgWaitCompleteReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
+  waiter_->OnWaitComplete(request.tag());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray
