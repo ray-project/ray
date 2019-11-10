@@ -26,23 +26,23 @@ public:
   ///
   /// \param String ID.
   /// \return The integer ID associated to the string ID.
-  int64_t getIntId(string sid);
+  int64_t getIdByInt(string sid);
 
   /// Insert a string ID and get the associated integer ID.
   ///
   /// \param String ID to be inserted.
   /// \return The integer ID associated with string ID sid.
-  int64_t insertStringId(string sid);
+  int64_t insertIdByString(string sid);
 
   /// Delete an ID identified by its string format.
   ///
   /// \param ID to be deleted.
-  void removeStringId(string sid);
+  void removeIdByString(string sid);
 
   /// Delete an ID identified by its integer format.
   ///
   /// \param ID to be deleted.
-  void removeIntId(int64_t id);
+  void removeIdByInt(int64_t id);
 
   /// Get number of identifiers.
   int64_t count();

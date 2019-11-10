@@ -26,14 +26,14 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   int num = 10;  // should be greater than 10.
 
   for (int i = 0; i < num; i++) {
-    ids.insertStringId(to_string(i));
+    ids.insertIdByString(to_string(i));
   }
   ASSERT_EQ(ids.count(), num);
 
-  ids.removeStringId(to_string(1));
+  ids.removeIdByString(to_string(1));
   ASSERT_EQ(ids.count(), num - 1);
 
-  ids.removeIntId(hasher(to_string(2)));
+  ids.removeIdByInt(hasher(to_string(2)));
   ASSERT_EQ(ids.count(), num - 2);
 }
 
