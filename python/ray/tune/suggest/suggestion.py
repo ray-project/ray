@@ -142,6 +142,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self._max_concurrent = max_concurrent
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
+        self.final_results = []
         self.stall = False
         self.results = []
         super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
@@ -156,6 +157,12 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self.counter["result"] += 1
         self.results += [result]
 
-    def on_trial_complete(self, trial_id, **kwargs):
+    def on_trial_complete(self,
+                          trial_id,
+                          result=None,
+                          error=False,
+                          early_terminated=False):
         self.counter["complete"] += 1
+        if result:
+            self.final_results += [result]
         del self.live_trials[trial_id]

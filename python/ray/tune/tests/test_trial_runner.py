@@ -2216,6 +2216,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertTrue(searcher.is_finished())
         self.assertTrue(runner.is_finished())
 
+    def testSearchAlgSchedulerEarlyStop(self):
+        """Early termination notif to Searcher can be turned off."""
+
+        class _MockScheduler(FIFOScheduler):
+            def on_trial_result(self, *args, **kwargs):
+                return TrialScheduler.STOP
+
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(use_early_stopped_trials=True)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
+        runner.step()
+        runner.step()
+        self.assertEqual(len(searcher.final_results), 1)
+
+        searcher = _MockSuggestionAlgorithm(use_early_stopped_trials=False)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
+        runner.step()
+        runner.step()
+        self.assertEqual(len(searcher.final_results), 0)
+
     def testSearchAlgStalled(self):
         """Checks that runner and searcher state is maintained when stalled."""
         ray.init(num_cpus=4, num_gpus=2)
