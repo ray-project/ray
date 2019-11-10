@@ -17,7 +17,7 @@ def dockerize_if_needed(config):
         return config
 
     docker_image = config["docker"].get("image")
-    docker_pull = config["docker"].get("pull", True)
+    docker_pull = config["docker"].get("pull_before_run", True)
     cname = config["docker"].get("container_name")
     run_options = config["docker"].get("run_options", [])
 
