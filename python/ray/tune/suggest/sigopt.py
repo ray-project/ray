@@ -121,7 +121,7 @@ class SigOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to SigOpt unless early terminated or errored.
+        """Notification for the completion of trial.
 
         If a trial fails, it will be reported as a failed Observation, telling
         the optimizer that the Suggestion led to a metric failure, which

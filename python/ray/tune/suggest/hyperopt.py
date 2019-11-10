@@ -173,8 +173,7 @@ class HyperOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to HyperOpt unless errored or the trial is early
-        terminated and should not be used.
+        """Notification for the completion of trial.
 
         The result is internally negated when interacting with HyperOpt
         so that HyperOpt can "maximize" this value, as it minimizes on default.

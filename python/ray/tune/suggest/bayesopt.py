@@ -104,8 +104,7 @@ class BayesOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to BayesOpt unless errored or the trial is early
-        terminated and should not be used."""
+        """Notification for the completion of trial."""
         if result:
             self._process_result(trial_id, result, early_terminated)
         del self._live_trial_mapping[trial_id]

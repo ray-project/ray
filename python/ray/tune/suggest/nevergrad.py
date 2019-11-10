@@ -135,8 +135,7 @@ class NevergradSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to Nevergrad unless errored or the trial is early
-        terminated and should not be used.
+        """Notification for the completion of trial.
 
         The result is internally negated when interacting with Nevergrad
         so that Nevergrad Optimizers can "maximize" this value,

@@ -147,8 +147,7 @@ class SkOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to skopt unless errored or the trial is early
-        terminated and should not be used.
+        """Notification for the completion of trial.
 
         The result is internally negated when interacting with Skopt
         so that Skopt Optimizers can "maximize" this value,
@@ -160,7 +159,6 @@ class SkOptSearch(SuggestionAlgorithm):
         self._live_trial_mapping.pop(trial_id)
 
     def _process_result(self, trial_id, result, early_terminated=False):
-
         if early_terminated and self._use_early_stopped is False:
             return
         skopt_trial_info = self._live_trial_mapping[trial_id]
