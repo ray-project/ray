@@ -235,7 +235,7 @@ def cli(logging_level, logging_format):
 @click.option(
     "--use-pickle/--no-use-pickle",
     is_flag=True,
-    default=True,
+    default=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
     help="Use pickle for serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,

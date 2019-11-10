@@ -556,7 +556,7 @@ def init(address=None,
          raylet_socket_name=None,
          temp_dir=None,
          load_code_from_local=False,
-         use_pickle=True,
+         use_pickle=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
          _internal_config=None):
     """Connect to an existing Ray cluster or start one and connect to it.
 
