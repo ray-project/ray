@@ -18,15 +18,19 @@ struct WorkerThreadContext {
     return current_task_;
   }
 
-  void SetCurrentTaskId(const TaskID &task_id) {
-    current_task_id_ = task_id;
-    task_index_ = 0;
-    put_index_ = 0;
-  }
+  void SetCurrentTaskId(const TaskID &task_id) { current_task_id_ = task_id; }
 
   void SetCurrentTask(const TaskSpecification &task_spec) {
+    RAY_CHECK(task_index_ == 0);
+    RAY_CHECK(put_index_ == 0);
     SetCurrentTaskId(task_spec.TaskId());
     current_task_ = std::make_shared<const TaskSpecification>(task_spec);
+  }
+
+  void ResetCurrentTask(const TaskSpecification &task_spec) {
+    SetCurrentTaskId(TaskID::Nil());
+    task_index_ = 0;
+    put_index_ = 0;
   }
 
  private:
@@ -55,9 +59,9 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
-  GetThreadContext().SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
-                                          ? TaskID::ForDriverTask(job_id)
-                                          : TaskID::Nil());
+  GetThreadContext(true).SetCurrentTaskId((worker_type_ == WorkerType::DRIVER)
+                                              ? TaskID::ForDriverTask(job_id)
+                                              : TaskID::Nil());
 }
 
 const WorkerType WorkerContext::GetWorkerType() const { return worker_type_; }
@@ -74,26 +78,39 @@ const TaskID &WorkerContext::GetCurrentTaskID() const {
   return GetThreadContext().GetCurrentTaskID();
 }
 
-// TODO(edoakes): remove this once Python core worker uses the task interfaces.
 void WorkerContext::SetCurrentJobId(const JobID &job_id) { current_job_id_ = job_id; }
 
-// TODO(edoakes): remove this once Python core worker uses the task interfaces.
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
   GetThreadContext().SetCurrentTaskId(task_id);
 }
 
 void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
-  SetCurrentJobId(task_spec.JobId());
   GetThreadContext().SetCurrentTask(task_spec);
-  if (task_spec.IsActorCreationTask()) {
+  if (task_spec.IsNormalTask()) {
+    RAY_CHECK(current_job_id_.IsNil());
+    SetCurrentJobId(task_spec.JobId());
+  } else if (task_spec.IsActorCreationTask()) {
+    RAY_CHECK(current_job_id_.IsNil());
+    SetCurrentJobId(task_spec.JobId());
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
     current_actor_use_direct_call_ = task_spec.IsDirectCall();
-  }
-  if (task_spec.IsActorTask()) {
+    current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
+  } else if (task_spec.IsActorTask()) {
+    RAY_CHECK(current_job_id_ == task_spec.JobId());
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
+  } else {
+    RAY_CHECK(false);
   }
 }
+
+void WorkerContext::ResetCurrentTask(const TaskSpecification &task_spec) {
+  GetThreadContext().ResetCurrentTask(task_spec);
+  if (task_spec.IsNormalTask()) {
+    SetCurrentJobId(JobID::Nil());
+  }
+}
+
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
@@ -104,7 +121,11 @@ bool WorkerContext::CurrentActorUseDirectCall() const {
   return current_actor_use_direct_call_;
 }
 
-WorkerThreadContext &WorkerContext::GetThreadContext() {
+int WorkerContext::CurrentActorMaxConcurrency() const {
+  return current_actor_max_concurrency_;
+}
+
+WorkerThreadContext &WorkerContext::GetThreadContext(bool for_main_thread) {
   if (thread_context_ == nullptr) {
     thread_context_ = std::unique_ptr<WorkerThreadContext>(new WorkerThreadContext());
   }

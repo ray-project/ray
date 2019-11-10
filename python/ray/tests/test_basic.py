@@ -9,7 +9,6 @@ import glob
 import io
 import json
 import logging
-from multiprocessing import Process
 import os
 import random
 import re
@@ -507,7 +506,7 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-def test_custom_serializers(ray_start_regular):
+def custom_serializers():
     class Foo(object):
         def __init__(self):
             self.x = 3
@@ -535,6 +534,30 @@ def test_custom_serializers(ray_start_regular):
         return Bar()
 
     assert ray.get(f.remote()) == ((3, "string1", Bar.__name__), "string2")
+
+
+def test_custom_serializers(ray_start_regular):
+    custom_serializers()
+
+
+def test_custom_serializers_with_pickle(shutdown_only):
+    ray.init(use_pickle=True)
+    custom_serializers()
+
+    class Foo(object):
+        def __init__(self):
+            self.x = 4
+
+    # Test the pickle serialization backend without serializer.
+    # NOTE: 'use_pickle' here is different from 'use_pickle' in
+    # ray.init
+    ray.register_custom_serializer(Foo, use_pickle=True)
+
+    @ray.remote
+    def f():
+        return Foo()
+
+    assert type(ray.get(f.remote())) == Foo
 
 
 def test_serialization_final_fallback(ray_start_regular):
@@ -782,6 +805,8 @@ def test_keyword_args(ray_start_regular):
     assert ray.get(f3.remote(4)) == 4
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -817,6 +842,8 @@ def test_args_starkwargs(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -858,6 +885,8 @@ def test_args_named_and_star(ray_start_regular):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
 @pytest.mark.parametrize(
     "ray_start_regular", [{
         "local_mode": True
@@ -1161,6 +1190,179 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+def test_direct_actor_enabled(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote(1)
+    # it is not stored in plasma
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert ray.get(obj_id) == 2
+
+
+def test_direct_actor_large_objects(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self):
+            time.sleep(1)
+            return np.zeros(10000000)
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    done, _ = ray.wait([obj_id])
+    assert len(done) == 1
+    assert ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert isinstance(ray.get(obj_id), np.ndarray)
+
+
+def test_direct_actor_errors(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return 1
+
+    a = Actor._remote(is_direct_call=True)
+
+    # cannot pass returns to other methods directly
+    with pytest.raises(Exception):
+        ray.get(f.remote(a.f.remote(2)))
+
+    # cannot pass returns to other methods even in a list
+    with pytest.raises(Exception):
+        ray.get(f.remote([a.f.remote(2)]))
+
+
+def test_direct_actor_pass_by_ref(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            return x * 2
+
+    @ray.remote
+    def f(x):
+        return x
+
+    @ray.remote
+    def error():
+        sys.exit(0)
+
+    a = Actor._remote(is_direct_call=True)
+    assert ray.get(a.f.remote(f.remote(1))) == 2
+
+    fut = [a.f.remote(f.remote(i)) for i in range(100)]
+    assert ray.get(fut) == [i * 2 for i in range(100)]
+
+    # propagates errors for pass by ref
+    with pytest.raises(Exception):
+        ray.get(a.f.remote(error.remote()))
+
+
+def test_direct_actor_pass_by_ref_order_optimization(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self, x):
+            pass
+
+    a = Actor._remote(is_direct_call=True)
+
+    @ray.remote
+    def fast_value():
+        print("fast value")
+        pass
+
+    @ray.remote
+    def slow_value():
+        print("start sleep")
+        time.sleep(30)
+
+    @ray.remote
+    def runner(f):
+        print("runner", a, f)
+        return ray.get(a.f.remote(f.remote()))
+
+    runner.remote(slow_value)
+    time.sleep(1)
+    x2 = runner.remote(fast_value)
+    start = time.time()
+    ray.get(x2)
+    delta = time.time() - start
+    assert delta < 10, "did not skip slow value"
+
+
+def test_direct_actor_recursive(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self, delegate=None):
+            self.delegate = delegate
+
+        def f(self, x):
+            if self.delegate:
+                return ray.get(self.delegate.f.remote(x))
+            return x * 2
+
+    a = Actor._remote(is_direct_call=True)
+    b = Actor._remote(args=[a], is_direct_call=False)
+    c = Actor._remote(args=[b], is_direct_call=True)
+
+    result = ray.get([c.f.remote(i) for i in range(100)])
+    assert result == [x * 2 for x in range(100)]
+
+    result, _ = ray.wait([c.f.remote(i) for i in range(100)], num_returns=100)
+    result = ray.get(result)
+    assert result == [x * 2 for x in range(100)]
+
+
+def test_direct_actor_concurrent(ray_start_regular):
+    @ray.remote
+    class Batcher(object):
+        def __init__(self):
+            self.batch = []
+            self.event = threading.Event()
+
+        def add(self, x):
+            self.batch.append(x)
+            if len(self.batch) >= 3:
+                self.event.set()
+            else:
+                self.event.wait()
+            return sorted(self.batch)
+
+    a = Batcher.options(is_direct_call=True, max_concurrency=3).remote()
+    x1 = a.add.remote(1)
+    x2 = a.add.remote(2)
+    x3 = a.add.remote(3)
+    r1 = ray.get(x1)
+    r2 = ray.get(x2)
+    r3 = ray.get(x3)
+    assert r1 == [1, 2, 3]
+    assert r1 == r2 == r3
+
+
 def test_wait(ray_start_regular):
     @ray.remote
     def f(delay):
@@ -1359,7 +1561,6 @@ def test_profiling_api(ray_start_2_cpus):
         profile_data = ray.timeline()
         event_types = {event["cat"] for event in profile_data}
         expected_types = [
-            "worker_idle",
             "task",
             "task:deserialize_arguments",
             "task:execute",
@@ -2741,7 +2942,11 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(
+        num_cpus=5,
+        num_gpus=3,
+        resources={"CustomResource": 1},
+        include_webui=False)
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -2826,6 +3031,7 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
     job_table = ray.jobs()
+    print(job_table)
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -2943,7 +3149,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
+    ray.init(num_cpus=1, job_id=dummy_driver_id, include_webui=False)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id
@@ -2974,27 +3180,6 @@ def test_object_id_properties():
     id_dumps = pickle.dumps(object_id)
     id_from_dumps = pickle.loads(id_dumps)
     assert id_from_dumps == object_id
-    file_prefix = "test_object_id_properties"
-
-    # Make sure the ids are fork safe.
-    def write(index):
-        str = ray.ObjectID.from_random().hex()
-        with open("{}{}".format(file_prefix, index), "w") as fo:
-            fo.write(str)
-
-    def read(index):
-        with open("{}{}".format(file_prefix, index), "r") as fi:
-            for line in fi:
-                return line
-
-    processes = [Process(target=write, args=(_, )) for _ in range(4)]
-    for process in processes:
-        process.start()
-    for process in processes:
-        process.join()
-    hexes = {read(i) for i in range(4)}
-    [os.remove("{}{}".format(file_prefix, i)) for i in range(4)]
-    assert len(hexes) == 4
 
 
 @pytest.fixture

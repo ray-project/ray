@@ -57,6 +57,8 @@ class RemoteFunction(object):
                  object_store_memory, resources, num_return_vals, max_calls):
         self._function = function
         self._function_descriptor = FunctionDescriptor.from_function(function)
+        self._function_descriptor_list = (
+            self._function_descriptor.get_function_descriptor_list())
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -108,6 +110,26 @@ class RemoteFunction(object):
             num_gpus=num_gpus,
             resources=resources)
 
+    def options(self, **options):
+        """Convenience method for executing a task with options.
+
+        Same arguments as func._remote(), but returns a wrapped function
+        that a non-underscore .remote() can be called on.
+
+        Examples:
+            # The following two calls are equivalent.
+            >>> func._remote(num_cpus=4, args=[x, y])
+            >>> func.options(num_cpus=4).remote(x, y)
+        """
+
+        func_cls = self
+
+        class FuncWrapper(object):
+            def remote(self, *args, **kwargs):
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+        return FuncWrapper()
+
     def _remote(self,
                 args=None,
                 kwargs=None,
@@ -149,8 +171,8 @@ class RemoteFunction(object):
                     num_return_vals)
             else:
                 object_ids = worker.core_worker.submit_task(
-                    self._function_descriptor.get_function_descriptor_list(),
-                    list_args, num_return_vals, resources)
+                    self._function_descriptor_list, list_args, num_return_vals,
+                    resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

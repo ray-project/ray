@@ -7,7 +7,7 @@ import torch
 import torch.utils.data
 
 import ray
-from ray.experimental.sgd.pytorch import pytorch_utils
+from ray.experimental.sgd.pytorch import utils as pytorch_utils
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
@@ -20,23 +20,33 @@ class PyTorchRunner(object):
                  model_creator,
                  data_creator,
                  optimizer_creator,
+                 loss_creator,
+                 train_function=None,
+                 validation_function=None,
                  config=None,
                  batch_size=16):
         """Initializes the runner.
 
         Args:
-            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py.
-            data_creator (dict -> Dataset, Dataset): see pytorch_trainer.py.
+            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py
+            data_creator (int, dict -> DataLoader, DataLoader): see
+                pytorch_trainer.py.
             optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 see pytorch_trainer.py.
+            loss_creator (dict -> loss): see pytorch_trainer.py.
+            train_function: see pytorch_trainer.py
+            validation_function: see pytorch_trainer.py
             config (dict): see pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
-
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
+        self.loss_creator = loss_creator
         self.config = {} if config is None else config
+        self.train_function = train_function or pytorch_utils.train
+        self.validation_function = (validation_function
+                                    or pytorch_utils.validate)
         self.batch_size = batch_size
         self.verbose = True
 
@@ -57,26 +67,14 @@ class PyTorchRunner(object):
             self.model = self.model.cuda()
 
         logger.debug("Creating optimizer")
-        self.criterion, self.optimizer = self.optimizer_creator(
-            self.model, self.config)
+        self.optimizer = self.optimizer_creator(self.model, self.config)
+        self.criterion = self.loss_creator(self.config)
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
         logger.debug("Creating dataset")
-        self.training_set, self.validation_set = self.data_creator(self.config)
-        self.train_loader = torch.utils.data.DataLoader(
-            self.training_set,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=2,
-            pin_memory=False)
-
-        self.validation_loader = torch.utils.data.DataLoader(
-            self.validation_set,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=2,
-            pin_memory=False)
+        self.train_loader, self.validation_loader = self.data_creator(
+            self.batch_size, self.config)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -90,8 +88,9 @@ class PyTorchRunner(object):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
-            train_stats = pytorch_utils.train(self.train_loader, self.model,
-                                              self.criterion, self.optimizer)
+            train_stats = self.train_function(self.model, self.train_loader,
+                                              self.criterion, self.optimizer,
+                                              self.config)
             train_stats["epoch"] = self.epoch
 
         self.epoch += 1
@@ -102,8 +101,9 @@ class PyTorchRunner(object):
     def validate(self):
         """Evaluates the model on the validation data set."""
         with self._timers["validation"]:
-            validation_stats = pytorch_utils.validate(
-                self.validation_loader, self.model, self.criterion)
+            validation_stats = self.validation_function(
+                self.model, self.validation_loader, self.criterion,
+                self.config)
 
         validation_stats.update(self.stats())
         return validation_stats
@@ -121,7 +121,7 @@ class PyTorchRunner(object):
         """Returns the state of the runner."""
         return {
             "epoch": self.epoch,
-            "model": self.model.state_dict(),
+            "model": self.model.cpu().state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "stats": self.stats()
         }
@@ -133,12 +133,13 @@ class PyTorchRunner(object):
         self.optimizer.load_state_dict(state["optimizer"])
         self.epoch = state["stats"]["epoch"]
 
+    def apply_fn(self, fn):
+        return fn(self)
+
     def shutdown(self):
         """Attempts to shut down the worker."""
         del self.validation_loader
-        del self.validation_set
         del self.train_loader
-        del self.training_set
         del self.criterion
         del self.optimizer
         del self.model

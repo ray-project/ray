@@ -292,7 +292,9 @@ def test_incorrect_method_calls(ray_start_regular):
 def test_worker_raising_exception(ray_start_regular):
     @ray.remote
     def f():
-        ray.worker.global_worker._get_next_task_from_raylet = None
+        # This is the only reasonable variable we can set here that makes the
+        # execute_task function fail after the task got executed.
+        ray.experimental.signal.reset = None
 
     # Running this task should cause the worker to raise an exception after
     # the task has successfully completed.
@@ -619,11 +621,16 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         return 1
 
     @ray.remote
+    def h():
+        time.sleep(1)
+        ray.get(f.remote())
+
+    @ray.remote
     def g():
         # Sleep so that the f tasks all get submitted to the scheduler after
         # the g tasks.
         time.sleep(1)
-        ray.get(f.remote())
+        ray.get(h.remote())
 
     [g.remote() for _ in range(num_cpus * 4)]
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
@@ -705,8 +712,6 @@ def test_warning_for_dead_node(ray_start_cluster_2_nodes):
 
 
 def test_raylet_crash_when_get(ray_start_regular):
-    nonexistent_id = ray.ObjectID.from_random()
-
     def sleep_to_kill_raylet():
         # Don't kill raylet before default workers get connected.
         time.sleep(2)
@@ -715,14 +720,14 @@ def test_raylet_crash_when_get(ray_start_regular):
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
     with pytest.raises(ray.exceptions.UnreconstructableError):
-        ray.get(nonexistent_id)
+        ray.get(ray.ObjectID.from_random())
     thread.join()
 
 
 def test_connect_with_disconnected_node(shutdown_only):
     config = json.dumps({
         "num_heartbeats_timeout": 50,
-        "heartbeat_timeout_milliseconds": 10,
+        "raylet_heartbeat_timeout_milliseconds": 10,
     })
     cluster = Cluster()
     cluster.add_node(num_cpus=0, _internal_config=config)

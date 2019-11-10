@@ -112,6 +112,16 @@ class WorkerPool {
   std::vector<std::shared_ptr<Worker>> GetWorkersRunningTasksForJob(
       const JobID &job_id) const;
 
+  /// Get all the workers.
+  ///
+  /// \return A list containing all the workers.
+  const std::vector<std::shared_ptr<Worker>> GetAllWorkers() const;
+
+  /// Get all the drivers.
+  ///
+  /// \return A list containing all the drivers.
+  const std::vector<std::shared_ptr<Worker>> GetAllDrivers() const;
+
   /// Whether there is a pending worker for the given task.
   /// Note that, this is only used for actor creation task with dynamic options.
   /// And if the worker registered but isn't assigned a task,

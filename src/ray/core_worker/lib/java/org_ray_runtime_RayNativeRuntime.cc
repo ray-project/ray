@@ -37,42 +37,45 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
   auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
   auto gcs_client_options = ToGcsClientOptions(env, gcsClientOptions);
 
-  auto executor_func = [](const ray::RayFunction &ray_function,
-                          const std::vector<std::shared_ptr<ray::RayObject>> &args,
-                          int num_returns,
-                          std::vector<std::shared_ptr<ray::RayObject>> *results) {
-    JNIEnv *env = local_env;
-    RAY_CHECK(env);
-    RAY_CHECK(local_java_task_executor);
-    // convert RayFunction
-    jobject ray_function_array_list =
-        NativeStringVectorToJavaStringList(env, ray_function.GetFunctionDescriptor());
-    // convert args
-    // TODO (kfstorm): Avoid copying binary data from Java to C++
-    jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
-        env, args, NativeRayObjectToJavaNativeRayObject);
+  auto task_execution_callback =
+      [](ray::TaskType task_type, const ray::RayFunction &ray_function,
+         const std::unordered_map<std::string, double> &required_resources,
+         const std::vector<std::shared_ptr<ray::RayObject>> &args,
+         const std::vector<ObjectID> &arg_reference_ids,
+         const std::vector<ObjectID> &return_ids,
+         std::vector<std::shared_ptr<ray::RayObject>> *results) {
+        JNIEnv *env = local_env;
+        RAY_CHECK(env);
+        RAY_CHECK(local_java_task_executor);
+        // convert RayFunction
+        jobject ray_function_array_list =
+            NativeStringVectorToJavaStringList(env, ray_function.GetFunctionDescriptor());
+        // convert args
+        // TODO (kfstorm): Avoid copying binary data from Java to C++
+        jobject args_array_list = NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
+            env, args, NativeRayObjectToJavaNativeRayObject);
 
-    // invoke Java method
-    jobject java_return_objects =
-        env->CallObjectMethod(local_java_task_executor, java_task_executor_execute,
-                              ray_function_array_list, args_array_list);
-    std::vector<std::shared_ptr<ray::RayObject>> return_objects;
-    JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
-        env, java_return_objects, &return_objects,
-        [](JNIEnv *env, jobject java_native_ray_object) {
-          return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
-        });
-    for (auto &obj : return_objects) {
-      results->push_back(obj);
-    }
-    return ray::Status::OK();
-  };
+        // invoke Java method
+        jobject java_return_objects =
+            env->CallObjectMethod(local_java_task_executor, java_task_executor_execute,
+                                  ray_function_array_list, args_array_list);
+        std::vector<std::shared_ptr<ray::RayObject>> return_objects;
+        JavaListToNativeVector<std::shared_ptr<ray::RayObject>>(
+            env, java_return_objects, &return_objects,
+            [](JNIEnv *env, jobject java_native_ray_object) {
+              return JavaNativeRayObjectToNativeRayObject(env, java_native_ray_object);
+            });
+        for (auto &obj : return_objects) {
+          results->push_back(obj);
+        }
+        return ray::Status::OK();
+      };
 
   try {
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
         native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"",
-        /*node_ip_address=*/"", executor_func);
+        /*node_ip_address=*/"", task_execution_callback);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;
@@ -92,7 +95,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeRunTaskExecut
   local_env = env;
   local_java_task_executor = javaTaskExecutor;
   auto core_worker = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
-  core_worker->Execution().Run();
+  core_worker->StartExecutingTasks();
   local_env = nullptr;
   local_java_task_executor = nullptr;
 }

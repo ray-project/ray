@@ -79,6 +79,8 @@ enum class StatusCode : char {
   UnknownError = 9,
   NotImplemented = 10,
   RedisError = 11,
+  Interrupted = 12,
+  SystemExit = 13,
 };
 
 #if defined(__clang__)
@@ -142,6 +144,14 @@ class RAY_EXPORT Status {
     return Status(StatusCode::RedisError, msg);
   }
 
+  static Status Interrupted(const std::string &msg) {
+    return Status(StatusCode::Interrupted, msg);
+  }
+
+  static Status SystemExit() {
+    return Status(StatusCode::SystemExit, "process requested exit");
+  }
+
   // Returns true iff the status indicates success.
   bool ok() const { return (state_ == NULL); }
 
@@ -155,6 +165,8 @@ class RAY_EXPORT Status {
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
+  bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
+  bool IsSystemExit() const { return code() == StatusCode::SystemExit; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

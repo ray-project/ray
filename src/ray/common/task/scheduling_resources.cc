@@ -92,7 +92,7 @@ ResourceSet::ResourceSet(const std::unordered_map<std::string, double> &resource
 ResourceSet::ResourceSet(const std::vector<std::string> &resource_labels,
                          const std::vector<double> resource_capacity) {
   RAY_CHECK(resource_labels.size() == resource_capacity.size());
-  for (uint i = 0; i < resource_labels.size(); i++) {
+  for (size_t i = 0; i < resource_labels.size(); i++) {
     RAY_CHECK(resource_capacity[i] > 0);
     resource_capacity_[resource_labels[i]] =
         FractionalResourceQuantity(resource_capacity[i]);
@@ -713,8 +713,7 @@ std::vector<flatbuffers::Offset<protocol::ResourceIdSetInfo>> ResourceIdSet::ToF
 
 const std::string ResourceIdSet::Serialize() const {
   flatbuffers::FlatBufferBuilder fbb;
-  auto resource_id_set_flatbuf = ToFlatbuf(fbb);
-  fbb.Finish(fbb.CreateVector(resource_id_set_flatbuf));
+  fbb.Finish(protocol::CreateResourceIdSetInfos(fbb, fbb.CreateVector(ToFlatbuf(fbb))));
   return std::string(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
 }
 

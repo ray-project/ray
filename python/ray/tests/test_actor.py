@@ -21,12 +21,9 @@ import ray.ray_constants as ray_constants
 import ray.tests.utils
 import ray.tests.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
-from ray.tests.utils import (
-    relevant_errors,
-    wait_for_condition,
-    wait_for_errors,
-    wait_for_pid_to_exit,
-)
+from ray.tests.utils import (relevant_errors, wait_for_condition,
+                             wait_for_errors, wait_for_pid_to_exit,
+                             run_string_as_driver)
 
 
 @pytest.fixture
@@ -497,11 +494,16 @@ def test_actor_deletion(ray_start_regular):
     actors = None
     [ray.tests.utils.wait_for_pid_to_exit(pid) for pid in pids]
 
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_actor_method_deletion(ray_start_regular):
     @ray.remote
     class Actor(object):
         def method(self):
             return 1
 
+    # TODO(ekl) this doesn't work in Python 2 after the weak ref method change.
     # Make sure that if we create an actor and call a method on it
     # immediately, the actor doesn't get killed before the method is
     # called.
@@ -2281,7 +2283,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
                 # put a new object in plasma store.
                 global_worker = ray.worker.global_worker
                 if not global_worker.core_worker.object_exists(obj_id):
-                    global_worker.put_object(obj_id, 1)
+                    global_worker.put_object(1, obj_id)
                     break
 
         def get_pid(self):
@@ -2816,3 +2818,37 @@ def test_ray_wait_dead_actor(ray_start_cluster):
     failure_detected = False
     while not failure_detected:
         failure_detected = ray.get(parent_actor.wait.remote())
+
+
+def test_detached_actor(ray_start_regular):
+    @ray.remote
+    class DetachedActor(object):
+        def ping(self):
+            return "pong"
+
+    with pytest.raises(Exception, match="Detached actors must be named"):
+        DetachedActor._remote(detached=True)
+
+    with pytest.raises(ValueError, match="Please use a different name"):
+        _ = DetachedActor._remote(name="d_actor")
+        DetachedActor._remote(name="d_actor")
+
+    redis_address = ray_start_regular["redis_address"]
+
+    actor_name = "DetachedActor"
+    driver_script = """
+import ray
+ray.init(address="{}")
+
+@ray.remote
+class DetachedActor(object):
+    def ping(self):
+        return "pong"
+
+actor = DetachedActor._remote(name="{}", detached=True)
+ray.get(actor.ping.remote())
+""".format(redis_address, actor_name)
+
+    run_string_as_driver(driver_script)
+    detached_actor = ray.experimental.get_actor(actor_name)
+    assert ray.get(detached_actor.ping.remote()) == "pong"

@@ -15,12 +15,6 @@ cdef class TaskSpec:
         unique_ptr[CTaskSpec] task_spec
 
     @staticmethod
-    cdef make(unique_ptr[CTaskSpec]& task_spec):
-        cdef TaskSpec self = TaskSpec.__new__(TaskSpec)
-        self.task_spec.reset(task_spec.release())
-        return self
-
-    @staticmethod
     def from_string(const c_string& task_spec_str):
         """Convert a string to a Ray task specification Python object.
 
@@ -82,23 +76,23 @@ cdef class TaskSpec:
     def arguments(self):
         """Return the arguments for the task."""
         cdef:
-            CTaskSpec*task_spec = self.task_spec.get()
-            int64_t num_args = task_spec.NumArgs()
-            int32_t lang = <int32_t>task_spec.GetLanguage()
+            int64_t num_args = self.task_spec.get().NumArgs()
+            int32_t lang = <int32_t>self.task_spec.get().GetLanguage()
             int count
         arg_list = []
 
         if lang == <int32_t>LANGUAGE_PYTHON:
             for i in range(num_args):
-                count = task_spec.ArgIdCount(i)
+                count = self.task_spec.get().ArgIdCount(i)
                 if count > 0:
                     assert count == 1
                     arg_list.append(
-                        ObjectID(task_spec.ArgId(i, 0).Binary()))
+                        ObjectID(self.task_spec.get().ArgId(i, 0).Binary()))
                 else:
-                    data = task_spec.ArgData(i)[:task_spec.ArgDataSize(i)]
-                    metadata = task_spec.ArgMetadata(i)[
-                        :task_spec.ArgMetadataSize(i)]
+                    data = self.task_spec.get().ArgData(i)[
+                        :self.task_spec.get().ArgDataSize(i)]
+                    metadata = self.task_spec.get().ArgMetadata(i)[
+                        :self.task_spec.get().ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
                     else:
@@ -111,10 +105,10 @@ cdef class TaskSpec:
 
     def returns(self):
         """Return the object IDs for the return values of the task."""
-        cdef CTaskSpec *task_spec = self.task_spec.get()
         return_id_list = []
-        for i in range(task_spec.NumReturns()):
-            return_id_list.append(ObjectID(task_spec.ReturnId(i).Binary()))
+        for i in range(self.task_spec.get().NumReturns()):
+            return_id_list.append(
+                ObjectID(self.task_spec.get().ReturnIdForPlasma(i).Binary()))
         return return_id_list
 
     def required_resources(self):
