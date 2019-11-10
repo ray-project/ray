@@ -1,7 +1,9 @@
-#include "ray/core_worker/core_worker.h"
+#include <cstdlib>
+
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace {
@@ -41,22 +43,8 @@ void BuildCommonTaskSpec(
 void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
                                    absl::flat_hash_set<ObjectID> *plasma_object_ids,
                                    absl::flat_hash_set<ObjectID> *memory_object_ids) {
-  // There are two cases:
-  // - for task return objects from direct actor call, use memory store provider;
-  // - all the others use plasma store provider.
   for (const auto &object_id : object_ids) {
-    // For raylet transport we always use plasma store provider, for direct actor call
-    // there are a few cases:
-    // - objects manually added to store by `ray.put`: for these objects they always use
-    //   plasma store provider;
-    // - task arguments: these objects are passed by value, and are not put into store;
-    // - task return objects: these are put into memory store of the task submitter
-    //   and are only used locally.
-    // Thus we need to check whether this object is a task return object in additional
-    // to whether it's from direct actor call before we can choose memory store provider.
-    if (object_id.IsReturnObject() &&
-        object_id.GetTransportType() ==
-            static_cast<uint8_t>(ray::TaskTransportType::DIRECT_ACTOR)) {
+    if (object_id.IsDirectActorType()) {
       memory_object_ids->insert(object_id);
     } else {
       plasma_object_ids->insert(object_id);
@@ -141,8 +129,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
   if (RayConfig::instance().worker_heartbeat_timeout_milliseconds() >= 0) {
-    heartbeat_timer_.expires_from_now(boost::asio::chrono::milliseconds(
-        RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
+    // Seed using current time.
+    std::srand(std::time(nullptr));
+    // Randomly choose a time from [0, timeout]) to send the first heartbeat to avoid all
+    // workers sending heartbeats at the same time.
+    int64_t heartbeat_timeout =
+        std::rand() % RayConfig::instance().worker_heartbeat_timeout_milliseconds();
+    heartbeat_timer_.expires_from_now(
+        boost::asio::chrono::milliseconds(heartbeat_timeout));
     heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
   }
 
@@ -230,40 +224,19 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   }
 }
 
-void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  active_object_ids_.insert(object_id);
-  active_object_ids_updated_ = true;
-}
-
-void CoreWorker::RemoveActiveObjectID(const ObjectID &object_id) {
-  absl::MutexLock lock(&object_ref_mu_);
-  if (active_object_ids_.erase(object_id)) {
-    active_object_ids_updated_ = true;
-  } else {
-    RAY_LOG(WARNING) << "Tried to erase non-existent object ID" << object_id;
-  }
-}
-
 void CoreWorker::ReportActiveObjectIDs() {
-  absl::MutexLock lock(&object_ref_mu_);
-  // Only send a heartbeat when the set of active object IDs has changed because the
-  // raylet only modifies the set of IDs when it receives a heartbeat.
-  // TODO(edoakes): this is currently commented out because this heartbeat causes the
-  // workers to die when the raylet crashes unexpectedly. Without this, they could
-  // hang idle forever because they wait for the raylet to push tasks via gRPC.
-  // if (active_object_ids_updated_) {
-  RAY_LOG(DEBUG) << "Sending " << active_object_ids_.size() << " object IDs to raylet.";
-  if (active_object_ids_.size() > RayConfig::instance().raylet_max_active_object_ids()) {
-    RAY_LOG(WARNING) << active_object_ids_.size() << "object IDs are currently in scope. "
+  std::unordered_set<ObjectID> active_object_ids =
+      reference_counter_.GetAllInScopeObjectIDs();
+  RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
+  if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
+    RAY_LOG(WARNING) << active_object_ids.size() << "object IDs are currently in scope. "
                      << "This may lead to required objects being garbage collected.";
   }
-  std::unordered_set<ObjectID> copy(active_object_ids_.begin(), active_object_ids_.end());
-  if (!raylet_client_->ReportActiveObjectIDs(copy).ok()) {
+
+  if (!raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
   }
-  // }
 
   // Reset the timer from the previous expiration time to avoid drift.
   heartbeat_timer_.expires_at(
@@ -271,7 +244,6 @@ void CoreWorker::ReportActiveObjectIDs() {
       boost::asio::chrono::milliseconds(
           RayConfig::instance().worker_heartbeat_timeout_milliseconds()));
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
-  active_object_ids_updated_ = false;
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -310,7 +282,7 @@ Status CoreWorker::Seal(const ObjectID &object_id) {
   return plasma_store_provider_->Seal(object_id);
 }
 
-Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
   results->resize(ids.size(), nullptr);
 
@@ -326,13 +298,46 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
                                                 &result_map, &got_exception));
 
   if (!got_exception) {
+    int64_t local_timeout_ms = timeout_ms;
     if (timeout_ms >= 0) {
-      timeout_ms = std::max(static_cast<int64_t>(0),
-                            timeout_ms - (current_time_ms() - start_time));
+      local_timeout_ms = std::max(static_cast<int64_t>(0),
+                                  timeout_ms - (current_time_ms() - start_time));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, timeout_ms,
+    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
                                                   worker_context_.GetCurrentTaskID(),
                                                   &result_map, &got_exception));
+  }
+
+  // If any of the objects have been promoted to plasma, then we retry their
+  // gets at the provider plasma. Once we get the objects from plasma, we flip
+  // the transport type again and return them for the original direct call ids.
+  absl::flat_hash_set<ObjectID> promoted_plasma_ids;
+  for (const auto &pair : result_map) {
+    if (pair.second->IsInPlasmaError()) {
+      promoted_plasma_ids.insert(pair.first.WithTransportType(TaskTransportType::RAYLET));
+    }
+  }
+  if (!promoted_plasma_ids.empty()) {
+    int64_t local_timeout_ms = timeout_ms;
+    if (timeout_ms >= 0) {
+      local_timeout_ms = std::max(static_cast<int64_t>(0),
+                                  timeout_ms - (current_time_ms() - start_time));
+    }
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
+                                                  worker_context_.GetCurrentTaskID(),
+                                                  &result_map, &got_exception));
+    for (const auto &id : promoted_plasma_ids) {
+      auto it = result_map.find(id);
+      if (it == result_map.end()) {
+        result_map.erase(id.WithTransportType(TaskTransportType::DIRECT_ACTOR));
+      } else {
+        result_map[id.WithTransportType(TaskTransportType::DIRECT_ACTOR)] = it->second;
+      }
+      result_map.erase(id);
+    }
+    for (const auto &pair : result_map) {
+      RAY_CHECK(!pair.second->IsInPlasmaError());
+    }
   }
 
   // Loop through `ids` and fill each entry for the `results` vector,
@@ -349,8 +354,20 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
 }
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
-  // Currently only the Plasma store supports Contains().
-  return plasma_store_provider_->Contains(object_id, has_object);
+  bool found = false;
+  if (object_id.IsDirectActorType()) {
+    // Note that the memory store returns false if the object value is
+    // ErrorType::OBJECT_IN_PLASMA.
+    RAY_RETURN_NOT_OK(memory_store_provider_->Contains(object_id, &found));
+  }
+  if (!found) {
+    // We check plasma as a fallback in all cases, since a direct call object
+    // may have been spilled to plasma.
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Contains(
+        object_id.WithTransportType(TaskTransportType::RAYLET), &found));
+  }
+  *has_object = found;
+  return Status::OK();
 }
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
@@ -389,6 +406,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                                      worker_context_.GetCurrentTaskID(), &ready));
   }
   if (memory_object_ids.size() > 0) {
+    // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
+    // consider waiting on them in plasma as well to ensure they are local.
     RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
         memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
         /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
@@ -450,6 +469,33 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
+Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
+  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(task_spec));
+
+  size_t num_returns = task_spec.NumReturns();
+  if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+    num_returns--;
+  }
+
+  std::shared_ptr<std::vector<ObjectID>> task_deps =
+      std::make_shared<std::vector<ObjectID>>();
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        task_deps->push_back(task_spec.ArgId(i, j));
+      }
+    }
+  }
+
+  if (task_deps->size() > 0) {
+    for (size_t i = 0; i < num_returns; i++) {
+      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
@@ -463,7 +509,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
                       {}, TaskTransportType::RAYLET, return_ids);
-  return raylet_client_->SubmitTask(builder.Build());
+  return SubmitTaskToRaylet(builder.Build());
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -494,9 +540,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   RAY_CHECK(AddActorHandle(std::move(actor_handle)))
       << "Actor " << actor_id << " already exists";
 
-  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(builder.Build()));
   *return_actor_id = actor_id;
-  return Status::OK();
+  return SubmitTaskToRaylet(builder.Build());
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -534,7 +579,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   if (is_direct_call) {
     status = direct_actor_submitter_->SubmitTask(builder.Build());
   } else {
-    status = raylet_client_->SubmitTask(builder.Build());
+    status = SubmitTaskToRaylet(builder.Build());
   }
   return status;
 }
@@ -624,12 +669,15 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (!worker_context_.CurrentActorUseDirectCall()) {
-        RAY_RETURN_NOT_OK(
-            Create(metadatas[i], data_sizes[i], object_ids[i], &data_buffer));
-        object_already_exists = !data_buffer;
-      } else {
+      if (worker_context_.CurrentActorUseDirectCall() &&
+          static_cast<int64_t>(data_sizes[i]) <
+              RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
+      } else {
+        RAY_RETURN_NOT_OK(Create(
+            metadatas[i], data_sizes[i],
+            object_ids[i].WithTransportType(TaskTransportType::RAYLET), &data_buffer));
+        object_already_exists = !data_buffer;
       }
     }
     // Leave the return object as a nullptr if there is no data or metadata.
@@ -645,7 +693,7 @@ Status CoreWorker::AllocateReturnObjects(
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
                                const ResourceMappingType &resource_ids,
-                               std::vector<std::shared_ptr<RayObject>> *return_by_value) {
+                               std::vector<std::shared_ptr<RayObject>> *return_objects) {
   resource_ids_ = resource_ids;
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
@@ -656,9 +704,12 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
+  const auto transport_type = worker_context_.CurrentActorUseDirectCall()
+                                  ? TaskTransportType::DIRECT_ACTOR
+                                  : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
-    return_ids.push_back(task_spec.ReturnId(i));
+    return_ids.push_back(task_spec.ReturnId(i, transport_type));
   }
 
   Status status;
@@ -674,29 +725,35 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     task_type = TaskType::ACTOR_TASK;
   }
 
-  std::vector<std::shared_ptr<RayObject>> return_objects;
   status = task_execution_callback_(task_type, func,
                                     task_spec.GetRequiredResources().GetResourceMap(),
-                                    args, arg_reference_ids, return_ids, &return_objects);
+                                    args, arg_reference_ids, return_ids, return_objects);
 
-  for (size_t i = 0; i < return_objects.size(); i++) {
+  for (size_t i = 0; i < return_objects->size(); i++) {
     // The object is nullptr if it already existed in the object store.
-    if (!return_objects[i]) {
+    if (!return_objects->at(i)) {
       continue;
     }
-    if (return_objects[i]->GetData()->IsPlasmaBuffer()) {
-      if (!Seal(return_ids[i]).ok()) {
-        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
+    if (return_objects->at(i)->GetData()->IsPlasmaBuffer()) {
+      if (!Seal(return_ids[i].WithTransportType(TaskTransportType::RAYLET)).ok()) {
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
     } else if (!worker_context_.CurrentActorUseDirectCall()) {
-      if (!Put(*return_objects[i], return_ids[i]).ok()) {
-        RAY_LOG(ERROR) << "Task " << task_spec.TaskId() << " failed to seal object "
+      if (!Put(*return_objects->at(i), return_ids[i]).ok()) {
+        RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
       }
-    } else {
-      return_by_value->push_back(return_objects[i]);
     }
+  }
+
+  if (task_spec.IsNormalTask() && reference_counter_.NumObjectIDsInScope() != 0) {
+    RAY_LOG(ERROR)
+        << "There were " << reference_counter_.NumObjectIDsInScope()
+        << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
+        << ". This is either caused by keeping references to ObjectIDs in Python between "
+           "tasks (e.g., in global variables) or indicates a problem with Ray's "
+           "reference counting, and may cause problems in the object store.";
   }
 
   SetCurrentTaskId(TaskID::Nil());

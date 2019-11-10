@@ -1,7 +1,8 @@
 # build config
 build --compilation_mode=opt
 build --action_env=PATH
-build --action_env=PYTHON_BIN_PATH
+build --action_env=PYTHON2_BIN_PATH
+build --action_env=PYTHON3_BIN_PATH
 # Warnings should be errors
 build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc@-Werror
 # Ignore warnings for protobuf generated files and external projects.
@@ -10,3 +11,6 @@ build --per_file_copt='external*@-w'
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0
+# This workaround is due to an incompatibility of
+# bazel_common/tools/maven/pom_file.bzl with Bazel 1.0
+build --incompatible_depset_is_not_iterable=false
