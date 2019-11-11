@@ -18,7 +18,6 @@ public class QueueID {
   private static final Set<Reference<?>> references = Sets.newConcurrentHashSet();
 
   static {
-    JniUtils.loadLibrary("streaming_java");
   }
 
   private final byte[] bytes;

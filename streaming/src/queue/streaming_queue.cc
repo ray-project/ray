@@ -67,7 +67,8 @@ QueueItem Queue::PopPendingBlockTimeout(uint64_t timeout_us) {
 
   } else {
     /// TODO:
-    return QueueItem(QUEUE_INVALID_SEQ_ID, nullptr, 0, 0);
+    uint8_t data[1];
+    return QueueItem(QUEUE_INVALID_SEQ_ID, data, 1, 0, true);
   }
 }
 
@@ -75,7 +76,8 @@ QueueItem Queue::BackPending() {
   std::unique_lock<std::mutex> lock(mutex_);
   if (std::next(watershed_iter_) == buffer_queue_.end()) {
     /// TODO
-    return QueueItem(QUEUE_INVALID_SEQ_ID, nullptr, 0, 0);
+    uint8_t data[1];
+    return QueueItem(QUEUE_INVALID_SEQ_ID, data, 1, 0, true);
   }
   return buffer_queue_.back();
 }

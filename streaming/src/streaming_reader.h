@@ -88,6 +88,12 @@ class StreamingReader : public StreamingCommon {
   StreamingReader();
   virtual ~StreamingReader();
 
+  ///  Notify input queues to clear data its seq id is equal or less than offset.
+  ///  It's used when checkpoint is done.
+  ///  \param channel_info
+  ///  \param offset
+  ///
+  void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
  protected:
   virtual void InitTransfer();
 
@@ -108,12 +114,6 @@ class StreamingReader : public StreamingCommon {
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<StreamingReaderBundle> &message,
                                          bool &is_valid_break);
 
-  ///  Notify input queues to clear data its seq id is equal or less than offset.
-  ///  It's used when checkpoint is done.
-  ///  \param channel_info
-  ///  \param offset
-  ///
-  void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
 };
 
 class StreamingReaderDirectCall : public StreamingReader {

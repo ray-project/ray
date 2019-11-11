@@ -6,7 +6,6 @@
 #include "ray/core_worker/common.h"
 #include "streaming_writer.h"
 
-#define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
 /// DirectByteBuffer class. Global reference can be used in multi-threads
 extern jclass java_direct_buffer_class;

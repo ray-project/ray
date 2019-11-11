@@ -11,6 +11,7 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.annotation.RayRemote;
 import org.ray.api.id.ActorId;
+import org.ray.runtime.actor.NativeRayActor;
 import org.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import org.ray.streaming.runtime.queue.QueueID;
 import org.ray.streaming.runtime.queue.QueueProducer;
@@ -63,6 +64,17 @@ public class WriterWorker extends Worker {
       LOGGER.info("WriterWorker actorId: {}", outputActorIds.get(queue));
     }
 
+    LOGGER.info("peer isDirectActorCall: {}", ((NativeRayActor) peer).isDirectCallActor());
+    int count = 3;
+    while(count-- != 0) {
+      Ray.call(ReaderWorker::testRayCall, peer).get();
+    }
+
+    try {
+      Thread.sleep(2*1000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
     Map<String, String> conf = new HashMap<>(16);
 
     conf.put(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.STREAMING_QUEUE);
@@ -74,9 +86,9 @@ public class WriterWorker extends Worker {
     queueLink.setConfiguration(conf);
     queueLink.setRayRuntime(Ray.internal());
     ((StreamingQueueLinkImpl) queueLink).setStreamingTransferFunction(
-        new JavaFunctionDescriptor("com.alipay.streaming.runtime.queue.Worker", "onStreamingTransfer", "([B)V"));
+        new JavaFunctionDescriptor("org.ray.streaming.runtime.demo.Worker", "onStreamingTransfer", "([B)V"));
     ((StreamingQueueLinkImpl) queueLink).setStreamingTransferSyncFunction(
-        new JavaFunctionDescriptor("com.alipay.streaming.runtime.queue.Worker", "onStreamingTransferSync", "([B)[B"));
+        new JavaFunctionDescriptor("org.ray.streaming.runtime.demo.Worker", "onStreamingTransferSync", "([B)[B"));
     producer = queueLink.registerQueueProducer(this.outputQueueList, this.outputActorIds);
 
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
@@ -95,6 +107,7 @@ public class WriterWorker extends Worker {
 
     int checkPointId = 1;
     Random random = new Random();
+    this.msgCount = 100;
     for (int i = 0; i < this.msgCount; ++i) {
       for (int j = 0; j < outputQueueList.size(); ++j) {
         LOGGER.info("WriterWorker produce");
@@ -108,9 +121,15 @@ public class WriterWorker extends Worker {
           bb.put((byte) k);
         }
 
+        bb.clear();
         QueueID qid = QueueID.from(outputQueueList.get(j));
         producer.produce(qid, bb);
       }
+    }
+    try {
+      Thread.sleep(20*1000);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
     }
   }
 }

@@ -74,6 +74,21 @@ cc_binary(
 )
 
 cc_library(
+    name = "streaming_jni_lib",
+    srcs = glob([
+        "lib/java/*.cc", "lib/java/*.h"
+    ]) + [":jni.h", ":jni_md.h"],
+    hdrs = glob([
+        "*.h", "queue/*.h"
+    ]),
+    includes = ["."],
+    deps = [
+        ":streaming_lib",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "streaming_queue",
     srcs = glob([
         "queue/*.cc"
