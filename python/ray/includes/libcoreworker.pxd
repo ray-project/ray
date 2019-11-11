@@ -117,3 +117,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only, c_bool delete_creating_tasks)
         c_string MemoryUsageString()
+
+cdef class CoreWorker:
+    cdef unique_ptr[CCoreWorker] core_worker

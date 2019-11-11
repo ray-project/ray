@@ -32,7 +32,7 @@ from ray.includes.unique_ids cimport (
     ObjectID
 )
 
-from ray.includes.libcoreworker cimport CCoreWorker
+from ray.includes.libcoreworker cimport CCoreWorker, CoreWorker
 
 from ray.function_manager import FunctionDescriptor
 
@@ -67,9 +67,9 @@ cdef class QueueLink:
         QueueProducer producer
         QueueConsumer consumer
 
-    def __cinit__(self, uint64_t worker_ptr):
+    def __cinit__(self, CoreWorker worker):
         cdef:
-            CCoreWorker *core_worker = <CCoreWorker *>worker_ptr
+            CCoreWorker *core_worker = worker.core_worker.get()
             CActorID actor_id = core_worker.GetActorId()
             shared_ptr[CQueueManager] queue_manager = CQueueManager.GetInstance(actor_id)
             CQueueClient *queue_client = new CQueueClient(queue_manager)
