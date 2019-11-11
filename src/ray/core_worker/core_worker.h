@@ -123,6 +123,15 @@ class CoreWorker {
   /// can use in the object store.
   Status SetClientOptions(std::string name, int64_t limit_bytes);
 
+  /// Treat a raylet task as failed by storing an error in plasma.
+  ///
+  /// \param[in] task_id The ID of a task.
+  /// \param[in] num_returns Number of return objects.
+  /// \param[in] error_type The type of the specific error.
+  /// \return Void.
+  void TreatRayletTaskAsFailed(
+      const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type);
+
   /// Put an object into object store.
   ///
   /// \param[in] object The ray object.

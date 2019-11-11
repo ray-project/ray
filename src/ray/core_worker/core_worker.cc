@@ -244,6 +244,21 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
 }
 
+void CoreWorker::TreatRayletTaskAsFailed(
+    const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type) {
+  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
+                 << ", error_type: " << ErrorType_Name(error_type);
+  for (int i = 0; i < num_returns; i++) {
+    const auto object_id = ObjectID::ForTaskReturn(
+        task_id, /*index=*/i + 1,
+        /*transport_type=*/static_cast<int>(TaskTransportType::RAYLET));
+    std::string meta = std::to_string(static_cast<int>(error_type));
+    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+    RAY_CHECK_OK(Put(RayObject(nullptr, meta_buffer), object_id));
+  }
+}
+
 Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
@@ -569,8 +584,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   const auto spec = builder.Build();
   if (actor_handle->IsDead()) {
-    direct_actor_submitter_->TreatTaskAsFailed(spec.TaskId(), spec.NumReturns(),
-                                               rpc::ErrorType::ACTOR_DIED);
+    if (is_direct_call) {
+      direct_actor_submitter_->TreatTaskAsFailed(spec.TaskId(), spec.NumReturns(),
+                                                 rpc::ErrorType::ACTOR_DIED);
+    } else {
+      TreatRayletTaskAsFailed(spec.TaskId(), spec.NumReturns(),
+                                                 rpc::ErrorType::ACTOR_DIED);
+    }
   } else {
     if (is_direct_call) {
       status = direct_actor_submitter_->SubmitTask(builder.Build());
