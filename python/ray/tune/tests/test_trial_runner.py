@@ -1948,14 +1948,13 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
-                "training_iteration": 2
+                "training_iteration": 1
             },
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
@@ -1984,7 +1983,6 @@ class TrialRunnerTest(unittest.TestCase):
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.set_info.remote(1)), 1)
@@ -2053,14 +2051,13 @@ class TrialRunnerTest(unittest.TestCase):
         runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
-                "training_iteration": 3
+                "training_iteration": 2
             },
             "resources": Resources(cpu=1, gpu=1),
         }
         runner.add_trial(Trial("__fake", **kwargs))
         trials = runner.get_trials()
 
-        runner.step()
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
         self.assertEqual(ray.get(trials[0].runner.get_info.remote()), None)

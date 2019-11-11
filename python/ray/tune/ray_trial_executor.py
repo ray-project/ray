@@ -576,8 +576,8 @@ class RayTrialExecutor(TrialExecutor):
             try:
                 trial.on_checkpoint(checkpoint)
             except Exception:
-                logger.exception("Error handling checkpoint %s for Trial %s",
-                                 checkpoint.value, trial)
+                logger.exception("Trial %s: Error handling checkpoint %s",
+                                 trial, checkpoint.value)
                 return None
         if profile.too_slow and trial.sync_on_checkpoint:
             logger.warning(
@@ -630,7 +630,7 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
             return False
 
-        trial.last_result = checkpoint.last_result
+        trial.last_result = checkpoint.result
         return True
 
     def export_trial_if_needed(self, trial):

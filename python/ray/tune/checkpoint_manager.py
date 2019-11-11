@@ -113,10 +113,10 @@ class CheckpointManager(object):
         except KeyError:
             if old_checkpoint not in self._membership:
                 old_checkpoint.delete()
-            raise ValueError(
-                "Result dict has no key: {}. checkpoint_score_attr must be "
-                "set to a key in the result dict.".format(
-                    self._checkpoint_score_attr))
+            logger.error("Result dict has no key: %s. "
+                         "checkpoint_score_attr must be set to a key in the "
+                         "result dict.".format(self._checkpoint_score_attr))
+            return
 
         if len(self._best_checkpoints) < self.keep_checkpoints_num:
             heapq.heappush(self._best_checkpoints, queue_item)

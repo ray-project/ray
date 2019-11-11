@@ -333,7 +333,7 @@ class TrialRunner(object):
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
-            self.trial_executor.on_no_available_trials(runner)
+            self.trial_executor.on_no_available_trials(self)
 
         try:
             with warn_if_slow("experiment_checkpoint"):
