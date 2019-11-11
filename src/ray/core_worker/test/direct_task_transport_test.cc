@@ -70,8 +70,8 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
   // Ensure the data is already present in the local store.
-  store.Put(*data, obj1);
-  store.Put(*data, obj2);
+  ASSERT_TRUE(store.Put(*data, obj1).ok());
+  ASSERT_TRUE(store.Put(*data, obj2).ok());
   TaskSpecification task;
   task.GetMutableMessage().add_args()->add_object_ids(obj1.Binary());
   task.GetMutableMessage().add_args()->add_object_ids(obj2.Binary());
@@ -100,8 +100,8 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   resolver.ResolveDependencies(task, [&ok]() { ok = true; });
   ASSERT_EQ(resolver.NumPendingTasks(), 1);
   ASSERT_TRUE(!ok);
-  store.Put(*data, obj1);
-  store.Put(*data, obj2);
+  ASSERT_TRUE(store.Put(*data, obj1).ok());
+  ASSERT_TRUE(store.Put(*data, obj2).ok());
   // Tests that the task proto was rewritten to have inline argument values after
   // resolution completes.
   ASSERT_TRUE(ok);
