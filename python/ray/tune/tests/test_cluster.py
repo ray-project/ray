@@ -701,7 +701,9 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
     cluster = _start_new_cluster()
 
     script_after_shutdown = script.format(
-        address=cluster.address, checkpoint_dir=dirpath, resume_bool="\"LOCAL\"")
+        address=cluster.address,
+        checkpoint_dir=dirpath,
+        resume_bool="\"LOCAL\"")
     run_string_as_driver_nonblocking(script_after_shutdown)
 
     time.sleep(2)
@@ -710,11 +712,11 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner( # if _resumed is false + len(trials) == 0: continue
+            runner = TrialRunner(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             if (not runner._resumed) and (len(trials) == 0):
-                continue # nonblocking script hasn't resumed yet, wait
+                continue  # nonblocking script hasn't resumed yet, wait
             reached = True
             assert len(trials) >= 10
             assert len(trials) <= 20
