@@ -623,7 +623,7 @@ class MyTrainableClass(Trainable):
         v = np.tanh(float(self.timestep) / self.config.get("width", 1))
         v *= self.config.get("height", 1)
         time.sleep(2)
-        return {{"mean_loss": v\}}
+        return {{"mean_loss": v}}
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
         with open(path, "w") as f:
@@ -655,9 +655,10 @@ config = {{
         "iterations": 100,
     }},
     "stop": {{
-        "training_iteration": 5
+        "training_iteration": 2
     }},
-    "local_dir": "{checkpoint_dir}"
+    "local_dir": "{checkpoint_dir}",
+    "name": "experiment",
 }}
 algo = HyperOptSearch(
         space,
@@ -685,7 +686,7 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
             trials = runner.get_trials()
             if trials and len(trials) >= 10:
                 break
-        time.sleep(0.2)
+        time.sleep(2)
 
     if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
@@ -698,8 +699,10 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
     cluster = _start_new_cluster()
 
     script_after_shutdown = script.format(
-        address=cluster.address, checkpoint_dir=dirpath, resume_bool="LOCAL")
+        address=cluster.address, checkpoint_dir=dirpath, resume_bool="\"LOCAL\"")
     run_string_as_driver_nonblocking(script_after_shutdown)
+
+    time.sleep(2)
 
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
@@ -708,8 +711,10 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
             assert (len(trials) >= 10)
-            assert (len(trials <= 20))
-        time.sleep(0.2)
+            assert (len(trials) <= 20)
+            if len(trials) == 20:
+                break
+        time.sleep(2)
 
     ray.shutdown()
     cluster.shutdown()
