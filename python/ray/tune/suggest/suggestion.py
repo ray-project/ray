@@ -168,5 +168,5 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         del self.live_trials[trial_id]
 
     def _process_result(self, result, early_terminated):
-        if early_terminated and self._use_early_stopped is False:
+        if early_terminated and self._use_early_stopped:
             self.final_results += [result]
