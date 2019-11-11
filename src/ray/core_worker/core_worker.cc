@@ -489,7 +489,8 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
+      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET),
+                                         task_deps);
     }
   }
 
@@ -629,8 +630,8 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
 
       RAY_LOG(INFO) << "received notification on actor, state="
                     << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id
-                    << ", ip address: " << actor_data.ip_address()
-                    << ", port: " << actor_data.port();
+                    << ", ip address: " << actor_data.address().ip_address()
+                    << ", port: " << actor_data.address().port();
     };
 
     RAY_CHECK_OK(gcs_client_.Actors().AsyncSubscribe(

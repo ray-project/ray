@@ -2048,14 +2048,12 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
         actor_info_ptr->remaining_reconstructions() - 1);
   }
 
-  // Set the ip address & port, which could change after reconstruction.
-  actor_info_ptr->set_ip_address(
-      gcs_client_->client_table().GetLocalClient().node_manager_address());
-  actor_info_ptr->set_port(port);
-
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
-  actor_info_ptr->set_node_manager_id(
+  actor_info_ptr->mutable_address()->set_ip_address(
+      gcs_client_->client_table().GetLocalClient().node_manager_address());
+  actor_info_ptr->mutable_address()->set_port(port);
+  actor_info_ptr->mutable_address()->set_raylet_id(
       gcs_client_->client_table().GetLocalClientId().Binary());
   actor_info_ptr->set_state(ActorTableData::ALIVE);
   return actor_info_ptr;
