@@ -3,6 +3,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
@@ -62,19 +63,19 @@ class CoreWorkerMemoryStore {
 
  private:
   /// Map from object ID to `RayObject`.
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ GUARDED_BY(mu_);
 
   /// Map from object ID to its get requests.
   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_;
+      object_get_requests_ GUARDED_BY(mu_);
 
   /// Map from object ID to its async get requests.
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
-      object_async_get_requests_;
+      object_async_get_requests_ GUARDED_BY(mu_);
 
   /// Protect the two maps above.
-  std::mutex lock_;
+  absl::Mutex mu_;
 };
 
 }  // namespace ray

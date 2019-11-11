@@ -1196,7 +1196,9 @@ def test_direct_call_simple(ray_start_regular):
         return x + 1
 
     f_direct = f.options(is_direct_call=True)
+    print("a")
     assert ray.get(f_direct.remote(2)) == 3
+    print("b")
     assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
         range(1, 101))
 

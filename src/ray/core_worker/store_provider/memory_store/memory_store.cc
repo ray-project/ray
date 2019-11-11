@@ -110,7 +110,7 @@ void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
   std::shared_ptr<RayObject> ptr;
   {
-    std::unique_lock<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
       ptr = iter->second;
@@ -130,7 +130,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
       std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
 
   {
-    std::unique_lock<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
       return Status::ObjectExists("object already exists in the memory store");
@@ -181,7 +181,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     absl::flat_hash_set<ObjectID> remaining_ids;
     absl::flat_hash_set<ObjectID> ids_to_remove;
 
-    std::unique_lock<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
     for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
@@ -226,7 +226,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   get_request->Wait(timeout_ms);
 
   {
-    std::unique_lock<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     // Populate results.
     for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
@@ -257,14 +257,14 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
 }
 
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
-  std::unique_lock<std::mutex> lock(lock_);
+  absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
     objects_.erase(object_id);
   }
 }
 
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
-  std::unique_lock<std::mutex> lock(lock_);
+  absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
   // If obj is in plasma, we defer to the plasma store for the Contains() call.
   return it != objects_.end() && !it->second->IsInPlasmaError();

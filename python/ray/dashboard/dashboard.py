@@ -168,7 +168,9 @@ class Dashboard(object):
             raise ValueError(
                 "Dashboard static asset directory not found at '{}'. If "
                 "installing from source, please follow the additional steps "
-                "required to build the dashboard.".format(static_dir))
+                "required to build the dashboard: "
+                "cd python/ray/dashboard/client && npm ci && "
+                "npm run build".format(static_dir))
         self.app.router.add_static("/static", static_dir)
 
         self.app.router.add_get("/api/ray_config", ray_config)

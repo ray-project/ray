@@ -42,7 +42,7 @@ class LocalDependencyResolver {
 
  private:
   /// The store provider.
-  CoreWorkerMemoryStoreProvider &in_memory_store_;
+  CoreWorkerMemoryStoreProvider in_memory_store_;
 
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;
@@ -104,7 +104,7 @@ class CoreWorkerDirectTaskSubmitter {
   ClientFactoryFn client_factory_;
 
   /// The store provider.
-  CoreWorkerMemoryStoreProvider &in_memory_store_;
+  CoreWorkerMemoryStoreProvider in_memory_store_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
