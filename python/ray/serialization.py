@@ -7,7 +7,7 @@ import logging
 import time
 import pyarrow
 import pyarrow.plasma as plasma
-import ray.cloudpickle as pickle
+from ray import cloudpickle
 from ray import ray_constants, JobID
 import ray.utils
 from ray.utils import _random_string
@@ -24,12 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 class RayNotDictionarySerializable(Exception):
-    pass
-
-
-# This exception is used to represent situations where cloudpickle fails to
-# pickle an object (cloudpickle can fail in many different ways).
-class CloudPickleError(Exception):
     pass
 
 
@@ -112,9 +106,9 @@ def _try_to_compute_deterministic_class_id(cls, depth=5):
     """
     # Pickling, loading, and pickling again seems to produce more consistent
     # results than simply pickling. This is a bit
-    class_id = pickle.dumps(cls)
+    class_id = cloudpickle.dumps(cls)
     for _ in range(depth):
-        new_class_id = pickle.dumps(pickle.loads(class_id))
+        new_class_id = cloudpickle.dumps(cloudpickle.loads(class_id))
         if new_class_id == class_id:
             # We appear to have reached a fix point, so use this as the ID.
             return hashlib.sha1(new_class_id).digest()
@@ -152,7 +146,8 @@ class SerializationContext(object):
             serialization_context = pyarrow.default_serialization_context()
             # Tell the serialization context to use the cloudpickle version
             # that we ship with Ray.
-            serialization_context.set_pickle(pickle.dumps, pickle.loads)
+            serialization_context.set_pickle(cloudpickle.dumps,
+                                             cloudpickle.loads)
             pyarrow.register_torch_serialization_handlers(
                 serialization_context)
 
@@ -162,10 +157,10 @@ class SerializationContext(object):
                     raise NotImplementedError(
                         "Objects produced by direct actor calls cannot be "
                         "passed to other tasks as arguments.")
-                return pickle.dumps(obj)
+                return cloudpickle.dumps(obj)
 
             def id_deserializer(serialized_obj):
-                return pickle.loads(serialized_obj)
+                return cloudpickle.loads(serialized_obj)
 
             for id_type in ray._raylet._ID_TYPES:
                 serialization_context.register_type(
@@ -215,7 +210,7 @@ class SerializationContext(object):
                     local=True,
                     class_id=error_cls.__module__ + ". " + error_cls.__name__,
                 )
-                # Tell Ray to serialize lambdas with pickle.
+            # Tell Ray to serialize lambdas with pickle.
             self.register_custom_serializer(
                 type(lambda: 0),
                 use_pickle=True,
@@ -243,13 +238,13 @@ class SerializationContext(object):
 
     def _register_cloudpickle_serializer(self, cls, custom_serializer,
                                          custom_deserializer):
-        if pickle.FAST_CLOUDPICKLE_USED:
+        if cloudpickle.FAST_CLOUDPICKLE_USED:
 
             def _CloudPicklerReducer(obj):
                 return custom_deserializer, (custom_serializer(obj), )
 
             # construct a reducer
-            pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+            cloudpickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
         else:
 
             def _CloudPicklerReducer(_self, obj):
@@ -257,7 +252,7 @@ class SerializationContext(object):
                     custom_deserializer, (custom_serializer(obj), ), obj=obj)
 
             # use a placeholder for 'self' argument
-            pickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
+            cloudpickle.CloudPickler.dispatch[cls] = _CloudPicklerReducer
 
     def _deserialize_object_from_arrow(self, data, metadata, object_id):
         if metadata:
@@ -268,12 +263,15 @@ class SerializationContext(object):
                                      "using pyarrow as the backend.")
                 try:
                     in_band, buffers = unpack_pickle5_buffers(data)
+                    # zero length buffer could indicates that we
+                    # are not using pickle protocol 5, in this case
+                    # 'buffers' argument would be invalid.
                     if len(buffers) > 0:
-                        return pickle.loads(in_band, buffers=buffers)
+                        return cloudpickle.loads(in_band, buffers=buffers)
                     else:
-                        return pickle.loads(in_band)
+                        return cloudpickle.loads(in_band)
                 # cloudpickle does not provide error types
-                except pickle.pickle.PicklingError:
+                except cloudpickle.pickle.PicklingError:
                     raise DeserializationError()
             # Check if the object should be returned as raw bytes.
             if metadata == ray_constants.RAW_BUFFER_METADATA:
@@ -292,7 +290,7 @@ class SerializationContext(object):
             else:
                 assert error_type != ErrorType.Value("OBJECT_IN_PLASMA"), \
                     "Tried to get object that has been promoted to plasma."
-                assert False, "Unrecognized error type " + str(error_type)
+                raise ValueError("Unrecognized error type " + str(error_type))
         elif data:
             if self.use_pickle:
                 raise ValueError("Receiving plasma serialized objects "
@@ -338,8 +336,8 @@ class SerializationContext(object):
                         "of their fields. This behavior may "
                         "be incorrect in some cases.".format(cls_type))
                     logger.debug(warning_message)
-                except (RayNotDictionarySerializable, CloudPickleError,
-                        pickle.pickle.PicklingError, Exception):
+                except (RayNotDictionarySerializable,
+                        cloudpickle.pickle.PicklingError, Exception):
                     # We also handle generic exceptions here because
                     # cloudpickle can fail with many different types of errors.
                     warning_message = (
@@ -351,7 +349,7 @@ class SerializationContext(object):
                         self.register_custom_serializer(
                             cls_type, use_pickle=True)
                         logger.warning(warning_message)
-                    except (CloudPickleError, ValueError):
+                    except ValueError:
                         self.register_custom_serializer(
                             cls_type, use_pickle=True, local=True)
                         warning_message = ("WARNING: Pickling the class {} "
@@ -364,7 +362,6 @@ class SerializationContext(object):
                             data_metadata_pairs,
                             object_ids,
                             error_timeout=10):
-        pass
         assert len(data_metadata_pairs) == len(object_ids)
 
         start_time = time.time()
@@ -415,11 +412,11 @@ class SerializationContext(object):
 
         if self.worker.use_pickle:
             writer = Pickle5Writer()
-            if ray.cloudpickle.FAST_CLOUDPICKLE_USED:
-                inband = pickle.dumps(
+            if cloudpickle.FAST_CLOUDPICKLE_USED:
+                inband = cloudpickle.dumps(
                     value, protocol=5, buffer_callback=writer.buffer_callback)
             else:
-                inband = pickle.dumps(value)
+                inband = cloudpickle.dumps(value)
             return Pickle5SerializedObject(inband, writer)
         else:
             try:
