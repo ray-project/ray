@@ -316,6 +316,58 @@ class CSVLogger(Logger):
         self._file.close()
 
 
+class TBXLogger(Logger):
+    """TensorBoardX Logger, because TF breaks everything.
+
+    Automatically flattens nested dicts to show on TensorBoard:
+
+        {"a": {"b": 1, "c": 2}} -> {"a/b": 1, "a/c": 2}
+    """
+
+    def _init(self):
+        from tensorboardX import SummaryWriter
+        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
+        self._hp_logged = False
+
+    def on_result(self, result):
+        step = result.get(
+            TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
+
+        tmp = result.copy()
+        # if not self._hp_logged:
+        #     if self.trial and self.trial.evaluated_params:
+        #         try:
+        #             hp.hparams(
+        #                 self.trial.evaluated_params,
+        #                 trial_id=self.trial.trial_id)
+        #         except Exception as exc:
+        #             logger.error("HParams failed with %s", exc)
+        #     self._hp_logged = True
+
+        for k in [
+                "config", "pid", "timestamp", TIME_TOTAL_S,
+                TRAINING_ITERATION
+        ]:
+            if k in tmp:
+                del tmp[k]  # not useful to log these
+
+        flat_result = flatten_dict(tmp, delimiter="/")
+        path = ["ray", "tune"]
+        for attr, value in flat_result.items():
+            if type(value) in VALID_SUMMARY_TYPES:
+                self.file_writer.add_scalar(
+                    "/".join(path + [attr]), value, global_step=step)
+        self._file_writer.flush()
+
+    def flush(self):
+        if self._file_writer is not None:
+            self._file_writer.flush()
+
+    def close(self):
+        if self._file_writer is not None:
+            self._file_writer.close()
+
+
 DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
 
 
