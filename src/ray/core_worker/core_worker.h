@@ -451,6 +451,9 @@ class CoreWorker {
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer worker_server_;
 
+  /// Address of our RPC server.
+  rpc::RpcAddress address_;
+
   // Client to the GCS shared by core worker interfaces.
   gcs::RedisGcsClient gcs_client_;
 

@@ -1181,6 +1181,11 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   rpc::Task task_message;
   RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
       fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
+  // Set the caller's node ID.
+  if (task_message.task_spec().caller_address().raylet_id() == "") {
+    task_message.mutable_task_spec()->mutable_caller_address()->set_raylet_id(
+        gcs_client_->client_table().GetLocalClientId().Binary());
+  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
@@ -2029,6 +2034,8 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
     actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
+    actor_info_ptr->mutable_owner_address()->CopyFrom(
+        task_spec.GetMessage().caller_address());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.

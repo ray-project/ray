@@ -11,16 +11,16 @@ namespace {
 void BuildCommonTaskSpec(
     ray::TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const TaskID &current_task_id, const int task_index, const TaskID &caller_id,
-    const ray::RayFunction &function, const std::vector<ray::TaskArg> &args,
-    uint64_t num_returns,
+    const ray::rpc::RpcAddress &address, const ray::RayFunction &function,
+    const std::vector<ray::TaskArg> &args, uint64_t num_returns,
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     ray::TaskTransportType transport_type, std::vector<ObjectID> *return_ids) {
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, num_returns, required_resources,
-                            required_placement_resources);
+                            task_index, caller_id, address, num_returns,
+                            required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
@@ -111,6 +111,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   // Start RPC server after all the task receivers are properly initialized.
   worker_server_.Run();
+  address_.set_ip_address(node_ip_address);
+  address_.set_port(worker_server_.GetPort());
 
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
@@ -157,10 +159,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     std::vector<std::string> empty_descriptor;
     std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
-                              worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
-                              0, GetCallerId(), 0, empty_resources, empty_resources);
+    builder.SetCommonTaskSpec(
+        task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
+        TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(),
+        address_, 0, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -508,8 +510,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
                             worker_context_.GetCurrentTaskID(), next_task_index);
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, task_options.num_returns, task_options.resources,
-                      {}, TaskTransportType::RAYLET, return_ids);
+                      address_, function, args, task_options.num_returns,
+                      task_options.resources, {}, TaskTransportType::RAYLET, return_ids);
   return SubmitTaskToRaylet(builder.Build());
 }
 
@@ -525,10 +527,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
-      next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,
-      actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      address_, function, args, 1, actor_creation_options.resources,
+                      actor_creation_options.placement_resources,
+                      TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.is_direct_call,
@@ -567,7 +570,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
       next_task_index, actor_handle->GetActorID());
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, num_returns, task_options.resources, {},
+                      address_, function, args, num_returns, task_options.resources, {},
                       transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
