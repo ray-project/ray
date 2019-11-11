@@ -15,6 +15,8 @@ import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.options.ActorCreationOptions;
 import org.ray.api.options.ActorCreationOptions.Builder;
+import org.ray.streaming.runtime.queue.QueueID;
+import org.ray.streaming.runtime.queue.QueueUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.Assert;
@@ -88,9 +90,9 @@ public class StreamingQueueTest implements Serializable {
 //    LOGGER.info(Ray.call(WriterWorker::testCallReader, writerActor, readerActor).get());
     List<String> outputQueueList = new ArrayList<>();
     List<String> inputQueueList = new ArrayList<>();
-    int queueNum = 1;
+    int queueNum = 2;
     for (int i = 0; i < queueNum; ++i) {
-      String qid = "BDACECCCDDCACBBDEEAAFBEDAFBFDFBBFECECBBB";
+      String qid = QueueUtils.getRandomQueueId();
       LOGGER.info("getRandomQueueId: {}", qid);
       inputQueueList.add(qid);
       outputQueueList.add(qid);
@@ -113,7 +115,6 @@ public class StreamingQueueTest implements Serializable {
       e.printStackTrace();
     }
 
-//    Assert.assertTrue(Ray.call(ReaderWorker::done, readerActor).get());
     Assert.assertEquals(
         Ray.call(ReaderWorker::getTotalMsg, readerActor).get().intValue(),
         msgCount*queueNum);

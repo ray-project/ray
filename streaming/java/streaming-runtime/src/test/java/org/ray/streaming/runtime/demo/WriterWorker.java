@@ -121,6 +121,7 @@ public class WriterWorker extends Worker {
           bb.put((byte) k);
         }
 
+        bb.clear();
         QueueID qid = QueueID.from(outputQueueList.get(j));
         producer.produce(qid, bb);
       }

@@ -89,7 +89,7 @@ public class ReaderWorker extends Worker {
     Thread readThread = new Thread(Ray.wrapRunnable(new Runnable() {
       @Override
       public void run() {
-        consum();
+        consume();
       }
     }));
     readThread.start();
@@ -99,7 +99,7 @@ public class ReaderWorker extends Worker {
     return true;
   }
 
-  public final void consum() {
+  public final void consume() {
 
     int checkPointId = 1;
     for (int i = 0; i < msgCount * inputQueueList.size(); ++i) {
