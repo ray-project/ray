@@ -77,7 +77,7 @@ cc_library(
     name = "streaming_jni_lib",
     srcs = glob([
         "lib/java/*.cc", "lib/java/*.h"
-    ]),
+    ]) + [":jni.h", ":jni_md.h"],
     hdrs = glob([
         "*.h", "queue/*.h"
     ]),
