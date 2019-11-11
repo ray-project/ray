@@ -150,10 +150,10 @@ def run(run_or_experiment,
             for individual trials.
         export_formats (list): List of formats that exported at the end of
             the experiment. Default is None.
-        max_failures (int): Try to recover a trial from its last
-            checkpoint at least this many times. Only applies if
-            checkpointing is enabled. Setting to -1 will lead to infinite
-            recovery retries. Defaults to 3.
+        max_failures (int): Try to recover a trial at least this many times.
+            Ray will recover from the latest checkpoint if present.
+            Setting to -1 will lead to infinite recovery retries.
+            Setting to 0 will disable retries. Defaults to 3.
         restore (str): Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
         search_alg (SearchAlgorithm): Search Algorithm. Defaults to

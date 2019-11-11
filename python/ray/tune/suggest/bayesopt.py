@@ -33,6 +33,8 @@ class BayesOptSearch(SuggestionAlgorithm):
             provide values for the keys `kind`, `kappa`, and `xi`.
         random_state (int): Used to initialize BayesOpt.
         verbose (int): Sets verbosity level for BayesOpt packages.
+        use_early_stopped_trials (bool): Whether to use early terminated
+            trial results in the optimization process.
 
     Example:
         >>> space = {
@@ -102,13 +104,17 @@ class BayesOptSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to BayesOpt unless early terminated or errored"""
+        """Notification for the completion of trial."""
         if result:
-            self.optimizer.register(
-                params=self._live_trial_mapping[trial_id],
-                target=self._metric_op * result[self._metric])
-
+            self._process_result(trial_id, result, early_terminated)
         del self._live_trial_mapping[trial_id]
+
+    def _process_result(self, trial_id, result, early_terminated=False):
+        if early_terminated and self._use_early_stopped is False:
+            return
+        self.optimizer.register(
+            params=self._live_trial_mapping[trial_id],
+            target=self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)
