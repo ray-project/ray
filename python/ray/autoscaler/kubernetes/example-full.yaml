@@ -135,6 +135,10 @@ head_node:
               requests:
                   cpu: 1000m
                   memory: 512Mi
+              limits:
+                  # This memory limit will be detected by ray and split into
+                  # 10% for redis, 30% for plasma, and the rest for workers.
+                  memory: 2Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
@@ -191,6 +195,10 @@ worker_nodes:
               requests:
                   cpu: 1000m
                   memory: 512Mi
+              limits:
+                  # This memory limit will be detected by ray and split into
+                  # 30% for plasma, and 70% for workers.
+                  memory: 2Gi
           env:
               # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
