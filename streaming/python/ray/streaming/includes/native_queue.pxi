@@ -3,6 +3,7 @@ from libcpp cimport bool as c_bool, nullptr
 from libcpp.memory cimport shared_ptr, make_shared
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from libcpp.list cimport list as c_list
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
@@ -45,7 +46,8 @@ from ray.streaming.includes.libstreaming cimport (
     CStreamingSerializable,
     CStreamingMessageBundleType,
     CStreamingMessageBundleMeta,
-    CStreamingMessageBundleMetaPtr,
+    CStreamingMessage,
+    CStreamingMessageBundle,
     CStreamingReaderBundle,
     CStreamingWriter,
     CStreamingWriterDirectCall,
@@ -57,7 +59,8 @@ from ray.streaming.includes.libstreaming cimport (
 )
 
 from ray.function_manager import FunctionDescriptor
-from ray.streaming.queue.exception import QueueInitException
+from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
+import ray.streaming.queue.queue_utils as queue_utils
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +225,8 @@ cdef class QueueProducer:
 cdef class QueueConsumer:
     cdef:
         CStreamingReader *reader
+        readonly bytes meta
+        readonly bytes data
 
     def __init__(self):
         pass
@@ -231,8 +236,43 @@ cdef class QueueConsumer:
             del self.reader
             self.reader = NULL
 
-    def pull(self):
-        pass
+    def pull(self, uint32_t timeout_millis):
+        cdef:
+            shared_ptr[CStreamingReaderBundle] bundle
+            CStreamingStatus status = self.reader.GetBundle(timeout_millis, bundle)
+            uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
+        if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
+            if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
+                raise QueueInterruptException("consumer interrupted")
+            elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
+                raise Exception("init queue failed")
+            elif <uint32_t> status == <uint32_t> libstreaming.StatusWaitQueueTimeOut:
+                raise Exception("wait queue object timeout")
+        cdef:
+            uint32_t msg_nums
+            CObjectID queue_id
+            c_list[shared_ptr[CStreamingMessage]] msg_list
+            list msgs = []
+            uint64_t timestamp
+            uint64_t msg_id
+        if bundle_type == <uint32_t> libstreaming.BundleTypeBundle:
+            msg_nums = bundle.get().meta.get().GetMessageListSize()
+            CStreamingMessageBundle.GetMessageListFromRawData(
+                bundle.get().data + libstreaming.kMessageBundleHeaderSize,
+                bundle.get().data_size - libstreaming.kMessageBundleHeaderSize,
+                msg_nums,
+                msg_list)
+            timestamp = bundle.get().meta.get().GetMessageBundleTs()
+            for msg in msg_list:
+                msg_bytes = msg.get().RawData()[:msg.get().GetDataSize()]
+                qid_bytes = queue_id.Binary()
+                msg_id = msg.get().GetMessageSeqId()
+                msgs.append((msg_bytes, msg_id, timestamp, qid_bytes))
+            return msgs
+        elif  bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
+            return []
+        else:
+            raise Exception("Unsupported bundle type {}".format(bundle_type))
 
     def stop(self):
         self.writer.Stop()

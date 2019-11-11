@@ -8,6 +8,7 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from libcpp.list cimport list as c_list
 from cpython cimport PyObject
 cimport cpython
 
@@ -62,6 +63,11 @@ cdef extern from "streaming_message.h" namespace "ray::streaming" nogil:
         pass
     cdef CStreamingMessageType MessageTypeBarrier "ray::streaming::StreamingMessageType::Barrier"
     cdef CStreamingMessageType MessageTypeMessage "ray::streaming::StreamingMessageType::Message"
+    cdef cppclass CStreamingMessage "ray::streaming::StreamingMessage":
+        inline uint8_t *RawData() const
+        inline uint32_t GetDataSize() const
+        inline CStreamingMessageType GetMessageType() const
+        inline uint64_t GetMessageSeqId() const
 
 cdef extern from "streaming_serializable.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingSerializable "ray::streaming::StreamingSerializable":
@@ -75,8 +81,8 @@ cdef extern from "streaming_message_bundle.h" namespace "ray::streaming" nogil:
     cdef CStreamingMessageBundleType BundleTypeBarrier "ray::streaming::StreamingMessageBundleType::Barrier"
     cdef CStreamingMessageBundleType BundleTypeBundle "ray::streaming::StreamingMessageBundleType::Bundle"
 
-cdef extern from "streaming_reader.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageBundleMeta "ray::streaming::StreamingMessageBundleMeta"(CStreamingSerializable):
+        CStreamingMessageBundleMeta()
         inline uint64_t GetMessageBundleTs() const
         inline uint64_t GetLastMessageId() const
         inline uint32_t GetMessageListSize() const
@@ -85,7 +91,13 @@ cdef extern from "streaming_reader.h" namespace "ray::streaming" nogil:
         inline c_bool IsBundle()
 
     ctypedef shared_ptr[CStreamingMessageBundleMeta] CStreamingMessageBundleMetaPtr
+    uint32_t kMessageBundleHeaderSize "ray::streaming::kMessageBundleHeaderSize"
+    cdef cppclass CStreamingMessageBundle "ray::streaming::StreamingMessageBundle"(CStreamingMessageBundleMeta):
+         @staticmethod
+         void GetMessageListFromRawData(const uint8_t *data, uint32_t size, uint32_t msg_nums,
+                                        c_list[shared_ptr[CStreamingMessage]] &msg_list);
 
+cdef extern from "streaming_reader.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingReaderBundle "ray::streaming::StreamingReaderBundle":
         uint8_t *data
         uint32_t data_size
