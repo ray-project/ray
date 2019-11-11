@@ -701,7 +701,6 @@ cdef void push_objects_into_return_vector(
 
 
 cdef class CoreWorker:
-    cdef unique_ptr[CCoreWorker] core_worker
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
@@ -725,6 +724,9 @@ cdef class CoreWorker:
     def run_task_loop(self):
         with nogil:
             self.core_worker.get().StartExecutingTasks()
+
+    def get_native_worker_ptr(self):
+        return <uint64_t>(self.core_worker.get())
 
     def get_current_task_id(self):
         return TaskID(self.core_worker.get().GetCurrentTaskId().Binary())

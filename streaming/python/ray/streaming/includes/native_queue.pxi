@@ -28,15 +28,17 @@ from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
     CTaskID,
-    CObjectID,
-    ObjectID
+    CObjectID
+)
+from ray._raylet cimport (
+    CoreWorker,
+    ObjectID,
+    string_vector_from_list
 )
 
-from ray.includes.libcoreworker cimport CCoreWorker, CoreWorker
+from ray.includes.libcoreworker cimport CCoreWorker
 
-from ray.function_manager import FunctionDescriptor
-
-import ray.streaming.includes.libstreaming as libstreaming
+cimport ray.streaming.includes.libstreaming as libstreaming
 from ray.streaming.includes.libstreaming cimport (
     CStreamingStatus,
     CStreamingMessageType,
@@ -52,9 +54,9 @@ from ray.streaming.includes.libstreaming cimport (
     CQueueManager,
     CQueueClient,
     CLocalMemoryBuffer,
-    StatusOK
 )
 
+from ray.function_manager import FunctionDescriptor
 from ray.streaming.queue.exception import QueueInitException
 
 logger = logging.getLogger(__name__)
@@ -125,7 +127,7 @@ cdef class QueueLink:
         cdef CStreamingStatus status = writer.Init(queue_id_vec, seq_ids, queue_size_vec)
         if remain_id_vec.size() != 0:
             logger.warning("failed queue amounts => %s", remain_id_vec.size())
-        if <uint32_t>status != <uint32_t>StatusOK:
+        if <uint32_t>status != <uint32_t>(libstreaming.StatusOK):
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
             del writer
             raise QueueInitException(msg, qid_vector_to_list(remain_id_vec))
@@ -234,15 +236,6 @@ cdef class QueueConsumer:
 
     def stop(self):
         self.writer.Stop()
-
-cdef c_vector[c_string] string_vector_from_list(list string_list):
-    cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
 
 cdef c_vector[CObjectID] bytes_list_to_qid_vec(list[bytes] py_queue_ids):
     cdef:
