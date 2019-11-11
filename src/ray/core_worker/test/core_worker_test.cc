@@ -683,7 +683,8 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   RAY_CHECK_OK(provider.Delete(ids_set));
 
   usleep(200 * 1000);
-  ASSERT_TRUE(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception).IsTimedOut());
+  ASSERT_TRUE(
+      provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception).IsTimedOut());
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
 

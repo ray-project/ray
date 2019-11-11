@@ -56,7 +56,7 @@ Status CoreWorkerMemoryStoreProvider::Wait(
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
   auto status = store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects);
-  // Absorb TimedOut statuses.
+  // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);
   }
