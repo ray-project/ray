@@ -88,7 +88,7 @@ def make_parser(parser_creator=None, **kwargs):
         "--keep-checkpoints-num",
         default=None,
         type=int,
-        help="Number of last checkpoints to keep. Others get "
+        help="Number of best checkpoints to keep. Others get "
         "deleted. Default (None) keeps all checkpoints.")
     parser.add_argument(
         "--checkpoint-score-attr",

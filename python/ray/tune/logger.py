@@ -452,7 +452,8 @@ class UnifiedLogger(Logger):
         with the Ray autoscaler.
         """
         if worker_ip != self._log_syncer.worker_ip:
-            logger.info("Syncing (blocking) results to %s", worker_ip)
+            logger.info("Trial %s: Syncing (blocking) results to %s",
+                        self.trial, worker_ip)
             self._log_syncer.reset()
             self._log_syncer.set_worker_ip(worker_ip)
             if not self._log_syncer.sync_up():
@@ -461,8 +462,8 @@ class UnifiedLogger(Logger):
                     "This should not occur.", self.trial)
             self._log_syncer.wait()
         else:
-            logger.warning("Trial %s: Sync attempted to same IP %s",
-                           self.trial, worker_ip)
+            logger.error("Trial %s: Sync attempted to same IP %s. This "
+                         "should not occur.", self.trial, worker_ip)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

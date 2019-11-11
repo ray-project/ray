@@ -12,12 +12,10 @@ import traceback
 import ray
 from ray.exceptions import RayError
 from ray import ObjectID, ray_constants
-from ray.exceptions import RayActorError
-from ray import ray_constants
 from ray.resource_spec import ResourceSpec
-from ray.tune.error import AbortTrialExecution, TuneError
+from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
-from ray.tune.trial import Trial, Checkpoint, Address
+from ray.tune.trial import Trial, Checkpoint, Location
 from ray.tune.resources import Resources
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
@@ -148,7 +146,7 @@ class RayTrialExecutor(TrialExecutor):
 
         # Clear the Trial's node IP (will be updated later on result)
         # since we don't know where the remote runner is placed.
-        trial.address = Address()
+        trial.address = Location()
         logger.info("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
@@ -574,7 +572,7 @@ class RayTrialExecutor(TrialExecutor):
                 value = ray.get(trial.runner.save.remote())
                 checkpoint = Checkpoint(storage, value, trial.last_result)
 
-        with warn_if_slow("on_checkpoint", threshold=30.0) as profile:
+        with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
             try:
                 trial.on_checkpoint(checkpoint)
             except Exception:

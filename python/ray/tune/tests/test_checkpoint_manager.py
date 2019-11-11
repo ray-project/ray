@@ -48,17 +48,18 @@ class CheckpointManagerTest(unittest.TestCase):
             self.assertIn(checkpoints[1], best_checkpoints)
             self.assertIn(checkpoints[2], best_checkpoints)
 
+        with patch("shutil.rmtree") as rmtree_mock, patch("os.path"):
             for j in range(3, len(checkpoints)):
                 checkpoint_manager.on_checkpoint(checkpoints[j])
-                expected_deletes = 2 if j == 3 else 3
+                expected_deletes = 0 if j == 3 else 1
                 self.assertEqual(rmtree_mock.call_count, expected_deletes)
                 self.assertEqual(checkpoint_manager.newest_checkpoint,
                                  checkpoints[j])
 
-        best_checkpoints = checkpoint_manager.best_checkpoints()
-        self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
-        self.assertIn(checkpoints[3], best_checkpoints)
-        self.assertIn(checkpoints[4], best_checkpoints)
+            best_checkpoints = checkpoint_manager.best_checkpoints()
+            self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
+            self.assertIn(checkpoints[3], best_checkpoints)
+            self.assertIn(checkpoints[4], best_checkpoints)
 
     def testBestCheckpoints(self):
         keep_checkpoints_num = 4

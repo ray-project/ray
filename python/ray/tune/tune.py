@@ -127,10 +127,10 @@ def run(run_or_experiment,
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If not provided, the sync command defaults to standard
-            S3 or gsutil sync comamnds.
+            from upload_dir. If string, then it must be a string template that
+            includes `{source}` and `{target}` for the syncer to run. If not
+            provided, the sync command defaults to standard S3 or gsutil sync
+            comamnds.
         sync_to_driver (func|str): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
@@ -173,8 +173,8 @@ def run(run_or_experiment,
         verbose (int): 0, 1, or 2. Verbosity mode. 0 = silent,
             1 = only status updates, 2 = status and trial results.
         resume (str|bool): One of "LOCAL", "REMOTE", "PROMPT", or bool.
-            LOCAL/True restores the checkpoint from the local_dir.
-            REMOTE restores the checkpoint from upload_dir.
+            LOCAL/True restores the checkpoint from the local_checkpoint_dir.
+            REMOTE restores the checkpoint from remote_checkpoint_dir.
             PROMPT provides CLI feedback. False forces a new
             experiment. If resume is set but checkpoint does not exist,
             ValueError will be thrown.

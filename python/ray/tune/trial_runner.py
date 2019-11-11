@@ -404,16 +404,12 @@ class TrialRunner(object):
     def _process_events(self):
         failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
-            logger.info(
-                "%s (IP: %s) detected as stale. This is likely "
-                "because the node was lost", failed_trial,
-                failed_trial.node_ip)
+            error_msg = (
+                "{} (IP: {}) detected as stale. This is likely because the "
+                "node was lost").format(failed_trial, failed_trial.node_ip)
+            logger.info(error_msg)
             with warn_if_slow("process_failed_trial"):
-                self._process_trial_failure(
-                    failed_trial,
-                    error_msg="{} (IP: {}) detected as stale. This is likely "
-                    "because the node was lost".format(failed_trial,
-                                                       failed_trial.node_ip))
+                self._process_trial_failure(failed_trial, error_msg=error_msg)
         else:
             trial = self.trial_executor.get_next_available_trial()  # blocking
             with warn_if_slow("process_trial"):

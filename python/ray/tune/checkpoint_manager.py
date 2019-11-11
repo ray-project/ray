@@ -3,12 +3,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import namedtuple
-
 import heapq
 import logging
 import os
 import shutil
+
+try:
+    FileNotFoundError
+except NameError:
+    FileNotFoundError = IOError
 
 logger = logging.getLogger(__name__)
 
@@ -27,10 +30,10 @@ class Checkpoint(object):
     MEMORY = "memory"
     DISK = "disk"
 
-    def __init__(self, storage, value, last_result=None):
+    def __init__(self, storage, value, result=None):
         self.storage = storage
         self.value = value
-        self.last_result = last_result or {}
+        self.result = result or {}
 
     def delete(self):
         """Deletes checkpoint data if disk checkpoint."""
@@ -100,7 +103,7 @@ class CheckpointManager(object):
             checkpoint (Checkpoint): Trial state checkpoint.
 
         Raises:
-            KeyError if checkpoint_score_attr not in last_result of checkpoint.
+            KeyError if checkpoint_score_attr not in result of checkpoint.
         """
         old_checkpoint = self.newest_checkpoint
         self.newest_checkpoint = checkpoint
@@ -130,10 +133,10 @@ class CheckpointManager(object):
             old_checkpoint.delete()
 
     def best_checkpoints(self):
-        """Returns best checkpoints, sorted by priority."""
+        """Returns best checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
         return [queue_item.value for queue_item in checkpoints]
 
     def _priority(self, checkpoint):
-        priority = checkpoint.last_result[self._checkpoint_score_attr]
+        priority = checkpoint.result[self._checkpoint_score_attr]
         return -priority if self._checkpoint_score_desc else priority

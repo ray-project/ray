@@ -33,7 +33,9 @@ def date_str():
     return datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-class Address(object):
+class Location(object):
+    """Describes the location at which Trial is placed to run."""
+
     def __init__(self, hostname=None, pid=None):
         self.hostname = hostname
         self.pid = pid
@@ -136,7 +138,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
-        self.address = Address()
+        self.address = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
@@ -244,7 +246,7 @@ class Trial(object):
         """
         if self.result_logger:
             self.result_logger.sync_results_to_new_location(worker_ip)
-        self.address = Address(worker_ip)
+        self.address = Location(worker_ip)
 
     def close_logger(self):
         """Close logger."""
@@ -338,7 +340,7 @@ class Trial(object):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
-        self.address = Address(result.get("node_ip"), result.get("pid"))
+        self.address = Location(result.get("node_ip"), result.get("pid"))
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)

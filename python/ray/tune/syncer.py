@@ -134,6 +134,7 @@ class CommandBasedClient(SyncClient):
     def wait(self):
         if self.sync_process:
             _, error_msg = self.sync_process.communicate()
+            error_msg = error_msg.decode('ascii')
             code = self.sync_process.returncode
             self.sync_process = None
             if code != 0:

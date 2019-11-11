@@ -48,6 +48,7 @@ def log_sync_template(options=""):
 
 
 class NodeSyncMixin(object):
+    # TODO(ujvl): Refactor this code.
     """Mixin for syncing files to/from a remote dir to a local dir."""
 
     def __init__(self):
