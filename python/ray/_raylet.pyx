@@ -675,12 +675,14 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
         return empty_metadata
-    return dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-        make_shared[LocalMemoryBuffer](<uint8_t*>(c_str.data()),
-            c_str.size(), True))
+    return dynamic_pointer_cast[
+        CBuffer, LocalMemoryBuffer](
+            make_shared[LocalMemoryBuffer](
+                <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
-cdef write_serialized_object(serialized_object, const shared_ptr[CBuffer]& buf):
+cdef write_serialized_object(
+        serialized_object, const shared_ptr[CBuffer]& buf):
     # avoid initializing pyarrow before raylet
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
@@ -1036,7 +1038,8 @@ cdef class CoreWorker:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
                 data_sizes.push_back(serialized_object.total_bytes)
-                metadatas.push_back(string_to_buffer(serialized_object.metadata))
+                metadatas.push_back(
+                    string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
 
         check_status(self.core_worker.get().AllocateReturnObjects(
@@ -1049,4 +1052,5 @@ cdef class CoreWorker:
             if serialized_object is NoReturn:
                 returns[0][i].reset()
             else:
-                write_serialized_object(serialized_object, returns[0][i].get().GetData())
+                write_serialized_object(
+                    serialized_object, returns[0][i].get().GetData())
