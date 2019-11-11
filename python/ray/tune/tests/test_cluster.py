@@ -596,7 +596,9 @@ tune.run(
 
 
 def test_cluster_interrupt_searcher(start_connected_cluster, tmpdir):
-    """Tests run_experiment on cluster shutdown with actual interrupt.
+    """Tests restoration of HyperOptSearch experiment on cluster shutdown
+    with actual interrupt. Restoration should restore both state of trials
+    and previous search algorithm (HyperOptSearch) state.
 
     This is an end-to-end test.
     """
@@ -704,17 +706,22 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
 
     time.sleep(2)
 
+    reached = False
     for i in range(50):
         if TrialRunner.checkpoint_exists(local_checkpoint_dir):
             # Inspect the internal trialrunner
-            runner = TrialRunner(
+            runner = TrialRunner( # if _resumed is false + len(trials) == 0: continue
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
-            assert (len(trials) >= 10)
-            assert (len(trials) <= 20)
+            if (not runner._resumed) and (len(trials) == 0):
+                continue # nonblocking script hasn't resumed yet, wait
+            reached = True
+            assert len(trials) >= 10
+            assert len(trials) <= 20
             if len(trials) == 20:
                 break
         time.sleep(2)
+    assert reached is True
 
     ray.shutdown()
     cluster.shutdown()

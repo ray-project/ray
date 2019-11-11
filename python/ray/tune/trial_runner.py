@@ -239,14 +239,10 @@ class TrialRunner(object):
         return find_newest_dated_path(directory, cls.SEARCHER_CKPT_FILE_REGEX)
 
     def add_experiment(self, experiment):
-        if not self._resumed:
-            self._search_alg.add_configurations([experiment])
-        else:
+        if self._resumed:
             experiment.spec["num_samples"] = max(
                 0, experiment.spec["num_samples"] - len(self._trials))
-            self._search_alg.add_configurations([experiment])
-            # logger.info("TrialRunner resumed, ignoring new add_experiment.")
-            # TODO(hershg)
+        self._search_alg.add_configurations([experiment])
 
     def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
@@ -327,7 +323,8 @@ class TrialRunner(object):
         try:
             newest_searcher_ckpt_path = self._find_newest_searcher_ckpt(
                 self._local_checkpoint_dir)
-            self._search_alg.restore(newest_searcher_ckpt_path)
+            if newest_searcher_ckpt_path is not None:
+                self._search_alg.restore(newest_searcher_ckpt_path)
         except NotImplementedError:
             pass
 
