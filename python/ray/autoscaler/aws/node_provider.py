@@ -14,7 +14,7 @@ from botocore.config import Config
 from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE
-from ray.ray_constants import BOTO_MAX_RETRIES
+from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -38,14 +38,21 @@ def from_aws_format(tags):
     return tags
 
 
+def make_ec2_client(region, max_retries):
+    """Make client, retrying requests up to `max_retries`."""
+    config = Config(retries={"max_attempts": max_retries})
+    return boto3.resource("ec2", region_name=region, config=config)
+
+
 class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
         self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
                                                        True)
-        self.ec2 = boto3.resource(
-            "ec2", region_name=provider_config["region"], config=config)
+        self.ec2 = make_ec2_client(
+            region=provider_config["region"], max_retries=BOTO_MAX_RETRIES)
+        self.ec2_fail_fast = make_ec2_client(
+            region=provider_config["region"], max_retries=0)
 
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
@@ -268,8 +275,7 @@ class AWSNodeProvider(NodeProvider):
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
 
-        max_retries = 5
-        for attempt in range(1, max_retries + 1):
+        for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
                 logger.info("NodeProvider: calling create_instances "
@@ -281,7 +287,7 @@ class AWSNodeProvider(NodeProvider):
                     "SubnetId": subnet_id,
                     "TagSpecifications": tag_specs
                 })
-                created = self.ec2.create_instances(**conf)
+                created = self.ec2_fail_fast.create_instances(**conf)
                 for instance in created:
                     logger.info("NodeProvider: Created instance "
                                 "[id={}, name={}, info={}]".format(
@@ -290,10 +296,10 @@ class AWSNodeProvider(NodeProvider):
                                     instance.state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
-                if attempt == max_retries:
+                if attempt == BOTO_CREATE_MAX_RETRIES:
                     logger.error(
                         "create_instances: Max attempts ({}) exceeded.".format(
-                            max_retries))
+                            BOTO_CREATE_MAX_RETRIES))
                     raise exc
                 else:
                     logger.error(exc)

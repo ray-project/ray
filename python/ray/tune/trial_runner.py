@@ -535,8 +535,7 @@ class TrialRunner(object):
                 stop_logger=False)
             trial.result_logger.flush()
             if self.trial_executor.has_resources(trial.resources):
-                logger.info("Attempting to recover"
-                            " trial state from last checkpoint.")
+                logger.info("Attempting to recover trial.")
                 self.trial_executor.start_trial(trial)
                 if trial.status == Trial.ERROR:
                     raise RuntimeError("Trial did not start correctly.")

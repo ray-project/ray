@@ -412,9 +412,9 @@ The checkpoint will be saved at a path that looks like ``local_dir/exp_name/tria
 Fault Tolerance
 ---------------
 
-Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
+Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
-In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+Tune will restore trials from the latest checkpoint, where available. In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
 
