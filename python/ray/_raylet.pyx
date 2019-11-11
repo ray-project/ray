@@ -654,6 +654,34 @@ cdef void exit_handler() nogil:
         sys.exit(0)
 
 
+cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
+    cdef shared_ptr[CBuffer] empty_metadata
+    if c_str.size() == 0:
+        return empty_metadata
+    return dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+        make_shared[LocalMemoryBuffer](<uint8_t*>(c_str.data()),
+            c_str.size(), True))
+
+
+cdef write_serialized_object(serialized_object, const shared_ptr[CBuffer]& buf):
+    # avoid initializing pyarrow before raylet
+    from ray.serialization import Pickle5SerializedObject, RawSerializedObject
+
+    if isinstance(serialized_object, RawSerializedObject):
+        buffer = Buffer.make(buf)
+        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+        stream.set_memcopy_threads(MEMCOPY_THREADS)
+        stream.write(pyarrow.py_buffer(serialized_object.value))
+    elif isinstance(serialized_object, Pickle5SerializedObject):
+        (<Pickle5Writer>serialized_object.writer).write_to(
+            serialized_object.inband, buf, MEMCOPY_THREADS)
+    else:
+        buffer = Buffer.make(buf)
+        stream = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+        stream.set_memcopy_threads(MEMCOPY_THREADS)
+        serialized_object.serialized_object.write_to(stream)
+
+
 cdef class CoreWorker:
     cdef unique_ptr[CCoreWorker] core_worker
 
@@ -753,66 +781,15 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-
+        metadata = string_to_buffer(serialized_object.metadata)
+        total_bytes = serialized_object.total_bytes
         object_already_exists = self._create_put_buffer(
-            metadata, serialized_object.total_bytes,
-            object_id, &c_object_id, &data)
+            metadata, total_bytes, object_id, &c_object_id, &data)
         if not object_already_exists:
-            stream = pyarrow.FixedSizeBufferWriter(
-                pyarrow.py_buffer(Buffer.make(data)))
-            stream.set_memcopy_threads(MEMCOPY_THREADS)
-            serialized_object.write_to(stream)
-
+            write_serialized_object(serialized_object, data)
             with nogil:
                 check_status(
                     self.core_worker.get().Seal(c_object_id))
-
-        return ObjectID(c_object_id.Binary())
-
-    def put_raw_buffer(self, c_string value, ObjectID object_id=None):
-        cdef:
-            c_string metadata_str = RAW_BUFFER_METADATA
-            CObjectID c_object_id
-            shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
-                CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
-
-        object_already_exists = self._create_put_buffer(
-            metadata, value.size(), object_id, &c_object_id, &data)
-        if not object_already_exists:
-            stream = pyarrow.FixedSizeBufferWriter(
-                pyarrow.py_buffer(Buffer.make(data)))
-            stream.set_memcopy_threads(MEMCOPY_THREADS)
-            stream.write(pyarrow.py_buffer(value))
-
-            with nogil:
-                check_status(
-                    self.core_worker.get().Seal(c_object_id))
-
-        return ObjectID(c_object_id.Binary())
-
-    def put_pickle5_buffers(self, c_string inband,
-                            Pickle5Writer writer, ObjectID object_id=None):
-        cdef:
-            CObjectID c_object_id
-            c_string metadata_str = PICKLE5_BUFFER_METADATA
-            shared_ptr[CBuffer] data
-            shared_ptr[CBuffer] metadata = dynamic_pointer_cast[
-                CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size()))
-
-        object_already_exists = self._create_put_buffer(
-            metadata, writer.get_total_bytes(inband),
-            object_id, &c_object_id, &data)
-        if not object_already_exists:
-            writer.write_to(inband, data, MEMCOPY_THREADS)
-            with nogil:
-                check_status(
-                    self.core_worker.get().Seal(c_object_id))
-
         return ObjectID(c_object_id.Binary())
 
     def wait(self, object_ids, int num_returns, int64_t timeout_ms,
@@ -1021,7 +998,6 @@ cdef class CoreWorker:
         cdef:
             c_vector[size_t] data_sizes
             c_string metadata_str
-            shared_ptr[CBuffer] empty_metadata
             c_vector[shared_ptr[CBuffer]] metadatas
 
         if return_ids.size() == 0:
@@ -1036,31 +1012,13 @@ cdef class CoreWorker:
             elif output is NoReturn:
                 serialized_objects.append(output)
                 data_sizes.push_back(0)
-                metadatas.push_back(empty_metadata)
-            elif isinstance(output, bytes):
-                serialized_objects.append(output)
-                data_sizes.push_back(len(output))
-                metadata_str = RAW_BUFFER_METADATA
-                metadatas.push_back(dynamic_pointer_cast[
-                    CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()),
-                        metadata_str.size(), True)))
-            elif worker.use_pickle:
-                inband, writer = worker._serialize_with_pickle5(output)
-                serialized_objects.append((inband, writer))
-                data_sizes.push_back(writer.get_total_bytes(inband))
-                metadata_str = PICKLE5_BUFFER_METADATA
-                metadatas.push_back(dynamic_pointer_cast[
-                    CBuffer, LocalMemoryBuffer](
-                    make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()),
-                        metadata_str.size(), True)))
+                metadatas.push_back(string_to_buffer(b''))
             else:
-                serialized_object = worker._serialize_with_pyarrow(output)
-                serialized_objects.append(serialized_object)
+                context = worker.get_serialization_context()
+                serialized_object = context.serialize(output)
                 data_sizes.push_back(serialized_object.total_bytes)
-                metadatas.push_back(empty_metadata)
+                metadatas.push_back(string_to_buffer(serialized_object.metadata))
+                serialized_objects.append(serialized_object)
 
         check_status(self.core_worker.get().AllocateReturnObjects(
             return_ids, data_sizes, metadatas, returns))
@@ -1069,22 +1027,7 @@ cdef class CoreWorker:
             # A nullptr is returned if the object already exists.
             if returns[0][i].get() == NULL:
                 continue
-
             if serialized_object is NoReturn:
                 returns[0][i].reset()
-            elif isinstance(serialized_object, bytes):
-                buffer = Buffer.make(returns[0][i].get().GetData())
-                stream = pyarrow.FixedSizeBufferWriter(
-                    pyarrow.py_buffer(buffer))
-                stream.set_memcopy_threads(MEMCOPY_THREADS)
-                stream.write(pyarrow.py_buffer(serialized_object))
-            elif worker.use_pickle:
-                inband, writer = serialized_object
-                (<Pickle5Writer>writer).write_to(
-                    inband, returns[0][i].get().GetData(), MEMCOPY_THREADS)
             else:
-                buffer = Buffer.make(returns[0][i].get().GetData())
-                stream = pyarrow.FixedSizeBufferWriter(
-                    pyarrow.py_buffer(buffer))
-                stream.set_memcopy_threads(MEMCOPY_THREADS)
-                serialized_object.write_to(stream)
+                write_serialized_object(serialized_object, returns[0][i].get().GetData())
