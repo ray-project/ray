@@ -244,8 +244,8 @@ Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
 }
 
-void CoreWorker::TreatRayletTaskAsFailed(
-    const TaskID &task_id, int num_returns, const rpc::ErrorType &error_type) {
+void CoreWorker::TreatRayletTaskAsFailed(const TaskID &task_id, int num_returns,
+                                         const rpc::ErrorType &error_type) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   for (int i = 0; i < num_returns; i++) {
@@ -589,7 +589,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
                                                  rpc::ErrorType::ACTOR_DIED);
     } else {
       TreatRayletTaskAsFailed(spec.TaskId(), spec.NumReturns(),
-                                                 rpc::ErrorType::ACTOR_DIED);
+                              rpc::ErrorType::ACTOR_DIED);
     }
   } else {
     if (is_direct_call) {
