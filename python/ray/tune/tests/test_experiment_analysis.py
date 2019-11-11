@@ -30,12 +30,14 @@ class ExperimentAnalysisInMemSuite(unittest.TestCase):
         def _restore(self, checkpoint_path):
             pass
 
-    def testCompareTrials(self):
-        scores_list_copy = ExperimentAnalysisInMemSuite.scores_list[:]
-
+    def setUp(self):
         ray.init(local_mode=True, num_cpus=1)
         self.test_dir = tempfile.mkdtemp()
         self.test_name = "analysis_exp"
+        self.scores_list_copy = ExperimentAnalysisInMemSuite.scores_list[:]
+        self.run_test_exp()
+
+    def run_test_exp(self):
         self.ea = run(
             self.TrainableScoresList,
             name=self.test_name,
@@ -43,16 +45,21 @@ class ExperimentAnalysisInMemSuite(unittest.TestCase):
             stop={"training_iteration": 2},
             num_samples=5)
 
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        ray.shutdown()
+
+    def testCompareTrials(self):
         max_all = self.ea.get_best_trial("score",
                                          "max").metric_analysis["score"]["max"]
         min_all = self.ea.get_best_trial("score",
                                          "min").metric_analysis["score"]["min"]
         max_last = self.ea.get_best_trial(
             "score", "max", "last").metric_analysis["score"]["last"]
-        self.assertEqual(max_all, max(scores_list_copy))
-        self.assertEqual(min_all, min(scores_list_copy))
-        self.assertEqual(max_last, max(scores_list_copy[5:]))
-        self.assertNotEqual(max_last, max(scores_list_copy))
+        self.assertEqual(max_all, max(self.scores_list_copy))
+        self.assertEqual(min_all, min(self.scores_list_copy))
+        self.assertEqual(max_last, max(self.scores_list_copy[5:]))
+        self.assertNotEqual(max_last, max(self.scores_list_copy))
         shutil.rmtree(self.test_dir, ignore_errors=True)
         ray.shutdown()
 
