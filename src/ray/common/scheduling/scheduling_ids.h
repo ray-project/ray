@@ -11,9 +11,8 @@
 #include <vector>
 using namespace std;
 
-/// Class to map string IDs to unique inntegre IDs and back.
+/// Class to map string IDs to unique integer IDs and back.
 class ScheduleIds {
-  // use unordered_map
   unordered_map<string, int64_t> string_to_int;
   unordered_map<int64_t, string> int_to_string;
   hash<string> hasher;
@@ -25,7 +24,7 @@ public:
   /// Get integer ID associated with an existing string ID.
   ///
   /// \param String ID.
-  /// \return The integer ID associated to the string ID.
+  /// \return The integer ID associated with the given string ID.
   int64_t getIdByInt(string sid);
 
   /// Insert a string ID and get the associated integer ID.
