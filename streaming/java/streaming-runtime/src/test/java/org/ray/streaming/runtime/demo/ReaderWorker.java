@@ -49,6 +49,11 @@ public class ReaderWorker extends Worker {
     return name;
   }
 
+  public String testRayCall() {
+    LOGGER.info("testRayCall called");
+    return "testRayCall";
+  }
+
   public boolean init(List<String> inputQueueList, RayActor peer, int msgCount) {
 
     this.inputQueueList = inputQueueList;

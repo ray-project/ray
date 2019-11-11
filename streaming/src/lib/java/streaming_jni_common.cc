@@ -46,7 +46,7 @@ jint throwQueueInitException(JNIEnv *env, const char *message, const std::vector
 
   for (auto &q_id : abnormal_queues) {
     jbyteArray jbyte_array = env->NewByteArray(kUniqueIDSize);
-    env->SetByteArrayRegion(jbyte_array, 0, kUniqueIDSize, reinterpret_cast<const jbyte *>(q_id.Data()));
+    env->SetByteArrayRegion(jbyte_array, 0, kUniqueIDSize, const_cast<jbyte*>(reinterpret_cast<const jbyte *>(q_id.Data())));
     env->CallBooleanMethod(array_list, array_list_add, jbyte_array);
   }
 
@@ -125,17 +125,3 @@ ray::RayFunction FunctionDescriptorToRayFunction(JNIEnv *env, jobject functionDe
   return ray_function;
 }
 
-jint JNI_OnLoad(JavaVM *vm, void *reserved) {
-  JNIEnv *env;
-  if (vm->GetEnv(reinterpret_cast<void **>(&env), CURRENT_JNI_VERSION) != JNI_OK) {
-    return JNI_ERR;
-  }
-
-  java_direct_buffer_class = FindClass(env, "java/nio/DirectByteBuffer");
-  java_direct_buffer_address = env->GetFieldID(java_direct_buffer_class, "address", "J");
-  STREAMING_CHECK(java_direct_buffer_address != nullptr);
-  java_direct_buffer_capacity = env->GetFieldID(java_direct_buffer_class, "capacity", "I");
-  STREAMING_CHECK(java_direct_buffer_capacity != nullptr);
-
-  return CURRENT_JNI_VERSION;
-}

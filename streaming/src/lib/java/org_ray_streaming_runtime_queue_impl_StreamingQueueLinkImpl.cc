@@ -73,6 +73,18 @@ Java_org_ray_streaming_runtime_queue_impl_StreamingQueueLinkImpl_newProducer(
   LongVectorFromJLongArray create_types_vec(env, creator_type);
   std::vector<ray::ActorID> actor_ids = jarray_to_actor_id_vec(env, actor_id_vec);
 
+  STREAMING_LOG(INFO) << "core_worker: " << reinterpret_cast<ray::CoreWorker *>(core_worker);
+  STREAMING_LOG(INFO) << "actor_ids: " << actor_ids[0];
+  ray::RayFunction af = FunctionDescriptorToRayFunction(env, async_func);
+  ray::RayFunction sf = FunctionDescriptorToRayFunction(env, sync_func);
+  std::vector<std::string> af_ds = af.GetFunctionDescriptor();
+  std::vector<std::string> sf_ds = sf.GetFunctionDescriptor();
+  for (auto &str : af_ds) {
+    STREAMING_LOG(INFO) << "af_ds: " << str;
+  }
+  for (auto &str : sf_ds) {
+    STREAMING_LOG(INFO) << "sf_ds: " << str;
+  }
   auto *streaming_writer = new StreamingWriterDirectCall(
       reinterpret_cast<ray::CoreWorker *>(core_worker), 
       queue_id_vec, actor_ids,

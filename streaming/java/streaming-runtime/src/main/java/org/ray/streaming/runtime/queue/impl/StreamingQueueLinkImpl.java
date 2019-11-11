@@ -27,7 +27,6 @@ import org.slf4j.LoggerFactory;
 public class StreamingQueueLinkImpl implements QueueLink {
 
   static {
-    JniUtils.loadLibrary("streaming_java");
   }
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingQueueLinkImpl.class);
