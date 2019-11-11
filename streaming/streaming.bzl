@@ -1,6 +1,6 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 
-def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
+def flatbuffer_py_library(name, srcs, outs, out_prefix = "", includes = [], include_paths = []):
     flatbuffer_library_public(
         name = name,
         srcs = srcs,
@@ -11,7 +11,7 @@ def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_p
         includes = includes,
     )
 
-def flatbuffer_java_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
+def flatbuffer_java_library(name, srcs, outs, out_prefix = "", includes = [], include_paths = []):
     flatbuffer_library_public(
         name = name,
         srcs = srcs,

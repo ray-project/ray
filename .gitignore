@@ -153,6 +153,9 @@ streaming/java/**/target
 streaming/java/**/lib
 streaming/build/**
 
+# streaming/python
+streaming/python/ray/streaming/generated/
+
 # python virtual env
 venv
 
