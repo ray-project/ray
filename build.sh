@@ -102,6 +102,19 @@ if [ -z "$SKIP_PYARROW_INSTALL" ]; then
         --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
 fi
 
+PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
+if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
+  WORK_DIR=`mktemp -d`
+  pushd $WORK_DIR
+    git clone https://github.com/pitrou/pickle5-backport
+    pushd pickle5-backport
+      git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
+      "$PYTHON_EXECUTABLE" setup.py bdist_wheel
+      unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+    popd
+  popd
+fi
+
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
