@@ -63,9 +63,12 @@ def test_pending_task_dependency(shutdown_only):
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-    oid = pending.remote(ray.put(np_array), slow.remote())
+    oid = pending.remote(np_array, slow.remote())
 
     for _ in range(2):
-        ray.put(np_array)
+        # Need to sleep here because the active object ID set is only broadcast
+        # every 500ms by default.
+        time.sleep(1)
+        ray.put(np_array, weakref=True)
 
     ray.get(oid)
