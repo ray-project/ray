@@ -19,11 +19,16 @@ void BuildCommonTaskSpec(
   // Build common task spec.
   builder.SetCommonTaskSpec(task_id, function.GetLanguage(),
                             function.GetFunctionDescriptor(), job_id, current_task_id,
-                            task_index, caller_id, num_returns, required_resources,
-                            required_placement_resources);
+                            task_index, caller_id, num_returns,
+                            transport_type == ray::TaskTransportType::DIRECT,
+                            required_resources, required_placement_resources);
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
+      if (transport_type == ray::TaskTransportType::RAYLET) {
+        RAY_CHECK(!arg.GetReference().IsDirectCallType())
+            << "NotImplemented: passing direct call objects to other tasks";
+      }
       builder.AddByRefArg(arg.GetReference());
     } else {
       builder.AddByValueArg(arg.GetValue());
@@ -44,7 +49,7 @@ void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
                                    absl::flat_hash_set<ObjectID> *plasma_object_ids,
                                    absl::flat_hash_set<ObjectID> *memory_object_ids) {
   for (const auto &object_id : object_ids) {
-    if (object_id.IsDirectActorType()) {
+    if (object_id.IsDirectCallType()) {
       memory_object_ids->insert(object_id);
     } else {
       plasma_object_ids->insert(object_id);
@@ -70,11 +75,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
+      client_call_manager_(new rpc::ClientCallManager(io_service_)),
       heartbeat_timer_(io_service_),
-      worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
+      core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
-      client_call_manager_(io_service_),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
+      memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       grpc_service_(io_service_, *this) {
@@ -95,24 +101,21 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
 
-  // Initialize task execution.
+  // Initialize task receivers.
   if (worker_type_ == WorkerType::WORKER) {
     RAY_CHECK(task_execution_callback_ != nullptr);
-
-    // Initialize task receivers.
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
     raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
         new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task, exit_handler));
-    direct_actor_task_receiver_ = std::unique_ptr<CoreWorkerDirectActorTaskReceiver>(
-        new CoreWorkerDirectActorTaskReceiver(worker_context_, task_execution_service_,
-                                              worker_server_, execute_task,
-                                              exit_handler));
-    worker_server_.RegisterService(grpc_service_);
+    direct_task_receiver_ =
+        std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
+            worker_context_, task_execution_service_, execute_task, exit_handler));
   }
 
   // Start RPC server after all the task receivers are properly initialized.
-  worker_server_.Run();
+  core_worker_server_.RegisterService(grpc_service_);
+  core_worker_server_.Run();
 
   // Initialize raylet client.
   // TODO(zhijunfu): currently RayletClient would crash in its constructor if it cannot
@@ -120,15 +123,15 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      node_ip_address, node_manager_port, client_call_manager_);
+      node_ip_address, node_manager_port, *client_call_manager_);
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, worker_server_.GetPort()));
+      language_, core_worker_server_.GetPort()));
   // Unfortunately the raylet client has to be constructed after the receivers.
-  if (direct_actor_task_receiver_ != nullptr) {
-    direct_actor_task_receiver_->Init(*raylet_client_);
+  if (direct_task_receiver_ != nullptr) {
+    direct_task_receiver_->Init(*raylet_client_);
   }
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
@@ -149,7 +152,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   plasma_store_provider_.reset(
       new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
-  memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -162,10 +164,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     std::vector<std::string> empty_descriptor;
     std::unordered_map<std::string, double> empty_resources;
     const TaskID task_id = TaskID::ForDriverTask(worker_context_.GetCurrentJobID());
-    builder.SetCommonTaskSpec(task_id, language_, empty_descriptor,
-                              worker_context_.GetCurrentJobID(),
-                              TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()),
-                              0, GetCallerId(), 0, empty_resources, empty_resources);
+    builder.SetCommonTaskSpec(
+        task_id, language_, empty_descriptor, worker_context_.GetCurrentJobID(),
+        TaskID::ComputeDriverTaskId(worker_context_.GetWorkerID()), 0, GetCallerId(), 0,
+        false, empty_resources, empty_resources);
 
     std::shared_ptr<gcs::TaskTableData> data = std::make_shared<gcs::TaskTableData>();
     data->mutable_task()->mutable_task_spec()->CopyFrom(builder.Build().GetMessage());
@@ -173,11 +175,18 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
-  // TODO(edoakes): why don't we just share the memory store provider?
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(
-          io_service_, std::unique_ptr<CoreWorkerMemoryStoreProvider>(
-                           new CoreWorkerMemoryStoreProvider(memory_store_))));
+      new CoreWorkerDirectActorTaskSubmitter(*client_call_manager_,
+                                             memory_store_provider_));
+
+  direct_task_submitter_ =
+      std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
+          *raylet_client_,
+          [this](WorkerAddress addr) {
+            return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
+                addr.first, addr.second, *client_call_manager_));
+          },
+          memory_store_provider_));
 }
 
 CoreWorker::~CoreWorker() {
@@ -308,9 +317,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       local_timeout_ms = std::max(static_cast<int64_t>(0),
                                   timeout_ms - (current_time_ms() - start_time));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
-                                                  worker_context_.GetCurrentTaskID(),
-                                                  &result_map, &got_exception));
+    RAY_RETURN_NOT_OK(memory_store_provider_.Get(memory_object_ids, local_timeout_ms,
+                                                 worker_context_.GetCurrentTaskID(),
+                                                 &result_map, &got_exception));
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
@@ -334,9 +343,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     for (const auto &id : promoted_plasma_ids) {
       auto it = result_map.find(id);
       if (it == result_map.end()) {
-        result_map.erase(id.WithTransportType(TaskTransportType::DIRECT_ACTOR));
+        result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
       } else {
-        result_map[id.WithTransportType(TaskTransportType::DIRECT_ACTOR)] = it->second;
+        result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
       }
       result_map.erase(id);
     }
@@ -360,10 +369,10 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
 
 Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   bool found = false;
-  if (object_id.IsDirectActorType()) {
+  if (object_id.IsDirectCallType()) {
     // Note that the memory store returns false if the object value is
     // ErrorType::OBJECT_IN_PLASMA.
-    RAY_RETURN_NOT_OK(memory_store_provider_->Contains(object_id, &found));
+    RAY_RETURN_NOT_OK(memory_store_provider_.Contains(object_id, &found));
   }
   if (!found) {
     // We check plasma as a fallback in all cases, since a direct call object
@@ -413,7 +422,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   if (memory_object_ids.size() > 0) {
     // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
     // consider waiting on them in plasma as well to ensure they are local.
-    RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
+    RAY_RETURN_NOT_OK(memory_store_provider_.Wait(
         memory_object_ids, std::max(0, static_cast<int>(ready.size()) - num_objects),
         /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
   }
@@ -431,8 +440,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
     }
     if (memory_object_ids.size() > 0) {
       RAY_RETURN_NOT_OK(
-          memory_store_provider_->Wait(memory_object_ids, num_objects, timeout_ms,
-                                       worker_context_.GetCurrentTaskID(), &ready));
+          memory_store_provider_.Wait(memory_object_ids, num_objects, timeout_ms,
+                                      worker_context_.GetCurrentTaskID(), &ready));
     }
   }
 
@@ -453,7 +462,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
-  RAY_RETURN_NOT_OK(memory_store_provider_->Delete(memory_object_ids));
+  RAY_RETURN_NOT_OK(memory_store_provider_.Delete(memory_object_ids));
 
   return Status::OK();
 }
@@ -494,8 +503,7 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET),
-                                         task_deps);
+      reference_counter_.SetDependencies(task_spec.ReturnIdForPlasma(i), task_deps);
     }
   }
 
@@ -511,11 +519,19 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
-  BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, task_options.num_returns, task_options.resources,
-                      {}, TaskTransportType::RAYLET, return_ids);
-  return SubmitTaskToRaylet(builder.Build());
+
+  // TODO(ekl) offload task building onto a thread pool for performance
+  BuildCommonTaskSpec(
+      builder, worker_context_.GetCurrentJobID(), task_id,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), function, args,
+      task_options.num_returns, task_options.resources, {},
+      task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
+      return_ids);
+  if (task_options.is_direct_call) {
+    return direct_task_submitter_->SubmitTask(builder.Build());
+  } else {
+    return raylet_client_->SubmitTask(builder.Build());
+  }
 }
 
 Status CoreWorker::CreateActor(const RayFunction &function,
@@ -562,7 +578,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   const bool is_direct_call = actor_handle->IsDirectCallActor();
   const TaskTransportType transport_type =
-      is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET;
+      is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET;
 
   // Build common task spec.
   TaskSpecBuilder builder;
@@ -675,7 +691,7 @@ Status CoreWorker::AllocateReturnObjects(
     bool object_already_exists = false;
     std::shared_ptr<Buffer> data_buffer;
     if (data_sizes[i] > 0) {
-      if (worker_context_.CurrentActorUseDirectCall() &&
+      if (worker_context_.CurrentTaskIsDirectCall() &&
           static_cast<int64_t>(data_sizes[i]) <
               RayConfig::instance().max_direct_call_object_size()) {
         data_buffer = std::make_shared<LocalMemoryBuffer>(data_sizes[i]);
@@ -710,8 +726,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
   std::vector<ObjectID> arg_reference_ids;
   RAY_CHECK_OK(BuildArgsForExecutor(task_spec, &args, &arg_reference_ids));
 
-  const auto transport_type = worker_context_.CurrentActorUseDirectCall()
-                                  ? TaskTransportType::DIRECT_ACTOR
+  const auto transport_type = worker_context_.CurrentTaskIsDirectCall()
+                                  ? TaskTransportType::DIRECT
                                   : TaskTransportType::RAYLET;
   std::vector<ObjectID> return_ids;
   for (size_t i = 0; i < task_spec.NumReturns(); i++) {
@@ -745,7 +761,7 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to seal object "
                        << return_ids[i] << " in store: " << status.message();
       }
-    } else if (!worker_context_.CurrentActorUseDirectCall()) {
+    } else if (!worker_context_.CurrentTaskIsDirectCall()) {
       if (!Put(*return_objects->at(i), return_ids[i]).ok()) {
         RAY_LOG(FATAL) << "Task " << task_spec.TaskId() << " failed to put object "
                        << return_ids[i] << " in store: " << status.message();
@@ -816,7 +832,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  if (worker_context_.CurrentActorUseDirectCall()) {
+  if (worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
     return;
@@ -827,12 +843,11 @@ void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
   }
 }
 
-void CoreWorker::HandleDirectActorAssignTask(
-    const rpc::DirectActorAssignTaskRequest &request,
-    rpc::DirectActorAssignTaskReply *reply, rpc::SendReplyCallback send_reply_callback) {
+void CoreWorker::HandlePushTask(const rpc::PushTaskRequest &request,
+                                rpc::PushTaskReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) {
   task_execution_service_.post([=] {
-    direct_actor_task_receiver_->HandleDirectActorAssignTask(request, reply,
-                                                             send_reply_callback);
+    direct_task_receiver_->HandlePushTask(request, reply, send_reply_callback);
   });
 }
 
@@ -841,9 +856,19 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     rpc::DirectActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   task_execution_service_.post([=] {
-    direct_actor_task_receiver_->HandleDirectActorCallArgWaitComplete(
-        request, reply, send_reply_callback);
+    direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
+                                                                send_reply_callback);
   });
+}
+
+void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                          rpc::WorkerLeaseGrantedReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  // Run this directly since the main thread may be tied up processing a task and
+  // we need to still continue processing these scheduling operations in the backend.
+  direct_task_submitter_->HandleWorkerLeaseGranted(
+      std::make_pair(request.address(), request.port()));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray

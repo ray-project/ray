@@ -9,6 +9,9 @@
 
 namespace ray {
 
+typedef std::function<void(const std::shared_ptr<void>, const std::string &, int)>
+    DispatchTaskCallback;
+
 /// \class Task
 ///
 /// A Task represents a Ray task and a specification of its execution (e.g.,
@@ -38,6 +41,13 @@ class Task {
     ComputeDependencies();
   }
 
+  /// Override dispatch behaviour.
+  void OnDispatchInstead(
+      std::function<void(const std::shared_ptr<void>, const std::string &, int)>
+          callback) {
+    on_dispatch_ = callback;
+  }
+
   /// Get the mutable specification for the task. This specification may be
   /// updated at runtime.
   ///
@@ -62,6 +72,9 @@ class Task {
   /// \param task Task structure with updated dynamic information.
   void CopyTaskExecutionSpec(const Task &task);
 
+  /// Returns the override dispatch task callback, or nullptr.
+  DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
+
   std::string DebugString() const;
 
  private:
@@ -78,6 +91,10 @@ class Task {
   /// the TaskSpecification and execution dependencies from the
   /// TaskExecutionSpecification.
   std::vector<ObjectID> dependencies_;
+
+  /// For direct task calls, overrides the dispatch behaviour to send an RPC
+  /// back to the submitting worker.
+  mutable DispatchTaskCallback on_dispatch_ = nullptr;
 };
 
 }  // namespace ray

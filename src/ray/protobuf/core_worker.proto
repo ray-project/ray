@@ -56,22 +56,24 @@ message ReturnObject {
   bytes metadata = 4;
 }
 
-message DirectActorAssignTaskRequest {
+message PushTaskRequest {
   // The task to be pushed.
   TaskSpec task_spec = 1;
   // The sequence number of the task for this client. This must increase
   // sequentially starting from zero for each actor handle. The server
   // will guarantee tasks execute in this sequence, waiting for any
   // out-of-order request messages to arrive as necessary.
+  // If set to -1, ordering is disabled and the task executes immediately.
+  // This mode of behaviour is used for direct task submission only.
   int64 sequence_number = 2;
   // The max sequence number the client has processed responses for. This
   // is a performance optimization that allows the client to tell the server
-  // to cancel any DirectActorAssignTaskRequests with seqno <= this value, rather than
+  // to cancel any PushTaskRequests with seqno <= this value, rather than
   // waiting for the server to time out waiting for missing messages.
   int64 client_processed_up_to = 3;
 }
 
-message DirectActorAssignTaskReply {
+message PushTaskReply {
   // The returned objects.
   repeated ReturnObject return_objects = 1;
 }
@@ -85,13 +87,24 @@ message DirectActorCallArgWaitCompleteRequest {
 message DirectActorCallArgWaitCompleteReply {
 }
 
-service WorkerService {
-  // Push a task to a worker.
+message WorkerLeaseGrantedRequest {
+  // Address of the leased worker.
+  string address = 1;
+  // Port of the leased worker.
+  int32 port = 2;
+}
+
+message WorkerLeaseGrantedReply {
+}
+
+service CoreWorkerService {
+  // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
-  // Push a task to a direct-call actor.
-  rpc DirectActorAssignTask(DirectActorAssignTaskRequest)
-      returns (DirectActorAssignTaskReply);
-  // Notify wait for direct actor call args has completed.
+  // Push a task directly to this worker from another.
+  rpc PushTask(PushTaskRequest) returns (PushTaskReply);
+  // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
+  // Reply from raylet to fulfill a worker lease request.
+  rpc WorkerLeaseGranted(WorkerLeaseGrantedRequest) returns (WorkerLeaseGrantedReply);
 }

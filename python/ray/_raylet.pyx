@@ -93,6 +93,7 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
+    PICKLE_BUFFER_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
 
@@ -334,6 +335,7 @@ cdef c_vector[c_string] string_vector_from_list(list string_list):
 cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
     cdef:
         c_string pickled_str
+        c_string metadata_str = PICKLE_BUFFER_METADATA
         shared_ptr[CBuffer] arg_data
         shared_ptr[CBuffer] arg_metadata
 
@@ -353,6 +355,11 @@ cdef void prepare_args(list args, c_vector[CTaskArg] *args_vector):
                         <uint8_t*>(pickled_str.data()),
                         pickled_str.size(),
                         True))
+            arg_metadata = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](
+                        <uint8_t*>(
+                            metadata_str.data()), metadata_str.size(), True))
             args_vector.push_back(
                 CTaskArg.PassByValue(
                     make_shared[CRayObject](arg_data, arg_metadata)))
@@ -436,8 +443,18 @@ cdef deserialize_args(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
                 args.append(data)
-            else:
+            elif (c_args[i].get().HasMetadata() and Buffer.make(
+                    c_args[i].get().GetMetadata()).to_pybytes()
+                    == PICKLE_BUFFER_METADATA):
+                # This is a pickled "simple python value" argument.
                 args.append(pickle.loads(data.to_pybytes()))
+            else:
+                # This is a Ray object inlined by the direct task submitter.
+                by_reference_ids.append(
+                    ObjectID(arg_reference_ids[i].Binary()))
+                by_reference_indices.append(i)
+                by_reference_objects.push_back(c_args[i])
+                args.append(None)
         # Passed by reference.
         else:
             by_reference_ids.append(
@@ -658,12 +675,14 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
         return empty_metadata
-    return dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
-        make_shared[LocalMemoryBuffer](<uint8_t*>(c_str.data()),
-            c_str.size(), True))
+    return dynamic_pointer_cast[
+        CBuffer, LocalMemoryBuffer](
+            make_shared[LocalMemoryBuffer](
+                <uint8_t*>(c_str.data()), c_str.size(), True))
 
 
-cdef write_serialized_object(serialized_object, const shared_ptr[CBuffer]& buf):
+cdef write_serialized_object(
+        serialized_object, const shared_ptr[CBuffer]& buf):
     # avoid initializing pyarrow before raylet
     from ray.serialization import Pickle5SerializedObject, RawSerializedObject
 
@@ -851,6 +870,7 @@ cdef class CoreWorker:
                     function_descriptor,
                     args,
                     int num_return_vals,
+                    c_bool is_direct_call,
                     resources):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -861,7 +881,8 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
-            task_options = CTaskOptions(num_return_vals, c_resources)
+            task_options = CTaskOptions(
+                num_return_vals, is_direct_call, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
@@ -925,7 +946,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
-            task_options = CTaskOptions(num_return_vals, c_resources)
+            task_options = CTaskOptions(num_return_vals, False, c_resources)
             ray_function = CRayFunction(
                 LANGUAGE_PYTHON, string_vector_from_list(function_descriptor))
             prepare_args(args, &args_vector)
@@ -1017,7 +1038,8 @@ cdef class CoreWorker:
                 context = worker.get_serialization_context()
                 serialized_object = context.serialize(output)
                 data_sizes.push_back(serialized_object.total_bytes)
-                metadatas.push_back(string_to_buffer(serialized_object.metadata))
+                metadatas.push_back(
+                    string_to_buffer(serialized_object.metadata))
                 serialized_objects.append(serialized_object)
 
         check_status(self.core_worker.get().AllocateReturnObjects(
@@ -1030,4 +1052,5 @@ cdef class CoreWorker:
             if serialized_object is NoReturn:
                 returns[0][i].reset()
             else:
-                write_serialized_object(serialized_object, returns[0][i].get().GetData())
+                write_serialized_object(
+                    serialized_object, returns[0][i].get().GetData())

@@ -19,6 +19,11 @@ class CoreWorkerMemoryStoreProvider {
  public:
   CoreWorkerMemoryStoreProvider(std::shared_ptr<CoreWorkerMemoryStore> store);
 
+  void GetAsync(const ObjectID &object_id,
+                std::function<void(std::shared_ptr<RayObject>)> callback) {
+    store_->GetAsync(object_id, callback);
+  }
+
   Status Put(const RayObject &object, const ObjectID &object_id);
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,

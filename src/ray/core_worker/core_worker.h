@@ -14,22 +14,24 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/worker_client.h"
-#include "ray/rpc/worker/worker_server.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_server.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the WorkerService in core_worker.proto, e.g., "ExampleCall"
+/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
 /// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
 /// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS                       \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)               \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorAssignTask, 9999) \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
+  RAY_CORE_WORKER_RPC_HANDLER(WorkerLeaseGranted, 5)
 
 namespace ray {
 
@@ -319,28 +321,31 @@ class CoreWorker {
                                const std::vector<std::shared_ptr<Buffer>> &metadatas,
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
-  /* Handlers for the worker's gRPC server. These are executed on the io_service_ and post
-   * work to the appropriate event loop.
+  /**
+   * The following methods are handlers for the core worker's gRPC server, which follow
+   * a macro-generated call convention. These are executed on the io_service_ and
+   * post work to the appropriate event loop.
    */
 
-  /// Handle an "AssignTask" event corresponding to scheduling a normal or an actor task
-  /// on this worker from the raylet.
+  /// Implements gRPC server handler.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "DirectActorAssignTask" event corresponding to scheduling an actor task
-  /// on this worker from another worker.
-  void HandleDirectActorAssignTask(const rpc::DirectActorAssignTaskRequest &request,
-                                   rpc::DirectActorAssignTaskReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback);
+  /// Implements gRPC server handler.
+  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+                      rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "DirectActorAssignTask" event corresponding to the raylet notifiying this
-  /// worker that an argument is ready.
+  /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                rpc::WorkerLeaseGrantedReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -446,18 +451,18 @@ class CoreWorker {
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
 
+  /// Shared client call manager.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
   /// Timer used to periodically send heartbeat containing active object IDs to the
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer worker_server_;
+  rpc::GrpcServer core_worker_server_;
 
   // Client to the GCS shared by core worker interfaces.
   gcs::RedisGcsClient gcs_client_;
-
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
-  rpc::ClientCallManager client_call_manager_;
 
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
@@ -479,7 +484,7 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// In-memory store interface.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
+  CoreWorkerMemoryStoreProvider memory_store_provider_;
 
   ///
   /// Fields related to task submission.
@@ -487,6 +492,9 @@ class CoreWorker {
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Interface to submit non-actor tasks directly to leased workers.
+  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
@@ -519,10 +527,10 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
   /// Common rpc service for all worker modules.
-  rpc::WorkerGrpcService grpc_service_;
+  rpc::CoreWorkerGrpcService grpc_service_;
 
   // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
+  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   friend class CoreWorkerTest;
 };

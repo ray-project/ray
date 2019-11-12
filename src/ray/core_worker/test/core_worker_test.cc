@@ -44,16 +44,6 @@ static void flushall_redis(void) {
   redisFree(context);
 }
 
-std::shared_ptr<Buffer> GenerateRandomBuffer() {
-  auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  std::mt19937 gen(seed);
-  std::uniform_int_distribution<> dis(1, 10);
-  std::uniform_int_distribution<> value_dis(1, 255);
-
-  std::vector<uint8_t> arg1(dis(gen), value_dis(gen));
-  return std::make_shared<LocalMemoryBuffer>(arg1.data(), arg1.size(), true);
-}
-
 ActorID CreateActorHelper(CoreWorker &worker,
                           std::unordered_map<std::string, double> &resources,
                           bool is_direct_call, uint64_t max_reconstructions) {
@@ -279,16 +269,15 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
       args.emplace_back(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
 
-      TaskOptions options{1, resources};
+      TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
       ASSERT_TRUE(return_ids[0].IsReturnObject());
-      ASSERT_EQ(
-          static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
-          is_direct_call ? TaskTransportType::DIRECT_ACTOR : TaskTransportType::RAYLET);
+      ASSERT_EQ(static_cast<TaskTransportType>(return_ids[0].GetTransportType()),
+                is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET);
 
       std::vector<std::shared_ptr<ray::RayObject>> results;
       RAY_CHECK_OK(driver.Get(return_ids, -1, &results));
@@ -320,7 +309,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer2, nullptr)));
 
-    TaskOptions options{1, resources};
+    TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
@@ -380,7 +369,7 @@ void CoreWorkerTest::TestActorReconstruction(
       args.emplace_back(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
 
-      TaskOptions options{1, resources};
+      TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
@@ -425,7 +414,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
       args.emplace_back(
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
 
-      TaskOptions options{1, resources};
+      TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
       RayFunction func(ray::Language::PYTHON, {});
 
@@ -486,7 +475,7 @@ TEST_F(ZeroNodeTest, TestTaskArg) {
   ASSERT_EQ(*data, *buffer);
 }
 
-// Performance batchmark for `DirectActorAssignTaskRequest` creation.
+// Performance batchmark for `PushTaskRequest` creation.
 TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   // Create a dummy actor handle, and then create a number of `TaskSpec`
   // to benchmark performance.
@@ -505,20 +494,21 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
                            function.GetFunctionDescriptor());
 
   // Manually create `num_tasks` task specs, and for each of them create a
-  // `DirectActorAssignTaskRequest`, this is to batch performance of TaskSpec
+  // `PushTaskRequest`, this is to batch performance of TaskSpec
   // creation/copy/destruction.
   int64_t start_ms = current_time_ms();
   const auto num_tasks = 10000 * 10;
-  RAY_LOG(INFO) << "start creating " << num_tasks << " DirectActorAssignTaskRequests";
+  RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
   for (int i = 0; i < num_tasks; i++) {
-    TaskOptions options{1, resources};
+    TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
     auto num_returns = options.num_returns;
 
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), num_returns, resources, resources);
+                              RandomTaskId(), num_returns, /*is_direct*/ false, resources,
+                              resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {
@@ -531,14 +521,13 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     actor_handle.SetActorTaskSpec(builder, TaskTransportType::RAYLET,
                                   ObjectID::FromRandom());
 
-    const auto &task_spec = builder.Build();
+    auto task_spec = builder.Build();
 
     ASSERT_TRUE(task_spec.IsActorTask());
-    auto request = std::unique_ptr<rpc::DirectActorAssignTaskRequest>(
-        new rpc::DirectActorAssignTaskRequest);
+    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
     request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   }
-  RAY_LOG(INFO) << "Finish creating " << num_tasks << " DirectActorAssignTaskRequests"
+  RAY_LOG(INFO) << "Finish creating " << num_tasks << " PushTaskRequests"
                 << ", which takes " << current_time_ms() - start_ms << " ms";
 }
 
@@ -566,7 +555,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                                                       sizeof(array));
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
-    TaskOptions options{1, resources};
+    TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func(ray::Language::PYTHON, {});
 
