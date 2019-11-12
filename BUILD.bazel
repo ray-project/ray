@@ -751,14 +751,18 @@ pyx_library(
     name = "_raylet",
     srcs = glob([
         "python/ray/__init__.py",
+        "python/ray/_raylet.pxd",
         "python/ray/_raylet.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
+        "python/ray/streaming/includes/*.pxd",
+        "python/ray/streaming/includes/*.pxi",
     ]),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
+        "//streaming/src:streaming_lib"
     ],
 )
 

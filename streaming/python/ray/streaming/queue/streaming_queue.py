@@ -1,20 +1,20 @@
 import logging
 from queue import Queue
 
+import ray
 from ray.function_manager import FunctionDescriptor
 
 import ray.streaming.queue.queue_utils as qutils
 from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
 from ray.streaming.config import Config
-# from ray.streaming.queue.fbs_config_converter import FbsConfigConverter
 from ray.streaming.queue.queue_constants import QueueConstants, QueueStatus, QueueBundleType
 from ray.streaming.queue.queue_constants import QueueCreatorType
 from ray.streaming.queue.queue_interface import QueueConsumer
 from ray.streaming.queue.queue_interface import QueueLink
 from ray.streaming.queue.queue_interface import QueueMessage
 from ray.streaming.queue.queue_interface import QueueProducer
+import ray.streaming as streaming
 
-from ray.streaming.operator_instance import OperatorInstance
 
 class QueueMessageImpl(QueueMessage):
     """
@@ -59,24 +59,19 @@ class QueueLinkImpl(QueueLink):
 
     def __init__(self):
         self.__configuration = dict()
-        self.__input_checkpoints = dict()
-        self.__output_checkpoints = dict()
-        self.sync_func = FunctionDescriptor(OperatorInstance.__module__,
-                                            "on_streaming_transfer", OperatorInstance.__name__)
-        self.async_func = FunctionDescriptor(OperatorInstance.__module__,
-                                             "on_streaming_transfer_sync", OperatorInstance.__name__)
+        core_worker = ray.worker.global_worker.core_worker
+        self.queue_link = streaming.QueueLink(core_worker)
+        self.sync_func = FunctionDescriptor("ray.streaming.operator_instance",
+                                            "on_streaming_transfer", "OperatorInstance")
+        self.async_func = FunctionDescriptor("ray.streaming.operator_instance",
+                                             "on_streaming_transfer_sync", "OperatorInstance")
 
     def set_configuration(self, conf):
         for (k, v) in conf.items():
             self.__configuration[k] = v
 
-    def register_queue_consumer(self, input_queue_ids):
-
-
+    def register_queue_consumer(self, input_queue_ids, from_actors):
         input_queue_ids = qutils.qid_str_list_to_bytes_list(input_queue_ids)
-        is_recreate = False
-        if Config.IS_RECREATE in self.__configuration:
-            is_recreate = self.__configuration[Config.IS_RECREATE]
         seq_id_list = []
         msg_id_list = []
 
@@ -87,61 +82,62 @@ class QueueLinkImpl(QueueLink):
                     .format(input_queue_ids, seq_id_list, msg_id_list))
         try:
             return QueueConsumerImpl(
-                self.__configuration.get(Config.PLASMA_STORE_PATH),
                 input_queue_ids,
                 seq_id_list,
                 msg_id_list,
                 timer_interval,
-                is_recreate,
-                FbsConfigConverter.map2bytes(self.__configuration)
+                _to_native_conf(self.__configuration)
             )
         except QueueInitException as e:
             logger.error("native consumer failed")
             self.__abnormal_input_queues += e.abnormal_queues
 
-    def register_queue_producer(self, output_queue_ids):
-        output_queue_ids = qutils.qid_str_list_to_bytes_list(output_queue_ids)
-        store_path = self.__configuration.get(Config.PLASMA_STORE_PATH)
+    def register_queue_producer(self, output_queues, to_actors):
+        py_output_queues = qutils.qid_str_list_to_bytes_list(output_queues)
+        # output_actor_ids
 
-        creator_types = [QueueCreatorType.RECREATE] * output_queue_ids.__len__()
+        # list[bytes] py_output_queues,
+        #                         list[uint64_t] output_actor_ids,
+        #                         uint64_t queue_size,
+        #                         list[int] py_seq_ids,
+        #                         bytes config_bytes,
+        #                         async_func: FunctionDescriptor,
+        #                         sync_func: FunctionDescriptor):
+
+        creator_types = [QueueCreatorType.RECREATE] * py_output_queues.__len__()
         # RECONSTRUCT by default if has cp
         if self.__output_checkpoints.__len__() != 0:
-            creator_types = [QueueCreatorType.RECONSTRUCT] * output_queue_ids.__len__()
+            creator_types = [QueueCreatorType.RECONSTRUCT] * py_output_queues.__len__()
         # abnormal queues use RECREATE_AND_CLEAR
         i = 0
-        for qid in output_queue_ids:
+        for qid in py_output_queues:
             if qid in self.__last_abnormal_queues:
                 creator_types[i] = QueueCreatorType.RECREATE_AND_CLEAR
             i += 1
 
         logger.info("register producer, createType: {}, queues:{}, seqIds: {}".format(
-            creator_types, output_queue_ids, self.__output_checkpoints
+            creator_types, py_output_queues, self.__output_checkpoints
         ))
         try:
             return QueueProducerImpl(
-                output_queue_ids,
-                store_path,
+                py_output_queues,
                 self.__output_checkpoints,
                 int(self.__configuration.get(Config.QUEUE_SIZE)),
                 creator_types,
-                FbsConfigConverter.map2bytes(self.__configuration)
+                _to_native_conf(self.__configuration)
             )
         except QueueInitException as e:
             logger.error("native producer failed")
             self.__abnormal_input_queues = e.abnormal_queues
 
     def set_ray_runtime(self, runtime):
-        self.__configuration[Config.PLASMA_STORE_PATH] = \
-            runtime[Config.RAY_RUNTIME_OBJECT_STORE_ADDRESS]
-        self.__configuration[Config.RAYLET_SOCKET_NAME] = \
-            runtime[Config.RAY_RUNTIME_RAYLET_SOCKET_NAME]
         self.__configuration[Config.TASK_JOB_ID] = \
             runtime[Config.RAY_RUNTIME_TASK_JOB_ID]
 
 
 class QueueProducerImpl(QueueProducer):
     """
-    plasma queue producer impl
+    queue producer impl
         Args:
             output_queue_ids    : str or bytes array
             store_path_list     : plasma store socket name list
@@ -149,32 +145,11 @@ class QueueProducerImpl(QueueProducer):
             queue_size          : int, default 10 ** 8 bytes
             creator_types : Enum list, default recreate
     """
-    QUEUE_SIZE_MAX = 100
     LOGGER = logging.getLogger(__name__)
 
     def __init__(self, output_queue_ids, store_path_list, output_points, queue_size,
                  creator_types, fbs_conf_bytes):
-
-        self.__output_queue_ids = output_queue_ids
-        self.__writer = streaming.StreamingWriter()
-        ret = self.__writer.run(
-            output_queue_ids,
-            store_path_list,
-            qutils.get_offset_list(output_queue_ids, output_points),
-            queue_size,
-            creator_types,
-            fbs_conf_bytes
-        )
-        assert ret.__contains__(QueueConstants.KEY_CREATE_PRODUCER_STATUS)
-        assert QueueStatus(ret[QueueConstants.KEY_CREATE_PRODUCER_STATUS])
-        if ret.__contains__(QueueConstants.KEY_CREATE_ABNORMAL_QUEUES) \
-                and len(ret[QueueConstants.KEY_CREATE_ABNORMAL_QUEUES]) > 0:
-            raise QueueInitException(
-                "remaining queues fail to be created : {}".format(
-                    ret[QueueConstants.KEY_CREATE_ABNORMAL_QUEUES]
-                ),
-                ret[QueueConstants.KEY_CREATE_ABNORMAL_QUEUES]
-            )
+        pass
 
     # queue_id: str
     # item: bytes
@@ -198,77 +173,28 @@ class QueueConsumerImpl(QueueConsumer):
     """
     LOGGER = logging.getLogger(__name__)
 
-    def __init__(self, store_path, input_queue_ids, seq_id_list, msg_id_list,
-                 timer_interval, is_recreate, fbs_conf_bytes):
-
-        self.__store_path = store_path
-        self.__input_queue_ids = input_queue_ids
-        self.__reader = streaming.StreamingReader()
-        ret = self.__reader.run(
-            store_path,
-            input_queue_ids,
-            seq_id_list,
-            msg_id_list,
-            timer_interval,
-            int(is_recreate),
-            fbs_conf_bytes
-        )
-        if QueueConstants.KEY_CREATE_ABNORMAL_QUEUES in ret:
-            raise QueueInitException(
-                "reader init failed, abnormal_queues={}".format(
-                    ret[QueueConstants.KEY_CREATE_ABNORMAL_QUEUES]
-                ),
-                ret[QueueConstants.KEY_CREATE_ABNORMAL_QUEUES]
-            )
-        self.__queue = Queue()
+    def __init__(self, producer):
+        self.__queue = Queue(10000)
+        self.producer = producer
 
     def pull(self, timeout_millis):
         if self.__queue.empty():
-            data = self.__reader.read_bundle(timeout_millis, 0)
-            if data.__contains__(QueueConstants.KEY_PULL_STATUS):
-                error_code = data[QueueConstants.KEY_PULL_STATUS]
-                if error_code == QueueStatus.INTERRUPTED:
-                    raise QueueInterruptException("queue reader has interrupted")
-                if error_code == QueueConstants.READ_TIME_OUT:
-                    return None
-                if error_code not in QueueConstants.NORMAL_STATUS_SET:
-                    raise RuntimeError("pull data error, error code : {}".format(error_code))
-
-            if QueueConstants.KEY_BUNDLE_TYPE in data:
-                if QueueBundleType(data[QueueConstants.KEY_BUNDLE_TYPE]) == \
-                        QueueBundleType.EMPTY:
-
-                    self.__queue.put(
-                        QueueMessageImpl(None,
-                                         data[QueueConstants.KEY_PROCESS_TIME],
-                                         data[QueueConstants.KEY_FROM_Q_ID],
-                                         data[QueueConstants.KEY_LAST_MESSAGE_ID],
-                                         True
-                                         )
-                    )
-
-                elif QueueBundleType(data[QueueConstants.KEY_BUNDLE_TYPE]) == \
-                        QueueBundleType.BUNDLE:
-                    start_message_id = data[QueueConstants.KEY_LAST_MESSAGE_ID] - \
-                                       len(data[QueueConstants.KEY_DATA]) + 1
-                    for i, item in enumerate(data[QueueConstants.KEY_DATA]):
-                        self.__queue.put(
-                            QueueMessageImpl(item,
-                                             data[QueueConstants.KEY_PROCESS_TIME],
-                                             data[QueueConstants.KEY_FROM_Q_ID],
-                                             i + start_message_id
-                                             )
-                        )
-                else:
-                    raise RuntimeError("no such bundle type")
-
+            msgs = self.producer.pull(100)
+            for msg in msgs:
+                msg_bytes, msg_id, timestamp, qid_bytes = msg
+                queue_msg = QueueMessageImpl(msg_bytes, timestamp, qutils.qid_bytes_to_str(qid_bytes), msg_id)
+                self.__queue.put(queue_msg)
         if self.__queue.empty():
             return None
         return self.__queue.get()
 
     def stop(self):
         QueueConsumerImpl.LOGGER.info("stopping queue consumer.")
-        self.__reader.stop()
+        self.producer.stop()
 
     def close(self):
         QueueConsumerImpl.LOGGER.info("closing queue consumer.")
+
+
+def _to_native_conf(conf):
+    pass

@@ -7,7 +7,7 @@ class Config:
     # queue
     QUEUE_TYPE = "queue_type"
     MEMORY_QUEUE = "memory_queue"
-    PLASMA_QUEUE = "streaming_queue"
+    NATIVE_QUEUE = "streaming_queue"
     QUEUE_SIZE = "queue_size"
     QUEUE_SIZE_DEFAULT = 10 ** 8
     TASK_JOB_ID = "TaskJobID"

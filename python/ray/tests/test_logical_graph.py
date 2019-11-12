@@ -178,9 +178,9 @@ def _test_channels(environment, expected_channels):
     for destination in channels_per_destination:
         for channels in destination.values():
             for channel in channels:
-                src_instance_id = channel.src_instance_id
-                dst_instance_id = channel.dst_instance_id
-                connection = (src_instance_id, dst_instance_id)
+                src_instance_index = channel.src_instance_index
+                dst_instance_index = channel.dst_instance_index
+                connection = (src_instance_index, dst_instance_index)
                 assert channel.dst_operator_id == map_id, (
                     channel.dst_operator_id, map_id)
                 actual.append(connection)

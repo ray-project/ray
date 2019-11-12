@@ -8,7 +8,6 @@ import sys
 import time
 
 from ray.streaming.operator import PStrategy
-import ray.streaming.queue.queue_utils as queue_utils
 import pickle
 
 logger = logging.getLogger(__name__)
@@ -36,30 +35,24 @@ class DataChannel(object):
     Attributes:
          env (Environment): The environment the channel belongs to.
          src_operator_id (UUID): The id of the source operator of the channel.
-         src_instance_id (int): The id of the source instance.
+         src_instance_index (int): The id of the source instance.
          dst_operator_id (UUID): The id of the destination operator of the
          channel.
-         dst_instance_id (int): The id of the destination instance.
-         queue (BatchedQueue): The batched queue used for data movement.
+         dst_instance_index (int): The id of the destination instance.
     """
 
-    def __init__(self, env, src_operator_id, src_instance_id, dst_operator_id,
-                 dst_instance_id):
-        self.env = env
+    def __init__(self, src_operator_id, src_instance_index,
+                 dst_operator_id, dst_instance_index, str_qid):
         self.src_operator_id = src_operator_id
-        self.src_instance_id = src_instance_id
+        self.src_instance_index = src_instance_index
         self.dst_operator_id = dst_operator_id
-        self.dst_instance_id = dst_instance_id
-        from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_id)
-        to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_id)
-        self.str_qid = queue_utils.generate_qid(from_task_id, to_task_id,
-                                                env.execution_graph.build_time)
-        print(self)
+        self.dst_instance_index = dst_instance_index
+        self.str_qid = str_qid
 
     def __repr__(self):
         return "(src({},{}),dst({},{}), qid({}))".format(
-            self.src_operator_id, self.src_instance_id,
-            self.dst_operator_id, self.dst_instance_id,
+            self.src_operator_id, self.src_instance_index,
+            self.dst_operator_id, self.dst_instance_index,
             self.str_qid)
 
 
@@ -80,7 +73,8 @@ class DataInput(object):
          closed (True) or not (False).
     """
 
-    def __init__(self, queue_link, channels):
+    def __init__(self, env, queue_link, channels):
+        self.env = env
         self.queue_link = queue_link
         self.consumer = None  # created in `init` method
         self.input_channels = channels
@@ -91,7 +85,11 @@ class DataInput(object):
 
     def init(self):
         qids = [channel.str_qid for channel in self.input_channels]
-        self.consumer = self.queue_link.register_queue_consumer(qids)
+        input_actors = []
+        for channel in self.input_channels:
+            actor = self.env.execution_graph.get_actor(channel.src_operator_id, channel.src_instance_index)
+            input_actors.append(actor)
+        self.consumer = self.queue_link.register_queue_consumer(qids, input_actors)
 
     def pull(self):
         # pull from queue
@@ -135,7 +133,8 @@ class DataOutput(object):
          least one shuffle_key_channel.
     """
 
-    def __init__(self, queue_link, channels, partitioning_schemes):
+    def __init__(self, env, queue_link, channels, partitioning_schemes):
+        self.env = env
         self.queue_link = queue_link
         self.producer = None  # created in `init` method
         self.channels = channels
@@ -198,7 +197,11 @@ class DataOutput(object):
     def init(self):
         """init DataOutput which creates QueueProducer"""
         qids = [channel.str_qid for channel in self.channels]
-        self.producer = self.queue_link.register_queue_producer(qids)
+        to_actors = []
+        for channel in self.channels:
+            actor = self.env.execution_graph.get_actor(channel.dst_operator_id, channel.dst_instance_index)
+            to_actors.append(actor)
+        self.producer = self.queue_link.register_queue_producer(qids, to_actors)
 
     def close(self):
         """Close the channel (True) by propagating 'None'

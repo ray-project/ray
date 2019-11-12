@@ -3,6 +3,7 @@ from libcpp cimport bool as c_bool, nullptr
 from libcpp.memory cimport shared_ptr, make_shared
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
+from libcpp.list cimport list as c_list
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
@@ -28,22 +29,26 @@ from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
     CTaskID,
-    CObjectID,
-    ObjectID
+    CObjectID
+)
+from ray._raylet cimport (
+    CoreWorker,
+    ActorID,
+    ObjectID,
+    string_vector_from_list
 )
 
-from ray.includes.libcoreworker cimport CCoreWorker, CoreWorker
+from ray.includes.libcoreworker cimport CCoreWorker
 
-from ray.function_manager import FunctionDescriptor
-
-import ray.streaming.includes.libstreaming as libstreaming
+cimport ray.streaming.includes.libstreaming as libstreaming
 from ray.streaming.includes.libstreaming cimport (
     CStreamingStatus,
     CStreamingMessageType,
     CStreamingSerializable,
     CStreamingMessageBundleType,
     CStreamingMessageBundleMeta,
-    CStreamingMessageBundleMetaPtr,
+    CStreamingMessage,
+    CStreamingMessageBundle,
     CStreamingReaderBundle,
     CStreamingWriter,
     CStreamingWriterDirectCall,
@@ -52,10 +57,11 @@ from ray.streaming.includes.libstreaming cimport (
     CQueueManager,
     CQueueClient,
     CLocalMemoryBuffer,
-    StatusOK
 )
 
-from ray.streaming.queue.exception import QueueInitException
+from ray.function_manager import FunctionDescriptor
+from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
+import ray.streaming.queue.queue_utils as queue_utils
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +91,7 @@ cdef class QueueLink:
 
     def create_producer(self,
                         list[bytes] py_output_queues,
-                        list[uint64_t] output_actor_ids,
+                        list output_actor_ids: list[ActorID],
                         uint64_t queue_size,
                         list[int] py_seq_ids,
                         bytes config_bytes,
@@ -101,10 +107,8 @@ cdef class QueueLink:
             CRayFunction sync_native_func
             CStreamingWriter *writer
             cdef const unsigned char[:] config_data
-            uint64_t ptr
         for actor_id in output_actor_ids:
-            ptr = actor_id
-            actor_ids.push_back(dereference(<CActorID *>ptr))
+            actor_ids.push_back((<ActorID>actor_id).data)
         for py_seq_id in py_seq_ids:
             seq_ids.push_back(<uint64_t>py_seq_id)
         async_native_func = CRayFunction(
@@ -125,7 +129,7 @@ cdef class QueueLink:
         cdef CStreamingStatus status = writer.Init(queue_id_vec, seq_ids, queue_size_vec)
         if remain_id_vec.size() != 0:
             logger.warning("failed queue amounts => %s", remain_id_vec.size())
-        if <uint32_t>status != <uint32_t>StatusOK:
+        if <uint32_t>status != <uint32_t>(libstreaming.StatusOK):
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
             del writer
             raise QueueInitException(msg, qid_vector_to_list(remain_id_vec))
@@ -137,7 +141,7 @@ cdef class QueueLink:
 
     def create_consumer(self,
                         list[bytes] py_input_queues,
-                        list[uint64_t] input_actor_ids,
+                        list input_actor_ids: list[ActorID],
                         list[int] py_seq_ids,
                         list[int] py_msg_ids,
                         uint64_t timer_interval,
@@ -156,10 +160,8 @@ cdef class QueueLink:
             CRayFunction sync_native_func
             CStreamingWriter *writer
             cdef const unsigned char[:] config_data
-            uint64_t ptr
         for actor_id in input_actor_ids:
-            ptr = actor_id
-            actor_ids.push_back(dereference(<CActorID *>ptr))
+            actor_ids.push_back((<ActorID>actor_id).data)
         for py_seq_id in py_seq_ids:
             seq_ids.push_back(<uint64_t>py_seq_id)
         for py_msg_id in py_msg_ids:
@@ -220,6 +222,8 @@ cdef class QueueProducer:
 cdef class QueueConsumer:
     cdef:
         CStreamingReader *reader
+        readonly bytes meta
+        readonly bytes data
 
     def __init__(self):
         pass
@@ -229,20 +233,46 @@ cdef class QueueConsumer:
             del self.reader
             self.reader = NULL
 
-    def pull(self):
-        pass
+    def pull(self, uint32_t timeout_millis):
+        cdef:
+            shared_ptr[CStreamingReaderBundle] bundle
+            CStreamingStatus status = self.reader.GetBundle(timeout_millis, bundle)
+            uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
+        if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
+            if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
+                raise QueueInterruptException("consumer interrupted")
+            elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
+                raise Exception("init queue failed")
+            elif <uint32_t> status == <uint32_t> libstreaming.StatusWaitQueueTimeOut:
+                raise Exception("wait queue object timeout")
+        cdef:
+            uint32_t msg_nums
+            CObjectID queue_id
+            c_list[shared_ptr[CStreamingMessage]] msg_list
+            list msgs = []
+            uint64_t timestamp
+            uint64_t msg_id
+        if bundle_type == <uint32_t> libstreaming.BundleTypeBundle:
+            msg_nums = bundle.get().meta.get().GetMessageListSize()
+            CStreamingMessageBundle.GetMessageListFromRawData(
+                bundle.get().data + libstreaming.kMessageBundleHeaderSize,
+                bundle.get().data_size - libstreaming.kMessageBundleHeaderSize,
+                msg_nums,
+                msg_list)
+            timestamp = bundle.get().meta.get().GetMessageBundleTs()
+            for msg in msg_list:
+                msg_bytes = msg.get().RawData()[:msg.get().GetDataSize()]
+                qid_bytes = queue_id.Binary()
+                msg_id = msg.get().GetMessageSeqId()
+                msgs.append((msg_bytes, msg_id, timestamp, qid_bytes))
+            return msgs
+        elif  bundle_type == <uint32_t> libstreaming.BundleTypeEmpty:
+            return []
+        else:
+            raise Exception("Unsupported bundle type {}".format(bundle_type))
 
     def stop(self):
         self.writer.Stop()
-
-cdef c_vector[c_string] string_vector_from_list(list string_list):
-    cdef:
-        c_vector[c_string] out
-    for s in string_list:
-        if not isinstance(s, bytes):
-            raise TypeError("string_list elements must be bytes")
-        out.push_back(s)
-    return out
 
 cdef c_vector[CObjectID] bytes_list_to_qid_vec(list[bytes] py_queue_ids):
     cdef:

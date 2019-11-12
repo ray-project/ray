@@ -108,6 +108,18 @@ import ray.actor  # noqa: F401
 from ray.actor import method  # noqa: E402
 from ray.runtime_context import _get_runtime_context  # noqa: E402
 
+# ray streaming
+from ray._raylet import (
+    QueueLink,
+    QueueProducer,
+    QueueConsumer
+)
+
+import ray.streaming
+ray.streaming.QueueLink = QueueLink
+ray.streaming.QueueProducer = QueueProducer
+ray.streaming.QueueConsumer = QueueConsumer
+
 # Ray version string.
 __version__ = "0.8.0.dev6"
 

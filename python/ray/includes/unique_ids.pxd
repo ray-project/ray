@@ -158,10 +158,3 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         @staticmethod
         CWorkerID FromBinary(const c_string &binary)
-
-cdef class BaseID:
-    pass
-
-cdef class ObjectID(BaseID):
-    cdef:
-        CObjectID data
