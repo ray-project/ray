@@ -19,8 +19,8 @@
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/worker_client.h"
-#include "ray/rpc/worker/worker_server.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_server.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
