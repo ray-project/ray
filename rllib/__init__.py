@@ -32,7 +32,7 @@ def _setup_logger():
     logger.propagate = False
 
     if sys.version_info[0] < 3:
-        logger.warn(
+        logger.warning(
             "RLlib Python 2 support is deprecated, and will be removed "
             "in a future release.")
 
