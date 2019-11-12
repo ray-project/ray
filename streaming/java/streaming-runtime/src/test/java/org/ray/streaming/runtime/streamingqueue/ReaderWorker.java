@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.demo;
+package org.ray.streaming.runtime.streamingqueue;
 
 import java.lang.management.ManagementFactory;
 import java.util.HashMap;
@@ -71,7 +71,7 @@ public class ReaderWorker extends Worker {
     Map<String, String> conf = new HashMap<>(16);
 
     conf.put(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.STREAMING_QUEUE);
-    conf.put(QueueConfigKeys.QUEUE_SIZE, "100000");
+    conf.put(ConfigKey.QUEUE_SIZE, "100000");
     conf.put(QueueConfigKeys.STREAMING_WRITER_CONSUMED_STEP, "100");
     conf.put(QueueConfigKeys.STREAMING_READER_CONSUMED_STEP, "20");
     conf.put(QueueConfigKeys.STREAMING_JOB_NAME, "integrationTest1");

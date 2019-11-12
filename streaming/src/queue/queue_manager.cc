@@ -20,11 +20,9 @@ void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
   manager_->UpdateUpActor(queue_id, actor_id);
   manager_->UpdateDownActor(queue_id, peer_actor_id);
 
-  if (!clear) {
-    uint64_t last_queue_msg_id, last_queue_seq_id;
-    manager_->GetPeerLastMsgId(queue_id, last_queue_msg_id, last_queue_seq_id);
-    queue->SetPeerLastIds(last_queue_msg_id, last_queue_seq_id);
-  }
+  std::vector<ObjectID> queue_ids, failed_queues;
+  queue_ids.push_back(queue_id);
+  WaitQueues(queue_ids, 10*1000, failed_queues);
   STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
 }
 
@@ -54,7 +52,7 @@ uint64_t QueueWriter::GetMinConsumedSeqID(const ObjectID &queue_id) {
 
 Status QueueWriter::PushSync(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                              uint32_t data_size, uint64_t timestamp, bool raw) {
-  STREAMING_LOG(DEBUG) << "QueueWriter::PushSync:"
+  STREAMING_LOG(INFO) << "QueueWriter::PushSync:"
                        << " qid: " << queue_id << " seq_id: " << seq_id
                        << " data_size: " << data_size << " raw: " << raw;
   std::shared_ptr<WriterQueue> queue = manager_->GetUpQueue(queue_id);
@@ -119,7 +117,7 @@ bool QueueReader::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
 void QueueReader::GetQueueItem(const ObjectID &queue_id, uint8_t *&data,
                                uint32_t &data_size, uint64_t &seq_id,
                                uint64_t timeout_ms) {
-  STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << queue_id;
+  STREAMING_LOG(INFO) << "GetQueueItem qid: " << queue_id;
   auto queue = manager_->GetDownQueue(queue_id);
   QueueItem item = queue->PopPendingBlockTimeout(timeout_ms * 1000);
   if (item.SeqId() == QUEUE_INVALID_SEQ_ID) {
@@ -134,7 +132,7 @@ void QueueReader::GetQueueItem(const ObjectID &queue_id, uint8_t *&data,
   seq_id = item.SeqId();
   data_size = item.Buffer()->Size();
 
-  STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << queue_id
+  STREAMING_LOG(INFO) << "GetQueueItem qid: " << queue_id
                        << " seq_id: " << seq_id
                        << " msg_id: " << item.MaxMsgId()
                        << " data_size: " << data_size;

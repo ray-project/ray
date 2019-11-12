@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.demo;
+package org.ray.streaming.runtime.streamingqueue;
 
 import org.ray.streaming.runtime.queue.QueueLink;
 import org.slf4j.Logger;

@@ -21,6 +21,7 @@ import org.ray.streaming.runtime.queue.QueueProducer;
 import org.ray.streaming.runtime.queue.QueueUtils;
 import org.ray.streaming.runtime.worker.JobWorker;
 import org.ray.streaming.runtime.util.JniUtils;
+import org.ray.streaming.util.ConfigKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -178,7 +179,7 @@ public class StreamingQueueLinkImpl implements QueueLink {
           nativeCoreWorker, QueueUtils.actorIdListToByteArray(outputActorIds),
           streamingTransferFunction, streamingTransferSyncFunction,
           qidCopyList, QueueUtils.longToPrimitives(msgIds),
-          Long.parseLong(configuration.get(QueueConfigKeys.QUEUE_SIZE)),
+          Long.parseLong(configuration.get(ConfigKey.QUEUE_SIZE)),
           creatorTypes,
           FbsConfigConverter.map2bytes(configuration)
       ), qidCopyList);

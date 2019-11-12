@@ -1,4 +1,4 @@
-package org.ray.streaming.runtime.demo;
+package org.ray.streaming.runtime.streamingqueue;
 
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
@@ -78,7 +78,7 @@ public class WriterWorker extends Worker {
     Map<String, String> conf = new HashMap<>(16);
 
     conf.put(ConfigKey.STREAMING_QUEUE_TYPE, ConfigKey.STREAMING_QUEUE);
-    conf.put(QueueConfigKeys.QUEUE_SIZE, "100000");
+    conf.put(ConfigKey.QUEUE_SIZE, "100000");
     conf.put(QueueConfigKeys.STREAMING_WRITER_CONSUMED_STEP, "100");
     conf.put(QueueConfigKeys.STREAMING_READER_CONSUMED_STEP, "20");
     conf.put(QueueConfigKeys.STREAMING_JOB_NAME, "integrationTest1");
@@ -86,9 +86,9 @@ public class WriterWorker extends Worker {
     queueLink.setConfiguration(conf);
     queueLink.setRayRuntime(Ray.internal());
     ((StreamingQueueLinkImpl) queueLink).setStreamingTransferFunction(
-        new JavaFunctionDescriptor("org.ray.streaming.runtime.demo.Worker", "onStreamingTransfer", "([B)V"));
+        new JavaFunctionDescriptor("org.ray.streaming.runtime.streamingqueue.Worker", "onStreamingTransfer", "([B)V"));
     ((StreamingQueueLinkImpl) queueLink).setStreamingTransferSyncFunction(
-        new JavaFunctionDescriptor("org.ray.streaming.runtime.demo.Worker", "onStreamingTransferSync", "([B)[B"));
+        new JavaFunctionDescriptor("org.ray.streaming.runtime.streamingqueue.Worker", "onStreamingTransferSync", "([B)[B"));
     producer = queueLink.registerQueueProducer(this.outputQueueList, this.outputActorIds);
 
     Thread writerThread = new Thread(Ray.wrapRunnable(new Runnable() {
