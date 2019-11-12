@@ -394,6 +394,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleWorkerAvailable(const std::shared_ptr<LocalClientConnection> &client);
 
+  /// Handle the case that a worker is available.
+  ///
+  /// \param worker The pointer to the worker
+  /// \return Void.
+  void HandleWorkerAvailable(const std::shared_ptr<Worker> &worker);
+
   /// Handle a client that has disconnected. This can be called multiple times
   /// on the same client because this is triggered both when a client
   /// disconnects and when the node manager fails to write a message to the
@@ -405,6 +411,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void ProcessDisconnectClientMessage(
       const std::shared_ptr<LocalClientConnection> &client,
       bool intentional_disconnect = false);
+
+  /// Process client message of RequestWorkerLease
+  ///
+  /// \param client The client that sent the message.
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessRequestWorkerLeaseMessage(
+      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
+
+  /// Process client message of ReturnWorkerMessage
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessReturnWorkerMessage(const uint8_t *message_data);
 
   /// Process client message of FetchOrReconstruct
   ///
@@ -574,12 +594,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   rpc::NodeManagerGrpcService node_manager_service_;
 
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
-  /// as well as all `WorkerTaskClient`s.
+  /// as well as all `CoreWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
 
   /// Map from node ids to clients of the remote node managers.
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
+
+  /// Map of workers leased out to direct call clients.
+  std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
 };
 
 }  // namespace raylet
