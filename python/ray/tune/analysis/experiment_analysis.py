@@ -187,15 +187,15 @@ class ExperimentAnalysis(Analysis):
         """Retrieve the best trial object.
 
         Compares all trials' scores on `metric`.
-        If `scope=last`, only look at each trial's final step for
-        `metric`, and compare across trials based on `mode=[min,max]`.
-        If `scope=all`, find each trial's min/max score for `metric`
-        based on `mode`, and compare trials based on `mode=[min,max]`.
 
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last].
+            scope (str): One of [all, last]. If `scope=last`, only look at
+                each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=all`, find each
+                trial's min/max score for `metric` based on `mode`, and
+                compare trials based on `mode=[min,max]`.
         """
         if mode not in ["max", "min"]:
             raise ValueError(
@@ -236,15 +236,15 @@ class ExperimentAnalysis(Analysis):
         """Retrieve the best config corresponding to the trial.
 
         Compares all trials' scores on `metric`.
-        If `scope=last`, only look at each trial's final step for
-        `metric`, and compare across trials based on `mode=[min,max]`.
-        If `scope=all`, find each trial's min/max score for `metric`
-        based on `mode`, and compare trials based on `mode=[min,max]`.
 
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last].
+            scope (str): One of [all, last]. If `scope=last`, only look at
+                each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=all`, find each
+                trial's min/max score for `metric` based on `mode`, and
+                compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.config if best_trial else None
@@ -253,15 +253,15 @@ class ExperimentAnalysis(Analysis):
         """Retrieve the logdir corresponding to the best trial.
 
         Compares all trials' scores on `metric`.
-        If `scope=last`, only look at each trial's final step for
-        `metric`, and compare across trials based on `mode=[min,max]`.
-        If `scope=all`, find each trial's min/max score for `metric`
-        based on `mode`, and compare trials based on `mode=[min,max]`.
 
         Args:
             metric (str): Key for trial info to order on.
             mode (str): One of [min, max].
-            scope (str): One of [all, last].
+            scope (str): One of [all, last]. If `scope=last`, only look at
+                each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=all`, find each
+                trial's min/max score for `metric` based on `mode`, and
+                compare trials based on `mode=[min,max]`.
         """
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.logdir if best_trial else None
