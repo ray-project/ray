@@ -29,36 +29,6 @@ class ActorStateAccessorTest : public AccessorTestBase<ActorID, ActorTableData> 
   }
 };
 
-TEST_F(ActorStateAccessorTest, RegisterAndGet) {
-  ActorStateAccessor &actor_accessor = gcs_client_->Actors();
-  // register
-  for (const auto &elem : id_to_data_) {
-    const auto &actor = elem.second;
-    ++pending_count_;
-    RAY_CHECK_OK(actor_accessor.AsyncRegister(actor, [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    }));
-  }
-
-  WaitPendingDone(wait_pending_timeout_);
-
-  // get
-  for (const auto &elem : id_to_data_) {
-    ++pending_count_;
-    RAY_CHECK_OK(actor_accessor.AsyncGet(
-        elem.first, [this](Status status, const boost::optional<ActorTableData> &data) {
-          ASSERT_TRUE(data);
-          ActorID actor_id = ActorID::FromBinary(data->actor_id());
-          auto it = id_to_data_.find(actor_id);
-          ASSERT_TRUE(it != id_to_data_.end());
-          --pending_count_;
-        }));
-  }
-
-  WaitPendingDone(wait_pending_timeout_);
-}
-
 TEST_F(ActorStateAccessorTest, Subscribe) {
   ActorStateAccessor &actor_accessor = gcs_client_->Actors();
   // subscribe
@@ -69,23 +39,29 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
     const auto it = id_to_data_.find(actor_id);
     ASSERT_TRUE(it != id_to_data_.end());
     --sub_pending_count;
+    RAY_LOG(INFO) << "Finished executing 'subscribe' callback";
   };
   auto done = [&do_sub_pending_count](Status status) {
     RAY_CHECK_OK(status);
     --do_sub_pending_count;
+    RAY_LOG(INFO) << "Finished executing 'done' callback";
   };
 
   ++do_sub_pending_count;
+  RAY_LOG(INFO) << "Registering 'subscribe' callback and 'done' callback";
   RAY_CHECK_OK(actor_accessor.AsyncSubscribe(subscribe, done));
   // Wait until subscribe finishes.
   WaitPendingDone(do_sub_pending_count, wait_pending_timeout_);
 
   // register
   std::atomic<int> register_pending_count(0);
+  int idx = 0;
   for (const auto &elem : id_to_data_) {
+    RAY_LOG(INFO) << "Loop index: " << idx++;
     const auto &actor = elem.second;
     ++sub_pending_count;
     ++register_pending_count;
+    RAY_LOG(INFO) << "Registering inlined callback";
     RAY_CHECK_OK(
         actor_accessor.AsyncRegister(actor, [&register_pending_count](Status status) {
           RAY_CHECK_OK(status);
