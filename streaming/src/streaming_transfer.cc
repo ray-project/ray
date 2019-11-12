@@ -81,7 +81,7 @@ StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel
   // recreate & clear the queue
   queue_writer_->CleanupSubscription(channel_id);
   status = queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
-                                      channel_info.actor_id, false, true);
+                                      channel_info.actor_id, false, false);
 
   if (status.code() != StatusCode::OK) {
     STREAMING_LOG(ERROR) << "Create queue [" << channel_id

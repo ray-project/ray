@@ -97,6 +97,8 @@ void StreamingWriter::Run() {
 uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
                                                    uint32_t data_size,
                                                    StreamingMessageType message_type) {
+  STREAMING_LOG(INFO) << "WriteMessageToBufferRing q_id: " << q_id
+                      << " data_size: " << data_size;
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   // Write message id stands for current lastest message id and differs from
