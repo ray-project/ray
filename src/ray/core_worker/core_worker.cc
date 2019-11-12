@@ -68,7 +68,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        int node_manager_port,
                        const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals,
-                       const std::function<void()> exit_handler)
+                       const std::function<void()> exit_handler,
+                       bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
@@ -81,9 +82,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       gcs_client_(gcs_options),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>(
-          (RayConfig::instance().ref_counting_enabled() && language == Language::PYTHON)
-              ? reference_counter_
-              : nullptr)),
+            ref_counting_enabled ? reference_counter_ : nullptr)),
       memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),

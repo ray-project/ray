@@ -1199,7 +1199,6 @@ def test_direct_call_simple(ray_start_regular):
     assert ray.get(f_direct.remote(2)) == 3
     assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
         range(1, 101))
-    x = f_direct.remote(2)
 
 
 def test_direct_call_refcount(ray_start_regular):

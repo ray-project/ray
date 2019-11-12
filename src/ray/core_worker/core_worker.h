@@ -63,11 +63,12 @@ class CoreWorker {
   /// \param[in] node_ip_address IP address of the node.
   /// \param[in] node_manager_port Port of the local raylet.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
-  /// \parma[in] check_signals Language worker function to check for signals and handle
+  /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \parma[in] exit_handler Language worker function to orderly shutdown the worker.
+  /// \param[in] exit_handler Language worker function to orderly shutdown the worker.
   ///            We guarantee this will be run on the main thread of the worker.
+  /// \param[in] ref_counting_enabled Whether to enable object ref counting.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const Language language,
@@ -76,7 +77,8 @@ class CoreWorker {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             std::function<void()> exit_handler = nullptr);
+             std::function<void()> exit_handler = nullptr,
+             bool ref_counting_enabled = false);
 
   ~CoreWorker();
 
