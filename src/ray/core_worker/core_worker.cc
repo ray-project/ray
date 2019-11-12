@@ -182,7 +182,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   plasma_store_provider_.reset(
       new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
-  memory_store_.reset(new CoreWorkerMemoryStore(plasma_store_provider_));
+  memory_store_.reset(
+      new CoreWorkerMemoryStore([this](const RayObject &obj, const ObjectID &obj_id) {
+        plasma_store_provider_->Put(obj, obj_id);
+      }));
   memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is

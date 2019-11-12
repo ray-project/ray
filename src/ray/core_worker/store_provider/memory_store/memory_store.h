@@ -7,7 +7,6 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
-#include "ray/core_worker/store_provider/plasma_store_provider.h"
 
 namespace ray {
 
@@ -19,7 +18,8 @@ class CoreWorkerMemoryStore;
 /// actor call (see direct_actor_transport.cc).
 class CoreWorkerMemoryStore {
  public:
-  CoreWorkerMemoryStore(std::shared_ptr<CoreWorkerPlasmaStoreProvider> = nullptr);
+  CoreWorkerMemoryStore(
+      std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -71,8 +71,8 @@ class CoreWorkerMemoryStore {
   bool Contains(const ObjectID &object_id);
 
  private:
-  /// Optional plasma provider that is used to promote objects to the plasma store.
-  std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_provider_;
+  /// Optional callback for putting objects into the plasma store.
+  std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
 
   /// Protects the data structures below.
   absl::Mutex mu_;

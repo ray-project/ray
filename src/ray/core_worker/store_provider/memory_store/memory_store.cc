@@ -105,8 +105,8 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 }
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
-    std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_provider)
-    : plasma_provider_(plasma_provider) {}
+    std::function<void(const RayObject &, const ObjectID &)> store_in_plasma)
+    : store_in_plasma_(store_in_plasma) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -133,8 +133,8 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   if (iter != objects_.end()) {
     return iter->second;
   }
-  RAY_CHECK(plasma_provider_ != nullptr)
-      << "Cannot promote object without plasma provider.";
+  RAY_CHECK(store_in_plasma_ != nullptr)
+      << "Cannot promote object without plasma provider callback.";
   promoted_to_plasma_.insert(object_id);
   return nullptr;
 }
@@ -161,8 +161,8 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
 
     auto promoted_it = promoted_to_plasma_.find(object_id);
     if (promoted_it != promoted_to_plasma_.end()) {
-      plasma_provider_->Put(object,
-                            object_id.WithTransportType(TaskTransportType::RAYLET));
+      RAY_CHECK(store_in_plasma_ != nullptr);
+      store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
       promoted_to_plasma_.erase(promoted_it);
     }
 

@@ -38,6 +38,30 @@ class MockRayletClient : public WorkerLeaseInterface {
   int num_workers_returned = 0;
 };
 
+TEST(TestMemoryStore, TestPromoteToPlasma) {
+  bool num_plasma_puts = 0;
+  auto mem = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore(
+      [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; }));
+  ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
+  auto data = GenerateRandomObject();
+  ASSERT_TRUE(mem->Put(obj1, *data).ok());
+
+  // Test getting an already existing object.
+  ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
+  ASSERT_TRUE(num_plasma_puts == 0);
+
+  // Testing getting an object that doesn't exist yet causes promotion.
+  ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
+  ASSERT_TRUE(num_plasma_puts == 0);
+  ASSERT_TRUE(mem->Put(obj2, *data).ok());
+  ASSERT_TRUE(num_plasma_puts == 1);
+
+  // The next time you get it, it's already there so no need to promote.
+  ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) != nullptr);
+  ASSERT_TRUE(num_plasma_puts == 1);
+}
+
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
