@@ -75,7 +75,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
-      client_call_manager_(new rpc::ClientCallManager(io_service_)),
+      client_call_manager_(io_service_),
       heartbeat_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
@@ -123,7 +123,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      node_ip_address, node_manager_port, *client_call_manager_);
+      node_ip_address, node_manager_port, client_call_manager_);
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
@@ -176,7 +176,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   }
 
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(*client_call_manager_,
+      new CoreWorkerDirectActorTaskSubmitter(client_call_manager_,
                                              memory_store_provider_));
 
   direct_task_submitter_ =
@@ -184,7 +184,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           *raylet_client_,
           [this](WorkerAddress addr) {
             return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
-                addr.first, addr.second, *client_call_manager_));
+                addr.first, addr.second, client_call_manager_));
           },
           memory_store_provider_));
 }

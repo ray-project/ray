@@ -130,6 +130,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         if (status.ok()) {
           HandleWorkerLeaseGranted({reply.address(), reply.port()});
         } else {
+          // Retry the worker lease request. TODO(swang): Fail after some
+          // number of attempts.
           absl::MutexLock lock(&mu_);
           worker_request_pending_ = false;
           RequestNewWorkerIfNeeded(resource_spec);

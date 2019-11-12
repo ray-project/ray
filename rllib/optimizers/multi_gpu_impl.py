@@ -170,7 +170,7 @@ class LocalSyncParallelOptimizer(object):
             self.max_per_device_batch_size // self._loaded_max_seq_len * len(
                 self.devices))
         if sequences_per_minibatch < 1:
-            logger.warn(
+            logger.warning(
                 ("Target minibatch size is {}, however the rollout sequence "
                  "length is {}, hence the minibatch size will be raised to "
                  "{}.").format(self.max_per_device_batch_size,
