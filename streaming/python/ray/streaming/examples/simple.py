@@ -34,9 +34,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # ray.init(local_mode=True)
-    ray.init(local_mode=False)
-    # ray.register_custom_serializer(OpType, use_pickle=True)
-    # ray.register_custom_serializer(PStrategy, use_pickle=True)
+    ray.init(local_mode=True)
 
     # A Ray streaming environment with the default configuration
     env = Environment(config=Conf(queue_type=Config.NATIVE_QUEUE))
