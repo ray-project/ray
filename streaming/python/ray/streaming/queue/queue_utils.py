@@ -20,7 +20,7 @@ def qid_bytes_to_str(qid_bytes):
     assert type(qid_bytes) in [str, bytes]
     if isinstance(qid_bytes, str):
         return qid_bytes
-    return binascii.b2a_hex(qid_bytes)
+    return bytes.hex(qid_bytes)
 
 
 def qid_str_list_to_bytes_list(qid_strs):
