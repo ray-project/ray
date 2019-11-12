@@ -213,8 +213,10 @@ cdef class QueueProducer:
 
     def produce(self, ObjectID qid, const unsigned char[:] value):
         """support zero-copy bytes, bytearray, array of unsigned char"""
-        cdef CObjectID native_id = qid.data
-        self.writer.WriteMessageToBufferRing(native_id, <uint8_t *>(&value[0]), value.nbytes)
+        cdef:
+            CObjectID native_id = qid.data
+            uint64_t msg_id = self.writer.WriteMessageToBufferRing(native_id, <uint8_t *>(&value[0]), value.nbytes)
+        return msg_id
 
     def stop(self):
         self.writer.Stop()

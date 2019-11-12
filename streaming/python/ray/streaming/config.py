@@ -12,6 +12,8 @@ class Config:
     QUEUE_SIZE_DEFAULT = 10 ** 8
     TASK_JOB_ID = "TaskJobID"
 
+    TIMER_INTERVAL_MS = "timerIntervalMs"
+    IS_RECREATE = "isRecreate"
     STREAMING_PERSISTENCE_PATH = "StreamingPersistencePath"
     STREAMING_JOB_NAME = "StreamingJobName"
     STREAMING_OP_NAME = "StreamingOpName"
