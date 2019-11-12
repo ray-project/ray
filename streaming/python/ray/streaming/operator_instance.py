@@ -52,6 +52,8 @@ class OperatorInstance(object):
         self.instance_id = instance_id
         self.input_channels = input_channels
         self.output_channels = output_channels
+        self.input_gate = None
+        self.output_gate = None
         # Handle(s) to one or more user-defined actors
         # that can retrieve actor's state
         self.state_keeper = state_keeper
@@ -98,8 +100,10 @@ class OperatorInstance(object):
         pass
 
     def close(self):
-        self.input_gate.close()
-        self.output_gate.close()
+        if self.input_gate:
+            self.input_gate.close()
+        if self.output_gate:
+            self.output_gate.close()
 
     def on_streaming_transfer(self, buffer: bytes):
         """used in direct call mode"""
@@ -258,7 +262,8 @@ class Inspect(OperatorInstance):
             if record is None:
                 self.close()
                 return
-            self.output_gate.push(record)
+            if self.output_gate:
+                self.output_gate.push(record)
             self.inspect_fn(record)
 
 # Reduce actor
