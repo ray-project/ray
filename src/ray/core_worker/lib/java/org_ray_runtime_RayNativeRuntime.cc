@@ -43,7 +43,6 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
          const std::vector<std::shared_ptr<ray::RayObject>> &args,
          const std::vector<ObjectID> &arg_reference_ids,
          const std::vector<ObjectID> &return_ids,
-         const bool return_results_directly,
          std::vector<std::shared_ptr<ray::RayObject>> *results) {
         JNIEnv *env = local_env;
         RAY_CHECK(env);

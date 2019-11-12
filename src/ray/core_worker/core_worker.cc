@@ -514,10 +514,11 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   const auto task_id =
       TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                             worker_context_.GetCurrentTaskID(), next_task_index);
+  std::unordered_map<std::string, double> empty_resources;
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       function, args, task_options.num_returns, task_options.resources,
-                      {}, TaskTransportType::RAYLET, return_ids);
+                      empty_resources, TaskTransportType::RAYLET, return_ids);
   return SubmitTaskToRaylet(builder.Build());
 }
 
@@ -573,9 +574,10 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
+  std::unordered_map<std::string, double> empty_resources;
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      function, args, num_returns, task_options.resources, {},
+                      function, args, num_returns, task_options.resources, empty_resources,
                       transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();

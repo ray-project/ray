@@ -100,8 +100,8 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   }
 
   ray::ActorCreationOptions action_creation_options{
-      static_cast<uint64_t>(max_reconstructions), use_direct_call, resources, resources,
-      dynamic_worker_options};
+      static_cast<uint64_t>(max_reconstructions), use_direct_call, 1, resources, resources,
+      dynamic_worker_options, true};
   return action_creation_options;
 }
 
