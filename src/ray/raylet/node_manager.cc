@@ -895,9 +895,6 @@ void NodeManager::ProcessClientMessage(
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::SubmitTask: {
-    ProcessSubmitTaskMessage(message_data);
-  } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
@@ -1175,18 +1172,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
-void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
-  // Read the task submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
-
-  // Submit the task to the raylet. Since the task was submitted
-  // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message), Lineage());
-}
-
 void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
@@ -1388,6 +1373,18 @@ void NodeManager::ProcessReportActiveObjectIDs(
   auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
   worker->SetActiveObjectIds(
       unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
+}
+
+void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
+                                   rpc::SubmitTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
+  rpc::Task task;
+  task.mutable_task_spec()->CopyFrom(request.task_spec());
+
+  // Submit the task to the raylet. Since the task was submitted
+  // locally, there is no uncommitted lineage.
+  SubmitTask(Task(task), Lineage());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,

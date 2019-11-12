@@ -60,6 +60,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
                        const std::string &log_dir, const std::string &node_ip_address,
+                       int node_manager_port,
                        const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals,
                        const std::function<void()> exit_handler)
@@ -72,6 +73,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       heartbeat_timer_(io_service_),
       worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
+      client_call_manager_(io_service_),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
@@ -117,8 +119,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // connect to Raylet after a number of retries, this can be changed later
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
+  auto grpc_client = rpc::NodeManagerWorkerClient::make(
+      node_ip_address, node_manager_port, client_call_manager_);
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
-      raylet_socket, WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
+      std::move(grpc_client), raylet_socket,
+      WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, worker_server_.GetPort()));
   // Unfortunately the raylet client has to be constructed after the receivers.
@@ -489,7 +494,8 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET), task_deps);
+      reference_counter_.SetDependencies(task_spec.ReturnId(i, TaskTransportType::RAYLET),
+                                         task_deps);
     }
   }
 
