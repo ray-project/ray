@@ -10,19 +10,28 @@ import os
 import pandas as pd
 
 import ray
-from ray.tune import run, Trainable, sample_from, Analysis
+from ray.tune import run, Trainable, sample_from, Analysis, grid_search
 from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
-class ExperimentAnalysisInMemSuite(unittest.TestCase):
-    scores_list = [5, 4, 2, 9, 7, 0, 1, 8, 6, 3]
-
-    class TrainableScoresList(Trainable):
+class ExperimentAnalysisInMemorySuite(unittest.TestCase):
+    class MockTrainable(Trainable):
         def _setup(self, config):
-            self.timestep = 0
+            self.id = config["id"]
+            self.idx = 0
+            self.scores_dict = {
+                0: [5, 0],
+                1: [4, 1],
+                2: [2, 8],
+                3: [9, 6],
+                4: [7, 3]
+            }
 
         def _train(self):
-            return {"score": ExperimentAnalysisInMemSuite.scores_list.pop(0)}
+            val = self.scores_dict[self.id][self.idx]
+            self.idx += 1
+            print("HELLO " + str(self.id) + "   " + str(val))
+            return {"score": val}
 
         def _save(self, checkpoint_dir):
             pass
@@ -31,37 +40,35 @@ class ExperimentAnalysisInMemSuite(unittest.TestCase):
             pass
 
     def setUp(self):
-        ray.init(local_mode=True, num_cpus=1)
-        self.test_dir = tempfile.mkdtemp()
-        self.test_name = "analysis_exp"
-        self.scores_list_copy = ExperimentAnalysisInMemSuite.scores_list[:]
-        self.run_test_exp()
-
-    def run_test_exp(self):
-        self.ea = run(
-            self.TrainableScoresList,
-            name=self.test_name,
-            local_dir=self.test_dir,
-            stop={"training_iteration": 2},
-            num_samples=5)
+        ray.init(local_mode=False, num_cpus=1)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
         ray.shutdown()
 
     def testCompareTrials(self):
-        max_all = self.ea.get_best_trial("score",
-                                         "max").metric_analysis["score"]["max"]
-        min_all = self.ea.get_best_trial("score",
-                                         "min").metric_analysis["score"]["min"]
-        max_last = self.ea.get_best_trial(
-            "score", "max", "last").metric_analysis["score"]["last"]
-        self.assertEqual(max_all, max(self.scores_list_copy))
-        self.assertEqual(min_all, min(self.scores_list_copy))
-        self.assertEqual(max_last, max(self.scores_list_copy[5:]))
-        self.assertNotEqual(max_last, max(self.scores_list_copy))
-        shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
+        self.test_dir = tempfile.mkdtemp()
+        scores_all = [5, 4, 2, 9, 7, 0, 1, 8, 6, 3]
+        scores_last = scores_all[5:]
+
+        ea = run(
+            self.MockTrainable,
+            name="analysis_exp",
+            local_dir=self.test_dir,
+            stop={"training_iteration": 2},
+            num_samples=1,
+            config={"id": grid_search(list(range(5)))})
+
+        max_all = ea.get_best_trial("score",
+                                    "max").metric_analysis["score"]["max"]
+        min_all = ea.get_best_trial("score",
+                                    "min").metric_analysis["score"]["min"]
+        max_last = ea.get_best_trial("score", "max",
+                                     "last").metric_analysis["score"]["last"]
+        self.assertEqual(max_all, max(scores_all))
+        self.assertEqual(min_all, min(scores_all))
+        self.assertEqual(max_last, max(scores_last))
+        self.assertNotEqual(max_last, max(scores_all))
 
 
 class ExperimentAnalysisSuite(unittest.TestCase):
