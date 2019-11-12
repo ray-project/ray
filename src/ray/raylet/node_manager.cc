@@ -896,9 +896,6 @@ void NodeManager::ProcessClientMessage(
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::RequestWorkerLease: {
-    ProcessRequestWorkerLeaseMessage(client, message_data);
-  } break;
   case protocol::MessageType::ReturnWorker: {
     ProcessReturnWorkerMessage(message_data);
   } break;
@@ -1183,33 +1180,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
-void NodeManager::ProcessRequestWorkerLeaseMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  // Read the resource spec submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::WorkerLeaseRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->resource_spec()->data(), fbs_message->resource_spec()->size()));
-
-  // Override the task dispatch to call back to the client instead of executing the
-  // task directly on the worker. TODO(ekl) handle spilling case
-  Task task(task_message);
-  task.OnDispatchInstead([this, client](const std::shared_ptr<void> granted,
-                                        const std::string &address, int port) {
-    std::shared_ptr<Worker> client_worker = worker_pool_.GetRegisteredWorker(client);
-    if (client_worker == nullptr) {
-      client_worker = worker_pool_.GetRegisteredDriver(client);
-    }
-    if (client_worker == nullptr) {
-      RAY_LOG(FATAL) << "TODO: Lost worker for lease request " << client;
-    } else {
-      client_worker->WorkerLeaseGranted(address, port);
-      leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
-    }
-  });
-  SubmitTask(task, Lineage());
-}
-
 void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   // Read the resource spec submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
@@ -1433,6 +1403,30 @@ void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
   // locally, there is no uncommitted lineage.
   SubmitTask(Task(task), Lineage());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
+                                           rpc::WorkerLeaseReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  rpc::Task task_message;
+  task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
+
+  // Override the task dispatch to call back to the client instead of executing the
+  // task directly on the worker. TODO(ekl) handle spilling case
+  Task task(task_message);
+  RAY_LOG(ERROR) << "Worker lease request " << task.GetTaskSpecification().TaskId();
+  task.OnDispatchInstead(
+      [this, reply, send_reply_callback](const std::shared_ptr<void> granted,
+                                         const std::string &address, int port) {
+        reply->set_address(address);
+        reply->set_port(port);
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+
+        // TODO(swang): Release worker if other end hangs up (can be done with
+        // lease timeout).
+        leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
+      });
+  SubmitTask(task, Lineage());
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,

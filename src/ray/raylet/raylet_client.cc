@@ -376,12 +376,11 @@ ray::Status RayletClient::ReportActiveObjectIDs(
 }
 
 ray::Status RayletClient::RequestWorkerLease(
-    const ray::TaskSpecification &resource_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateWorkerLeaseRequest(
-      fbb, fbb.CreateString(resource_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::RequestWorkerLease, &fbb);
+    const ray::TaskSpecification &resource_spec,
+    const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) {
+  ray::rpc::WorkerLeaseRequest request;
+  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  return grpc_client_->RequestWorkerLease(request, /*callback=*/callback);
 }
 
 ray::Status RayletClient::ReturnWorker(int worker_port) {

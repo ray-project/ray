@@ -69,7 +69,9 @@ class WorkerLeaseInterface {
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
   /// \return ray::Status
-  virtual ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) = 0;
+  virtual ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
@@ -200,7 +202,9 @@ class RayletClient : public WorkerLeaseInterface {
   ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
   /// Implements WorkerLeaseInterface.
-  ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) override;
+  ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port) override;

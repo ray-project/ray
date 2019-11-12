@@ -124,7 +124,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   if (worker_request_pending_) {
     return;
   }
-  RAY_CHECK_OK(lease_client_.RequestWorkerLease(resource_spec));
+  RAY_CHECK_OK(lease_client_.RequestWorkerLease(
+      resource_spec,
+      [this, resource_spec](const Status &status, const rpc::WorkerLeaseReply &reply) {
+        if (status.ok()) {
+          HandleWorkerLeaseGranted({reply.address(), reply.port()});
+        } else {
+          absl::MutexLock lock(&mu_);
+          worker_request_pending_ = false;
+          RequestNewWorkerIfNeeded(resource_spec);
+        }
+      }));
   worker_request_pending_ = true;
 }
 

@@ -74,9 +74,8 @@ enum MessageType:int {
   SetResourceRequest,
   // Update the active set of object IDs in use on this worker.
   ReportActiveObjectIDs,
-  // Request a worker from the raylet with the specified resources.
-  RequestWorkerLease,
   // Returns a worker to the raylet.
+  // TODO: Port to grpc.
   ReturnWorker,
 }
 
@@ -93,10 +92,6 @@ table TaskExecutionSpecification {
 table Task {
   task_specification: string;
   task_execution_spec: TaskExecutionSpecification;
-}
-
-table WorkerLeaseRequest {
-  resource_spec: string;
 }
 
 table ReturnWorkerRequest {

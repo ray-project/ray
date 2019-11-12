@@ -83,6 +83,16 @@ class NodeManagerWorkerClient
     return call->GetStatus();
   }
 
+  /// Request a worker lease.
+  ray::Status RequestWorkerLease(const WorkerLeaseRequest &request,
+                                 const ClientCallback<WorkerLeaseReply> &callback) {
+    auto call = client_call_manager_
+                    .CreateCall<NodeManagerService, WorkerLeaseRequest, WorkerLeaseReply>(
+                        *stub_, &NodeManagerService::Stub::PrepareAsyncRequestWorkerLease,
+                        request, callback);
+    return call->GetStatus();
+  }
+
  private:
   /// Constructor.
   ///

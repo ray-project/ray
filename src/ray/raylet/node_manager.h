@@ -412,14 +412,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const std::shared_ptr<LocalClientConnection> &client,
       bool intentional_disconnect = false);
 
-  /// Process client message of RequestWorkerLease
-  ///
-  /// \param client The client that sent the message.
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessRequestWorkerLeaseMessage(
-      const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data);
-
   /// Process client message of ReturnWorkerMessage
   ///
   /// \param message_data A pointer to the message data.
@@ -513,6 +505,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleSubmitTask(const rpc::SubmitTaskRequest &request,
                         rpc::SubmitTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle a `WorkerLease` request.
+  void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
+                                rpc::WorkerLeaseReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,
