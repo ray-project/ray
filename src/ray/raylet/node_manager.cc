@@ -1183,7 +1183,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
-
 void NodeManager::ProcessRequestWorkerLeaseMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   // Read the resource spec submitted by the client.
@@ -1221,7 +1220,6 @@ void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   HandleWorkerAvailable(worker);
 }
 
->>>>>>> 69dbc90d4b09239cbc07db252b5bf94533501cdd
 void NodeManager::ProcessFetchOrReconstructMessage(
     const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
   auto message = flatbuffers::GetRoot<protocol::FetchOrReconstruct>(message_data);
