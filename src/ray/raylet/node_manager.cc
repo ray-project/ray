@@ -691,7 +691,18 @@ void NodeManager::HeartbeatBatchAdded(const HeartbeatBatchTableData &heartbeat_b
     }
     HeartbeatAdded(client_id, heartbeat_data);
   }
+
   RAY_LOG(DEBUG) << "Total active object IDs received: " << active_object_ids.size();
+
+  // Refresh the active object IDs in plasma to prevent them from being evicted.
+  std::vector<plasma::ObjectID> plasma_ids;
+  plasma_ids.reserve(active_object_ids.size());
+  for (const ObjectID &object_id : active_object_ids) {
+    plasma_ids.push_back(object_id.ToPlasmaId());
+  }
+  if (!store_client_.Refresh(plasma_ids).ok()) {
+    RAY_LOG(WARNING) << "Failed to refresh active object IDs in plasma.";
+  }
 }
 
 void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
