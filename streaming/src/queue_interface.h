@@ -37,8 +37,7 @@ class QueueWriterInterface {
  public:
   QueueWriterInterface() {}
   virtual ~QueueWriterInterface() {}
-  virtual Status CreateQueue(const ObjectID &queue_id, int64_t data_size, ActorID &actor_handle,
-                             bool reconstruct_queue = false, bool clear = false) = 0;
+  virtual Status CreateQueue(const ObjectID &queue_id, int64_t data_size, ActorID &actor_handle) = 0;
   virtual Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                                uint32_t data_size, uint64_t timestamp) = 0;
   virtual bool IsQueueFoundInLocal(const ObjectID &queue_id,
@@ -89,8 +88,7 @@ class StreamingQueueWriter : public QueueWriterInterface {
   ~StreamingQueueWriter() {}
 
   Status CreateQueue(const ObjectID &queue_id, int64_t data_size,
-                     ActorID &actor_handle,
-                     bool reconstruct_queue = false, bool clear = false);
+                     ActorID &actor_handle);
   bool IsQueueFoundInLocal(const ObjectID &queue_id, const int64_t timeout_ms);
   Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit);
 
