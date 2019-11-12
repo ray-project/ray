@@ -26,7 +26,7 @@ services:
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
             skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
             ray start --head --redis-port=6379 --object-manager-port=8076 --object-store-memory=100000000 --memory 100000000 --num-cpus=1
-            bin/python /example.py
+            /home/rayonyarn/miniconda3/bin/python /example.py
             ray stop
 
     ray-worker:
@@ -49,7 +49,7 @@ services:
             # node, getting any addresses it needs for e.g. the head node from
             # the skein key-value store. It should then block until killed with
             # sigterm (at which point all started processes should also die).
-            bash /home/rayonyarn/miniconda3/etc/profile.d/conda.sh
+            source /home/rayonyarn/miniconda3/bin/activate
             echo $(which python)
             sleep 20
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
