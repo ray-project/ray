@@ -13,7 +13,7 @@ from ray.streaming.communication import DataInput
 from ray.streaming.communication import DataOutput
 from ray.streaming.config import Config
 from ray.streaming.queue.memory_queue import MemQueueLinkImpl
-from ray.streaming.queue.streaming_queue import QueueLinkImpl
+import ray.streaming.queue.streaming_queue as streaming_queue
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
@@ -74,9 +74,13 @@ class OperatorInstance(object):
         if self.env.config.queue_type == Config.MEMORY_QUEUE:
             self.queue_link = MemQueueLinkImpl()
         else:
-            self.queue_link = QueueLinkImpl()
-        self.input_gate = DataInput(self.queue_link, self.input_channels)
-        self.output_gate = DataOutput(self.queue_link, self.output_channels, self.operator.partitioning_strategies)
+            self.queue_link = streaming_queue.QueueLinkImpl()
+        runtime_conf = {}
+        runtime_conf[Config.TASK_JOB_ID] = ray.runtime_context._get_runtime_context().current_driver_id
+        self.queue_link.set_ray_runtime(runtime_conf)
+        self.input_gate = DataInput(env, self.queue_link, self.input_channels)
+        self.output_gate = DataOutput(env, self.queue_link, self.output_channels,
+                                      self.operator.partitioning_strategies)
         # start
         self.input_gate.init()
         self.output_gate.init()

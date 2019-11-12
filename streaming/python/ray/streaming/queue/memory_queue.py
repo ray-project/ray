@@ -35,6 +35,10 @@ class MemQueueLinkImpl(QueueLink):
     """
     memory queue link impl
     """
+
+    def set_ray_runtime(self, runtime):
+        pass
+
     msg_queue_map = dict()
     recover_info_queue = Queue()
 
@@ -44,10 +48,10 @@ class MemQueueLinkImpl(QueueLink):
     def set_configuration(self, conf):
         pass
 
-    def register_queue_consumer(self, input_queue_ids):
+    def register_queue_consumer(self, input_queue_ids, from_actors):
         return MemQueueConsumerImpl(input_queue_ids, MemQueueLinkImpl.msg_queue_map)
 
-    def register_queue_producer(self, output_queue_ids):
+    def register_queue_producer(self, output_queue_ids, to_actors):
         return MemQueueProducerImpl(output_queue_ids, MemQueueLinkImpl.msg_queue_map)
 
 
