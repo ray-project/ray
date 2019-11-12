@@ -66,6 +66,8 @@ message TaskSpec {
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 14;
+  // Whether this task is a direct call task.
+  bool is_direct_call = 15;
 }
 
 // Argument in the task.

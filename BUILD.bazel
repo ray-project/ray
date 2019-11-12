@@ -405,6 +405,16 @@ cc_binary(
 )
 
 cc_test(
+    name = "direct_task_transport_test",
+    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "reference_count_test",
     srcs = ["src/ray/core_worker/reference_count_test.cc"],
     copts = COPTS,
