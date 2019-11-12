@@ -32,13 +32,14 @@ class SuggestionAlgorithm(SearchAlgorithm):
         >>> better_parameters = suggester._suggest()
     """
 
-    def __init__(self):
+    def __init__(self, use_early_stopped_trials=True):
         """Constructs a generator given experiment specifications.
         """
         self._parser = make_parser()
         self._trial_generator = []
         self._counter = 0
         self._finished = False
+        self._use_early_stopped = use_early_stopped_trials
 
     def add_configurations(self, experiments):
         """Chains generator given experiment specifications.
@@ -141,6 +142,7 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self._max_concurrent = max_concurrent
         self.live_trials = {}
         self.counter = {"result": 0, "complete": 0}
+        self.final_results = []
         self.stall = False
         self.results = []
         super(_MockSuggestionAlgorithm, self).__init__(**kwargs)
@@ -155,6 +157,16 @@ class _MockSuggestionAlgorithm(SuggestionAlgorithm):
         self.counter["result"] += 1
         self.results += [result]
 
-    def on_trial_complete(self, trial_id, **kwargs):
+    def on_trial_complete(self,
+                          trial_id,
+                          result=None,
+                          error=False,
+                          early_terminated=False):
         self.counter["complete"] += 1
+        if result:
+            self._process_result(result, early_terminated)
         del self.live_trials[trial_id]
+
+    def _process_result(self, result, early_terminated):
+        if early_terminated and self._use_early_stopped:
+            self.final_results += [result]
