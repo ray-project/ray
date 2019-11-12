@@ -33,6 +33,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray._raylet cimport (
     CoreWorker,
+    ActorID,
     ObjectID,
     string_vector_from_list
 )
@@ -90,7 +91,7 @@ cdef class QueueLink:
 
     def create_producer(self,
                         list[bytes] py_output_queues,
-                        list[uint64_t] output_actor_ids,
+                        list output_actor_ids: list[ActorID],
                         uint64_t queue_size,
                         list[int] py_seq_ids,
                         bytes config_bytes,
@@ -106,10 +107,8 @@ cdef class QueueLink:
             CRayFunction sync_native_func
             CStreamingWriter *writer
             cdef const unsigned char[:] config_data
-            uint64_t ptr
         for actor_id in output_actor_ids:
-            ptr = actor_id
-            actor_ids.push_back(dereference(<CActorID *>ptr))
+            actor_ids.push_back((<ActorID>actor_id).data)
         for py_seq_id in py_seq_ids:
             seq_ids.push_back(<uint64_t>py_seq_id)
         async_native_func = CRayFunction(
@@ -142,7 +141,7 @@ cdef class QueueLink:
 
     def create_consumer(self,
                         list[bytes] py_input_queues,
-                        list[uint64_t] input_actor_ids,
+                        list input_actor_ids: list[ActorID],
                         list[int] py_seq_ids,
                         list[int] py_msg_ids,
                         uint64_t timer_interval,
@@ -161,10 +160,8 @@ cdef class QueueLink:
             CRayFunction sync_native_func
             CStreamingWriter *writer
             cdef const unsigned char[:] config_data
-            uint64_t ptr
         for actor_id in input_actor_ids:
-            ptr = actor_id
-            actor_ids.push_back(dereference(<CActorID *>ptr))
+            actor_ids.push_back((<ActorID>actor_id).data)
         for py_seq_id in py_seq_ids:
             seq_ids.push_back(<uint64_t>py_seq_id)
         for py_msg_id in py_msg_ids:

@@ -14,7 +14,8 @@ from libcpp.memory cimport (
 from ray.includes.common cimport CBuffer
 from ray.includes.libcoreworker cimport CCoreWorker
 from ray.includes.unique_ids cimport (
-    CObjectID
+    CObjectID,
+    CActorID
 )
 
 cdef class BaseID:
@@ -32,6 +33,13 @@ cdef class ObjectID(BaseID):
         c_bool in_core_worker
 
     cdef CObjectID native(self)
+
+cdef class ActorID(BaseID):
+    cdef CActorID data
+
+    cdef CActorID native(self)
+
+    cdef size_t hash(self)
 
 cdef class CoreWorker:
     cdef:
