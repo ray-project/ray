@@ -63,10 +63,14 @@ class ExecutionGraph:
         self.physical_topo = nx.DiGraph()  # DAG
         # Handles to all actors in the physical dataflow
         self.actor_handles = []
+        # (op_id, op_instance_index) -> ActorID
+        self.actors_map = {}
         # execution graph build time: milliseconds since epoch
         self.build_time = 0
         self.task_id_counter = 0
         self.task_ids = {}
+        self.input_channels = {}  # operator id -> input channels
+        self.output_channels = {}  # operator id -> output channels
 
     # Constructs and deploys a Ray actor of a specific type
     # TODO (john): Actor placement information should be specified in
@@ -137,31 +141,24 @@ class ExecutionGraph:
         num_instances = operator.num_instances
         logger.info("Generating {} actors of type {}...".format(
             num_instances, operator.type))
-        in_channels = upstream_channels.pop(
-            operator.id) if upstream_channels else []
         handles = []
         for i in range(num_instances):
             # Collect input and output channels for the particular instance
-            ip = [
-                channel for channel in in_channels
-                if channel.dst_instance_id == i
-            ] if in_channels else []
-            op = [
-                channel for channels_list in downstream_channels.values()
-                for channel in channels_list if channel.src_instance_id == i
-            ]
+            ip = [channel for channel in upstream_channels if channel.dst_instance_index == i]
+            op = [channel for channel in downstream_channels if channel.src_instance_index == i]
             log = "Constructed {} input and {} output channels "
             log += "for the {}-th instance of the {} operator."
             logger.debug(log.format(len(ip), len(op), i, operator.type))
             handle = self.__generate_actor(i, operator, ip, op)
             if handle:
                 handles.append(handle)
+                self.actors_map[(operator.id, i)] = handle
         return handles
 
     # Adds a channel/edge to the physical dataflow graph
     def __add_channel(self, actor_id, output_channels):
         for channel in output_channels:
-            dest_actor_id = (channel.dst_operator_id, channel.dst_instance_id)
+            dest_actor_id = (channel.dst_operator_id, channel.dst_instance_index)
             self.physical_topo.add_edge(actor_id, dest_actor_id)
 
     # TODO(chaokunyang) remove channels, and use queue instead.
@@ -209,6 +206,9 @@ class ExecutionGraph:
     def get_task_id(self, op_id, op_instance_id):
         return self.task_ids[(op_id, op_instance_id)]
 
+    def get_actor(self, op_id, op_instance_id):
+        return self.actors_map[(op_id, op_instance_id)]
+
     # Prints the physical dataflow graph
     def print_physical_graph(self):
         logger.info("===================================")
@@ -221,12 +221,12 @@ class ExecutionGraph:
         log += "Destination Instance ID)"
         logger.info(log)
         for src_actor_id, dst_actor_id in self.physical_topo.edges:
-            src_operator_id, src_instance_id = src_actor_id
-            dst_operator_id, dst_instance_id = dst_actor_id
+            src_operator_id, src_instance_index = src_actor_id
+            dst_operator_id, dst_instance_index = dst_actor_id
             logger.info("({},{},{}) --> ({},{},{})".format(
                 src_operator_id, self.env.operators[src_operator_id].name,
-                src_instance_id, dst_operator_id,
-                self.env.operators[dst_operator_id].name, dst_instance_id))
+                src_instance_index, dst_operator_id,
+                self.env.operators[dst_operator_id].name, dst_instance_index))
 
     def build_graph(self):
         self.build_time = int(time.time() * 1000)
@@ -236,22 +236,37 @@ class ExecutionGraph:
             for i in range(operator.num_instances):
                 operator_instance_id = (operator.id, i)
                 self.task_ids[operator_instance_id] = self._gen_task_id()
-        # Each operator instance is implemented as a Ray actor
-        # Actors are deployed in topological order, as we traverse the
-        # logical dataflow from sources to sinks. At each step, data
-        # producers wait for acknowledge from consumers before starting
-        # generating data.
-        upstream_channels = {}
+        channels = {}
         for node in nx.topological_sort(self.env.logical_topo):
             operator = self.env.operators[node]
             # Generate downstream data channels
             downstream_channels = self._generate_channels(operator)
+            channels[node] = downstream_channels
+        # op_id -> channels
+        input_channels = {}
+        output_channels = {}
+        print(channels)
+        for op_id, all_downstream_channels in channels.items():
+            for dst_op_channels in all_downstream_channels.values():
+                for channel in dst_op_channels:
+                    dst = input_channels.setdefault(channel.dst_operator_id, [])
+                    dst.append(channel)
+                    src = output_channels.setdefault(channel.src_operator_id, [])
+                    src.append(channel)
+        self.input_channels = input_channels
+        self.output_channels = output_channels
+
+        # Each operator instance is implemented as a Ray actor
+        # Actors are deployed in topological order, as we traverse the
+        # logical dataflow from sources to sinks.
+        upstream_channels = {}
+        for node in nx.topological_sort(self.env.logical_topo):
+            operator = self.env.operators[node]
             # Instantiate Ray actors
-            handles = self.__generate_actors(operator, upstream_channels,
-                                             downstream_channels)
+            handles = self.__generate_actors(operator, self.input_channels.get(node, []),
+                                             self.output_channels.get(node, []))
             if handles:
                 self.actor_handles.extend(handles)
-            upstream_channels.update(downstream_channels)
 
 
 # The execution environment for a streaming job

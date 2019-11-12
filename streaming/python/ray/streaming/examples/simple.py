@@ -8,7 +8,6 @@ import time
 
 import ray
 from ray.streaming.streaming import Environment
-from ray.streaming.batched_queue import BatchedQueue
 from ray.streaming.operator import OpType, PStrategy
 
 logger = logging.getLogger(__name__)
@@ -34,7 +33,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     ray.init(local_mode=True)
-    # ray.register_custom_serializer(BatchedQueue, use_pickle=True)
     # ray.register_custom_serializer(OpType, use_pickle=True)
     # ray.register_custom_serializer(PStrategy, use_pickle=True)
 
