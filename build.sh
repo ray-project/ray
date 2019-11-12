@@ -96,13 +96,11 @@ pushd "$BUILD_DIR"
 # The following line installs pyarrow from S3, these wheels have been
 # generated from https://github.com/ray-project/arrow-build from
 # the commit listed in the command.
-#if [ -z "$SKIP_PYARROW_INSTALL" ]; then
-#    "$PYTHON_EXECUTABLE" -m pip install -q \
-#        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
-#        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/516e15028091b5e287200b5df77d77f72d9a6c9a/index.html
-#fi
-"$PYTHON_EXECUTABLE" -m pip install -q \
-        --target="$ROOT_DIR/python/ray/pyarrow_files" /Users/chaokunyang/ant/Development/DevProjects/alibaba/archive/pyarrow-0.14.0.RAY-cp36-cp36m-macosx_10_6_intel.whl
+if [ -z "$SKIP_PYARROW_INSTALL" ]; then
+    "$PYTHON_EXECUTABLE" -m pip install -q \
+        --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
+        --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/516e15028091b5e287200b5df77d77f72d9a6c9a/index.html
+fi
 
 export PYTHON_BIN_PATH="$PYTHON_EXECUTABLE"
 
