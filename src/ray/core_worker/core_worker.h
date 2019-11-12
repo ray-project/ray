@@ -17,6 +17,7 @@
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/worker_client.h"
 #include "ray/rpc/worker/worker_server.h"
 
@@ -58,6 +59,7 @@ class CoreWorker {
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
+  /// \param[in] node_manager_port Port of the local raylet.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
   /// \parma[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
@@ -70,7 +72,7 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             const TaskExecutionCallback &task_execution_callback,
+             int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> exit_handler = nullptr);
 
@@ -453,6 +455,9 @@ class CoreWorker {
 
   // Client to the GCS shared by core worker interfaces.
   gcs::RedisGcsClient gcs_client_;
+
+  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
+  rpc::ClientCallManager client_call_manager_;
 
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;

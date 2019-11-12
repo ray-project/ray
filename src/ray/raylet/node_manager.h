@@ -406,12 +406,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
       const std::shared_ptr<LocalClientConnection> &client,
       bool intentional_disconnect = false);
 
-  /// Process client message of SubmitTask
-  ///
-  /// \param message_data A pointer to the message data.
-  /// \return Void.
-  void ProcessSubmitTaskMessage(const uint8_t *message_data);
-
   /// Process client message of FetchOrReconstruct
   ///
   /// \param client The client that sent the message.
@@ -494,6 +488,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param success Whether the task is successfully assigned to the worker.
   /// \return void.
   void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
+
+  /// Handle a `SubmitTask` request.
+  void HandleSubmitTask(const rpc::SubmitTaskRequest &request,
+                        rpc::SubmitTaskReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,

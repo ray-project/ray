@@ -201,10 +201,15 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
+RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+                           const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
                            int port)
-    : worker_id_(worker_id), is_worker_(is_worker), job_id_(job_id), language_(language) {
+    : grpc_client_(std::move(grpc_client)),
+      worker_id_(worker_id),
+      is_worker_(is_worker),
+      job_id_(job_id),
+      language_(language) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
@@ -220,11 +225,9 @@ RayletClient::RayletClient(const std::string &raylet_socket, const WorkerID &wor
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateSubmitTaskRequest(
-      fbb, fbb.CreateString(task_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
+  ray::rpc::SubmitTaskRequest request;
+  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
 }
 
 ray::Status RayletClient::TaskDone() {

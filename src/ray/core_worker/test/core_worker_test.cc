@@ -25,11 +25,16 @@
 #include "ray/thirdparty/hiredis/hiredis.h"
 #include "ray/util/test_util.h"
 
-namespace ray {
+namespace {
 
 std::string store_executable;
 std::string raylet_executable;
+int node_manager_port = 0;
 std::string mock_worker_executable;
+
+}  // namespace
+
+namespace ray {
 
 static void flushall_redis(void) {
   redisContext *context = redisConnect("127.0.0.1", 6379);
@@ -92,8 +97,8 @@ class CoreWorkerTest : public ::testing::Test {
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
       raylet_socket_names_[i] =
-          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", "127.0.0.1",
-                      "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
+          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", node_manager_port + i,
+                      "127.0.0.1", "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
     }
   }
 
@@ -134,12 +139,12 @@ class CoreWorkerTest : public ::testing::Test {
   }
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
-                          std::string redis_address, std::string resource) {
+                          int port, std::string redis_address, std::string resource) {
     std::string raylet_socket_name = "/tmp/raylet" + ObjectID::FromRandom().Hex();
     std::string ray_start_cmd = raylet_executable;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
-        .append(" --object_manager_port=0 --node_manager_port=0")
+        .append(" --object_manager_port=0 --node_manager_port=" + std::to_string(port))
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -147,7 +152,8 @@ class CoreWorkerTest : public ::testing::Test {
         .append(" --maximum_startup_concurrency=10")
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + mock_worker_executable + " " +
-                store_socket_name + " " + raylet_socket_name + "\"")
+                store_socket_name + " " + raylet_socket_name + " " +
+                std::to_string(port) + "\"")
         .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
@@ -212,7 +218,7 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
 void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    nullptr);
+                    node_manager_port, nullptr);
 
   // Test for tasks with by-value and by-ref args.
   {
@@ -255,7 +261,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
                                    bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    nullptr);
+                    node_manager_port, nullptr);
 
   auto actor_id = CreateActorHelper(driver, resources, is_direct_call, 1000);
 
@@ -338,7 +344,7 @@ void CoreWorkerTest::TestActorReconstruction(
     std::unordered_map<std::string, double> &resources, bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    nullptr);
+                    node_manager_port, nullptr);
 
   // creating actor.
   auto actor_id = CreateActorHelper(driver, resources, is_direct_call, 1000);
@@ -394,7 +400,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
                                       bool is_direct_call) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                    nullptr);
+                    node_manager_port, nullptr);
 
   // creating actor.
   auto actor_id =
@@ -539,7 +545,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
 TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
   CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                     raylet_socket_names_[0], JobID::FromInt(1), gcs_options_, "",
-                    "127.0.0.1", nullptr);
+                    "127.0.0.1", node_manager_port, nullptr);
   std::vector<ObjectID> object_ids;
   // Create an actor.
   std::unordered_map<std::string, double> resources;
@@ -753,7 +759,8 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 TEST_F(SingleNodeTest, TestObjectInterface) {
   CoreWorker core_worker(WorkerType::DRIVER, Language::PYTHON,
                          raylet_store_socket_names_[0], raylet_socket_names_[0],
-                         JobID::FromInt(1), gcs_options_, "", "127.0.0.1", nullptr);
+                         JobID::FromInt(1), gcs_options_, "", "127.0.0.1",
+                         node_manager_port, nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -824,11 +831,11 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
 TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   CoreWorker worker1(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "127.0.0.1",
-                     nullptr);
+                     node_manager_port, nullptr);
 
   CoreWorker worker2(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[1],
                      raylet_socket_names_[1], NextJobId(), gcs_options_, "", "127.0.0.1",
-                     nullptr);
+                     node_manager_port, nullptr);
 
   uint8_t array1[] = {1, 2, 3, 4, 5, 6, 7, 8};
   uint8_t array2[] = {10, 11, 12, 13, 14, 15};
@@ -946,9 +953,10 @@ TEST_F(TwoNodeTest, TestDirectActorTaskCrossNodesFailure) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
-  ray::store_executable = std::string(argv[1]);
-  ray::raylet_executable = std::string(argv[2]);
-  ray::mock_worker_executable = std::string(argv[3]);
+  RAY_CHECK(argc == 5);
+  store_executable = std::string(argv[1]);
+  raylet_executable = std::string(argv[2]);
+  node_manager_port = std::stoi(std::string(argv[3]));
+  mock_worker_executable = std::string(argv[4]);
   return RUN_ALL_TESTS();
 }

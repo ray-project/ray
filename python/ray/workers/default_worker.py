@@ -20,6 +20,11 @@ parser.add_argument(
     type=str,
     help="the ip address of the worker's node")
 parser.add_argument(
+    "--node-manager-port",
+    required=True,
+    type=int,
+    help="the port of the worker's node")
+parser.add_argument(
     "--redis-address",
     required=True,
     type=str,
@@ -74,6 +79,7 @@ if __name__ == "__main__":
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
+        node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
         redis_password=args.redis_password,
         plasma_store_socket_name=args.object_store_name,
