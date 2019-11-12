@@ -27,7 +27,7 @@ class TaskSpecBuilder {
       const TaskID &task_id, const Language &language,
       const std::vector<std::string> &function_descriptor, const JobID &job_id,
       const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
-      const rpc::RpcAddress &caller_address, uint64_t num_returns,
+      const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);

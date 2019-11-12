@@ -27,7 +27,7 @@ enum TaskType {
   ACTOR_TASK = 2;
 }
 
-message RpcAddress {
+message Address {
   bytes raylet_id = 1;
   string ip_address = 2;
   int32 port = 3;
@@ -58,7 +58,7 @@ message TaskSpec {
   // This is the actor ID (embedded in a nil task ID) for actors.
   bytes caller_id = 8;
   /// Address of the caller.
-  RpcAddress caller_address = 9;
+  Address caller_address = 9;
   // Task arguments.
   repeated TaskArg args = 10;
   // Number of return objects.
