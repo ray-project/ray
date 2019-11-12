@@ -337,7 +337,7 @@ public class RunManager {
 
   private void startObjectStore() {
     try (FileUtil.TempFile plasmaStoreFile = FileUtil
-        .getTempFileFromResource("plasma_store_server")) {
+        .getTempFileFromResource("external/plasma/plasma_store_server")) {
       plasmaStoreFile.getFile().setExecutable(true);
       List<String> command = ImmutableList.of(
           // The plasma store executable file.
