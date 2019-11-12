@@ -465,7 +465,9 @@ class TrialRunner(object):
                 if decision == TrialScheduler.STOP:
                     with warn_if_slow("search_alg.on_trial_complete"):
                         self._search_alg.on_trial_complete(
-                            trial.trial_id, early_terminated=True)
+                            trial.trial_id,
+                            result=flat_result,
+                            early_terminated=True)
 
             if not is_duplicate:
                 trial.update_last_result(
