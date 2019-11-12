@@ -7,7 +7,9 @@ import logging
 import sys
 import time
 
+import ray
 from ray.streaming.operator import PStrategy
+from ray.streaming.queue.queue_interface import QueueID
 import pickle
 
 logger = logging.getLogger(__name__)
@@ -48,6 +50,7 @@ class DataChannel(object):
         self.dst_operator_id = dst_operator_id
         self.dst_instance_index = dst_instance_index
         self.str_qid = str_qid
+        self.qid = QueueID(str_qid)
 
     def __repr__(self):
         return "(src({},{}),dst({},{}), qid({}))".format(
@@ -74,6 +77,7 @@ class DataInput(object):
     """
 
     def __init__(self, env, queue_link, channels):
+        assert len(channels) > 0
         self.env = env
         self.queue_link = queue_link
         self.consumer = None  # created in `init` method
@@ -134,6 +138,7 @@ class DataOutput(object):
     """
 
     def __init__(self, env, queue_link, channels, partitioning_schemes):
+        assert len(channels) > 0
         self.env = env
         self.queue_link = queue_link
         self.producer = None  # created in `init` method
@@ -210,7 +215,7 @@ class DataOutput(object):
         to sink to notify that the end of data in a stream.
         """
         for channel in self.channels:
-            self.producer.produce(channel.str_qid, None)
+            self.producer.produce(channel.qid, None)
         self.producer.stop()
         self.producer.close()
 
@@ -260,7 +265,7 @@ class DataOutput(object):
         msg_data = pickle.dumps(record)
         for channel in target_channels:
             # send data to queue
-            self.producer.produce(channel.str_qid, msg_data)
+            self.producer.produce(channel.qid, msg_data)
 
     # Pushes a list of records to the output
     # Each individual output queue flushes batches to plasma periodically

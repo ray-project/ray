@@ -75,12 +75,13 @@ class QueueLinkImpl(QueueLink):
             self.__configuration[k] = v
 
     def register_queue_producer(self, output_queues, to_actors: List[ActorHandle]):
+        assert len(output_queues) > 0
         py_output_queues = qutils.qid_str_list_to_bytes_list(output_queues)
         output_actor_ids: List[ActorID] = [handle._ray_actor_id for handle in to_actors]
         queue_size = self.__configuration.get(Config.QUEUE_SIZE, Config.QUEUE_SIZE_DEFAULT)
         py_seq_ids = [0 for _ in range(len(output_queues))]
         config_bytes = _to_native_conf(self.__configuration)
-        producer = self.queue_link.register_queue_producer(
+        producer = self.queue_link.create_producer(
             py_output_queues,
             output_actor_ids,
             queue_size,
@@ -91,6 +92,7 @@ class QueueLinkImpl(QueueLink):
         self.producer = QueueProducerImpl(producer)
 
     def register_queue_consumer(self, input_queue_ids, from_actors: List[ActorHandle]):
+        assert len(input_queue_ids) > 0
         py_input_queues = qutils.qid_str_list_to_bytes_list(input_queue_ids)
         input_actor_ids: List[ActorID] = [handle._ray_actor_id for handle in from_actors]
         py_seq_ids = [0 for _ in range(len(input_queue_ids))]
@@ -98,7 +100,7 @@ class QueueLinkImpl(QueueLink):
         timer_interval = int(self.__configuration.get(Config.TIMER_INTERVAL_MS, -1))
         is_recreate = bool(self.__configuration.get(Config.IS_RECREATE, False))
         config_bytes = _to_native_conf(self.__configuration)
-        consumer = self.queue_link.register_queue_consumer(
+        consumer = self.queue_link.create_consumer(
             py_input_queues,
             input_actor_ids,
             py_seq_ids,
@@ -127,15 +129,14 @@ class QueueProducerImpl(QueueProducer):
     def __init__(self, native_producer):
         self.__native_producer = native_producer
 
-    def produce(self, queue_id: str, item: bytes):
+    def produce(self, queue_id: ray.ObjectID, item: bytes):
         """
         produce data into native queue
         :param queue_id: queue id
         :param item: data
         :return: msg_id
         """
-        queue_id = qutils.qid_str_to_bytes(queue_id)
-        msg_id = self.__native_producer.produce(ray.ObjectID(queue_id), item)
+        msg_id = self.__native_producer.produce(queue_id, item)
         return msg_id
 
     def stop(self):

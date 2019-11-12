@@ -5,6 +5,8 @@ from __future__ import print_function
 from enum import Enum
 from abc import ABCMeta, abstractmethod
 
+import ray
+import ray.streaming.queue.queue_utils as queue_utils
 
 class QueueConfig:
     """
@@ -33,6 +35,26 @@ class ReliabilityLevel(Enum):
     AT_LEAST_ONCE = 1
     EXACTLY_ONCE = 2
     EXACTLY_SAME = 3
+
+
+class QueueID:
+    def __init__(self, str_qid: str):
+        self.str_qid = str_qid
+        self.object_qid = ray.ObjectID(queue_utils.qid_str_to_bytes(str_qid))
+
+    def __eq__(self, other):
+        if other is None:
+            return False
+        if type(other) is QueueID:
+            return self.str_qid == other.str_qid
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.str_qid)
+
+    def __repr__(self):
+        return self.str_qid
 
 
 class QueueItem:
@@ -118,7 +140,7 @@ class QueueProducer:
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def produce(self, queue_id, item):
+    def produce(self, queue_id: QueueID, item):
         """
         Produce msg into the special queue
         :param queue_id:  the specified queue id

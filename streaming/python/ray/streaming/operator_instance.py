@@ -78,12 +78,13 @@ class OperatorInstance(object):
         runtime_conf = {}
         runtime_conf[Config.TASK_JOB_ID] = ray.runtime_context._get_runtime_context().current_driver_id
         self.queue_link.set_ray_runtime(runtime_conf)
-        self.input_gate = DataInput(env, self.queue_link, self.input_channels)
-        self.output_gate = DataOutput(env, self.queue_link, self.output_channels,
+        if len(self.input_channels) > 0:
+            self.input_gate = DataInput(env, self.queue_link, self.input_channels)
+            self.input_gate.init()
+        if len(self.output_channels) > 0:
+            self.output_gate = DataOutput(env, self.queue_link, self.output_channels,
                                       self.operator.partitioning_strategies)
-        # start
-        self.input_gate.init()
-        self.output_gate.init()
+            self.output_gate.init()
         return True
 
     # Starts the actor

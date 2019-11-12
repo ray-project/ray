@@ -73,6 +73,7 @@ class MemQueueProducerImpl(QueueProducer):
                 self.__msg_queue_map[queue_id] = Queue(self.QUEUE_SIZE_MAX)
 
     def produce(self, queue_id, item):
+        queue_id = queue_id.str_qid
         queue = self.__msg_queue_map.get(queue_id)
         if queue is None:
             MemQueueProducerImpl.LOGGER.error("Queue id {} is not find.".format(queue_id))
