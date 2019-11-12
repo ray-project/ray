@@ -44,7 +44,7 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    auto object_manager_port = config_.object_manager_port;
+    auto object_manager_port = object_manager_.GetServerPort();
     GcsNodeInfo node_info = gcs_client_->client_table().GetLocalClient();
     node_info.set_node_manager_address("127.0.0.1");
     node_info.set_node_manager_port(object_manager_port);
@@ -110,7 +110,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.pull_timeout_ms = pull_timeout_ms;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
-    om_config_1.object_manager_port = 12345;
+    om_config_1.object_manager_port = 0;
     om_config_1.rpc_service_threads_number = 3;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
@@ -123,7 +123,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.pull_timeout_ms = pull_timeout_ms;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
-    om_config_2.object_manager_port = 23456;
+    om_config_2.object_manager_port = 0;
     om_config_2.rpc_service_threads_number = 3;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 

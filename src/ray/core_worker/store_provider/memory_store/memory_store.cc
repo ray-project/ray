@@ -110,39 +110,58 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(std::shared_ptr<ReferenceCounter> c
     ref_counter_->OnObjectDeleted([this](const ObjectID &obj_id) { Delete({obj_id}); });
   }
 }
+}
 
 Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
-  std::unique_lock<std::mutex> lock(lock_);
-
-  // Don't put it in the store, since we won't get a callback for deletion.
-  if (ref_counter_ && !ref_counter_->HasReference(object_id)) {
-    return Status::OK();
-  }
-
-  auto iter = objects_.find(object_id);
-  if (iter != objects_.end()) {
-    return Status::ObjectExists("object already exists in the memory store");
-  }
-
+  std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
       std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
 
-  bool should_add_entry = true;
-  auto object_request_iter = object_get_requests_.find(object_id);
-  if (object_request_iter != object_get_requests_.end()) {
-    auto &get_requests = object_request_iter->second;
-    for (auto &get_request : get_requests) {
-      get_request->Set(object_id, object_entry);
-      if (get_request->ShouldRemoveObjects()) {
+  {
+    absl::MutexLock lock(&mu_);
+
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      return Status::ObjectExists("object already exists in the memory store");
+    }
+
+    auto async_callback_it = object_async_get_requests_.find(object_id);
+    if (async_callback_it != object_async_get_requests_.end()) {
+      auto &callbacks = async_callback_it->second;
+      async_callbacks = std::move(callbacks);
+      object_async_get_requests_.erase(async_callback_it);
+    }
+
+    bool should_add_entry = true;
+    if (ref_counter_ != nullptr) {
+      // Don't put it in the store, since we won't get a callback for deletion.
+      if (!ref_counter_->HasReference(object_id)) {
         should_add_entry = false;
       }
+    } else {
+      auto object_request_iter = object_get_requests_.find(object_id);
+      if (object_request_iter != object_get_requests_.end()) {
+        auto &get_requests = object_request_iter->second;
+        for (auto &get_request : get_requests) {
+          get_request->Set(object_id, object_entry);
+          if (get_request->ShouldRemoveObjects()) {
+            should_add_entry = false;
+          }
+        }
+      }
+    }
+
+    if (should_add_entry) {
+      // If there is no existing get request, then add the `RayObject` to map.
+      objects_.emplace(object_id, object_entry);
     }
   }
 
-  if (should_add_entry) {
-    // If there is no existing get request, then add the `RayObject` to map.
-    objects_.emplace(object_id, object_entry);
+  // It's important for performance to run the callbacks outside the lock.
+  for (const auto &cb : async_callbacks) {
+    cb(object_entry);
   }
+
   return Status::OK();
 }
 
@@ -158,7 +177,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     absl::flat_hash_set<ObjectID> remaining_ids;
     absl::flat_hash_set<ObjectID> ids_to_remove;
 
-    std::unique_lock<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
     for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
@@ -206,7 +225,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   get_request->Wait(timeout_ms);
 
   {
-    std::unique_lock<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     // Populate results.
     for (size_t i = 0; i < object_ids.size(); i++) {
       const auto &object_id = object_ids[i];
@@ -237,14 +256,14 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
 }
 
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
-  std::unique_lock<std::mutex> lock(lock_);
+  absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
     objects_.erase(object_id);
   }
 }
 
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
-  std::unique_lock<std::mutex> lock(lock_);
+  absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
   // If obj is in plasma, we defer to the plasma store for the Contains() call.
   return it != objects_.end() && !it->second->IsInPlasmaError();

@@ -89,12 +89,13 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   if (task_spec.IsNormalTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
+    current_task_is_direct_call_ = task_spec.IsDirectCall();
   } else if (task_spec.IsActorCreationTask()) {
     RAY_CHECK(current_job_id_.IsNil());
     SetCurrentJobId(task_spec.JobId());
     RAY_CHECK(current_actor_id_.IsNil());
     current_actor_id_ = task_spec.ActorCreationId();
-    current_actor_use_direct_call_ = task_spec.IsDirectCall();
+    current_task_is_direct_call_ = task_spec.IsDirectCall();
     current_actor_max_concurrency_ = task_spec.MaxActorConcurrency();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_job_id_ == task_spec.JobId());
@@ -117,8 +118,8 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 
 const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
 
-bool WorkerContext::CurrentActorUseDirectCall() const {
-  return current_actor_use_direct_call_;
+bool WorkerContext::CurrentTaskIsDirectCall() const {
+  return current_task_is_direct_call_;
 }
 
 int WorkerContext::CurrentActorMaxConcurrency() const {

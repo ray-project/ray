@@ -84,11 +84,14 @@ class TaskArg {
 /// Options for all tasks (actor and non-actor) except for actor creation.
 struct TaskOptions {
   TaskOptions() {}
-  TaskOptions(int num_returns, std::unordered_map<std::string, double> &resources)
-      : num_returns(num_returns), resources(resources) {}
+  TaskOptions(int num_returns, bool is_direct_call,
+              std::unordered_map<std::string, double> &resources)
+      : num_returns(num_returns), is_direct_call(is_direct_call), resources(resources) {}
 
   /// Number of returns of this task.
   int num_returns = 1;
+  /// Whether to use the direct task transport.
+  bool is_direct_call = false;
   /// Resources required by this task.
   std::unordered_map<std::string, double> resources;
 };
