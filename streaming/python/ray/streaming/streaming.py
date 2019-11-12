@@ -266,10 +266,14 @@ class ExecutionGraph:
         self.output_channels = output_channels
 
         # to support cyclic reference serialization
-        ray.register_custom_serializer(Environment, use_pickle=True)
-        ray.register_custom_serializer(ExecutionGraph, use_pickle=True)
-        ray.register_custom_serializer(OpType, use_pickle=True)
-        ray.register_custom_serializer(PStrategy, use_pickle=True)
+        try:
+            ray.register_custom_serializer(Environment, use_pickle=True)
+            ray.register_custom_serializer(ExecutionGraph, use_pickle=True)
+            ray.register_custom_serializer(OpType, use_pickle=True)
+            ray.register_custom_serializer(PStrategy, use_pickle=True)
+        except Exception as e:
+            # local mode can't use pickle
+            pass
 
         # Each operator instance is implemented as a Ray actor
         # Actors are deployed in topological order, as we traverse the
