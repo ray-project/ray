@@ -299,6 +299,11 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return Copy of this object id with the specified transport type.
   ObjectID WithTransportType(TaskTransportType transport_type) const;
 
+  /// Return this object id with the plasma transport type.
+  ///
+  /// \return Copy of this object id with the plasma transport type.
+  ObjectID WithPlasmaTransportType() const;
+
   /// Get the transport type of this object.
   ///
   /// \return The type of the transport which is used to transfer this object.

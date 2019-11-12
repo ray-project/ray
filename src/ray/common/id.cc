@@ -158,6 +158,10 @@ ObjectID ObjectID::WithTransportType(TaskTransportType transport_type) const {
   return copy;
 }
 
+ObjectID ObjectID::WithPlasmaTransportType() const {
+  return WithTransportType(TaskTransportType::RAYLET);
+}
+
 uint8_t ObjectID::GetTransportType() const {
   return ::ray::GetTransportType(this->GetFlags());
 }
@@ -290,10 +294,6 @@ TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
 }
 
 TaskID ObjectID::TaskId() const {
-  if (!CreatedByTask()) {
-    // TODO(qwang): Should be RAY_CHECK here.
-    RAY_LOG(WARNING) << "Shouldn't call this on a non-task object id: " << this->Hex();
-  }
   return TaskID::FromBinary(
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
