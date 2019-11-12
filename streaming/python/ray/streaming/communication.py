@@ -8,7 +8,6 @@ import sys
 import time
 
 from ray.streaming.operator import PStrategy
-import ray.streaming.queue.queue_utils as queue_utils
 import pickle
 
 logger = logging.getLogger(__name__)
@@ -42,26 +41,13 @@ class DataChannel(object):
          dst_instance_index (int): The id of the destination instance.
     """
 
-    def __init__(self, env, src_operator_id, src_instance_index, dst_operator_id,
-                 dst_instance_index):
-        self.env = env
+    def __init__(self, src_operator_id, src_instance_index,
+                 dst_operator_id, dst_instance_index, str_qid):
         self.src_operator_id = src_operator_id
         self.src_instance_index = src_instance_index
         self.dst_operator_id = dst_operator_id
         self.dst_instance_index = dst_instance_index
-        from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_index)
-        to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_index)
-        self.str_qid = queue_utils.generate_qid(from_task_id, to_task_id,
-                                                env.execution_graph.build_time)
-        print(self)
-
-    @property
-    def from_actor(self):
-        return self.env.execution_graph.get_actor(self.src_operator_id, self.src_instance_index)
-
-    @property
-    def to_actor(self):
-        return self.env.execution_graph.get_actor(self.dst_operator_id, self.dst_instance_index)
+        self.str_qid = str_qid
 
     def __repr__(self):
         return "(src({},{}),dst({},{}), qid({}))".format(
@@ -99,7 +85,10 @@ class DataInput(object):
 
     def init(self):
         qids = [channel.str_qid for channel in self.input_channels]
-        input_actors = [channel.from_actor for channel in self.input_channels]
+        input_actors = []
+        for channel in self.input_channels:
+            actor = self.env.execution_graph.get_actor(channel.src_operator_id, channel.src_instance_index)
+            input_actors.append(actor)
         self.consumer = self.queue_link.register_queue_consumer(qids, input_actors)
 
     def pull(self):
@@ -208,7 +197,10 @@ class DataOutput(object):
     def init(self):
         """init DataOutput which creates QueueProducer"""
         qids = [channel.str_qid for channel in self.channels]
-        to_actors = [channel.to_actor for channel in self.channels]
+        to_actors = []
+        for channel in self.channels:
+            actor = self.env.execution_graph.get_actor(channel.dst_operator_id, channel.dst_instance_index)
+            to_actors.append(actor)
         self.producer = self.queue_link.register_queue_producer(qids, to_actors)
 
     def close(self):

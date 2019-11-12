@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import logging
 import sys
-import uuid
 import time
 
 import networkx as nx
@@ -16,6 +15,8 @@ from ray.streaming.operator import Operator, OpType
 from ray.streaming.operator import PScheme, PStrategy
 import ray.streaming.operator_instance as operator_instance
 from ray.streaming.config import Config
+import ray.streaming.queue.queue_utils as queue_utils
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -186,17 +187,25 @@ class ExecutionGraph:
                 for i in range(operator.num_instances):
                     # ID of destination instance to connect
                     id = i % num_dest_instances
-                    channel = DataChannel(self.env, operator.id, i, dst_operator, id)
+                    qid = self._gen_str_qid(operator.id, i, dst_operator, id)
+                    channel = DataChannel(operator.id, i, dst_operator, id, qid)
                     entry.append(channel)
             elif p_scheme.strategy in all_to_all_strategies:
                 for i in range(operator.num_instances):
                     for j in range(num_dest_instances):
-                        channel = DataChannel(self.env, operator.id, i, dst_operator, j)
+                        qid = self._gen_str_qid(operator.id, i, dst_operator, j)
+                        channel = DataChannel(operator.id, i, dst_operator, j, qid)
                         entry.append(channel)
             else:
                 # TODO (john): Add support for other partitioning strategies
                 sys.exit("Unrecognized or unsupported partitioning strategy.")
         return channels
+
+    def _gen_str_qid(self, src_operator_id, src_instance_index,
+                     dst_operator_id, dst_instance_index):
+        from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_index)
+        to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_index)
+        return queue_utils.generate_qid(from_task_id, to_task_id, self.build_time)
 
     def _gen_task_id(self):
         task_id = self.task_id_counter
@@ -259,7 +268,6 @@ class ExecutionGraph:
         # Each operator instance is implemented as a Ray actor
         # Actors are deployed in topological order, as we traverse the
         # logical dataflow from sources to sinks.
-        upstream_channels = {}
         for node in nx.topological_sort(self.env.logical_topo):
             operator = self.env.operators[node]
             # Instantiate Ray actors
