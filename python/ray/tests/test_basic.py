@@ -1265,10 +1265,6 @@ def test_direct_actor_errors(ray_start_regular):
 
     a = Actor._remote(is_direct_call=True)
 
-    # cannot pass returns to other methods directly
-    with pytest.raises(Exception):
-        ray.get(f.remote(a.f.remote(2)))
-
     # cannot pass returns to other methods even in a list
     with pytest.raises(Exception):
         ray.get(f.remote([a.f.remote(2)]))
