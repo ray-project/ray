@@ -7,8 +7,9 @@ import logging
 import time
 
 import ray
-from ray.streaming.streaming import Environment
+from ray.streaming.streaming import Environment, Conf
 from ray.streaming.operator import OpType, PStrategy
+from ray.streaming.config import Config
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,12 +33,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(local_mode=True)
+    # ray.init(local_mode=True)
+    ray.init(local_mode=False)
     # ray.register_custom_serializer(OpType, use_pickle=True)
     # ray.register_custom_serializer(PStrategy, use_pickle=True)
 
     # A Ray streaming environment with the default configuration
-    env = Environment()
+    env = Environment(config=Conf(queue_type=Config.NATIVE_QUEUE))
 
     # Stream represents the ouput of the filter and
     # can be forked into other dataflows

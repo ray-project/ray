@@ -90,19 +90,21 @@ class QueueLink:
         pass
 
     @abstractmethod
-    def register_queue_consumer(self, input_queue_ids):
+    def register_queue_consumer(self, input_queue_ids, from_actors):
         """
         Get queue consumer of input queues
         :param input_queue_ids:  input queue ids
+        :param from_actors:  upstream input actors
         :return:  queue consumer
         """
         pass
 
     @abstractmethod
-    def register_queue_producer(self, output_queue_ids):
+    def register_queue_producer(self, output_queue_ids, to_actors):
         """
         Get queue producer of output queue ids
-        :param output_queue_ids:
+        :param output_queue_ids: output queue ids
+        :param to_actors: downstream output actors
         :return:  queue producer
         """
         pass

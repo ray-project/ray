@@ -35,7 +35,7 @@ all_to_all_strategies = [
 
 
 # Environment configuration
-class Config(object):
+class Conf(object):
     """Environment configuration.
 
     This class includes all information about the configuration of the
@@ -265,6 +265,10 @@ class ExecutionGraph:
         self.input_channels = input_channels
         self.output_channels = output_channels
 
+        # to support cyclic reference serialization
+        ray.register_custom_serializer(Environment, use_pickle=True)
+        ray.register_custom_serializer(ExecutionGraph, use_pickle=True)
+
         # Each operator instance is implemented as a Ray actor
         # Actors are deployed in topological order, as we traverse the
         # logical dataflow from sources to sinks.
@@ -300,7 +304,7 @@ class Environment(object):
          the streaming dataflow.
     """
 
-    def __init__(self, config=Config()):
+    def __init__(self, config=Conf()):
         self.logical_topo = nx.DiGraph()  # DAG
         self.operators = {}  # operator id --> operator object
         self.config = config  # Environment's configuration
