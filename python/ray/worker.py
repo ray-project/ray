@@ -1215,6 +1215,7 @@ def connect(node,
         gcs_options,
         node.get_logs_dir_path(),
         node.node_ip_address,
+        node.node_manager_port,
     )
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 

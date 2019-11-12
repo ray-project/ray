@@ -4,6 +4,14 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
+// Submit a task for execution.
+message SubmitTaskRequest {
+  TaskSpec task_spec = 1;
+}
+
+message SubmitTaskReply {
+}
+
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.
   bytes task_id = 1;
@@ -56,6 +64,8 @@ message NodeStatsReply {
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
+  // Submit a task (from a local or remote worker) to the node manager.
+  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Get the current node stats.
