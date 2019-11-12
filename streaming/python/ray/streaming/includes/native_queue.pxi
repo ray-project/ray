@@ -90,10 +90,10 @@ cdef class QueueLink:
         self.queue_client = NULL
 
     def create_producer(self,
-                        list[bytes] py_output_queues,
+                        list py_output_queues,
                         list output_actor_ids: list[ActorID],
                         uint64_t queue_size,
-                        list[int] py_seq_ids,
+                        list py_seq_ids,
                         bytes config_bytes,
                         async_func: FunctionDescriptor,
                         sync_func: FunctionDescriptor):
@@ -140,11 +140,11 @@ cdef class QueueLink:
         return self.producer
 
     def create_consumer(self,
-                        list[bytes] py_input_queues,
+                        list py_input_queues,
                         list input_actor_ids: list[ActorID],
-                        list[int] py_seq_ids,
-                        list[int] py_msg_ids,
-                        uint64_t timer_interval,
+                        list py_seq_ids,
+                        list py_msg_ids,
+                        int64_t timer_interval,
                         c_bool is_recreate,
                         bytes config_bytes,
                         async_func: FunctionDescriptor,
@@ -276,7 +276,8 @@ cdef class QueueConsumer:
     def stop(self):
         self.writer.Stop()
 
-cdef c_vector[CObjectID] bytes_list_to_qid_vec(list[bytes] py_queue_ids):
+cdef c_vector[CObjectID] bytes_list_to_qid_vec(list py_queue_ids) except *:
+    assert len(py_queue_ids) > 0
     cdef:
         c_vector[CObjectID] queue_id_vec
         c_string q_id_data
