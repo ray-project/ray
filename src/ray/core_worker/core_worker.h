@@ -464,9 +464,6 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   gcs::RedisGcsClient gcs_client_;
 
-  /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s.
-  rpc::ClientCallManager client_call_manager_;
-
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
 

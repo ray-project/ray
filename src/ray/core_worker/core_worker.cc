@@ -79,7 +79,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       heartbeat_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
       gcs_client_(gcs_options),
-      client_call_manager_(io_service_),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
@@ -124,7 +123,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // so that the worker (java/python .etc) can retrieve and handle the error
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
-      node_ip_address, node_manager_port, client_call_manager_);
+      node_ip_address, node_manager_port, *client_call_manager_);
   raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
