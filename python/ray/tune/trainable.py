@@ -283,7 +283,6 @@ class Trainable(object):
                 "episodes_total": self._episodes_total,
                 "saved_as_dict": saved_as_dict,
                 "ray_version": ray.__version__,
-                "last_result": self._last_result,
             }, f)
         return checkpoint_path
 
