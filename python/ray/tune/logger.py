@@ -325,25 +325,19 @@ class TBXLogger(Logger):
     """
 
     def _init(self):
-        from tensorboardX import SummaryWriter
+        try:
+            from tensorboardX import SummaryWriter
+        except ImportError:
+            logger.error("pip install tensorboardX to see TensorBoard files.")
+            raise
         self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
-        self._hp_logged = False
+        self.last_result = None
 
     def on_result(self, result):
         step = result.get(
             TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
 
         tmp = result.copy()
-        # if not self._hp_logged:
-        #     if self.trial and self.trial.evaluated_params:
-        #         try:
-        #             hp.hparams(
-        #                 self.trial.evaluated_params,
-        #                 trial_id=self.trial.trial_id)
-        #         except Exception as exc:
-        #             logger.error("HParams failed with %s", exc)
-        #     self._hp_logged = True
-
         for k in [
                 "config", "pid", "timestamp", TIME_TOTAL_S,
                 TRAINING_ITERATION
@@ -352,11 +346,14 @@ class TBXLogger(Logger):
                 del tmp[k]  # not useful to log these
 
         flat_result = flatten_dict(tmp, delimiter="/")
+        valid_result = {
+            attr: value for attr, value in flat_result.items() if type(value) in VALID_SUMMARY_TYPES}
+
         path = ["ray", "tune"]
-        for attr, value in flat_result.items():
-            if type(value) in VALID_SUMMARY_TYPES:
-                self.file_writer.add_scalar(
+        for attr, value in valid_result.items():
+            self._file_writer.add_scalar(
                     "/".join(path + [attr]), value, global_step=step)
+        self.last_result = valid_result
         self._file_writer.flush()
 
     def flush(self):
@@ -365,10 +362,14 @@ class TBXLogger(Logger):
 
     def close(self):
         if self._file_writer is not None:
+            if self.trial and self.trial.evaluated_params and self.last_result:
+                self._file_writer.add_hparams(
+                    hparam_dict=self.trial.evaluated_params,
+                    metric_dict=self.last_result)
             self._file_writer.close()
 
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
 
 
 class UnifiedLogger(Logger):
