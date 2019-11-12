@@ -44,12 +44,8 @@ StreamingQueueWriter::StreamingQueueWriter(CoreWorker *core_worker,
 }
 
 Status StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_size,
-                                         ActorID &actor_id, /*StreamingQueue only*/
-                                         bool reconstruct_queue, bool clear) {
-  STREAMING_LOG(INFO) << "CreateQueue qid: " << queue_id << " data_size: " << data_size
-                      // << " actor_handle: " << actor_handle
-                      << " reconstruct_queue: " << reconstruct_queue
-                      << " clear: " << clear;
+                                         ActorID &actor_id) {
+  STREAMING_LOG(INFO) << "CreateQueue qid: " << queue_id << " data_size: " << data_size;
   if (queue_manager_->IsUpQueueExist(queue_id)) {
     RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
     return Status::OK();
@@ -60,8 +56,7 @@ Status StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_
                     core_worker_, actor_id, async_func_, sync_func_));
   STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue "
                       << (queue_writer_ == nullptr);
-  queue_writer_->CreateQueue(queue_id, actor_id_, actor_id, data_size,
-                             clear);
+  queue_writer_->CreateQueue(queue_id, actor_id_, actor_id, data_size);
 
   STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue done";
   return Status::OK();

@@ -12,9 +12,9 @@ QueueWriter::~QueueWriter() {
 }
 
 void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
-                              const ActorID &peer_actor_id, uint64_t size, bool clear) {
+                              const ActorID &peer_actor_id, uint64_t size) {
   STREAMING_LOG(INFO) << "QueueWriter::CreateQueue";
-  auto queue = manager_->CreateUpQueue(queue_id, actor_id, peer_actor_id, size, clear);
+  auto queue = manager_->CreateUpQueue(queue_id, actor_id, peer_actor_id, size);
   STREAMING_CHECK(queue != nullptr);
 
   manager_->UpdateUpActor(queue_id, actor_id);
@@ -165,7 +165,7 @@ void QueueManager::Init() {
 std::shared_ptr<WriterQueue> QueueManager::CreateUpQueue(const ObjectID &queue_id,
                                                          const ActorID &actor_id,
                                                          const ActorID &peer_actor_id,
-                                                         uint64_t size, bool clear) {
+                                                         uint64_t size) {
   STREAMING_LOG(INFO) << "CreateUpQueue: " << queue_id
                       << " " << actor_id << "->" << peer_actor_id;
   auto it = upstream_queues_.find(queue_id);
@@ -177,7 +177,7 @@ std::shared_ptr<WriterQueue> QueueManager::CreateUpQueue(const ObjectID &queue_i
 
   std::shared_ptr<streaming::WriterQueue> queue =
       std::unique_ptr<streaming::WriterQueue>(new streaming::WriterQueue(
-          queue_id, actor_id, peer_actor_id, size, clear, GetOutTransport(queue_id)));
+          queue_id, actor_id, peer_actor_id, size, GetOutTransport(queue_id)));
   upstream_queues_[queue_id] = queue;
 
   upstream_state_ = StreamingQueueState::Running;

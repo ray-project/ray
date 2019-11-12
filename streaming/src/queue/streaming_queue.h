@@ -104,7 +104,7 @@ class WriterQueue : public Queue {
   /// \param size, max data size in bytes
   /// \param transport, transport
   WriterQueue(const ObjectID &queue_id, const ActorID &actor_id,
-              const ActorID &peer_actor_id, uint64_t size, bool clear,
+              const ActorID &peer_actor_id, uint64_t size,
               std::shared_ptr<Transport> transport)
       : Queue(size, transport),
         actor_id_(actor_id),
@@ -114,7 +114,6 @@ class WriterQueue : public Queue {
         min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         peer_last_msg_id_(0),
         peer_last_seq_id_(QUEUE_INVALID_SEQ_ID),
-        clear_(clear),
         transport_(transport),
         is_pulling_(false) {}
 
@@ -162,8 +161,6 @@ class WriterQueue : public Queue {
 
   uint64_t GetPeerLastSeqId() { return peer_last_seq_id_; }
 
-  bool IsClear() { return clear_; }
-
  private:
   void SendPullItem(QueueItem &item, uint64_t first_seq_id, uint64_t last_seq_id);
   int SendPullItems(uint64_t target_seq_id, uint64_t first_seq_id, uint64_t last_seq_id);
@@ -177,7 +174,6 @@ class WriterQueue : public Queue {
   uint64_t min_consumed_id_;
   uint64_t peer_last_msg_id_;
   uint64_t peer_last_seq_id_;
-  bool clear_;
   std::shared_ptr<Transport> transport_;
 
   std::atomic<bool> is_pulling_;

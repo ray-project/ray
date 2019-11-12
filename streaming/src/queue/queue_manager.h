@@ -22,7 +22,7 @@ class QueueWriter {
   virtual ~QueueWriter();
 
   void CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
-                   const ActorID &peer_actor_id, uint64_t size, bool clear);
+                   const ActorID &peer_actor_id, uint64_t size);
   bool IsQueueExist(const ObjectID &queue_id);
   void SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t limit);
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
@@ -98,7 +98,7 @@ class QueueManager {
 
   std::shared_ptr<WriterQueue> CreateUpQueue(const ObjectID &queue_id,
                                              const ActorID &actor_id,
-                                             const ActorID &peer_actor_id, uint64_t size, bool clear);
+                                             const ActorID &peer_actor_id, uint64_t size);
   std::shared_ptr<ReaderQueue> CreateDownQueue(const ObjectID &queue_id,
                                                const ActorID &actor_id,
                                                const ActorID &peer_actor_id);
