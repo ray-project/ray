@@ -81,7 +81,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       gcs_client_(gcs_options),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>(
-          RayConfig::instance().ref_counting_enabled() ? reference_counter_ : nullptr)),
+          (RayConfig::instance().ref_counting_enabled() && language == Language::PYTHON)
+              ? reference_counter_
+              : nullptr)),
       memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
@@ -505,7 +507,7 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
 
   if (task_deps->size() > 0) {
     for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnIdForPlasma(i), task_deps);
+      reference_counter_->SetDependencies(task_spec.ReturnIdForPlasma(i), task_deps);
     }
   }
 

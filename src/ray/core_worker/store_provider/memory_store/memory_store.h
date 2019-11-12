@@ -70,7 +70,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \return Count of objects in the store.
   int Size() {
-    std::lock_guard<std::mutex> lock(lock_);
+    absl::MutexLock lock(&mu_);
     return objects_.size();
   }
 

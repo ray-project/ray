@@ -106,10 +106,28 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(std::shared_ptr<ReferenceCounter> counter) {
   if (counter != nullptr) {
+    RAY_LOG(INFO) << "Local ref counting enabled.";
     ref_counter_ = counter;
     ref_counter_->OnObjectDeleted([this](const ObjectID &obj_id) { Delete({obj_id}); });
   }
 }
+
+void CoreWorkerMemoryStore::GetAsync(
+    const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
+  std::shared_ptr<RayObject> ptr;
+  {
+    absl::MutexLock lock(&mu_);
+    auto iter = objects_.find(object_id);
+    if (iter != objects_.end()) {
+      ptr = iter->second;
+    } else {
+      object_async_get_requests_[object_id].push_back(callback);
+    }
+  }
+  // It's important for performance to run the callback outside the lock.
+  if (ptr != nullptr) {
+    callback(ptr);
+  }
 }
 
 Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
@@ -133,22 +151,20 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
     }
 
     bool should_add_entry = true;
-    if (ref_counter_ != nullptr) {
-      // Don't put it in the store, since we won't get a callback for deletion.
-      if (!ref_counter_->HasReference(object_id)) {
-        should_add_entry = false;
-      }
-    } else {
-      auto object_request_iter = object_get_requests_.find(object_id);
-      if (object_request_iter != object_get_requests_.end()) {
-        auto &get_requests = object_request_iter->second;
-        for (auto &get_request : get_requests) {
-          get_request->Set(object_id, object_entry);
-          if (get_request->ShouldRemoveObjects()) {
-            should_add_entry = false;
-          }
+    auto object_request_iter = object_get_requests_.find(object_id);
+    if (object_request_iter != object_get_requests_.end()) {
+      auto &get_requests = object_request_iter->second;
+      for (auto &get_request : get_requests) {
+        get_request->Set(object_id, object_entry);
+        // If ref counting is enabled, override the removal behaviour.
+        if (get_request->ShouldRemoveObjects() && ref_counter_ == nullptr) {
+          should_add_entry = false;
         }
       }
+    }
+    // Don't put it in the store, since we won't get a callback for deletion.
+    if (ref_counter_ != nullptr && !ref_counter_->HasReference(object_id)) {
+      should_add_entry = false;
     }
 
     if (should_add_entry) {
