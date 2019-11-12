@@ -20,9 +20,6 @@ services:
             # Skein key-value store. It should then block until killed with sigterm
             # (at which point all started processes should also die).
             source /home/rayonyarn/miniconda3/bin/activate
-            echo $PATH
-            echo $(which python)
-            sleep 20
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
             skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
             ray start --head --redis-port=6379 --object-manager-port=8076 --object-store-memory=100000000 --memory 100000000 --num-cpus=1
@@ -50,10 +47,6 @@ services:
             # the skein key-value store. It should then block until killed with
             # sigterm (at which point all started processes should also die).
             source /home/rayonyarn/miniconda3/bin/activate
-            echo $(which python)
-            sleep 20
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
             RAY_HEAD_ADDRESS=$(skein kv get --key=RAY_HEAD_ADDRESS "$APP_ID")
-            echo $APP_ID
-            echo $RAY_HEAD_ADDRESS
             ray start --object-manager-port=$(shuf -n 1 -i 49152-65535) --object-store-memory=100000000 --memory 100000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379
