@@ -10,6 +10,7 @@ import json
 import os
 import logging
 import signal
+import socket
 import sys
 import tempfile
 import threading
@@ -117,7 +118,8 @@ class Node(object):
 
             # If user does not provide the socket name, get it from Redis.
             if (self._plasma_store_socket_name is None
-                    or self._raylet_socket_name is None):
+                    or self._raylet_socket_name is None
+                    or self._ray_params.node_manager_port is None):
                 # Get the address info of the processes to connect to
                 # from Redis.
                 address_info = ray.services.get_address_info_from_redis(
@@ -127,6 +129,8 @@ class Node(object):
                 self._plasma_store_socket_name = address_info[
                     "object_store_address"]
                 self._raylet_socket_name = address_info["raylet_socket_name"]
+                self._ray_params.node_manager_port = address_info[
+                    "node_manager_port"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -143,6 +147,16 @@ class Node(object):
                 ray.services.get_webui_url_from_redis(redis_client))
             ray_params.include_java = (
                 ray.services.include_java_from_redis(redis_client))
+
+        if head or not connect_only:
+            # We need to start a local raylet.
+            if (self._ray_params.node_manager_port is None
+                    or self._ray_params.node_manager_port == 0):
+                # No port specified. Pick a random port for the raylet to use.
+                # NOTE: There is a possible but unlikely race condition where
+                # the port is bound by another process between now and when the
+                # raylet starts.
+                self._ray_params.node_manager_port = self._get_unused_port()
 
         # Start processes.
         if head:
@@ -295,6 +309,11 @@ class Node(object):
         return self._raylet_socket_name
 
     @property
+    def node_manager_port(self):
+        """Get the node manager's port."""
+        return self._ray_params.node_manager_port
+
+    @property
     def address_info(self):
         """Get a dictionary of addresses."""
         return {
@@ -389,6 +408,13 @@ class Node(object):
         log_stdout_file = open(log_stdout, "a", buffering=1)
         log_stderr_file = open(log_stderr, "a", buffering=1)
         return log_stdout_file, log_stderr_file
+
+    def _get_unused_port(self):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(("", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
 
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
@@ -508,6 +534,7 @@ class Node(object):
         process_info = ray.services.start_raylet(
             self._redis_address,
             self._node_ip_address,
+            self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
@@ -515,7 +542,6 @@ class Node(object):
             self._session_dir,
             self.get_resource_spec(),
             self._ray_params.object_manager_port,
-            self._ray_params.node_manager_port,
             self._ray_params.redis_password,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,

@@ -687,7 +687,7 @@ cdef class CoreWorker:
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
-                  node_ip_address):
+                  node_ip_address, node_manager_port):
         assert pyarrow is not None, ("Expected pyarrow to be imported from "
                                      "outside _raylet. See __init__.py for "
                                      "details.")
@@ -697,8 +697,8 @@ cdef class CoreWorker:
             LANGUAGE_PYTHON, store_socket.encode("ascii"),
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
-            node_ip_address.encode("utf-8"), task_execution_handler,
-            check_signals, exit_handler))
+            node_ip_address.encode("utf-8"), node_manager_port,
+            task_execution_handler, check_signals, exit_handler))
 
     def disconnect(self):
         with nogil:
