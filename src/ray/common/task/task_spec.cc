@@ -187,8 +187,11 @@ ObjectID TaskSpecification::ActorDummyObject() const {
 }
 
 bool TaskSpecification::IsDirectCall() const {
-  RAY_CHECK(IsActorCreationTask());
-  return message_->actor_creation_task_spec().is_direct_call();
+  if (IsActorCreationTask()) {
+    return message_->actor_creation_task_spec().is_direct_call();
+  } else {
+    return message_->is_direct_call();
+  }
 }
 
 int TaskSpecification::MaxActorConcurrency() const {

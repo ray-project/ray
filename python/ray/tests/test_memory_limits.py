@@ -66,10 +66,14 @@ class TestMemoryLimits(unittest.TestCase):
             z = ray.put("hi", weakref=True)
             a = LightActor._remote(object_store_memory=a_quota)
             b = GreedyActor._remote(object_store_memory=b_quota)
+            oids = [z]
             for _ in range(5):
                 r_a = a.sample.remote()
                 for _ in range(20):
-                    ray.get(b.sample.remote())
+                    new_oid = b.sample.remote()
+                    oids.append(new_oid)
+                    ray.get(new_oid)
+                oids.append(r_a)
                 ray.get(r_a)
             ray.get(z)
         except Exception as e:

@@ -3,6 +3,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
@@ -39,6 +40,15 @@ class CoreWorkerMemoryStore {
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
 
+  /// Asynchronously get an object from the object store. The object will not be removed
+  /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \param[in] callback The callback to run with the reference to the retrieved
+  ///            object value once available.
+  void GetAsync(const ObjectID &object_id,
+                std::function<void(std::shared_ptr<RayObject>)> callback);
+
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
@@ -53,14 +63,19 @@ class CoreWorkerMemoryStore {
 
  private:
   /// Map from object ID to `RayObject`.
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_;
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ GUARDED_BY(mu_);
 
   /// Map from object ID to its get requests.
   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_;
+      object_get_requests_ GUARDED_BY(mu_);
+
+  /// Map from object ID to its async get requests.
+  absl::flat_hash_map<ObjectID,
+                      std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
+      object_async_get_requests_ GUARDED_BY(mu_);
 
   /// Protect the two maps above.
-  std::mutex lock_;
+  absl::Mutex mu_;
 };
 
 }  // namespace ray

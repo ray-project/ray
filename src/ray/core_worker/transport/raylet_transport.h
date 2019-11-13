@@ -5,7 +5,7 @@
 
 #include "ray/common/ray_object.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker/worker_server.h"
+#include "ray/rpc/worker/core_worker_server.h"
 
 namespace ray {
 
