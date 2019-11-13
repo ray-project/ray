@@ -35,6 +35,7 @@ public class JobScheduleImpl implements IJobSchedule {
   public void schedule(Plan plan, Map<String, Object> jobConfig) {
     this.jobConfig = jobConfig;
     this.plan = plan;
+    System.setProperty("ray.raylet.config.num_workers_per_process_java", "1");
     Ray.init();
 
     List<RayActor<JobWorker>> workers = this.resourceManager.createWorker(getPlanWorker());
