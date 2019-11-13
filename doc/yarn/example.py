@@ -44,16 +44,9 @@ def main():
 
     print("Success!")
     sys.stdout.flush()
+    time.sleep(20)
 
 
 if __name__ == "__main__":
-    # NOTE: If you know you're running this on the head node, you can just
-    # use "localhost" here.
-    # redis_host = "localhost"
-    if ("RAY_HEAD_SERVICE_HOST" not in os.environ
-            or os.environ["RAY_HEAD_SERVICE_HOST"] == ""):
-        raise ValueError("RAY_HEAD_SERVICE_HOST environment variable empty."
-                         "Is there a ray cluster running?")
-    redis_host = os.environ["RAY_HEAD_SERVICE_HOST"]
-    ray.init(address=redis_host + ":6379")
+    ray.init(address="localhost:6379", driver_object_store_memory=100*1024*1024)
     main()
