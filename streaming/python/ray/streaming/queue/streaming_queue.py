@@ -3,7 +3,6 @@ import logging
 from queue import Queue
 
 import ray
-from ray.function_manager import FunctionDescriptor
 from ray.actor import ActorHandle, ActorID
 
 import ray.streaming.queue.queue_utils as qutils
@@ -56,16 +55,14 @@ class QueueLinkImpl(QueueLink):
     streaming queue link impl
     """
 
-    def __init__(self):
+    def __init__(self, sync_func, async_func):
         self.__configuration = dict()
         core_worker = ray.worker.global_worker.core_worker
         self.queue_link = streaming.QueueLink(core_worker)
         self.producer = None
         self.consumer = None
-        self.sync_func = FunctionDescriptor("ray.streaming.operator_instance",
-                                            "on_streaming_transfer", "OperatorInstance")
-        self.async_func = FunctionDescriptor("ray.streaming.operator_instance",
-                                             "on_streaming_transfer_sync", "OperatorInstance")
+        self.sync_func = sync_func
+        self.async_func = async_func
 
     def set_configuration(self, conf):
         for (k, v) in conf.items():

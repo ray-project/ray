@@ -9,6 +9,7 @@ import types
 import threading
 
 import ray
+from ray.function_manager import FunctionDescriptor
 from ray.streaming.communication import DataInput
 from ray.streaming.communication import DataOutput
 from ray.streaming.config import Config
@@ -17,13 +18,6 @@ import ray.streaming.queue.streaming_queue as streaming_queue
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
-
-#
-# Each Ray actor corresponds to an operator instance in the physical dataflow
-# Actors communicate using batched queues as data channels (no standing TCP
-# connections)
-# Currently, batched queues are based on Eric's implementation (see:
-# batched_queue.py)
 
 
 def _identity(element):
@@ -46,10 +40,12 @@ class OperatorInstance(object):
 
     def __init__(self, operator, instance_id, input_channels, output_channels,
                  state_keeper=None):
+        self.env = None
         self.operator = operator
         self.key_index = None  # Index for key selection
         self.key_attribute = None  # Attribute name for key selection
         self.instance_id = instance_id
+        self.queue_link = None
         self.input_channels = input_channels
         self.output_channels = output_channels
         self.input_gate = None
@@ -77,9 +73,12 @@ class OperatorInstance(object):
         if self.env.config.queue_type == Config.MEMORY_QUEUE:
             self.queue_link = MemQueueLinkImpl()
         else:
-            self.queue_link = streaming_queue.QueueLinkImpl()
-        runtime_conf = {}
-        runtime_conf[Config.TASK_JOB_ID] = ray.runtime_context._get_runtime_context().current_driver_id
+            sync_func = FunctionDescriptor(__name__, self.on_streaming_transfer_sync.__name__,
+                                           self.__class__.__name__)
+            async_func = FunctionDescriptor(__name__, self.on_streaming_transfer.__name__,
+                                            self.__class__.__name__)
+            self.queue_link = streaming_queue.QueueLinkImpl(sync_func, async_func)
+        runtime_conf = {Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id}
         self.queue_link.set_ray_runtime(runtime_conf)
         if len(self.input_channels) > 0:
             self.input_gate = DataInput(env, self.queue_link, self.input_channels)
@@ -113,6 +112,7 @@ class OperatorInstance(object):
     def on_streaming_transfer_sync(self, buffer: bytes):
         """used in direct call mode"""
         self.queue_link.on_streaming_transfer_sync(buffer)
+
 
 # A source actor that reads a text file line by line
 @ray.remote
@@ -237,6 +237,7 @@ class Filter(OperatorInstance):
             if self.filter_fn(record):
                 self.output_gate.push(record)
 
+
 # Inspect actor
 @ray.remote
 class Inspect(OperatorInstance):
@@ -266,6 +267,7 @@ class Inspect(OperatorInstance):
             if self.output_gate:
                 self.output_gate.push(record)
             self.inspect_fn(record)
+
 
 # Reduce actor
 @ray.remote

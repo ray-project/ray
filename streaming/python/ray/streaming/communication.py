@@ -215,7 +215,7 @@ class DataOutput(object):
         to sink to notify that the end of data in a stream.
         """
         for channel in self.channels:
-            self.producer.produce(channel.qid, None)
+            self.producer.produce(channel.qid, pickle.dumps(None))
         self.producer.stop()
         self.producer.close()
 
