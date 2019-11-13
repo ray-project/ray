@@ -162,6 +162,10 @@ ObjectID ObjectID::WithPlasmaTransportType() const {
   return WithTransportType(TaskTransportType::RAYLET);
 }
 
+ObjectID ObjectID::WithDirectTransportType() const {
+  return WithTransportType(TaskTransportType::DIRECT);
+}
+
 uint8_t ObjectID::GetTransportType() const {
   return ::ray::GetTransportType(this->GetFlags());
 }
