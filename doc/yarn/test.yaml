@@ -2,10 +2,11 @@ name: ray
 
 services:
     ray-head:
+        # There should only be one instance of the head node per cluster.
         instances: 1
         resources:
             # The resources for the head node.
-            vcores: 2
+            vcores: 1
             memory: 2048
         files:
             # ray/doc/yarn/example.py
@@ -18,6 +19,7 @@ services:
         script: |
             # Activate the packaged conda environment
             #  - source environment/bin/activate
+            # This activates a pre-existing environment for dependency management.
             source /home/rayonyarn/miniconda3/bin/activate
             # This obtains the Skein Application ID which is used when pushing addresses to worker services.
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
@@ -26,7 +28,10 @@ services:
             skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
 
             # This command starts all the processes needed on the ray head node.
-            ray start --head --redis-port=6379 --object-manager-port=8076 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
+            # By default, we set object store memory and heap memory to roughly 200 MB. This is conservative
+            # and should be set according to application needs.
+            #
+            ray start --head --redis-port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
 
             # This executes the user script.
             python example.py
@@ -60,4 +65,4 @@ services:
 
             # The below command starts all the processes needed on a ray worker node, blocking until killed with sigterm.
             # After sigterm, all started processes should also die (ray stop).
-            ray start --object-manager-port=$(shuf -n 1 -i 49152-65535) --object-store-memory=200000000 --memory 200000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379 --block; ray stop
+            ray start --object-store-memory=200000000 --memory 200000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379 --block; ray stop
