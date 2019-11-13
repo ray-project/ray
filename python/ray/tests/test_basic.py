@@ -1234,9 +1234,10 @@ def test_direct_call_matrix(shutdown_only):
         return x
 
     def check(source_actor, dest_actor, is_large, out_of_band):
-        print("CHECKING", source_actor and "actor" or "task", "to",
-              dest_actor and "actor" or "task", is_large and "large object"
-              or "small object", out_of_band and "out_of_band" or "in_band")
+        print("CHECKING", "actor" if source_actor else "task", "to", "actor"
+              if dest_actor else "task", "large_object"
+              if is_large else "small_object", "out_of_band"
+              if out_of_band else "in_band")
         if source_actor:
             a = Actor.options(is_direct_call=True).remote()
             if is_large:

@@ -131,7 +131,11 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   absl::MutexLock lock(&mu_);
   auto iter = objects_.find(object_id);
   if (iter != objects_.end()) {
-    return iter->second;
+    auto obj = iter->second;
+    if (obj->IsInPlasmaError()) {
+      return nullptr;
+    }
+    return obj;
   }
   RAY_CHECK(store_in_plasma_ != nullptr)
       << "Cannot promote object without plasma provider callback.";

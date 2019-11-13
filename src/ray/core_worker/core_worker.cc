@@ -299,7 +299,7 @@ void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
-    plasma_store_provider_->Put(*value, object_id);
+    plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType());
   }
 }
 
