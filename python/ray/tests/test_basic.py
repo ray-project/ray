@@ -2978,11 +2978,7 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
-    ray.init(
-        num_cpus=5,
-        num_gpus=3,
-        resources={"CustomResource": 1},
-        include_webui=False)
+    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -3067,7 +3063,6 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
     job_table = ray.jobs()
-    print(job_table)
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -3185,7 +3180,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id, include_webui=False)
+    ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id
