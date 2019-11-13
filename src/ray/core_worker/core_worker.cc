@@ -420,35 +420,31 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                                      worker_context_.GetCurrentTaskID(), &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
-  if (memory_object_ids.size() > 0) {
+  if (memory_object_ids.size() > 0 && static_cast<int>(ready.size()) < num_objects) {
     // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
     // consider waiting on them in plasma as well to ensure they are local.
     RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
-        memory_object_ids, std::max(0, num_objects - static_cast<int>(ready.size())),
+        memory_object_ids, num_objects - static_cast<int>(ready.size()),
         /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
   if (timeout_ms != 0) {
     int64_t start_time = current_time_ms();
-    if (static_cast<int>(ready.size()) < num_objects) {
-      if (plasma_object_ids.size() > 0) {
-        RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
-            plasma_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
-            worker_context_.GetCurrentTaskID(), &ready));
-      }
+    if (static_cast<int>(ready.size()) < num_objects && plasma_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+          plasma_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
+          worker_context_.GetCurrentTaskID(), &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
     if (timeout_ms > 0) {
       timeout_ms =
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
-    if (static_cast<int>(ready.size()) < num_objects) {
-      if (memory_object_ids.size() > 0) {
-        RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
-            memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
-            worker_context_.GetCurrentTaskID(), &ready));
-      }
+    if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
+      RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
+          memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
+          worker_context_.GetCurrentTaskID(), &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }
