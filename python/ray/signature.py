@@ -7,7 +7,6 @@ import funcsigs
 from funcsigs import Parameter
 import logging
 
-import ray
 from ray.utils import is_cython
 
 # Logger for this module. It should be configured at the entry point
@@ -135,12 +134,6 @@ def flatten_args(signature_parameters, args, kwargs):
         >>> flatten_args([1, 2, 3], {"a": 4})
         [None, 1, None, 2, None, 3, "a", 4]
     """
-
-    for obj in args:
-        if isinstance(obj, ray.ObjectID) and obj.is_direct_actor_type():
-            raise NotImplementedError(
-                "Objects produced by direct actor calls cannot be "
-                "passed to other tasks as arguments.")
 
     restored = _restore_parameters(signature_parameters)
     reconstructed_signature = funcsigs.Signature(parameters=restored)

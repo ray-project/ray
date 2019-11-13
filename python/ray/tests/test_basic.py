@@ -1190,6 +1190,31 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+def test_direct_call_simple(ray_start_regular):
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    f_direct = f.options(is_direct_call=True)
+    print("a")
+    assert ray.get(f_direct.remote(2)) == 3
+    print("b")
+    assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+        range(1, 101))
+
+
+def test_direct_call_chain(ray_start_regular):
+    @ray.remote
+    def g(x):
+        return x + 1
+
+    g_direct = g.options(is_direct_call=True)
+    x = 0
+    for _ in range(100):
+        x = g_direct.remote(x)
+    assert ray.get(x) == 100
+
+
 def test_direct_actor_enabled(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1206,6 +1231,25 @@ def test_direct_actor_enabled(ray_start_regular):
     assert ray.get(obj_id) == 2
 
 
+def test_direct_actor_large_objects(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self):
+            time.sleep(1)
+            return np.zeros(10000000)
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    done, _ = ray.wait([obj_id])
+    assert len(done) == 1
+    assert ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert isinstance(ray.get(obj_id), np.ndarray)
+
+
 def test_direct_actor_errors(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1220,10 +1264,6 @@ def test_direct_actor_errors(ray_start_regular):
         return 1
 
     a = Actor._remote(is_direct_call=True)
-
-    # cannot pass returns to other methods directly
-    with pytest.raises(Exception):
-        ray.get(f.remote(a.f.remote(2)))
 
     # cannot pass returns to other methods even in a list
     with pytest.raises(Exception):
@@ -2923,7 +2963,11 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
-    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
+    ray.init(
+        num_cpus=5,
+        num_gpus=3,
+        resources={"CustomResource": 1},
+        include_webui=False)
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -3008,6 +3052,7 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
     job_table = ray.jobs()
+    print(job_table)
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -3125,7 +3170,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id)
+    ray.init(num_cpus=1, job_id=dummy_driver_id, include_webui=False)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id

@@ -165,11 +165,10 @@ def cli(logging_level, logging_format):
 @click.option(
     "--webui-host",
     required=False,
-    type=click.Choice(["127.0.0.1", "0.0.0.0"]),
-    default="127.0.0.1",
-    help="The host to bind the web UI server to. Can either be 127.0.0.1 "
-    "(localhost) or 0.0.0.0 (available from all interfaces). By default, this "
-    "is set to 127.0.0.1 to prevent access from external machines.")
+    default="localhost",
+    help="The host to bind the web UI server to. Can either be localhost "
+    "(127.0.0.1) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is set to localhost to prevent access from external machines.")
 @click.option(
     "--block",
     is_flag=True,
@@ -234,9 +233,9 @@ def cli(logging_level, logging_format):
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
 @click.option(
-    "--use-pickle",
+    "--use-pickle/--no-use-pickle",
     is_flag=True,
-    default=False,
+    default=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
     help="Use pickle for serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,

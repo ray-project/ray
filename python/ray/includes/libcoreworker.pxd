@@ -55,6 +55,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
                     const c_string &log_dir, const c_string &node_ip_address,
+                    int node_manager_port,
                     CRayStatus (
                         CTaskType task_type,
                         const CRayFunction &ray_function,
@@ -101,8 +102,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
-        void AddActiveObjectID(const CObjectID &object_id)
-        void RemoveActiveObjectID(const CObjectID &object_id)
+        void AddObjectIDReference(const CObjectID &object_id)
+        void RemoveObjectIDReference(const CObjectID &object_id)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)

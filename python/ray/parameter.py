@@ -58,8 +58,8 @@ class RayParams(object):
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster.
         webui_host: The host to bind the web UI server to. Can either be
-            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to 127.0.0.1 to prevent access from
+            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to localhost to prevent access from
             external machines.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
@@ -108,7 +108,7 @@ class RayParams(object):
                  worker_path=None,
                  huge_pages=False,
                  include_webui=None,
-                 webui_host="127.0.0.1",
+                 webui_host="localhost",
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
