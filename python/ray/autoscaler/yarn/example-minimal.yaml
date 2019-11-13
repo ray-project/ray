@@ -1,9 +1,0 @@
-# An unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
-
-# The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
-max_workers: 1
-
-provider:
-    type: yarn
