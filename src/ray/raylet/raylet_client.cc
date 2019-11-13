@@ -204,7 +204,7 @@ ray::Status RayletConnection::AtomicRequestReply(
 RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                            const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
-                           int port)
+                           ClientID *raylet_id, int port)
     : grpc_client_(std::move(grpc_client)),
       worker_id_(worker_id),
       is_worker_(is_worker),
@@ -220,8 +220,13 @@ RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> gr
   fbb.Finish(message);
   // Register the process ID with the raylet.
   // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  auto status = conn_->WriteMessage(MessageType::RegisterClientRequest, &fbb);
+  std::unique_ptr<uint8_t[]> reply;
+  auto status = conn_->AtomicRequestReply(MessageType::RegisterClientRequest,
+                                          MessageType::RegisterClientReply, reply, &fbb);
   RAY_CHECK_OK_PREPEND(status, "[RayletClient] Unable to register worker with raylet.");
+  auto reply_message =
+      flatbuffers::GetRoot<ray::protocol::RegisterClientReply>(reply.get());
+  *raylet_id = ClientID::FromBinary(reply_message->raylet_id()->str());
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {

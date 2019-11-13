@@ -962,6 +962,14 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto worker = std::make_shared<Worker>(worker_id, message->worker_pid(), language,
                                          message->port(), client, client_call_manager_);
   Status status;
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = ray::protocol::CreateRegisterClientReply(
+      fbb, to_flatbuf(fbb, gcs_client_->client_table().GetLocalClientId()));
+  fbb.Finish(reply);
+  worker->Connection()->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
+      fbb.GetBufferPointer(), nullptr);
+
   if (message->is_worker()) {
     // Register the new worker.
     if (worker_pool_.RegisterWorker(std::move(worker)).ok()) {
