@@ -114,7 +114,11 @@ class CoreWorker {
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) {
-    reference_counter_->RemoveReference(object_id);
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveReference(object_id, &deleted);
+    if (ref_counting_enabled_) {
+      memory_store_->Delete(deleted);
+    }
   }
 
   ///
@@ -428,6 +432,9 @@ class CoreWorker {
 
   /// Directory where log files are written.
   const std::string log_dir_;
+
+  /// Whether local reference counting is enabled.
+  const bool ref_counting_enabled_;
 
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every

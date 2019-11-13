@@ -104,13 +104,8 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   return nullptr;
 }
 
-CoreWorkerMemoryStore::CoreWorkerMemoryStore(std::shared_ptr<ReferenceCounter> counter) {
-  if (counter != nullptr) {
-    RAY_LOG(INFO) << "Local ref counting enabled.";
-    ref_counter_ = counter;
-    ref_counter_->OnObjectDeleted([this](const ObjectID &obj_id) { Delete({obj_id}); });
-  }
-}
+CoreWorkerMemoryStore::CoreWorkerMemoryStore(std::shared_ptr<ReferenceCounter> counter)
+    : ref_counter_(counter) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
