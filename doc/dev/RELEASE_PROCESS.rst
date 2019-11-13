@@ -40,8 +40,10 @@ This document describes the process for creating new releases.
 
        ray/ci/stress_tests/run_stress_tests.sh <release-version> <release-commit>
        ray/ci/stress_tests/run_application_stress_tests.sh <release-version> <release-commit>
+       rllib train -f rllib/tuned_examples/compact-regression-test.yaml
 
-   and make sure they pass. If they pass, it will be obvious that they passed.
+   and make sure they pass. For the RLlib regression tests, see the comment on the
+   file for the pass criteria. For the rest, it will be obvious if they passed.
    This will use the autoscaler to start a bunch of machines and run some tests.
    **Caution!**: By default, the stress tests will require expensive GPU instances.
 
