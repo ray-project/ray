@@ -155,10 +155,10 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
         if args.eager:
             exp["config"]["eager"] = True
-        if args.info:
+        if args.v:
             exp["config"]["log_level"] = "INFO"
             verbose = 2
-        if args.debug:
+        if args.vv:
             exp["config"]["log_level"] = "DEBUG"
             verbose = 3
         if args.trace:
