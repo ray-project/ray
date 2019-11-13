@@ -72,6 +72,7 @@ class OperatorInstance(object):
 
     def init(self, env):
         """init streaming actor"""
+        logger.info("init operator instance %s", self.__class__.__name__)
         self.env = env
         if self.env.config.queue_type == Config.MEMORY_QUEUE:
             self.queue_link = MemQueueLinkImpl()
@@ -85,7 +86,7 @@ class OperatorInstance(object):
             self.input_gate.init()
         if len(self.output_channels) > 0:
             self.output_gate = DataOutput(env, self.queue_link, self.output_channels,
-                                      self.operator.partitioning_strategies)
+                                          self.operator.partitioning_strategies)
             self.output_gate.init()
         return True
 

@@ -11,10 +11,7 @@ from ray.streaming.queue.exception import QueueInitException, QueueInterruptExce
 from ray.streaming.config import Config
 from ray.streaming.queue.queue_constants import QueueConstants, QueueStatus, QueueBundleType
 from ray.streaming.queue.queue_constants import QueueCreatorType
-from ray.streaming.queue.queue_interface import QueueConsumer
-from ray.streaming.queue.queue_interface import QueueLink
-from ray.streaming.queue.queue_interface import QueueMessage
-from ray.streaming.queue.queue_interface import QueueProducer
+from ray.streaming.queue.queue_interface import QueueLink, QueueConsumer, QueueProducer, QueueMessage, QueueID
 import ray.streaming as streaming
 
 
@@ -90,6 +87,8 @@ class QueueLinkImpl(QueueLink):
             self.async_func,
             self.sync_func)
         self.producer = QueueProducerImpl(producer)
+        logger.info("create QueueProducer succeed")
+        return self.producer
 
     def register_queue_consumer(self, input_queue_ids, from_actors: List[ActorHandle]):
         assert len(input_queue_ids) > 0
@@ -111,6 +110,7 @@ class QueueLinkImpl(QueueLink):
             self.async_func,
             self.sync_func)
         self.consumer = QueueConsumerImpl(consumer)
+        logger.info("create QueueConsumer succeed")
         return self.consumer
 
     def set_ray_runtime(self, runtime):
@@ -137,14 +137,15 @@ class QueueProducerImpl(QueueProducer):
     def __init__(self, native_producer):
         self.__native_producer = native_producer
 
-    def produce(self, queue_id: ray.ObjectID, item: bytes):
+    def produce(self, queue_id: QueueID, item: bytes):
         """
         produce data into native queue
         :param queue_id: queue id
         :param item: data
         :return: msg_id
         """
-        msg_id = self.__native_producer.produce(queue_id, item)
+        assert type(item) == bytes
+        msg_id = self.__native_producer.produce(queue_id.object_qid, item)
         return msg_id
 
     def stop(self):

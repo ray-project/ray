@@ -63,7 +63,7 @@ from ray.function_manager import FunctionDescriptor
 from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
 import ray.streaming.queue.queue_utils as queue_utils
 
-logger = logging.getLogger(__name__)
+queue_logger = logging.getLogger(__name__)
 
 cdef class QueueLink:
     cdef:
@@ -119,7 +119,7 @@ cdef class QueueLink:
                                                 async_native_func, sync_native_func)
         if config_bytes:
             config_data = config_bytes
-            logger.info("load config, config bytes size: %s", config_data.nbytes)
+            queue_logger.info("load config, config bytes size: %s", config_data.nbytes)
             writer.SetConfig(<uint8_t *>(&config_data[0]), config_data.nbytes)
         cdef:
             c_vector[CObjectID] remain_id_vec
@@ -128,12 +128,13 @@ cdef class QueueLink:
             queue_size_vec.push_back(queue_size)
         cdef CStreamingStatus status = writer.Init(queue_id_vec, seq_ids, queue_size_vec)
         if remain_id_vec.size() != 0:
-            logger.warning("failed queue amounts => %s", remain_id_vec.size())
+            queue_logger.warning("failed queue amounts => %s", remain_id_vec.size())
         if <uint32_t>status != <uint32_t>(libstreaming.StatusOK):
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
             del writer
             raise QueueInitException(msg, qid_vector_to_list(remain_id_vec))
-        logger.info("init producer ok, status => %s", <uint32_t>status)
+        
+        queue_logger.info("init producer ok")
         writer.Run()
         self.producer = QueueProducer()
         self.producer.writer = writer
@@ -174,7 +175,7 @@ cdef class QueueLink:
                                                 async_native_func, sync_native_func)
         if config_bytes:
             config_data = config_bytes
-            logger.info("load config, config bytes size: %s", config_data.nbytes)
+            queue_logger.info("load config, config bytes size: %s", config_data.nbytes)
             reader.SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
         reader.Init(queue_id_vec, seq_ids, msg_ids, timer_interval)
         self.consumer = QueueConsumer()
