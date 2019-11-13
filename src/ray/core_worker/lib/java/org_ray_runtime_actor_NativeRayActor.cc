@@ -23,9 +23,10 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
   
   ray::Language language;
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  auto status = GetCoreWorker(nativeCoreWorkerPointer).ActorLanguage(actor_id, &language);
+  ActorHandle *native_actor_handle = nullptr;
+  auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
-  return (jint)language;
+  return (jint) native_actor_handle->ActorLanguage();
 }
 
 /*
@@ -38,9 +39,10 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   bool is_direct_call = false;
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  auto status = GetCoreWorker(nativeCoreWorkerPointer).IsDirectCallActor(actor_id, &is_direct_call);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, false);
-  return is_direct_call;
+  ActorHandle *native_actor_handle = nullptr;
+  auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
+  return native_actor_handle->IsDirectCallActor();  
 }
 
 /*
@@ -53,9 +55,10 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   std::vector<std::string> function_descriptor;
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  auto status = GetCoreWorker(nativeCoreWorkerPointer)
-      .ActorCreationTaskFunctionDescriptor(actor_id, &function_descriptor);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
+  ActorHandle *native_actor_handle = nullptr;
+  auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
+  auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
   return NativeStringVectorToJavaStringList(env, function_descriptor);
 }
 

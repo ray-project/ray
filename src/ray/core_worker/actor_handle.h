@@ -31,14 +31,6 @@ class ActorHandle {
   /// exists on a job with a different job ID).
   JobID CreationJobID() const { return JobID::FromBinary(inner_.creation_job_id()); };
 
-  Language ActorLanguage() const { return inner_.actor_language(); };
-
-  std::vector<std::string> ActorCreationTaskFunctionDescriptor() const {
-    return VectorFromProtobuf(inner_.actor_creation_task_function_descriptor());
-  };
-
-  bool IsDirectCallActor() const { return inner_.is_direct_call(); }
-
   void SetActorTaskSpec(TaskSpecBuilder &builder, const TaskTransportType transport_type,
                         const ObjectID new_cursor);
 
