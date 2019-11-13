@@ -3,7 +3,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
 import numpy as np
 import time
 import logging
@@ -49,9 +48,7 @@ def test_basic_gc(shutdown_only):
 
 
 def test_pending_task_dependency(shutdown_only):
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        use_pickle=True)
+    ray.init(object_store_memory=100 * 1024 * 1024, use_pickle=True)
 
     @ray.remote
     def pending(input1, input2):
@@ -70,7 +67,7 @@ def test_pending_task_dependency(shutdown_only):
     oid = pending.remote(np_array, dependency.remote(dep_id))
 
     for _ in range(2):
-        time.sleep(2)
+        time.sleep(5)
         ray.put(np_array, weakref=True)
 
     ray.worker.global_worker.put_object(None, object_id=dep_id)
