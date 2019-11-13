@@ -68,7 +68,7 @@ def test_pending_task_dependency(shutdown_only):
     for _ in range(2):
         # Need to sleep here because the active object ID set is only broadcast
         # every 500ms by default.
-        time.sleep(1)
+        time.sleep(2)
         ray.put(np_array, weakref=True)
 
     ray.get(oid)

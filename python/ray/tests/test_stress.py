@@ -29,7 +29,12 @@ def ray_start_sharded(request):
         object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
         num_redis_shards=num_redis_shards,
-        redis_max_memory=10**7)
+        redis_max_memory=10**7,
+        # TODO(edoakes): the stopgap GC measure breaks
+        # test_submitting_many_tasks, so we need to disable it here.
+        _internal_config=json.dumps({
+            "raylet_max_active_object_ids": 0
+        }))
 
     yield None
 
