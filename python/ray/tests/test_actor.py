@@ -2360,6 +2360,78 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
         ray.get(actor.increase.remote())
 
 
+def test_actor_reconstruction_on_node_failure_actor_owner(ray_start_cluster_head):
+    """Test actor reconstruction when node dies unexpectedly, in this case
+    an actor and its owner (the actor that created it) both reside on this node."""
+    cluster = ray_start_cluster_head
+
+    def add_node():
+        # Use custom resource to make sure the actor is only created on worker
+        # nodes, not on the head node.
+        cluster.add_node(
+            resources={"a": 2},
+            _internal_config=json.dumps({
+                "initial_reconstruction_timeout_milliseconds": 200,
+                "num_heartbeats_timeout": 10,
+            }),
+        )  
+
+    def kill_node(node_id):
+        node_to_remove = None
+        for node in cluster.worker_nodes:
+            if node_id == node.unique_id:
+                node_to_remove = node
+        cluster.remove_node(node_to_remove)
+
+    @ray.remote(max_reconstructions=1, resources={"a": 1})
+    class MyActor(object):
+        def __init__(self):
+            self.value = 0
+
+        def increase(self):
+            self.value += 1
+            return self.value
+
+        def get_object_store_socket(self):
+            return ray.worker.global_worker.node.unique_id
+
+    # MyActorWrapper would be placed on the same node as MyActor.
+    @ray.remote(max_reconstructions=1, resources={"a": 1})
+    class MyActorWrapper(object):
+        def __init__(self):
+            self.actor = MyActor.remote()
+
+        def increase(self):
+            return self.actor.increase.remote()
+
+        def get_object_store_socket(self):
+            return self.actor.get_object_store_socket.remote()
+
+    # add a node (with 2 "a" resources).
+    add_node()
+
+    actor = MyActorWrapper.remote()
+    # Call increase 3 times.
+    for _ in range(3):
+        ray.get(actor.increase.remote())
+
+    object_store_socket = ray.get(actor.get_object_store_socket.remote())
+    # Kill actor's node and the actor should be reconstructed
+    # on a different node.
+    kill_node(object_store_socket)
+
+    # add a node again (with 2 "a" resources). Do this after the original
+    # node is killed, to make sure the two actors are placed on the same node.
+    add_node()
+
+    # Call increase again.
+    # Check that the actor is reconstructed and value is correct.
+    assert ray.get(actor.increase.remote()) == 4 + i
+    # Check that the actor is now on a different node.
+    assert object_store_socket != ray.get(
+        actor.get_object_store_socket.remote())
+
+
 # NOTE(hchen): we set initial_reconstruction_timeout_milliseconds to 1s for
 # this test. Because if this value is too small, suprious task reconstruction
 # may happen and cause the test fauilure. If the value is too large, this test
