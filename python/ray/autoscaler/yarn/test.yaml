@@ -1,0 +1,53 @@
+name: ray
+
+services:
+    ray-head:
+        instances: 1
+        resources:
+            # The resources for the head node.
+            vcores: 2
+            memory: 2048
+        # files:
+        #     # A packaged python environment using `conda-pack`. Note that Skein
+        #     # doesn't require any specific way of distributing files, but this
+        #     # is a good one for python projects.
+        #     environment: environment.tar.gz
+        script: |
+            # Activate the packaged conda environment
+            #  - source environment/bin/activate
+            # This command would start all the processes needed on the ray head
+            # node, and register any addresses needed by the workers with the
+            # Skein key-value store. It should then block until killed with sigterm
+            # (at which point all started processes should also die).
+            source /home/rayonyarn/miniconda3/bin/activate
+            APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
+            skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
+            ray start --head --redis-port=6379 --object-manager-port=8076 --object-store-memory=200000000 --memory 200000000 --num-cpus=1 #  --block
+            /home/rayonyarn/miniconda3/bin/python /example.py
+            ray stop
+            skein application shutdown $APP_ID
+
+    ray-worker:
+        # The number of instances to start initially. This can be scaled
+        # dynamically later.
+        instances: 4
+        resources:
+            # The resources for the worker node
+            vcores: 1
+            memory: 2048
+        # files:
+        #     environment: environment.tar.gz
+        depends:
+            # Don't start any worker nodes until the head node is started
+            - ray-head
+        script: |
+            # Activate the packaged conda environment
+            #  - source environment/bin/activate
+            # This command would start all the processes needed on a ray worker
+            # node, getting any addresses it needs for e.g. the head node from
+            # the skein key-value store. It should then block until killed with
+            # sigterm (at which point all started processes should also die).
+            source /home/rayonyarn/miniconda3/bin/activate
+            APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
+            RAY_HEAD_ADDRESS=$(skein kv get --key=RAY_HEAD_ADDRESS "$APP_ID")
+            ray start --object-manager-port=$(shuf -n 1 -i 49152-65535) --object-store-memory=200000000 --memory 200000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379 --block; ray stop
