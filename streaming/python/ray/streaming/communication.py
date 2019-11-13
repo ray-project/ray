@@ -93,6 +93,7 @@ class DataInput(object):
         for channel in self.input_channels:
             actor = self.env.execution_graph.get_actor(channel.src_operator_id, channel.src_instance_index)
             input_actors.append(actor)
+        logger.info("DataInput input_actors", input_actors)
         self.consumer = self.queue_link.register_queue_consumer(qids, input_actors)
 
     def pull(self):
@@ -206,6 +207,8 @@ class DataOutput(object):
         for channel in self.channels:
             actor = self.env.execution_graph.get_actor(channel.dst_operator_id, channel.dst_instance_index)
             to_actors.append(actor)
+        logger.info("DataOutput output_actors", to_actors)
+
         self.producer = self.queue_link.register_queue_producer(qids, to_actors)
 
     def close(self):

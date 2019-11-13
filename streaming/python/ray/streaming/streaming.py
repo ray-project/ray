@@ -5,6 +5,7 @@ from __future__ import print_function
 import logging
 import sys
 import time
+import pickle
 
 import networkx as nx
 
@@ -16,7 +17,6 @@ from ray.streaming.operator import PScheme, PStrategy
 import ray.streaming.operator_instance as operator_instance
 from ray.streaming.config import Config
 import ray.streaming.queue.queue_utils as queue_utils
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -91,22 +91,29 @@ class ExecutionGraph:
         self.__add_channel(actor_id, output_channels)
         # Select actor to construct
         actor_handle = None
+
+        def create_actor(actor_class):
+            # direct_call only support pass by value
+            return actor_class._remote(args=[actor_id, operator, input_channels, output_channels],
+                                       is_direct_call=True)
+
+        actor_class = None
         if operator.type == OpType.Source:
-            actor_handle = operator_instance.Source.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.Source)
         elif operator.type == OpType.Map:
-            actor_handle = operator_instance.Map.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.Map)
         elif operator.type == OpType.FlatMap:
-            actor_handle = operator_instance.FlatMap.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.FlatMap)
         elif operator.type == OpType.Filter:
-            actor_handle = operator_instance.Filter.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.Filter)
         elif operator.type == OpType.Reduce:
-            actor_handle = operator_instance.Reduce.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.Reduce)
         elif operator.type == OpType.TimeWindow:
             pass
         elif operator.type == OpType.KeyBy:
-            actor_handle = operator_instance.KeyBy.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.KeyBy)
         elif operator.type == OpType.Sum:
-            actor_handle = operator_instance.Reduce.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.Reduce)
             # Register target handle at state actor
             state_actor = operator.state_actor
             if state_actor is not None:
@@ -114,15 +121,13 @@ class ExecutionGraph:
         elif operator.type == OpType.Sink:
             pass
         elif operator.type == OpType.Inspect:
-            actor_handle = operator_instance.Inspect.remote(actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.Inspect)
         elif operator.type == OpType.ReadTextFile:
             # TODO (john): Colocate the source with the input file
-            actor_handle = operator_instance.ReadTextFile.remote(
-                actor_id, operator, input_channels, output_channels)
+            actor_handle = create_actor(operator_instance.ReadTextFile)
         else:  # TODO (john): Add support for other types of operators
             sys.exit("Unrecognized or unsupported {} operator type.".format(
                 operator.type))
-        actor_handle.register_handle.remote(actor_handle)
         return actor_handle
 
     # Constructs and deploys a Ray actor for each instance of
@@ -387,8 +392,12 @@ class Environment(object):
         self.execution_graph.build_graph()
         logger.info("init...")
         # init
+        init_waits = []
         for actor_handle in self.execution_graph.actor_handles:
-            assert ray.get(actor_handle.init.remote(self)) is True
+            init_waits.append(actor_handle.init.remote(pickle.dumps(self)))
+            # assert ray.get() is True
+        for wait in init_waits:
+            assert ray.get(wait) is True
 
         logger.info("running...")
         # start

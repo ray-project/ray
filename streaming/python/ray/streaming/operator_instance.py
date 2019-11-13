@@ -7,6 +7,7 @@ import sys
 import time
 import types
 import threading
+import pickle
 
 import ray
 from ray.function_manager import FunctionDescriptor
@@ -54,10 +55,6 @@ class OperatorInstance(object):
         # that can retrieve actor's state
         self.state_keeper = state_keeper
 
-    # Registers actor's handle so that the actor can schedule itself
-    def register_handle(self, actor_handle):
-        self.this_actor = actor_handle
-
     # Used for index-based key extraction, e.g. for tuples
     def index_based_selector(self, record):
         return record[self.key_index]
@@ -68,6 +65,7 @@ class OperatorInstance(object):
 
     def init(self, env):
         """init streaming actor"""
+        env = pickle.loads(env)
         logger.info("init operator instance %s", self.__class__.__name__)
         self.env = env
         if self.env.config.queue_type == Config.MEMORY_QUEUE:
