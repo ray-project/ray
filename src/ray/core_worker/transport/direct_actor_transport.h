@@ -2,6 +2,7 @@
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
 #include <boost/asio/thread_pool.hpp>
+#include <boost/fiber/all.hpp>
 #include <boost/thread.hpp>
 #include <list>
 #include <set>
@@ -213,6 +214,29 @@ class BoundedExecutor {
   boost::asio::thread_pool pool_;
 };
 
+class FiberEvent {
+ public:
+  typedef std::shared_ptr<FiberEvent> ptr;
+
+  void wait() {
+    std::unique_lock<boost::fibers::mutex> lock(mutex);
+    cond.wait(lock, [this]() { return ready; });
+  }
+
+  void notify() {
+    {
+      std::unique_lock<boost::fibers::mutex> lock(mutex);
+      ready = true;
+    }  // release mutex
+    cond.notify_one();
+  }
+
+ private:
+  boost::fibers::condition_variable cond;
+  boost::fibers::mutex mutex;
+  bool ready = false;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
@@ -272,7 +296,7 @@ class SchedulingQueue {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
         request.Accept();
-      }
+            }
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
@@ -361,6 +385,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
 
+  void SetActorAsAsync(void);
+
  private:
   // Worker context.
   WorkerContext &worker_context_;
@@ -379,6 +405,10 @@ class CoreWorkerDirectTaskReceiver {
   int max_concurrency_ = 1;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
+
+  bool is_async_ = false;
+  std::shared_ptr<FiberEvent> fiber_shutdown_event_;
+  std::shared_ptr<std::thread> fiber_runner_thread_;
 };
 
 }  // namespace ray

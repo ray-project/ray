@@ -1,5 +1,7 @@
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include <thread>
+
 #include "ray/common/task/task.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 
 using ray::rpc::ActorTableData;
 
@@ -219,6 +221,18 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
   }
 }
 
+void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
+  if (!is_async_) {
+    fiber_shutdown_event_ = std::make_shared<FiberEvent>();
+    fiber_runner_thread_.reset(new std::thread([&]() {
+      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
+      RAY_LOG(INFO) << "Starting fiber thread";
+      fiber_shutdown_event_->wait();
+    }));
+  }
+  is_async_ = true;
+};
+
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -231,6 +245,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     return;
   }
   SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
+  SetActorAsAsync();
 
   // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
   // the raylet, which is a central bottleneck. In the future, we should inline
