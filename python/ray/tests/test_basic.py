@@ -1366,7 +1366,7 @@ def test_direct_actor_recursive(ray_start_regular):
             return x * 2
 
     a = Actor._remote(is_direct_call=True)
-    b = Actor._remote(args=[a], is_direct_call=False)
+    b = Actor._remote(args=[a], is_direct_call=True)
     c = Actor._remote(args=[b], is_direct_call=True)
 
     result = ray.get([c.f.remote(i) for i in range(100)])
