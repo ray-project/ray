@@ -189,7 +189,8 @@ def run(args, parser):
         scheduler=_make_scheduler(args),
         queue_trials=args.queue_trials,
         resume=args.resume,
-        verbose=verbose)
+        verbose=verbose,
+        concurrent=True)
 
 
 if __name__ == "__main__":
