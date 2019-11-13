@@ -1,4 +1,11 @@
-# This file runs on a single g3.16xl or p3.16xl node.
+# This file runs on a single g3.16xl or p3.16xl node. It is suggested
+# to run these in a DLAMI / tensorflow_p36 env. Note that RL runs are
+# inherently high variance, so you'll have to check to see if the
+# rewards reached seem reasonably in line with previous results.
+#
+# The reference results for 0.7.6 are as follows:
+#
+#
 atari-impala:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
