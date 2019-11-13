@@ -82,7 +82,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       gcs_client_(gcs_options),
       reference_counter_(std::make_shared<ReferenceCounter>()),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>(
-            ref_counting_enabled ? reference_counter_ : nullptr)),
+          ref_counting_enabled ? reference_counter_ : nullptr)),
       memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
