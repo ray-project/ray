@@ -1125,20 +1125,20 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 }).trials
 
-        with patch.object(CommandBasedClient, "execute") as mock_fn, \
-             patch("ray.services.get_node_ip_address") as mock_sync:
-            mock_sync.return_value = "0.0.0.0"
-            [trial] = tune.run(
-                "__fake",
-                name="foo",
-                max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_driver": "echo {source} {target}"
-                }).trials
-            self.assertGreater(mock_fn.call_count, 0)
+        with patch.object(CommandBasedClient, "execute") as mock_fn:
+            with patch("ray.services.get_node_ip_address") as mock_sync:
+                mock_sync.return_value = "0.0.0.0"
+                [trial] = tune.run(
+                    "__fake",
+                    name="foo",
+                    max_failures=0,
+                    **{
+                        "stop": {
+                            "training_iteration": 1
+                        },
+                        "sync_to_driver": "echo {source} {target}"
+                    }).trials
+                self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
         tmpdir = tempfile.mkdtemp()
