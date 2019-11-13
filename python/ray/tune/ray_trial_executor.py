@@ -144,9 +144,9 @@ class RayTrialExecutor(TrialExecutor):
                 os.chdir(remote_logdir)
             return NoopLogger(config, remote_logdir)
 
-        # Clear the Trial's node IP (will be updated later on result)
+        # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
-        trial.address = Location()
+        trial.set_location(Location())
         logger.info("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
@@ -205,8 +205,8 @@ class RayTrialExecutor(TrialExecutor):
         if stop_logger:
             trial.close_logger()
 
-        status = Trial.ERROR if error else Trial.TERMINATED
-        self.set_status(trial, status)
+        self.set_status(trial, Trial.ERROR if error else Trial.TERMINATED)
+        trial.set_location(Location())
 
         try:
             trial.write_error_log(error_msg)
@@ -263,8 +263,7 @@ class RayTrialExecutor(TrialExecutor):
                 error_msg = traceback.format_exc()
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 # Note that we don't return the resources, since they may
-                # have been lost.
-                # TODO(ujvl): is this the right thing to do?
+                # have been lost. TODO(ujvl): is this the right thing to do?
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]

@@ -246,10 +246,14 @@ class Trial(object):
         """
         if self.result_logger:
             self.result_logger.sync_results_to_new_location(worker_ip)
-        self.address = Location(worker_ip)
+            self.set_location(Location(worker_ip))
+
+    def set_location(self, location):
+        """Sets the location of the trial."""
+        self.address = location
 
     def close_logger(self):
-        """Close logger."""
+        """Closes logger."""
         if self.result_logger:
             self.result_logger.close()
             self.result_logger = None
@@ -340,7 +344,7 @@ class Trial(object):
             print("Result for {}:".format(self))
             print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
-        self.address = Location(result.get("node_ip"), result.get("pid"))
+        self.set_location(Location(result.get("node_ip"), result.get("pid")))
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)

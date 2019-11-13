@@ -18,7 +18,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
 from ray.tune.syncer import get_cloud_syncer
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.util import warn_if_slow, flatten_dict
