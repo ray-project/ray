@@ -51,10 +51,7 @@ def test_basic_gc(shutdown_only):
 def test_pending_task_dependency(shutdown_only):
     ray.init(
         object_store_memory=100 * 1024 * 1024,
-        use_pickle=True,
-        _internal_config=json.dumps({
-            "worker_heartbeat_timeout_milliseconds": 50
-        }))
+        use_pickle=True)
 
     @ray.remote
     def pending(input1, input2):
