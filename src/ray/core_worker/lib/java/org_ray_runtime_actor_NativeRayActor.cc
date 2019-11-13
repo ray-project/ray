@@ -20,10 +20,8 @@ extern "C" {
  */
 JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
-  
-  ray::Language language;
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ActorHandle *native_actor_handle = nullptr;
+  ray::ActorHandle *native_actor_handle = nullptr;
   auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
   return (jint) native_actor_handle->ActorLanguage();
@@ -37,9 +35,8 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
 JNIEXPORT jboolean JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
-  bool is_direct_call = false;
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ActorHandle *native_actor_handle = nullptr;
+  ray::ActorHandle *native_actor_handle = nullptr;
   auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
   return native_actor_handle->IsDirectCallActor();  
@@ -53,9 +50,8 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
-  std::vector<std::string> function_descriptor;
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
-  ActorHandle *native_actor_handle = nullptr;
+  ray::ActorHandle *native_actor_handle = nullptr;
   auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();

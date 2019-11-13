@@ -69,7 +69,7 @@ inline ray::TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject call
     resources = ToResources(env, java_resources);
   }
 
-  ray::TaskOptions task_options{numReturns, resources};
+  ray::TaskOptions task_options{numReturns, false, resources};
   return task_options;
 }
 
