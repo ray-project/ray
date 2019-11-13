@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import Counter
-import os
 import sys
 import time
 import ray
@@ -48,5 +47,6 @@ def main():
 
 
 if __name__ == "__main__":
-    ray.init(address="localhost:6379", driver_object_store_memory=100*1024*1024)
+    ray.init(
+        address="localhost:6379", driver_object_store_memory=100 * 1024 * 1024)
     main()
