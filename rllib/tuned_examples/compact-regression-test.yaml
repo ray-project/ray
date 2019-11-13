@@ -2,6 +2,9 @@
 atari-impala:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
+    num_samples: 4
+    stop:
+        time_total_s: 3600
     config:
         sample_batch_size: 50
         train_batch_size: 500
@@ -16,6 +19,9 @@ atari-impala:
 atari-ppo:
     env: BreakoutNoFrameskip-v4
     run: PPO
+    num_samples: 4
+    stop:
+        time_total_s: 3600
     config:
         lambda: 0.95
         kl_coeff: 0.5
@@ -36,6 +42,9 @@ atari-ppo:
 apex:
     env: BreakoutNoFrameskip-v4
     run: APEX
+    num_samples: 4
+    stop:
+        time_total_s: 3600
     config:
         double_q: false
         dueling: false
@@ -53,7 +62,7 @@ apex:
         beta_annealing_fraction: 1.0
         final_prioritized_replay_beta: 1.0
         num_gpus: 1
-        num_workers: 10
+        num_workers: 8
         num_envs_per_worker: 8
         sample_batch_size: 20
         train_batch_size: 512
@@ -62,6 +71,9 @@ apex:
 atari-a2c:
     env: BreakoutNoFrameskip-v4
     run: A2C
+    num_samples: 4
+    stop:
+        time_total_s: 3600
     config:
         sample_batch_size: 20
         clip_rewards: True
@@ -75,6 +87,9 @@ atari-a2c:
 atari-basic-dqn:
     env: BreakoutNoFrameskip-v4
     run: DQN
+    num_samples: 4
+    stop:
+        time_total_s: 3600
     config:
         double_q: false
         dueling: false
