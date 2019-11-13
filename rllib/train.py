@@ -89,11 +89,11 @@ def create_parser(parser_creator=None):
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
-        "--info",
+        "-v",
         action="store_true",
         help="Whether to use INFO level logging.")
     parser.add_argument(
-        "--debug",
+        "-vv",
         action="store_true",
         help="Whether to use DEBUG level logging.")
     parser.add_argument(
