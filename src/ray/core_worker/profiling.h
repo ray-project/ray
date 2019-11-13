@@ -41,7 +41,7 @@ class Profiler {
 
 class ProfileEvent {
  public:
-  ProfileEvent(const std::shared_ptr<Profiler> profiler, const std::string &event_type);
+  ProfileEvent(const std::shared_ptr<Profiler> &profiler, const std::string &event_type);
 
   ~ProfileEvent() {
     rpc_event_.set_end_time(absl::GetCurrentTimeNanos() / 1e9);
