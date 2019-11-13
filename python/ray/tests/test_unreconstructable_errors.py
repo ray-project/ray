@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import numpy as np
 import unittest
 
@@ -13,7 +14,11 @@ class TestUnreconstructableErrors(unittest.TestCase):
         ray.init(
             num_cpus=1,
             object_store_memory=150 * 1024 * 1024,
-            redis_max_memory=10000000)
+            redis_max_memory=10000000,
+            # TODO(edoakes): stopgap GC makes some of these tests flaky.
+            _internal_config=json.dumps({
+                "raylet_max_active_object_ids": 0
+            }))
 
     def tearDown(self):
         ray.shutdown()
@@ -33,11 +38,8 @@ class TestUnreconstructableErrors(unittest.TestCase):
 
         x_id = f.remote(None)
         ray.get(x_id)
-        # Hold references to the ray.put objects so they aren't LRU'd.
-        oids = []
         for _ in range(400):
             new_oids = [f.remote(np.zeros(10000)) for _ in range(50)]
-            oids.extend(new_oids)
             ray.get(new_oids)
         self.assertRaises(ray.exceptions.UnreconstructableError,
                           lambda: ray.get(x_id))

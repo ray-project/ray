@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import numpy as np
 import time
 import logging
@@ -48,27 +49,32 @@ def test_basic_gc(shutdown_only):
 
 
 def test_pending_task_dependency(shutdown_only):
-    ray.init(object_store_memory=100 * 1024 * 1024, use_pickle=True)
+    ray.init(
+        object_store_memory=100 * 1024 * 1024,
+        use_pickle=True,
+        _internal_config=json.dumps({
+            "worker_heartbeat_timeout_milliseconds": 50
+        }))
 
     @ray.remote
     def pending(input1, input2):
         return
 
     @ray.remote
-    def slow():
-        time.sleep(5)
+    def dependency(input):
+        return
 
     # The object that is ray.put here will go out of scope immediately, so if
     # pending task dependencies aren't considered, it will be evicted before
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
+    dep_id = ray.ObjectID.from_random()
     np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
-    oid = pending.remote(np_array, slow.remote())
+    oid = pending.remote(np_array, dependency.remote(dep_id))
 
     for _ in range(2):
-        # Need to sleep here because the active object ID set is only broadcast
-        # every 500ms by default.
         time.sleep(2)
         ray.put(np_array, weakref=True)
 
+    ray.worker.global_worker.put_object(None, object_id=dep_id)
     ray.get(oid)
