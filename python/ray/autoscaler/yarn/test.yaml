@@ -22,9 +22,10 @@ services:
             source /home/rayonyarn/miniconda3/bin/activate
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
             skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
-            ray start --head --redis-port=6379 --object-manager-port=8076 --object-store-memory=100000000 --memory 100000000 --num-cpus=1
+            ray start --head --redis-port=6379 --object-manager-port=8076 --object-store-memory=200000000 --memory 200000000 --num-cpus=1 #  --block
             /home/rayonyarn/miniconda3/bin/python /example.py
             ray stop
+            skein application shutdown $APP_ID
 
     ray-worker:
         # The number of instances to start initially. This can be scaled
@@ -49,4 +50,4 @@ services:
             source /home/rayonyarn/miniconda3/bin/activate
             APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
             RAY_HEAD_ADDRESS=$(skein kv get --key=RAY_HEAD_ADDRESS "$APP_ID")
-            ray start --object-manager-port=$(shuf -n 1 -i 49152-65535) --object-store-memory=100000000 --memory 100000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379
+            ray start --object-manager-port=$(shuf -n 1 -i 49152-65535) --object-store-memory=200000000 --memory 200000000 --num-cpus=1 --address=$RAY_HEAD_ADDRESS:6379 --block; ray stop
