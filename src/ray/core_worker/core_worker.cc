@@ -423,7 +423,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   if (memory_object_ids.size() > 0 && static_cast<int>(ready.size()) < num_objects) {
     // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
     // consider waiting on them in plasma as well to ensure they are local.
-    RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
+    RAY_RETURN_NOT_OK(memory_store_provider_.Wait(
         memory_object_ids, num_objects - static_cast<int>(ready.size()),
         /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
   }
@@ -442,7 +442,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
+      RAY_RETURN_NOT_OK(memory_store_provider_.Wait(
           memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
           worker_context_.GetCurrentTaskID(), &ready));
     }
