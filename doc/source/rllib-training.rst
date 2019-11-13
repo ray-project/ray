@@ -575,7 +575,7 @@ You can control the trainer log level via the ``"log_level"`` flag. Valid values
         --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
 
     rllib train --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 2}' --debug
+        --run=A2C --config '{"num_workers": 2}' -vv
 
 The default log level is ``WARN``. We strongly recommend using at least ``INFO`` level logging for development.
 

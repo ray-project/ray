@@ -89,13 +89,9 @@ def create_parser(parser_creator=None):
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
-        "-v",
-        action="store_true",
-        help="Whether to use INFO level logging.")
+        "-v", action="store_true", help="Whether to use INFO level logging.")
     parser.add_argument(
-        "-vv",
-        action="store_true",
-        help="Whether to use DEBUG level logging.")
+        "-vv", action="store_true", help="Whether to use DEBUG level logging.")
     parser.add_argument(
         "--resume",
         action="store_true",
