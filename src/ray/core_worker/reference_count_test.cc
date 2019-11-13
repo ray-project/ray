@@ -141,6 +141,32 @@ TEST_F(ReferenceCountTest, TestRecursiveDependencies) {
   ASSERT_EQ(out.size(), 4);
 }
 
+// Tests that the ref counts are properly integrated into the local
+// object memory store.
+TEST(MemoryStoreIntegrationTest, TestSimple) {
+  ObjectID id1 = ObjectID::FromRandom();
+  ObjectID id2 = ObjectID::FromRandom();
+  uint8_t data[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr);
+
+  auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter());
+  CoreWorkerMemoryStore store(rc);
+
+  // Tests putting an object with no references is ignored.
+  RAY_CHECK_OK(store.Put(id2, buffer));
+  ASSERT_EQ(store.Size(), 0);
+
+  // Tests ref counting overrides remove after get option.
+  rc->AddReference(id1);
+  RAY_CHECK_OK(store.Put(id1, buffer));
+  ASSERT_EQ(store.Size(), 1);
+  std::vector<std::shared_ptr<RayObject>> results;
+  RAY_CHECK_OK(store.Get({id1}, /*num_objects*/ 1, /*timeout_ms*/ -1,
+                         /*remove_after_get*/ true, &results));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(store.Size(), 1);
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {
