@@ -1,7 +1,8 @@
 import ray
-from actor_pool import *
+from actor_pool import ActorPool
 
 ray.init()
+
 
 def test_get_next():
     @ray.remote
@@ -13,13 +14,14 @@ def test_get_next():
             return x + 1
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
     for i in range(5):
         pool.submit(lambda a, v: a.f.remote(v), i)
         assert pool.get_next() == i + 1
+
 
 def test_get_next_unordered():
     @ray.remote
@@ -31,7 +33,7 @@ def test_get_next_unordered():
             return x + 1
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
@@ -42,8 +44,9 @@ def test_get_next_unordered():
         pool.submit(lambda a, v: a.f.remote(v), i)
     while pool.has_next():
         total += [pool.get_next_unordered()]
-    
+
     assert all(elem in [1, 2, 3, 4, 5] for elem in total)
+
 
 def test_map():
     @ray.remote
@@ -55,15 +58,16 @@ def test_map():
             return x + 1
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
 
     index = 0
     for v in pool.map(lambda a, v: a.double.remote(v), range(5)):
-        assert v == 2*index
+        assert v == 2 * index
         index += 1
+
 
 def test_map_unordered():
     @ray.remote
@@ -75,7 +79,7 @@ def test_map_unordered():
             return x + 1
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
@@ -94,18 +98,19 @@ def test_get_next_timeout():
             pass
 
         def f(self, x):
-            while(True):
+            while (True):
                 x = x + 1
             return None
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
     for i in range(5):
         pool.submit(lambda a, v: a.f.remote(v), i)
         assert pool.get_next(1) == i + 1
+
 
 def test_get_next_unordered_timeout():
     @ray.remote
@@ -114,12 +119,12 @@ def test_get_next_unordered_timeout():
             pass
 
         def f(self, x):
-            while(True):
+            while (True):
                 x + 1
             return
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
@@ -130,7 +135,7 @@ def test_get_next_unordered_timeout():
         pool.submit(lambda a, v: a.f.remote(v), i)
     while pool.has_next():
         total += [pool.get_next_unordered(5)]
-    
+
     assert all(elem in [1, 2, 3, 4, 5] for elem in total)
 
 
@@ -144,14 +149,15 @@ def test_get_next_and_unordered():
             return x + 1
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
     for i in range(3):
         pool.submit(lambda a, v: a.f.remote(v), i)
-        assert pool.get_next() == 2*i + 1
+        assert pool.get_next() == 2 * i + 1
         pool.get_next_unordered()
+
 
 def test_get_next_unordered_and_ordered():
     @ray.remote
@@ -163,7 +169,7 @@ def test_get_next_unordered_and_ordered():
             return x + 1
 
         def double(self, x):
-            return 2*x
+            return 2 * x
 
     actors = [MyActor.remote() for _ in range(4)]
     pool = ActorPool(actors)
