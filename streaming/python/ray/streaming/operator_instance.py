@@ -107,11 +107,11 @@ class OperatorInstance(object):
 
     def on_streaming_transfer(self, buffer: bytes):
         """used in direct call mode"""
-        pass
+        self.queue_link.on_streaming_transfer(buffer)
 
     def on_streaming_transfer_sync(self, buffer: bytes):
         """used in direct call mode"""
-        pass
+        self.queue_link.on_streaming_transfer_sync(buffer)
 
 # A source actor that reads a text file line by line
 @ray.remote

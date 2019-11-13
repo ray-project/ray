@@ -112,11 +112,19 @@ class QueueLinkImpl(QueueLink):
             self.sync_func)
         self.consumer = QueueConsumerImpl(consumer)
         return self.consumer
-    # import time
-    #     time.sleep(20000)
 
     def set_ray_runtime(self, runtime):
         self.__configuration[Config.TASK_JOB_ID] = runtime[Config.TASK_JOB_ID]
+
+    def on_streaming_transfer(self, buffer: bytes):
+        """used in direct call mode"""
+        print("on_streaming_transfer ", buffer)
+        self.queue_link.on_streaming_transfer(buffer)
+
+    def on_streaming_transfer_sync(self, buffer: bytes):
+        """used in direct call mode"""
+        print("on_streaming_transfer_sync ", buffer)
+        self.queue_link.on_streaming_transfer_sync(buffer)
 
 
 class QueueProducerImpl(QueueProducer):

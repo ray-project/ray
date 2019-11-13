@@ -36,6 +36,12 @@ class MemQueueLinkImpl(QueueLink):
     memory queue link impl
     """
 
+    def on_streaming_transfer(self, buffer: bytes):
+        pass
+
+    def on_streaming_transfer_sync(self, buffer: bytes):
+        pass
+
     def set_ray_runtime(self, runtime):
         pass
 

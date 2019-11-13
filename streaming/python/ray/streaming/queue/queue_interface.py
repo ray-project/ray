@@ -131,6 +131,15 @@ class QueueLink:
         """
         pass
 
+    @abstractmethod
+    def on_streaming_transfer(self, buffer: bytes):
+        """used in direct call mode"""
+        pass
+
+    @abstractmethod
+    def on_streaming_transfer_sync(self, buffer: bytes):
+        """used in direct call mode"""
+        pass
 
 class QueueProducer:
     """
