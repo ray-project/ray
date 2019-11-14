@@ -23,6 +23,10 @@ message WorkerLeaseReply {
   string address = 1;
   // Port of the leased worker.
   int32 port = 2;
+  // Raylet to spill back to. If this is not empty, then the
+  // returned address and port refer to the raylet at which the
+  // caller should retry the request.
+  bytes raylet_id = 3;
 }
 
 message ForwardTaskRequest {

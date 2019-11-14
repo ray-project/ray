@@ -79,7 +79,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight.
-  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec)
+  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec, const ClientID &raylet_id = ClientID::Nil())
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned
@@ -99,6 +99,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   // Client that can be used to lease and return workers.
   WorkerLeaseInterface &lease_client_;
+
+  /// Cache of gRPC clients to remote raylets.
+  absl::flat_hash_map<ClientID, std::unique_ptr<WorkerLeaseInterface>>
+      remote_lease_clients_ GUARDED_BY(mu_);
 
   /// Factory for producing new core worker clients.
   ClientFactoryFn client_factory_;

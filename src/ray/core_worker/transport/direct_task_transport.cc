@@ -120,15 +120,36 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
 }
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
-    const TaskSpecification &resource_spec) {
+    const TaskSpecification &resource_spec, const ClientID &raylet_id) {
   if (worker_request_pending_) {
     return;
   }
-  RAY_CHECK_OK(lease_client_.RequestWorkerLease(
+
+  WorkerLeaseInterface &lease_client = lease_client_;
+  if (!raylet_id.IsNil()) {
+    // Connect to raylet.
+    auto it = remote_lease_clients_.find(raylet_id);
+    if (it == remote_lease_clients_.end()) {
+      auto grpc_client = rpc::NodeManagerWorkerClient::make(
+          reply.address(), reply.port(), client_call_manager_);
+      auto remote_lease_client = std::unique_ptr<RayletClient>(new RayletClient(std::move(grpc_client)));
+      it = remote_lease_clients_.emplace(raylet_id, std::move(remote_lease_client)).first;
+    }
+    lease_client = *it->second;
+  }
+
+  RAY_CHECK_OK(lease_client.RequestWorkerLease(
       resource_spec,
       [this, resource_spec](const Status &status, const rpc::WorkerLeaseReply &reply) {
         if (status.ok()) {
-          HandleWorkerLeaseGranted({reply.address(), reply.port()});
+          if (reply.raylet_id() == "") {
+            HandleWorkerLeaseGranted({reply.address(), reply.port()});
+          } else {
+            absl::MutexLock lock(&mu_);
+            worker_request_pending_ = false;
+            ClientID raylet_id = ClientID::FromBinary(reply.raylet_id());
+            RequestNewWorkerIfNeeded(resource_spec, raylet_id);
+          }
         } else {
           // Retry the worker lease request. TODO(swang): Fail after some
           // number of attempts.

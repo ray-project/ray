@@ -1190,7 +1190,15 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
-def test_direct_call_simple(ray_start_regular):
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }], indirect=True)
+def test_direct_call_simple(ray_start_cluster):
     @ray.remote
     def f(x):
         return x + 1

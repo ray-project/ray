@@ -12,6 +12,10 @@ namespace ray {
 typedef std::function<void(const std::shared_ptr<void>, const std::string &, int)>
     DispatchTaskCallback;
 
+/// Arguments are the raylet ID to spill back to, the raylet's
+/// address and the raylet's port.
+typedef std::function<void(const ClientID &, const std::string &, int)> SpillbackTaskCallback;
+
 /// \class Task
 ///
 /// A Task represents a Ray task and a specification of its execution (e.g.,
@@ -43,9 +47,13 @@ class Task {
 
   /// Override dispatch behaviour.
   void OnDispatchInstead(
-      std::function<void(const std::shared_ptr<void>, const std::string &, int)>
-          callback) {
+      const DispatchTaskCallback &callback) {
     on_dispatch_ = callback;
+  }
+
+  /// Override spillback behaviour.
+  void OnSpillbackInstead(const SpillbackTaskCallback &callback) {
+    on_spillback_ = callback;
   }
 
   /// Get the mutable specification for the task. This specification may be
@@ -73,7 +81,10 @@ class Task {
   void CopyTaskExecutionSpec(const Task &task);
 
   /// Returns the override dispatch task callback, or nullptr.
-  DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
+  const DispatchTaskCallback &OnDispatch() const { return on_dispatch_; }
+
+  /// Returns the override spillback task callback, or nullptr.
+  const SpillbackTaskCallback &OnSpillback() const { return on_spillback_; }
 
   std::string DebugString() const;
 
@@ -95,6 +106,9 @@ class Task {
   /// For direct task calls, overrides the dispatch behaviour to send an RPC
   /// back to the submitting worker.
   mutable DispatchTaskCallback on_dispatch_ = nullptr;
+  /// For direct task calls, overrides the spillback behaviour to send an RPC
+  /// back to the submitting worker.
+  mutable SpillbackTaskCallback on_spillback_ = nullptr;
 };
 
 }  // namespace ray

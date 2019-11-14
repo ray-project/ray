@@ -1426,6 +1426,14 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         // lease timeout).
         leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
       });
+  task.OnSpillbackInstead(
+      [reply, send_reply_callback](const ClientID &spillback_to,
+                                         const std::string &address, int port) {
+        reply->set_address(address);
+        reply->set_port(port);
+        reply->set_raylet_id(spillback_to.Binary());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
   SubmitTask(task, Lineage());
 }
 
@@ -2460,6 +2468,19 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 void NodeManager::ForwardTask(
     const Task &task, const ClientID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
+  // Override spillback for direct tasks.
+  if (task.OnSpillback() != nullptr) {
+    GcsNodeInfo node_info;
+    bool found = gcs_client_->client_table().GetClient(node_id, &node_info);
+    if (!found) {
+      RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
+      task.OnSpillback()(ClientID::Nil(), "", 0);
+    } else {
+      task.OnSpillback()(node_id, node_info.node_manager_address(), node_info.node_manager_port());
+    }
+    return;
+  }
+
   // Lookup node manager client for this node_id and use it to send the request.
   auto client_entry = remote_node_manager_clients_.find(node_id);
   if (client_entry == remote_node_manager_clients_.end()) {

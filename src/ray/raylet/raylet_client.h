@@ -95,6 +95,11 @@ class RayletClient : public WorkerLeaseInterface {
                bool is_worker, const JobID &job_id, const Language &language,
                int port = -1);
 
+  /// Connect to the raylet via grpc only.
+  ///
+  /// \param grpc_client gRPC client to the raylet.
+  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
+
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
   /// Submit a task using the raylet code path.
@@ -209,13 +214,11 @@ class RayletClient : public WorkerLeaseInterface {
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port) override;
 
-  Language GetLanguage() const { return language_; }
+  //Language GetLanguage() const { return language_; }
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
-
-  bool IsWorker() const { return is_worker_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
@@ -224,9 +227,8 @@ class RayletClient : public WorkerLeaseInterface {
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
-  const bool is_worker_;
   const JobID job_id_;
-  const Language language_;
+  //const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
