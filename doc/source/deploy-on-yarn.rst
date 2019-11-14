@@ -5,14 +5,14 @@ Deploying on YARN
 
   Running Ray on YARN is still a work in progress. If you have a
   suggestion for how to improve this documentation or want to request
-  a missing feature, please get in touch using one of the channels in the
+  a missing feature, please feel free to push a Pull Request or see the
   `Questions or Issues?`_ section below.
 
 This document assumes that you have access to a YARN cluster and will walk
 you through using `Skein`_ to deploy a YARN job that starts a Ray cluster and
 runs an example script on it.
 
-Skein uses a declarative specification (either written as a yaml file, or using the python api) and allows users to launch jobs and scale applications without the user ever touching java.
+Skein uses a declarative specification (either written as a yaml file or using a python API) and allows users to launch jobs and scale applications without the user ever touching java.
 
 You will need to install Skein first: ``pip install skein``.
 
