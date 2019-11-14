@@ -1207,8 +1207,9 @@ def test_direct_call_simple(ray_start_cluster):
     print("a")
     assert ray.get(f_direct.remote(2)) == 3
     print("b")
-    assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
-        range(1, 101))
+    for _ in range(10):
+        assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+            range(1, 101))
 
 
 def test_direct_call_chain(ray_start_regular):

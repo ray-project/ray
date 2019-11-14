@@ -1433,12 +1433,12 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   // Override the task dispatch to call back to the client instead of executing the
   // task directly on the worker. TODO(ekl) handle spilling case
   Task task(task_message);
-  RAY_LOG(ERROR) << "Worker lease request " << task.GetTaskSpecification().TaskId();
+  RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
       [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
                                          const std::string &address, int port) {
-        RAY_LOG(ERROR) << "Worker lease request DISPATCH " << task_id;
+        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->set_address(address);
         reply->set_port(port);
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1450,7 +1450,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
                                          const std::string &address, int port) {
-        RAY_LOG(ERROR) << "Worker lease request SPILLBACK " << task_id;
+        RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
         reply->set_address(address);
         reply->set_port(port);
         reply->set_raylet_id(spillback_to.Binary());
