@@ -86,18 +86,10 @@ class NodeManagerWorkerClient
   /// Request a worker lease.
   ray::Status RequestWorkerLease(const WorkerLeaseRequest &request,
                                  const ClientCallback<WorkerLeaseReply> &callback) {
-    auto wrapped = callback;
-    if (callback != nullptr) {
-      auto this_ptr = this->shared_from_this();
-      wrapped = [this_ptr, callback](Status status, const rpc::WorkerLeaseReply &reply) {
-        callback(status, reply);
-      };
-    }
-
     auto call = client_call_manager_
                     .CreateCall<NodeManagerService, WorkerLeaseRequest, WorkerLeaseReply>(
                         *stub_, &NodeManagerService::Stub::PrepareAsyncRequestWorkerLease,
-                        request, wrapped);
+                        request, callback);
     return call->GetStatus();
   }
 

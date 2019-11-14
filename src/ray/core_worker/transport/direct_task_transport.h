@@ -54,17 +54,17 @@ class LocalDependencyResolver {
 typedef std::pair<std::string, int> WorkerAddress;
 typedef std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(WorkerAddress)>
     ClientFactoryFn;
-typedef std::function<std::unique_ptr<WorkerLeaseInterface>(const rpc::Address &)>
+typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &)>
     LeaseClientFactoryFn;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(
-      WorkerLeaseInterface &lease_client, ClientFactoryFn client_factory,
+      std::shared_ptr<WorkerLeaseInterface> lease_client, ClientFactoryFn client_factory,
       LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-      : lease_client_(lease_client),
+      : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
         in_memory_store_(store_provider),
@@ -89,20 +89,19 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned
   /// to the raylet once it finishes its task and either the lease term has
-  /// expired, or there is no more work it can take on.
-  ///
-  /// \param[in] addr The (addr, port) pair identifying the worker.
-  void HandleWorkerLeaseGranted(const WorkerAddress addr);
+  /// expired, or there is no more work it can take on. The worker should be
+  /// returned to the raylet via the given lease client.
+  void HandleWorkerLeaseGranted(const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> &lease_client);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
                       TaskSpecification &task_spec);
 
-  // Client that can be used to lease and return workers.
-  WorkerLeaseInterface &lease_client_;
+  // Client that can be used to lease and return workers from the local raylet.
+  std::shared_ptr<WorkerLeaseInterface> local_lease_client_;
 
   /// Cache of gRPC clients to remote raylets.
-  absl::flat_hash_map<ClientID, std::unique_ptr<WorkerLeaseInterface>>
+  absl::flat_hash_map<ClientID, std::shared_ptr<WorkerLeaseInterface>>
       remote_lease_clients_ GUARDED_BY(mu_);
 
   /// Factory for producing new core worker clients.
@@ -121,8 +120,9 @@ class CoreWorkerDirectTaskSubmitter {
   absl::Mutex mu_;
 
   /// Cache of gRPC clients to other workers.
-  absl::flat_hash_map<WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      client_cache_ GUARDED_BY(mu_);
+  absl::flat_hash_map<WorkerAddress, std::pair<
+    std::shared_ptr<rpc::CoreWorkerClientInterface>,
+    std::shared_ptr<WorkerLeaseInterface>>> client_cache_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
   bool worker_request_pending_ GUARDED_BY(mu_) = false;

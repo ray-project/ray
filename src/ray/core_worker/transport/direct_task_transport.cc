@@ -93,7 +93,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   return Status::OK();
 }
 
-void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress addr) {
+void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> &lease_client) {
   // Setup client state for this worker.
   {
     absl::MutexLock lock(&mu_);
@@ -102,7 +102,8 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress
     auto it = client_cache_.find(addr);
     if (it == client_cache_.end()) {
       client_cache_[addr] =
-          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+      {std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr)),
+        lease_client};
       RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
     }
   }
@@ -115,9 +116,10 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
                                                  bool was_error) {
   absl::MutexLock lock(&mu_);
   if (queued_tasks_.empty() || was_error) {
-    RAY_CHECK_OK(lease_client_.ReturnWorker(addr.second));
+    auto &lease_client = client_cache_[addr].second;
+    RAY_CHECK_OK(lease_client->ReturnWorker(addr.second));
   } else {
-    auto &client = *client_cache_[addr];
+    auto &client = *client_cache_[addr].first;
     PushNormalTask(addr, client, queued_tasks_.front());
     queued_tasks_.pop_front();
   }
@@ -134,7 +136,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  WorkerLeaseInterface *lease_client = &lease_client_;
+  std::shared_ptr<WorkerLeaseInterface> lease_client;
   if (address && address->raylet_id() != "") {
     // Connect to raylet.
     ClientID raylet_id = ClientID::FromBinary(address->raylet_id());
@@ -145,19 +147,21 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*address)).first;
     }
     RAY_LOG(DEBUG) << "Sending " << resource_spec.TaskId() << " to raylet " << raylet_id;
-    lease_client = &(*it->second);
+    lease_client = it->second;
+  } else {
+    lease_client = local_lease_client_;
   }
 
   // NOTE(swang): We must copy the resource spec here because the resource spec
   // may get swapped out by the time the callback fires.
   TaskSpecification resource_spec_copy(resource_spec.GetMessage());
   RAY_CHECK_OK(lease_client->RequestWorkerLease(
-      resource_spec_copy, [this, resource_spec_copy](const Status &status,
-                                                     const rpc::WorkerLeaseReply &reply) {
+      resource_spec_copy, [this, resource_spec_copy, lease_client](const Status &status,
+                                                     const rpc::WorkerLeaseReply &reply) mutable {
         if (status.ok()) {
           if (reply.raylet_id() == "") {
             RAY_LOG(DEBUG) << "Lease granted " << resource_spec_copy.TaskId();
-            HandleWorkerLeaseGranted({reply.address(), reply.port()});
+            HandleWorkerLeaseGranted({reply.address(), reply.port()}, lease_client);
           } else {
             absl::MutexLock lock(&mu_);
             worker_request_pending_ = false;

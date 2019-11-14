@@ -469,7 +469,7 @@ class CoreWorker {
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces.
-  std::unique_ptr<RayletClient> raylet_client_;
+  std::shared_ptr<RayletClient> raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
