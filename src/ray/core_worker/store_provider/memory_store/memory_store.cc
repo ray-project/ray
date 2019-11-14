@@ -87,6 +87,9 @@ void GetRequest::Wait() {
 
 void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> object) {
   std::unique_lock<std::mutex> lock(mutex_);
+  if (is_ready_) {
+    return;  // We have already hit the number of objects to return limit.
+  }
   objects_.emplace(object_id, object);
   if (objects_.size() == num_objects_) {
     is_ready_ = true;
@@ -203,6 +206,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   (*results).resize(object_ids.size(), nullptr);
 
   std::shared_ptr<GetRequest> get_request;
+  int count = 0;
 
   {
     absl::flat_hash_set<ObjectID> remaining_ids;
@@ -210,7 +214,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
 
     absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
-    for (size_t i = 0; i < object_ids.size(); i++) {
+    for (size_t i = 0; i < object_ids.size() && count < num_objects; i++) {
       const auto &object_id = object_ids[i];
       auto iter = objects_.find(object_id);
       if (iter != objects_.end()) {
@@ -220,22 +224,19 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
           // because `object_ids` might have duplicate ids.
           ids_to_remove.insert(object_id);
         }
+        count += 1;
       } else {
         remaining_ids.insert(object_id);
       }
     }
+    RAY_CHECK(count <= num_objects);
 
     for (const auto &object_id : ids_to_remove) {
       objects_.erase(object_id);
     }
 
     // Return if all the objects are obtained.
-    if (remaining_ids.empty()) {
-      return Status::OK();
-    }
-
-    if (object_ids.size() - remaining_ids.size() >= static_cast<size_t>(num_objects)) {
-      // Already get enough objects.
+    if (remaining_ids.empty() || count >= num_objects) {
       return Status::OK();
     }
 
@@ -250,7 +251,7 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   }
 
   // Wait for remaining objects (or timeout).
-  get_request->Wait(timeout_ms);
+  bool done = get_request->Wait(timeout_ms);
 
   {
     absl::MutexLock lock(&mu_);
@@ -280,7 +281,11 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  return Status::OK();
+  if (done) {
+    return Status::OK();
+  } else {
+    return Status::TimedOut("Get timed out: some object(s) not ready.");
+  }
 }
 
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {

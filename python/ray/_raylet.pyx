@@ -84,7 +84,8 @@ from ray.exceptions import (
     RayError,
     RayletError,
     RayTaskError,
-    ObjectStoreFullError
+    ObjectStoreFullError,
+    RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
 from ray.function_manager import FunctionDescriptor
@@ -138,6 +139,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
+    elif status.IsTimedOut():
+        raise RayTimeoutError(message)
     else:
         raise RayletError(message)
 
