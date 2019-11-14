@@ -1194,36 +1194,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
-<<<<<<< HEAD
-=======
-void NodeManager::ProcessRequestWorkerLeaseMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  // Read the resource spec submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::WorkerLeaseRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->resource_spec()->data(), fbs_message->resource_spec()->size()));
-
-  // Override the task dispatch to call back to the client instead of executing the
-  // task directly on the worker. TODO(ekl) handle spilling case
-  Task task(task_message);
-  task.OnDispatchInstead([this, client](const std::shared_ptr<void> granted,
-                                        const std::string &address, int port) {
-    std::shared_ptr<Worker> client_worker = worker_pool_.GetRegisteredWorker(client);
-    if (client_worker == nullptr) {
-      client_worker = worker_pool_.GetRegisteredDriver(client);
-    }
-    if (client_worker == nullptr) {
-      RAY_LOG(FATAL) << "TODO: Lost worker for lease request " << client;
-    } else {
-      client_worker->WorkerLeaseGranted(address, port);
-      leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
-    }
-  });
-  SubmitTask(task, Lineage());
-}
-
->>>>>>> 0ab387dfbd7d9174c20957df4996f42befb729d3
 void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   // Read the resource spec submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
@@ -1464,9 +1434,11 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   // task directly on the worker. TODO(ekl) handle spilling case
   Task task(task_message);
   RAY_LOG(ERROR) << "Worker lease request " << task.GetTaskSpecification().TaskId();
+  TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
-      [this, reply, send_reply_callback](const std::shared_ptr<void> granted,
+      [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
                                          const std::string &address, int port) {
+        RAY_LOG(ERROR) << "Worker lease request DISPATCH " << task_id;
         reply->set_address(address);
         reply->set_port(port);
         send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -1476,8 +1448,9 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
       });
   task.OnSpillbackInstead(
-      [reply, send_reply_callback](const ClientID &spillback_to,
+      [reply, task_id, send_reply_callback](const ClientID &spillback_to,
                                          const std::string &address, int port) {
+        RAY_LOG(ERROR) << "Worker lease request SPILLBACK " << task_id;
         reply->set_address(address);
         reply->set_port(port);
         reply->set_raylet_id(spillback_to.Binary());

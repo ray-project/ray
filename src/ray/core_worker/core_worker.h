@@ -444,7 +444,7 @@ class CoreWorker {
   boost::asio::io_service::work io_work_;
 
   /// Shared client call manager.
-  rpc::ClientCallManager client_call_manager_;
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
 
   /// Timer used to periodically send heartbeat containing active object IDs to the
   /// raylet.

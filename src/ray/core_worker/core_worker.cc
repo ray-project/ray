@@ -193,6 +193,12 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
                 addr.first, addr.second, *client_call_manager_));
           },
+          [this](const rpc::Address &address) {
+            auto grpc_client = rpc::NodeManagerWorkerClient::make(
+                address.ip_address(), address.port(), *client_call_manager_);
+            return std::unique_ptr<RayletClient>(new RayletClient(
+                  std::move(grpc_client)));
+          },
           memory_store_provider_));
 }
 

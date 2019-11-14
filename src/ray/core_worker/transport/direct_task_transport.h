@@ -54,15 +54,19 @@ class LocalDependencyResolver {
 typedef std::pair<std::string, int> WorkerAddress;
 typedef std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(WorkerAddress)>
     ClientFactoryFn;
+typedef std::function<std::unique_ptr<WorkerLeaseInterface>(const rpc::Address &)>
+    LeaseClientFactoryFn;
 
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(WorkerLeaseInterface &lease_client,
                                 ClientFactoryFn client_factory,
+                                LeaseClientFactoryFn lease_client_factory,
                                 CoreWorkerMemoryStoreProvider store_provider)
       : lease_client_(lease_client),
         client_factory_(client_factory),
+        lease_client_factory_(lease_client_factory),
         in_memory_store_(store_provider),
         resolver_(in_memory_store_) {}
 
@@ -79,7 +83,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight.
-  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec, const ClientID &raylet_id = ClientID::Nil())
+  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec, const rpc::Address *address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned
@@ -106,6 +110,9 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Factory for producing new core worker clients.
   ClientFactoryFn client_factory_;
+
+  /// Factory for producing new clients to request leases from remote nodes.
+  LeaseClientFactoryFn lease_client_factory_;
 
   /// The store provider.
   CoreWorkerMemoryStoreProvider in_memory_store_;

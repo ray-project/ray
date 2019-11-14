@@ -120,37 +120,43 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
 }
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
-    const TaskSpecification &resource_spec, const ClientID &raylet_id) {
+    const TaskSpecification &resource_spec, const rpc::Address *address) {
   if (worker_request_pending_) {
     return;
   }
 
   WorkerLeaseInterface &lease_client = lease_client_;
-  if (!raylet_id.IsNil()) {
+  if (address && address->raylet_id() != "") {
     // Connect to raylet.
+    ClientID raylet_id = ClientID::FromBinary(address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
-      auto grpc_client = rpc::NodeManagerWorkerClient::make(
-          reply.address(), reply.port(), client_call_manager_);
-      auto remote_lease_client = std::unique_ptr<RayletClient>(new RayletClient(std::move(grpc_client)));
-      it = remote_lease_clients_.emplace(raylet_id, std::move(remote_lease_client)).first;
+      RAY_LOG(ERROR) << "Connecting to raylet " << raylet_id;
+      it = remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*address)).first;
     }
+    RAY_LOG(ERROR) << "Sending " << resource_spec.TaskId() << " to raylet " << raylet_id;
     lease_client = *it->second;
   }
 
-  RAY_CHECK_OK(lease_client.RequestWorkerLease(
+  RAY_CHECK_OK(lease_client_.RequestWorkerLease(
       resource_spec,
       [this, resource_spec](const Status &status, const rpc::WorkerLeaseReply &reply) {
         if (status.ok()) {
+          RAY_LOG(ERROR) << "Raylet string " << reply.raylet_id().size();
           if (reply.raylet_id() == "") {
+            RAY_LOG(ERROR) << "Lease granted " << resource_spec.TaskId();
             HandleWorkerLeaseGranted({reply.address(), reply.port()});
           } else {
             absl::MutexLock lock(&mu_);
             worker_request_pending_ = false;
-            ClientID raylet_id = ClientID::FromBinary(reply.raylet_id());
-            RequestNewWorkerIfNeeded(resource_spec, raylet_id);
+            rpc::Address address;
+            address.set_ip_address(reply.address());
+            address.set_port(reply.port());
+            address.set_raylet_id(reply.raylet_id());
+            RequestNewWorkerIfNeeded(resource_spec, &address);
           }
         } else {
+          RAY_LOG(ERROR) << "RETRY lease " << resource_spec.TaskId();
           // Retry the worker lease request. TODO(swang): Fail after some
           // number of attempts.
           absl::MutexLock lock(&mu_);
