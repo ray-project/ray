@@ -1,17 +1,13 @@
-from typing import List
 import logging
 from queue import Queue
+from typing import List
 
 import ray
-from ray.actor import ActorHandle, ActorID
-
-import ray.streaming.queue.queue_utils as qutils
-from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
-from ray.streaming.config import Config
-from ray.streaming.queue.queue_constants import QueueConstants, QueueStatus, QueueBundleType
-from ray.streaming.queue.queue_constants import QueueCreatorType
-from ray.streaming.queue.queue_interface import QueueLink, QueueConsumer, QueueProducer, QueueMessage, QueueID
 import ray.streaming as streaming
+import ray.streaming.queue.queue_utils as qutils
+from ray.actor import ActorHandle, ActorID
+from ray.streaming.config import Config
+from ray.streaming.queue.queue_interface import QueueLink, QueueConsumer, QueueProducer, QueueMessage, QueueID
 
 
 class QueueMessageImpl(QueueMessage):
@@ -58,6 +54,7 @@ class QueueLinkImpl(QueueLink):
     def __init__(self, sync_func, async_func):
         self.__configuration = dict()
         core_worker = ray.worker.global_worker.core_worker
+        logger.info("current worker actor id %s", core_worker.get_actor_id())
         self.queue_link = streaming.QueueLink(core_worker)
         self.producer = None
         self.consumer = None
@@ -115,21 +112,17 @@ class QueueLinkImpl(QueueLink):
 
     def on_streaming_transfer(self, buffer: bytes):
         """used in direct call mode"""
-        print("on_streaming_transfer ", buffer)
         self.queue_link.on_streaming_transfer(buffer)
 
     def on_streaming_transfer_sync(self, buffer: bytes):
         """used in direct call mode"""
-        print("on_streaming_transfer_sync ", buffer)
-        self.queue_link.on_streaming_transfer_sync(buffer)
+        return self.queue_link.on_streaming_transfer_sync(buffer)
 
 
 class QueueProducerImpl(QueueProducer):
     """
     queue producer impl
     """
-
-    LOGGER = logging.getLogger(__name__)
 
     def __init__(self, native_producer):
         self.__native_producer = native_producer
@@ -146,18 +139,17 @@ class QueueProducerImpl(QueueProducer):
         return msg_id
 
     def stop(self):
-        QueueProducerImpl.LOGGER.info("stopping queue producer.")
+        logger.info("stopping queue producer.")
         self.__native_producer.stop()
 
     def close(self):
-        QueueProducerImpl.LOGGER.info("closing queue producer.")
+        logger.info("closing queue producer.")
 
 
 class QueueConsumerImpl(QueueConsumer):
     """
     queue consumer impl
     """
-    LOGGER = logging.getLogger(__name__)
 
     def __init__(self, consumer):
         self.__queue = Queue(10000)
@@ -180,11 +172,11 @@ class QueueConsumerImpl(QueueConsumer):
         return self.__queue.get()
 
     def stop(self):
-        QueueConsumerImpl.LOGGER.info("stopping queue consumer.")
+        logger.info("stopping queue consumer.")
         self.__native_consumer.stop()
 
     def close(self):
-        QueueConsumerImpl.LOGGER.info("closing queue consumer.")
+        logger.info("closing queue consumer.")
 
 
 def _to_native_conf(conf):

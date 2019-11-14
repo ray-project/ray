@@ -134,7 +134,7 @@ cdef class QueueLink:
             del writer
             raise QueueInitException(msg, qid_vector_to_list(remain_id_vec))
         
-        queue_logger.info("init producer ok")
+        queue_logger.info("create native producer succeed")
         writer.Run()
         self.producer = QueueProducer()
         self.producer.writer = writer
@@ -179,6 +179,7 @@ cdef class QueueLink:
             reader.SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
         reader.Init(queue_id_vec, seq_ids, msg_ids, timer_interval)
         self.consumer = QueueConsumer()
+        queue_logger.info("create native consumer succeed")
         self.consumer.reader = reader
         return self.consumer
 

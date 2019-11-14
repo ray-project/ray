@@ -14,9 +14,10 @@ from ray.streaming.communication import DataChannel, DataInput
 from ray.streaming.communication import DataOutput, QueueConfig
 from ray.streaming.operator import Operator, OpType
 from ray.streaming.operator import PScheme, PStrategy
-import ray.streaming.operator_instance as operator_instance
+import ray.streaming.processor as processor
 from ray.streaming.config import Config
 import ray.streaming.queue.queue_utils as queue_utils
+from ray.streaming.jobworker import JobWorker
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -86,49 +87,13 @@ class ExecutionGraph:
             input_channels (input channels): The input channels of the instance.
             output_channels (output channels): The output channels of the instance.
         """
-        actor_id = (operator.id, instance_index)
+        worker_id = (operator.id, instance_index)
         # Record the physical dataflow graph (for debugging purposes)
-        self.__add_channel(actor_id, output_channels)
-        # Select actor to construct
-        actor_handle = None
-
-        def create_actor(actor_class):
-            # direct_call only support pass by value
-            return actor_class._remote(args=[actor_id, operator, input_channels, output_channels],
-                                       is_direct_call=True)
-
-        actor_class = None
-        if operator.type == OpType.Source:
-            actor_handle = create_actor(operator_instance.Source)
-        elif operator.type == OpType.Map:
-            actor_handle = create_actor(operator_instance.Map)
-        elif operator.type == OpType.FlatMap:
-            actor_handle = create_actor(operator_instance.FlatMap)
-        elif operator.type == OpType.Filter:
-            actor_handle = create_actor(operator_instance.Filter)
-        elif operator.type == OpType.Reduce:
-            actor_handle = create_actor(operator_instance.Reduce)
-        elif operator.type == OpType.TimeWindow:
-            pass
-        elif operator.type == OpType.KeyBy:
-            actor_handle = create_actor(operator_instance.KeyBy)
-        elif operator.type == OpType.Sum:
-            actor_handle = create_actor(operator_instance.Reduce)
-            # Register target handle at state actor
-            state_actor = operator.state_actor
-            if state_actor is not None:
-                state_actor.register_target.remote(actor_handle)
-        elif operator.type == OpType.Sink:
-            pass
-        elif operator.type == OpType.Inspect:
-            actor_handle = create_actor(operator_instance.Inspect)
-        elif operator.type == OpType.ReadTextFile:
-            # TODO (john): Colocate the source with the input file
-            actor_handle = create_actor(operator_instance.ReadTextFile)
-        else:  # TODO (john): Add support for other types of operators
-            sys.exit("Unrecognized or unsupported {} operator type.".format(
-                operator.type))
-        return actor_handle
+        self.__add_channel(worker_id, output_channels)
+        # Note direct_call only support pass by value
+        return JobWorker._remote(args=[worker_id, operator,
+                                       input_channels, output_channels],
+                                 is_direct_call=True)
 
     # Constructs and deploys a Ray actor for each instance of
     # the given operator
@@ -167,7 +132,6 @@ class ExecutionGraph:
             dest_actor_id = (channel.dst_operator_id, channel.dst_instance_index)
             self.physical_topo.add_edge(actor_id, dest_actor_id)
 
-    # TODO(chaokunyang) remove channels, and use queue instead.
     # Generates all required data channels between an operator
     # and its downstream operators
     def _generate_channels(self, operator):
@@ -363,7 +327,7 @@ class Environment(object):
         source_id = self.gen_operator_id()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = Operator(
-            source_id, OpType.Source, "Source", other=source)
+            source_id, OpType.Source, processor.Source, "Source", other=source)
         return source_stream
 
     # Creates and registers a new data source that reads a
@@ -375,7 +339,7 @@ class Environment(object):
         source_id = self.gen_operator_id()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = Operator(
-            source_id, OpType.ReadTextFile, "Read Text File", other=filepath)
+            source_id, OpType.ReadTextFile, processor.ReadTextFile, "Read Text File", other=filepath)
         return source_stream
 
     # Constructs and deploys the physical dataflow
@@ -583,6 +547,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.Map,
+            processor.Map,
             name,
             map_fn,
             num_instances=self.env.config.parallelism)
@@ -599,6 +564,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.FlatMap,
+            processor.FlatMap,
             "FlatMap",
             flatmap_fn,
             num_instances=self.env.config.parallelism)
@@ -616,6 +582,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.KeyBy,
+            processor.KeyBy,
             "KeyBy",
             other=key_selector,
             num_instances=self.env.config.parallelism)
@@ -632,6 +599,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.Reduce,
+            processor.Reduce,
             "Sum",
             reduce_fn,
             num_instances=self.env.config.parallelism)
@@ -648,6 +616,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.Sum,
+            processor.Reduce,
             "Sum",
             _sum,
             other=attribute_selector,
@@ -664,13 +633,7 @@ class DataStream(object):
         Attributes:
              window_width_ms (int): The length of the window in ms.
         """
-        op = Operator(
-            self.env.gen_operator_id(),
-            OpType.TimeWindow,
-            "TimeWindow",
-            num_instances=self.env.config.parallelism,
-            other=window_width_ms)
-        return self.__register(op)
+        raise Exception("time_window is unsupported")
 
     # Registers filter operator to the environment
     def filter(self, filter_fn):
@@ -682,6 +645,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.Filter,
+            processor.Filter,
             "Filter",
             filter_fn,
             num_instances=self.env.config.parallelism)
@@ -692,6 +656,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.WindowJoin,
+            processor.WindowJoin,
             "WindowJoin",
             num_instances=self.env.config.parallelism)
         return self.__register(op)
@@ -706,6 +671,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.Inspect,
+            processor.Inspect,
             "Inspect",
             inspect_logic,
             num_instances=self.env.config.parallelism)
@@ -719,6 +685,7 @@ class DataStream(object):
         op = Operator(
             self.env.gen_operator_id(),
             OpType.Sink,
+            processor.Sink,
             "Sink",
             num_instances=self.env.config.parallelism)
         return self.__register(op)

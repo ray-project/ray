@@ -52,14 +52,16 @@ class OpType(enum.Enum):
 class Operator(object):
     def __init__(self,
                  id,
-                 type,
+                 op_type,
+                 processor_class,
                  name="",
                  logic=None,
                  num_instances=1,
                  other=None,
                  state_actor=None):
         self.id = id
-        self.type = type
+        self.type = op_type
+        self.processor_class = processor_class
         self.name = name
         self.logic = logic  # The operator's logic
         self.num_instances = num_instances
@@ -96,10 +98,10 @@ class Operator(object):
         self.partitioning_strategies = strategies
 
     def print(self):
-        log = "Operator<\nID = {}\nName = {}\nType = {}\n"
+        log = "Operator<\nID = {}\nName = {}\nprocessor_class = {}\n"
         log += "Logic = {}\nNumber_of_Instances = {}\n"
         log += "Partitioning_Scheme = {}\nOther_Args = {}>\n"
         logger.debug(
-            log.format(self.id, self.name, self.type, self.logic,
+            log.format(self.id, self.name, self.processor_class, self.logic,
                        self.num_instances, self.partitioning_strategies,
                        self.other_args))
