@@ -966,9 +966,15 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto reply = ray::protocol::CreateRegisterClientReply(
       fbb, to_flatbuf(fbb, gcs_client_->client_table().GetLocalClientId()));
   fbb.Finish(reply);
-  worker->Connection()->WriteMessageAsync(
+  client->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
-      fbb.GetBufferPointer(), nullptr);
+      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Failed to send RegisterClientReply to client, so disconnecting";
+          ProcessDisconnectClientMessage(client);
+        }
+      });
 
   if (message->is_worker()) {
     // Register the new worker.
