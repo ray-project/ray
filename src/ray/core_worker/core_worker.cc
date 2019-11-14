@@ -191,7 +191,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
   memory_store_.reset(
       new CoreWorkerMemoryStore([this](const RayObject &obj, const ObjectID &obj_id) {
-        plasma_store_provider_->Put(obj, obj_id);
+        RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       }));
   memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
@@ -306,7 +306,8 @@ void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
-    plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType());
+    RAY_CHECK_OK(
+        plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
   }
 }
 
