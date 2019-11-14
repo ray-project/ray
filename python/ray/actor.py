@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import copy
 import inspect
 import logging
@@ -389,7 +390,7 @@ class ActorClass(object):
         if kwargs is None:
             kwargs = {}
         if is_direct_call is None:
-            is_direct_call = False
+            is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
         if max_concurrency is None:
             max_concurrency = 1
 
