@@ -71,13 +71,6 @@ class CoreWorkerDirectTaskSubmitter {
   /// \param[in] task_spec The task to schedule.
   Status SubmitTask(TaskSpecification task_spec);
 
-  /// Callback for when the raylet grants us a worker lease. The worker is returned
-  /// to the raylet once it finishes its task and either the lease term has
-  /// expired, or there is no more work it can take on.
-  ///
-  /// \param[in] addr The (addr, port) pair identifying the worker.
-  void HandleWorkerLeaseGranted(const WorkerAddress addr);
-
  private:
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
@@ -88,6 +81,13 @@ class CoreWorkerDirectTaskSubmitter {
   /// flight.
   void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Callback for when the raylet grants us a worker lease. The worker is returned
+  /// to the raylet once it finishes its task and either the lease term has
+  /// expired, or there is no more work it can take on.
+  ///
+  /// \param[in] addr The (addr, port) pair identifying the worker.
+  void HandleWorkerLeaseGranted(const WorkerAddress addr);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,

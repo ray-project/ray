@@ -861,14 +861,4 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   });
 }
 
-void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
-                                          rpc::WorkerLeaseGrantedReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
-  // Run this directly since the main thread may be tied up processing a task and
-  // we need to still continue processing these scheduling operations in the backend.
-  direct_task_submitter_->HandleWorkerLeaseGranted(
-      std::make_pair(request.address(), request.port()));
-  send_reply_callback(Status::OK(), nullptr, nullptr);
-}
-
 }  // namespace ray

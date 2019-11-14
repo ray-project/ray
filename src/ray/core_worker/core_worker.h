@@ -30,8 +30,7 @@
 #define RAY_CORE_WORKER_RPC_HANDLERS                               \
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(WorkerLeaseGranted, 5)
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
 
 namespace ray {
 
@@ -341,11 +340,6 @@ class CoreWorker {
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
-
-  /// Implements gRPC server handler.
-  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
-                                rpc::WorkerLeaseGrantedReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
