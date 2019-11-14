@@ -1442,11 +1442,6 @@ void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
                                    rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task;
   task.mutable_task_spec()->CopyFrom(request.task_spec());
-  // Set the caller's node ID.
-  if (task.task_spec().caller_address().raylet_id() == "") {
-    task.mutable_task_spec()->mutable_caller_address()->set_raylet_id(
-        gcs_client_->client_table().GetLocalClientId().Binary());
-  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
