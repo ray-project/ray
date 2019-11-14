@@ -530,8 +530,8 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(
       builder, worker_context_.GetCurrentJobID(), task_id,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_, function, args,
-      task_options.num_returns, task_options.resources, {},
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
+      function, args, task_options.num_returns, task_options.resources, {},
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
       return_ids);
   if (task_options.is_direct_call) {
