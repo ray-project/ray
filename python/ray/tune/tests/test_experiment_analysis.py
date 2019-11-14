@@ -15,30 +15,31 @@ from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
-    class MockTrainable(Trainable):
-        def _setup(self, config):
-            self.id = config["id"]
-            self.idx = 0
-            self.scores_dict = {
-                0: [5, 0],
-                1: [4, 1],
-                2: [2, 8],
-                3: [9, 6],
-                4: [7, 3]
-            }
-
-        def _train(self):
-            val = self.scores_dict[self.id][self.idx]
-            self.idx += 1
-            return {"score": val}
-
-        def _save(self, checkpoint_dir):
-            pass
-
-        def _restore(self, checkpoint_path):
-            pass
 
     def setUp(self):
+        class MockTrainable(Trainable):
+            def _setup(self, config):
+                self.id = config["id"]
+                self.idx = 0
+                self.scores_dict = {
+                    0: [5, 0],
+                    1: [4, 1],
+                    2: [2, 8],
+                    3: [9, 6],
+                    4: [7, 3]
+                }
+
+            def _train(self):
+                val = self.scores_dict[self.id][self.idx]
+                self.idx += 1
+                return {"score": val}
+
+            def _save(self, checkpoint_dir):
+                pass
+
+            def _restore(self, checkpoint_path):
+                pass
+        self.MockTrainable = MockTrainable
         ray.init(local_mode=False, num_cpus=1)
 
     def tearDown(self):
@@ -72,7 +73,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
 class ExperimentAnalysisSuite(unittest.TestCase):
     def setUp(self):
-        ray.init(local_mode=True)
+        ray.init(local_mode=False)
         self.test_dir = tempfile.mkdtemp()
         self.test_name = "analysis_exp"
         self.num_samples = 10
