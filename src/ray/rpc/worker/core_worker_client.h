@@ -84,6 +84,8 @@ class CoreWorkerClientInterface {
       const ClientCallback<WorkerLeaseGrantedReply> &callback) {
     return Status::NotImplemented("");
   }
+
+  virtual ~CoreWorkerClientInterface(){};
 };
 
 /// Client used for communicating with a remote worker server.

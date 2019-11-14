@@ -29,6 +29,7 @@ import pytest
 
 import ray
 from ray import signature
+from ray.exceptions import RayTimeoutError
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
@@ -1188,6 +1189,20 @@ def test_get_dict(ray_start_regular):
     result = ray.experimental.get(d)
     expected = {str(i): i for i in range(10)}
     assert result == expected
+
+
+def test_get_with_timeout(ray_start_regular):
+    @ray.remote
+    def f(a):
+        time.sleep(a)
+        return a
+
+    assert ray.get(f.remote(3), timeout=10) == 3
+
+    obj_id = f.remote(3)
+    with pytest.raises(RayTimeoutError):
+        ray.get(obj_id, timeout=2)
+    assert ray.get(obj_id, timeout=2) == 3
 
 
 def test_direct_call_simple(ray_start_regular):

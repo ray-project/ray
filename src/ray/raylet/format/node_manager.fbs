@@ -142,8 +142,8 @@ table RegisterClientRequest {
 }
 
 table RegisterClientReply {
-  // The IDs of the GPUs that are reserved for this worker.
-  gpu_ids: [int];
+  // GCS ClientID of the local node manager.
+  raylet_id: string;
 }
 
 table RegisterNodeManagerRequest {
