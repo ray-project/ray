@@ -79,7 +79,7 @@ class MicrobatchOptimizer(PolicyOptimizer):
                 self.sample_timer.push_units_processed(samples.count)
                 samples_so_far += samples.count
 
-            logger.debug(
+            logger.info(
                 "Computing gradients for microbatch {} ({}/{} samples)".format(
                     i, samples_so_far, self.train_batch_size))
 
@@ -114,7 +114,7 @@ class MicrobatchOptimizer(PolicyOptimizer):
             self.grad_timer.push_units_processed(samples.count)
 
         # Apply the accumulated gradient
-        logger.debug("Applying accumulated gradients ({} samples)".format(
+        logger.info("Applying accumulated gradients ({} samples)".format(
             samples_so_far))
         self.workers.local_worker().apply_gradients(accumulated_gradients)
 
