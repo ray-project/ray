@@ -89,6 +89,10 @@ def create_parser(parser_creator=None):
         type=str,
         help="Optional URI to sync training results to (e.g. s3://bucket).")
     parser.add_argument(
+        "-v", action="store_true", help="Whether to use INFO level logging.")
+    parser.add_argument(
+        "-vv", action="store_true", help="Whether to use DEBUG level logging.")
+    parser.add_argument(
         "--resume",
         action="store_true",
         help="Whether to attempt to resume previous Tune experiments.")
@@ -143,6 +147,7 @@ def run(args, parser):
             }
         }
 
+    verbose = 1
     for exp in experiments.values():
         if not exp.get("run"):
             parser.error("the following arguments are required: --run")
@@ -150,6 +155,12 @@ def run(args, parser):
             parser.error("the following arguments are required: --env")
         if args.eager:
             exp["config"]["eager"] = True
+        if args.v:
+            exp["config"]["log_level"] = "INFO"
+            verbose = 2
+        if args.vv:
+            exp["config"]["log_level"] = "DEBUG"
+            verbose = 3
         if args.trace:
             if not exp["config"].get("eager"):
                 raise ValueError("Must enable --eager to enable tracing.")
@@ -178,6 +189,7 @@ def run(args, parser):
         scheduler=_make_scheduler(args),
         queue_trials=args.queue_trials,
         resume=args.resume,
+        verbose=verbose,
         concurrent=True)
 
 
