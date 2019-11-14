@@ -390,7 +390,8 @@ ray::Status RayletClient::RequestWorkerLease(
 ray::Status RayletClient::ReturnWorker(int worker_port) {
   ray::rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
-  return grpc_client_->ReturnWorker(request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
-      RAY_CHECK_OK(status);
+  return grpc_client_->ReturnWorker(
+      request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
+        RAY_CHECK_OK(status);
       });
 }

@@ -1447,8 +1447,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
 }
 
 void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
-                                rpc::ReturnWorkerReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) {
+                                     rpc::ReturnWorkerReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_port = request.worker_port();
   RAY_LOG(DEBUG) << "Return worker " << worker_port;

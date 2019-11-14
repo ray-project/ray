@@ -32,8 +32,8 @@ class NodeManagerServiceHandler {
                                         SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
-                                        ReturnWorkerReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
+                                  ReturnWorkerReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,

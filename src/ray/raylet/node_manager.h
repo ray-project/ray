@@ -507,8 +507,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Handle a `ReturnWorker` request.
   void HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
-                                rpc::ReturnWorkerReply *reply,
-                                rpc::SendReplyCallback send_reply_callback) override;
+                          rpc::ReturnWorkerReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ForwardTask` request.
   void HandleForwardTask(const rpc::ForwardTaskRequest &request,

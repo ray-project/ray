@@ -62,7 +62,7 @@ class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(
       WorkerLeaseInterface &lease_client, ClientFactoryFn client_factory,
-                                LeaseClientFactoryFn lease_client_factory,
+      LeaseClientFactoryFn lease_client_factory,
       std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : lease_client_(lease_client),
         client_factory_(client_factory),
