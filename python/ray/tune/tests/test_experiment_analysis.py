@@ -30,7 +30,6 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         def _train(self):
             val = self.scores_dict[self.id][self.idx]
             self.idx += 1
-            print("HELLO " + str(self.id) + "   " + str(val))
             return {"score": val}
 
         def _save(self, checkpoint_dir):
