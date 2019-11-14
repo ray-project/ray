@@ -1197,7 +1197,8 @@ def test_get_dict(ray_start_regular):
     }, {
         "num_cpus": 1,
         "num_nodes": 2,
-    }], indirect=True)
+    }],
+    indirect=True)
 def test_direct_call_simple(ray_start_cluster):
     @ray.remote
     def f(x):

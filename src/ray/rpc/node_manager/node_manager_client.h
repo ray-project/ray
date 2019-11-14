@@ -90,8 +90,8 @@ class NodeManagerWorkerClient
     if (callback != nullptr) {
       auto this_ptr = this->shared_from_this();
       wrapped = [this_ptr, callback](Status status, const rpc::WorkerLeaseReply &reply) {
-                        callback(status, reply);
-                        };
+        callback(status, reply);
+      };
     }
 
     auto call = client_call_manager_

@@ -201,16 +201,14 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
-RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client) 
-  : grpc_client_(std::move(grpc_client)) {}
+RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client)
+    : grpc_client_(std::move(grpc_client)) {}
 
 RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                            const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
                            ClientID *raylet_id, int port)
-    : grpc_client_(std::move(grpc_client)),
-      worker_id_(worker_id),
-      job_id_(job_id) {
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 

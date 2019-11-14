@@ -133,7 +133,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
       RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;
-      it = remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*address)).first;
+      it =
+          remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*address)).first;
     }
     RAY_LOG(DEBUG) << "Sending " << resource_spec.TaskId() << " to raylet " << raylet_id;
     lease_client = &(*it->second);
@@ -143,8 +144,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // may get swapped out by the time the callback fires.
   TaskSpecification resource_spec_copy(resource_spec.GetMessage());
   RAY_CHECK_OK(lease_client->RequestWorkerLease(
-      resource_spec_copy,
-      [this, resource_spec_copy](const Status &status, const rpc::WorkerLeaseReply &reply) {
+      resource_spec_copy, [this, resource_spec_copy](const Status &status,
+                                                     const rpc::WorkerLeaseReply &reply) {
         if (status.ok()) {
           if (reply.raylet_id() == "") {
             RAY_LOG(DEBUG) << "Lease granted " << resource_spec_copy.TaskId();

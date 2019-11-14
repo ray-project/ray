@@ -1437,7 +1437,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
       [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
-                                         const std::string &address, int port) {
+                                                  const std::string &address, int port) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->set_address(address);
         reply->set_port(port);
@@ -1449,7 +1449,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
       });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
-                                         const std::string &address, int port) {
+                                            const std::string &address, int port) {
         RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
         reply->set_address(address);
         reply->set_port(port);
@@ -2498,7 +2498,8 @@ void NodeManager::ForwardTask(
       RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
       task.OnSpillback()(ClientID::Nil(), "", 0);
     } else {
-      task.OnSpillback()(node_id, node_info.node_manager_address(), node_info.node_manager_port());
+      task.OnSpillback()(node_id, node_info.node_manager_address(),
+                         node_info.node_manager_port());
     }
     return;
   }

@@ -83,7 +83,8 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight.
-  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec, const rpc::Address *address = nullptr)
+  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec,
+                                const rpc::Address *address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned

@@ -13,7 +13,8 @@ typedef std::function<void(const std::shared_ptr<void>, const std::string &, int
     DispatchTaskCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void(const ClientID &, const std::string &, int)> SpillbackTaskCallback;
+typedef std::function<void(const ClientID &, const std::string &, int)>
+    SpillbackTaskCallback;
 
 /// \class Task
 ///
@@ -45,8 +46,7 @@ class Task {
   }
 
   /// Override dispatch behaviour.
-  void OnDispatchInstead(
-      const DispatchTaskCallback &callback) {
+  void OnDispatchInstead(const DispatchTaskCallback &callback) {
     on_dispatch_ = callback;
   }
 

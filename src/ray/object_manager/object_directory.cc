@@ -107,7 +107,8 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   GcsNodeInfo node_info;
-  bool found = gcs_client_->client_table().GetClient(connection_info.client_id, &node_info);
+  bool found =
+      gcs_client_->client_table().GetClient(connection_info.client_id, &node_info);
   ClientID result_client_id = ClientID::FromBinary(node_info.node_id());
   if (found) {
     RAY_CHECK(result_client_id == connection_info.client_id);
