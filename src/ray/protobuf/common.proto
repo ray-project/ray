@@ -27,6 +27,12 @@ enum TaskType {
   ACTOR_TASK = 2;
 }
 
+message Address {
+  bytes raylet_id = 1;
+  string ip_address = 2;
+  int32 port = 3;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -51,23 +57,25 @@ message TaskSpec {
   // Task ID of the caller. This is the same as parent_task_id for non-actors.
   // This is the actor ID (embedded in a nil task ID) for actors.
   bytes caller_id = 8;
+  /// Address of the caller.
+  Address caller_address = 9;
   // Task arguments.
-  repeated TaskArg args = 9;
+  repeated TaskArg args = 10;
   // Number of return objects.
-  uint64 num_returns = 10;
+  uint64 num_returns = 11;
   // Quantities of the different resources required by this task.
-  map<string, double> required_resources = 11;
+  map<string, double> required_resources = 12;
   // The resources required for placing this task on a node. If this is empty,
   // then the placement resources are equal to the required_resources.
-  map<string, double> required_placement_resources = 12;
+  map<string, double> required_placement_resources = 13;
   // Task specification for an actor creation task.
   // This field is only valid when `type == ACTOR_CREATION_TASK`.
-  ActorCreationTaskSpec actor_creation_task_spec = 13;
+  ActorCreationTaskSpec actor_creation_task_spec = 14;
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
-  ActorTaskSpec actor_task_spec = 14;
+  ActorTaskSpec actor_task_spec = 15;
   // Whether this task is a direct call task.
-  bool is_direct_call = 15;
+  bool is_direct_call = 16;
 }
 
 // Argument in the task.
