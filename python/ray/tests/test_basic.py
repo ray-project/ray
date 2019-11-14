@@ -1190,6 +1190,31 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+def test_direct_call_simple(ray_start_regular):
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    f_direct = f.options(is_direct_call=True)
+    print("a")
+    assert ray.get(f_direct.remote(2)) == 3
+    print("b")
+    assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+        range(1, 101))
+
+
+def test_direct_call_chain(ray_start_regular):
+    @ray.remote
+    def g(x):
+        return x + 1
+
+    g_direct = g.options(is_direct_call=True)
+    x = 0
+    for _ in range(100):
+        x = g_direct.remote(x)
+    assert ray.get(x) == 100
+
+
 def test_direct_actor_enabled(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1206,6 +1231,25 @@ def test_direct_actor_enabled(ray_start_regular):
     assert ray.get(obj_id) == 2
 
 
+def test_direct_actor_large_objects(ray_start_regular):
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            pass
+
+        def f(self):
+            time.sleep(1)
+            return np.zeros(10000000)
+
+    a = Actor._remote(is_direct_call=True)
+    obj_id = a.f.remote()
+    assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
+    done, _ = ray.wait([obj_id])
+    assert len(done) == 1
+    assert ray.worker.global_worker.core_worker.object_exists(obj_id)
+    assert isinstance(ray.get(obj_id), np.ndarray)
+
+
 def test_direct_actor_errors(ray_start_regular):
     @ray.remote
     class Actor(object):
@@ -1220,10 +1264,6 @@ def test_direct_actor_errors(ray_start_regular):
         return 1
 
     a = Actor._remote(is_direct_call=True)
-
-    # cannot pass returns to other methods directly
-    with pytest.raises(Exception):
-        ray.get(f.remote(a.f.remote(2)))
 
     # cannot pass returns to other methods even in a list
     with pytest.raises(Exception):

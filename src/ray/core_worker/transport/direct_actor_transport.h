@@ -14,8 +14,8 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/rpc/worker/direct_actor_client.h"
-#include "ray/rpc/worker/direct_actor_server.h"
+#include "ray/rpc/grpc_server.h"
+#include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
 
@@ -40,15 +40,14 @@ struct ActorStateData {
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(
-      boost::asio::io_service &io_service,
-      std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider);
+  CoreWorkerDirectActorTaskSubmitter(rpc::ClientCallManager &client_call_manager,
+                                     CoreWorkerMemoryStoreProvider store_provider);
 
   /// Submit a task to an actor for execution.
   ///
   /// \param[in] task The task spec to submit.
   /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(const TaskSpecification &task_spec);
+  Status SubmitTask(TaskSpecification task_spec);
 
   /// Handle an update about an actor.
   ///
@@ -67,9 +66,9 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushTask(rpc::DirectActorClient &client,
-                std::unique_ptr<rpc::PushTaskRequest> request, const ActorID &actor_id,
-                const TaskID &task_id, int num_returns);
+  void PushActorTask(rpc::CoreWorkerClient &client,
+                     std::unique_ptr<rpc::PushTaskRequest> request,
+                     const ActorID &actor_id, const TaskID &task_id, int num_returns);
 
   /// Treat a task as failed.
   ///
@@ -97,11 +96,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// The IO event loop.
-  boost::asio::io_service &io_service_;
-
-  /// The `ClientCallManager` object that is shared by all `DirectActorClient`s.
-  rpc::ClientCallManager client_call_manager_;
+  /// The shared `ClientCallManager` object.
+  rpc::ClientCallManager &client_call_manager_;
 
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
@@ -114,7 +110,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::DirectActorClient>> rpc_clients_;
+  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClient>> rpc_clients_;
 
   /// Map from actor id to the actor's pending requests.
   std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
@@ -124,7 +120,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> store_provider_;
+  CoreWorkerMemoryStoreProvider in_memory_store_;
 
   friend class CoreWorkerTest;
 };
@@ -233,6 +229,9 @@ class SchedulingQueue {
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<ObjectID> &dependencies = {}) {
+    if (seq_no == -1) {
+      seq_no = next_seq_no_;  // A value of -1 means no ordering constraint.
+    }
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
       RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
@@ -327,17 +326,16 @@ class SchedulingQueue {
   friend class SchedulingQueueTest;
 };
 
-class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
+class CoreWorkerDirectTaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_by_value)>;
+      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
-  CoreWorkerDirectActorTaskReceiver(WorkerContext &worker_context,
-                                    boost::asio::io_service &main_io_service,
-                                    rpc::GrpcServer &server,
-                                    const TaskHandler &task_handler,
-                                    const std::function<void()> &exit_handler);
+  CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
+                               boost::asio::io_service &main_io_service,
+                               const TaskHandler &task_handler,
+                               const std::function<void()> &exit_handler);
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
@@ -348,7 +346,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
-                      rpc::SendReplyCallback send_reply_callback) override;
+                      rpc::SendReplyCallback send_reply_callback);
 
   /// Handle a `DirectActorCallArgWaitComplete` request.
   ///
@@ -358,7 +356,7 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
-      rpc::SendReplyCallback send_reply_callback) override;
+      rpc::SendReplyCallback send_reply_callback);
 
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
@@ -366,8 +364,6 @@ class CoreWorkerDirectActorTaskReceiver : public rpc::DirectActorHandler {
  private:
   // Worker context.
   WorkerContext &worker_context_;
-  /// The rpc service for `DirectActorService`.
-  rpc::DirectActorGrpcService task_service_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.

@@ -43,6 +43,12 @@ Status CoreWorkerMemoryStoreProvider::Get(
   return Status::OK();
 }
 
+Status CoreWorkerMemoryStoreProvider::Contains(const ObjectID &object_id,
+                                               bool *has_object) {
+  *has_object = store_->Contains(object_id);
+  return Status::OK();
+}
+
 Status CoreWorkerMemoryStoreProvider::Wait(
     const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
     const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {

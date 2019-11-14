@@ -3,7 +3,6 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
@@ -11,14 +10,28 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
+#include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker/worker_client.h"
-#include "ray/rpc/worker/worker_server.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_server.h"
+
+/// The set of gRPC handlers and their associated level of concurrency. If you want to
+/// add a new call to the worker gRPC server, do the following:
+/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
+/// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
+/// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
+  RAY_CORE_WORKER_RPC_HANDLER(WorkerLeaseGranted, 5)
 
 namespace ray {
 
@@ -48,6 +61,7 @@ class CoreWorker {
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
+  /// \param[in] node_manager_port Port of the local raylet.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
   /// \parma[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
@@ -60,7 +74,7 @@ class CoreWorker {
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             const TaskExecutionCallback &task_execution_callback,
+             int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
              std::function<void()> exit_handler = nullptr);
 
@@ -87,15 +101,23 @@ class CoreWorker {
     actor_id_ = actor_id;
   }
 
-  // Add this object ID to the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void AddActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  /// Increase the reference count for this object ID.
+  ///
+  /// \param[in] object_id The object ID to increase the reference count for.
+  void AddObjectIDReference(const ObjectID &object_id) {
+    reference_counter_.AddReference(object_id);
+  }
 
-  // Remove this object ID from the set of active object IDs that is sent to the raylet
-  // in the heartbeat messsage.
-  void RemoveActiveObjectID(const ObjectID &object_id) LOCKS_EXCLUDED(object_ref_mu_);
+  /// Decrease the reference count for this object ID.
+  ///
+  /// \param[in] object_id The object ID to decrease the reference count for.
+  void RemoveObjectIDReference(const ObjectID &object_id) {
+    reference_counter_.RemoveReference(object_id);
+  }
 
-  /* Public methods related to storing and retrieving objects. */
+  ///
+  /// Public methods related to storing and retrieving objects.
+  ///
 
   /// Set options for this client's interactions with the object store.
   ///
@@ -158,7 +180,7 @@ class CoreWorker {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results Result list of objects data.
   /// \return Status.
-  Status Get(const std::vector<ObjectID> &ids, int64_t timeout_ms,
+  Status Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
              std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Return whether or not the object store contains the given object.
@@ -179,8 +201,8 @@ class CoreWorker {
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[out] results A bitset that indicates each object has appeared or not.
   /// \return Status.
-  Status Wait(const std::vector<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, std::vector<bool> *results);
+  Status Wait(const std::vector<ObjectID> &object_ids, const int num_objects,
+              const int64_t timeout_ms, std::vector<bool> *results);
 
   /// Delete a list of objects from the object store.
   ///
@@ -198,7 +220,9 @@ class CoreWorker {
   /// \return std::string The string describing memory usage.
   std::string MemoryUsageString();
 
-  /* Public methods related to task submission. */
+  ///
+  /// Public methods related to task submission.
+  ///
 
   /// Get the caller ID used to submit tasks from this worker to an actor.
   ///
@@ -268,7 +292,9 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have the specified handle.
   Status SerializeActorHandle(const ActorID &actor_id, std::string *output) const;
 
-  /* Public methods related to task execution. Should not be used by driver processes. */
+  ///
+  /// Public methods related to task execution. Should not be used by driver processes.
+  ///
 
   const ActorID &GetActorId() const { return actor_id_; }
 
@@ -295,6 +321,32 @@ class CoreWorker {
                                const std::vector<std::shared_ptr<Buffer>> &metadatas,
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
+  /**
+   * The following methods are handlers for the core worker's gRPC server, which follow
+   * a macro-generated call convention. These are executed on the io_service_ and
+   * post work to the appropriate event loop.
+   */
+
+  /// Implements gRPC server handler.
+  void HandleAssignTask(const rpc::AssignTaskRequest &request,
+                        rpc::AssignTaskReply *reply,
+                        rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+                      rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandleDirectActorCallArgWaitComplete(
+      const rpc::DirectActorCallArgWaitCompleteRequest &request,
+      rpc::DirectActorCallArgWaitCompleteReply *reply,
+      rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                rpc::WorkerLeaseGrantedReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
+
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -304,9 +356,14 @@ class CoreWorker {
   void Shutdown();
 
   /// Send the list of active object IDs to the raylet.
-  void ReportActiveObjectIDs() LOCKS_EXCLUDED(object_ref_mu_);
+  void ReportActiveObjectIDs();
 
-  /* Private methods related to task submission. */
+  ///
+  /// Private methods related to task submission.
+  ///
+
+  /// Submit the task to the raylet and add its dependencies to the reference counter.
+  Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
 
   /// Give this worker a handle to an actor.
   ///
@@ -328,7 +385,9 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  /* Private methods related to task execution. Should not be used by driver processes. */
+  ///
+  /// Private methods related to task execution. Should not be used by driver processes.
+  ///
 
   /// Execute a task.
   ///
@@ -339,7 +398,7 @@ class CoreWorker {
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
                      const ResourceMappingType &resource_ids,
-                     std::vector<std::shared_ptr<RayObject>> *return_by_value);
+                     std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Build arguments for task executor. This would loop through all the arguments
   /// in task spec, and for each of them that's passed by reference (ObjectID),
@@ -392,12 +451,15 @@ class CoreWorker {
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
 
+  /// Shared client call manager.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
   /// Timer used to periodically send heartbeat containing active object IDs to the
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer worker_server_;
+  rpc::GrpcServer core_worker_server_;
 
   // Client to the GCS shared by core worker interfaces.
   gcs::RedisGcsClient gcs_client_;
@@ -408,21 +470,12 @@ class CoreWorker {
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
 
-  /* Fields related to ref counting objects. */
+  // Keeps track of object ID reference counts.
+  ReferenceCounter reference_counter_;
 
-  /// Protects access to the set of active object ids. Since this set is updated
-  /// very frequently, it is faster to lock around accesses rather than serialize
-  /// accesses via the event loop.
-  absl::Mutex object_ref_mu_;
-
-  /// Set of object IDs that are in scope in the language worker.
-  absl::flat_hash_set<ObjectID> active_object_ids_ GUARDED_BY(object_ref_mu_);
-
-  /// Indicates whether or not the active_object_ids map has changed since the
-  /// last time it was sent to the raylet.
-  bool active_object_ids_updated_ GUARDED_BY(object_ref_mu_) = false;
-
-  /* Fields related to storing and retrieving objects. */
+  ///
+  /// Fields related to storing and retrieving objects.
+  ///
 
   /// In-memory store for return objects. This is used for `MEMORY` store provider.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
@@ -431,17 +484,24 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// In-memory store interface.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
+  CoreWorkerMemoryStoreProvider memory_store_provider_;
 
-  /* Fields related to task submission. */
+  ///
+  /// Fields related to task submission.
+  ///
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
+  // Interface to submit non-actor tasks directly to leased workers.
+  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
+
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
-  /* Fields related to task execution. */
+  ///
+  /// Fields related to task execution.
+  ///
 
   /// Our actor ID. If this is nil, then we execute only stateless tasks.
   ActorID actor_id_;
@@ -466,8 +526,11 @@ class CoreWorker {
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
+  /// Common rpc service for all worker modules.
+  rpc::CoreWorkerGrpcService grpc_service_;
+
   // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
+  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   friend class CoreWorkerTest;
 };
