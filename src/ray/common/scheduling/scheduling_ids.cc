@@ -1,24 +1,24 @@
 #include "scheduling_ids.h"
 using namespace std;
 
-int64_t ScheduleIds::getIdByInt(string sid) {
-  if (string_to_int.count(sid) == 0) return 0;
-  return string_to_int[sid];
+int64_t StringIdMap::get(const string sid) {
+  if (string_to_int_.count(sid) == 0) return -1;
+  return string_to_int_[sid];
 };
 
-int64_t ScheduleIds::insertIdByString(string sid, bool test) {
-  auto sit = string_to_int.find(sid);
-  if (sit == string_to_int.end()) {
-    int64_t id = test ? hasher(sid) % 5 : hasher(sid);
+int64_t StringIdMap::insert(const string sid, bool test) {
+  auto sit = string_to_int_.find(sid);
+  if (sit == string_to_int_.end()) {
+    int64_t id = test ? hasher_(sid) % 10 : hasher_(sid);
     for (int i = 0; true; i++) {
-      auto it = int_to_string.find(id);
-      if (it == int_to_string.end()) {
+      auto it = int_to_string_.find(id);
+      if (it == int_to_string_.end()) {
         /// No hash collision, so associated sid with id.
-        string_to_int.insert(make_pair(sid, id));
-        int_to_string.insert(make_pair(id, sid));
+        string_to_int_.insert(make_pair(sid, id));
+        int_to_string_.insert(make_pair(id, sid));
         break;
       }
-      id = test ? hasher(sid + to_string(i)) % 5 : hasher(sid + to_string(i));
+      id = test ? hasher_(sid + to_string(i)) % 10 : hasher_(sid + to_string(i));
     }
     return id;
   } else {
@@ -26,26 +26,26 @@ int64_t ScheduleIds::insertIdByString(string sid, bool test) {
   }
 };
 
-void ScheduleIds::removeIdByString(string sid) {
-  auto sit = string_to_int.find(sid);
-  if (sit != string_to_int.end()) {
-    uint64_t id = string_to_int[sid];
-    string_to_int.erase(sit);
-    auto it = int_to_string.find(id);
-    int_to_string.erase(it);
+void StringIdMap::remove(const string sid) {
+  auto sit = string_to_int_.find(sid);
+  if (sit != string_to_int_.end()) {
+    uint64_t id = string_to_int_[sid];
+    string_to_int_.erase(sit);
+    auto it = int_to_string_.find(id);
+    int_to_string_.erase(it);
   }
 };
 
-void ScheduleIds::removeIdByInt(int64_t id) {
-  auto it = int_to_string.find(id);
-  if (it != int_to_string.end()) {
-    string sid = int_to_string[id];
-    int_to_string.erase(it);
-    auto sit = string_to_int.find(sid);
-    string_to_int.erase(sit);
+void StringIdMap::remove(int64_t id) {
+  auto it = int_to_string_.find(id);
+  if (it != int_to_string_.end()) {
+    string sid = int_to_string_[id];
+    int_to_string_.erase(it);
+    auto sit = string_to_int_.find(sid);
+    string_to_int_.erase(sit);
   }
 };
 
-int64_t ScheduleIds::count() {
-  return string_to_int.size();
+int64_t StringIdMap::count() {
+  return string_to_int_.size();
 }

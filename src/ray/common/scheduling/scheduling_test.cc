@@ -1,15 +1,11 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include <chrono>
-#include <iostream>
 #include <thread>
-#include <vector>
 #include <string>
-#include <stdlib.h>
-
 
 #include "ray/common/scheduling/scheduling_ids.h"
+using namespace std;
 
 namespace ray {
 
@@ -21,20 +17,33 @@ class SchedulingTest : public ::testing::Test {
 };
 
 TEST_F(SchedulingTest, SchedulingIdTest) {
-  ScheduleIds ids;
+  StringIdMap ids;
   hash<string> hasher;
   int num = 10;  // should be greater than 10.
-  
+
   for (int i = 0; i < num; i++) {
-    ids.insertIdByString(to_string(i));
+    ids.insert(to_string(i));
   }
   ASSERT_EQ(ids.count(), num);
 
-  ids.removeIdByString(to_string(1));
+  ids.remove(to_string(1));
   ASSERT_EQ(ids.count(), num - 1);
 
-  ids.removeIdByInt(hasher(to_string(2)));
+  ids.remove(hasher(to_string(2)));
   ASSERT_EQ(ids.count(), num - 2);
+
+  ASSERT_TRUE(ids.get(to_string(3)) == hasher(to_string(3)));
+
+  ASSERT_TRUE(ids.get(to_string(100)) == -1);
+
+  /// Test for handling collision.
+  StringIdMap short_ids;
+  for (int i = 0; i < 10; i++) {
+    /// "true" reduces the range of IDs to [0..9]
+    int64_t id = short_ids.insert(to_string(i), true);
+    ASSERT_TRUE(id < 10);
+  }
+  ASSERT_EQ(short_ids.count(), 10);
 }
 
 }  // namespace ray
