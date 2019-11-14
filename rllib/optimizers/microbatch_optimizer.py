@@ -29,10 +29,7 @@ class MicrobatchOptimizer(PolicyOptimizer):
     fit in GPU or host memory.
     """
 
-    def __init__(self,
-                 workers,
-                 train_batch_size=10000,
-                 microbatch_size=1000):
+    def __init__(self, workers, train_batch_size=10000, microbatch_size=1000):
         PolicyOptimizer.__init__(self, workers)
 
         if train_batch_size <= microbatch_size:
