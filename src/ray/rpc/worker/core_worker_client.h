@@ -73,6 +73,8 @@ class CoreWorkerClientInterface {
       const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback) {
     return Status::NotImplemented("");
   }
+
+  virtual ~CoreWorkerClientInterface(){};
 };
 
 /// Client used for communicating with a remote worker server.

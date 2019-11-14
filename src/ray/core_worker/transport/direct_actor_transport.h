@@ -22,6 +22,26 @@ namespace ray {
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
 
+/// Treat a task as failed.
+///
+/// \param[in] task_id The ID of a task.
+/// \param[in] num_returns Number of return objects.
+/// \param[in] error_type The type of the specific error.
+/// \param[in] in_memory_store The memory store to write to.
+/// \return Void.
+void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
+                       const rpc::ErrorType &error_type,
+                       std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store);
+
+/// Write return objects to the memory store.
+///
+/// \param[in] reply Proto response to a direct actor or task call.
+/// \param[in] in_memory_store The memory store to write to.
+/// \return Void.
+void WriteObjectsToMemoryStore(
+    const rpc::PushTaskReply &reply,
+    std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store);
+
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
 
@@ -40,8 +60,9 @@ struct ActorStateData {
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(rpc::ClientCallManager &client_call_manager,
-                                     CoreWorkerMemoryStoreProvider store_provider);
+  CoreWorkerDirectActorTaskSubmitter(
+      rpc::ClientCallManager &client_call_manager,
+      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider);
 
   /// Submit a task to an actor for execution.
   ///
@@ -69,15 +90,6 @@ class CoreWorkerDirectActorTaskSubmitter {
   void PushActorTask(rpc::CoreWorkerClient &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
                      const ActorID &actor_id, const TaskID &task_id, int num_returns);
-
-  /// Treat a task as failed.
-  ///
-  /// \param[in] task_id The ID of a task.
-  /// \param[in] num_returns Number of return objects.
-  /// \param[in] error_type The type of the specific error.
-  /// \return Void.
-  void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
-                         const rpc::ErrorType &error_type);
 
   /// Create connection to actor and send all pending tasks.
   /// Note that this function doesn't take lock, the caller is expected to hold
@@ -120,7 +132,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
-  CoreWorkerMemoryStoreProvider in_memory_store_;
+  std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
 
   friend class CoreWorkerTest;
 };
@@ -230,7 +242,8 @@ class SchedulingQueue {
            std::function<void()> accept_request, std::function<void()> reject_request,
            const std::vector<ObjectID> &dependencies = {}) {
     if (seq_no == -1) {
-      seq_no = next_seq_no_;  // A value of -1 means no ordering constraint.
+      accept_request();  // A seq_no of -1 means no ordering constraint.
+      return;
     }
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
     if (client_processed_up_to >= next_seq_no_) {
@@ -259,6 +272,8 @@ class SchedulingQueue {
     // Cancel any stale requests that the client doesn't need any longer.
     while (!pending_tasks_.empty() && pending_tasks_.begin()->first < next_seq_no_) {
       auto head = pending_tasks_.begin();
+      RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
+                     << pending_tasks_.begin()->first << " < " << next_seq_no_;
       head->second.Cancel();
       pending_tasks_.erase(head);
     }

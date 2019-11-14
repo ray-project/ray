@@ -84,7 +84,8 @@ from ray.exceptions import (
     RayError,
     RayletError,
     RayTaskError,
-    ObjectStoreFullError
+    ObjectStoreFullError,
+    RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
 from ray.function_manager import FunctionDescriptor
@@ -138,6 +139,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
+    elif status.IsTimedOut():
+        raise RayTimeoutError(message)
     else:
         raise RayletError(message)
 
@@ -1007,6 +1010,12 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveObjectIDReference(c_object_id)
+
+    def promote_object_to_plasma(self, ObjectID object_id):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+        self.core_worker.get().PromoteObjectToPlasma(c_object_id)
+        return object_id.with_plasma_transport_type()
 
     # TODO: handle noreturn better
     cdef store_task_outputs(

@@ -29,6 +29,7 @@ import pytest
 
 import ray
 from ray import signature
+from ray.exceptions import RayTimeoutError
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
@@ -1190,6 +1191,20 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+def test_get_with_timeout(ray_start_regular):
+    @ray.remote
+    def f(a):
+        time.sleep(a)
+        return a
+
+    assert ray.get(f.remote(3), timeout=10) == 3
+
+    obj_id = f.remote(3)
+    with pytest.raises(RayTimeoutError):
+        ray.get(obj_id, timeout=2)
+    assert ray.get(obj_id, timeout=2) == 3
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -1211,6 +1226,71 @@ def test_direct_call_simple(ray_start_cluster):
     for _ in range(10):
         assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
             range(1, 101))
+
+
+def test_direct_call_matrix(shutdown_only):
+    ray.init(object_store_memory=1000 * 1024 * 1024)
+
+    @ray.remote
+    class Actor:
+        def small_value(self):
+            return 0
+
+        def large_value(self):
+            return np.zeros(10 * 1024 * 1024)
+
+        def echo(self, x):
+            if isinstance(x, list):
+                x = ray.get(x[0])
+            return x
+
+    @ray.remote
+    def small_value():
+        return 0
+
+    @ray.remote
+    def large_value():
+        return np.zeros(10 * 1024 * 1024)
+
+    @ray.remote
+    def echo(x):
+        if isinstance(x, list):
+            x = ray.get(x[0])
+        return x
+
+    def check(source_actor, dest_actor, is_large, out_of_band):
+        print("CHECKING", "actor" if source_actor else "task", "to", "actor"
+              if dest_actor else "task", "large_object"
+              if is_large else "small_object", "out_of_band"
+              if out_of_band else "in_band")
+        if source_actor:
+            a = Actor.options(is_direct_call=True).remote()
+            if is_large:
+                x_id = a.large_value.remote()
+            else:
+                x_id = a.small_value.remote()
+        else:
+            if is_large:
+                x_id = large_value.options(is_direct_call=True).remote()
+            else:
+                x_id = small_value.options(is_direct_call=True).remote()
+        if out_of_band:
+            x_id = [x_id]
+        if dest_actor:
+            b = Actor.options(is_direct_call=True).remote()
+            x = ray.get(b.echo.remote(x_id))
+        else:
+            x = ray.get(echo.options(is_direct_call=True).remote(x_id))
+        if is_large:
+            assert isinstance(x, np.ndarray)
+        else:
+            assert isinstance(x, int)
+
+    for is_large in [False, True]:
+        for source_actor in [False, True]:
+            for dest_actor in [False, True]:
+                for out_of_band in [False, True]:
+                    check(source_actor, dest_actor, is_large, out_of_band)
 
 
 def test_direct_call_chain(ray_start_regular):
@@ -1258,26 +1338,6 @@ def test_direct_actor_large_objects(ray_start_regular):
     assert len(done) == 1
     assert ray.worker.global_worker.core_worker.object_exists(obj_id)
     assert isinstance(ray.get(obj_id), np.ndarray)
-
-
-def test_direct_actor_errors(ray_start_regular):
-    @ray.remote
-    class Actor(object):
-        def __init__(self):
-            pass
-
-        def f(self, x):
-            return x * 2
-
-    @ray.remote
-    def f(x):
-        return 1
-
-    a = Actor._remote(is_direct_call=True)
-
-    # cannot pass returns to other methods even in a list
-    with pytest.raises(Exception):
-        ray.get(f.remote([a.f.remote(2)]))
 
 
 def test_direct_actor_pass_by_ref(ray_start_regular):
