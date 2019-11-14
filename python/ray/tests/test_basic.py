@@ -1222,7 +1222,7 @@ def test_direct_call_matrix(shutdown_only):
     ray.init(object_store_memory=1000 * 1024 * 1024)
 
     @ray.remote
-    class Actor:
+    class Actor(object):
         def small_value(self):
             return 0
 
