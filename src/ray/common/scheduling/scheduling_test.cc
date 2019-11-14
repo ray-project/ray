@@ -24,7 +24,7 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   ScheduleIds ids;
   hash<string> hasher;
   int num = 10;  // should be greater than 10.
-
+  
   for (int i = 0; i < num; i++) {
     ids.insertIdByString(to_string(i));
   }

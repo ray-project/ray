@@ -1,21 +1,19 @@
 #ifndef RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
 #define RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
 
-#include <iostream>
-#include <map>
 #include <unordered_map>
 #include <string>
 #include <iterator>
 #include <stdlib.h>
-#include <chrono>
-#include <vector>
-using namespace std;
+#include <gtest/gtest_prod.h>
 
 /// Class to map string IDs to unique integer IDs and back.
 class ScheduleIds {
-  unordered_map<string, int64_t> string_to_int;
-  unordered_map<int64_t, string> int_to_string;
-  hash<string> hasher;
+  std::unordered_map<string, int64_t> string_to_int;
+  std::unordered_map<int64_t, string> int_to_string;
+  std::hash<string> hasher;
+
+  FRIEND_TEST(SchedulingTest, SchedulingIdTest);
 
 public:
   ScheduleIds() {};
@@ -31,7 +29,7 @@ public:
   ///
   /// \param String ID to be inserted.
   /// \return The integer ID associated with string ID sid.
-  int64_t insertIdByString(string sid);
+  int64_t insertIdByString(string sid, bool test = false);
 
   /// Delete an ID identified by its string format.
   ///

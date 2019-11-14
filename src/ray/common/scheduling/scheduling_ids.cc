@@ -1,14 +1,15 @@
 #include "scheduling_ids.h"
+using namespace std;
 
 int64_t ScheduleIds::getIdByInt(string sid) {
   if (string_to_int.count(sid) == 0) return 0;
   return string_to_int[sid];
 };
 
-int64_t ScheduleIds::insertIdByString(string sid) {
+int64_t ScheduleIds::insertIdByString(string sid, bool test) {
   auto sit = string_to_int.find(sid);
   if (sit == string_to_int.end()) {
-    int64_t id = hasher(sid);
+    int64_t id = test ? hasher(sid) % 5 : hasher(sid);
     for (int i = 0; true; i++) {
       auto it = int_to_string.find(id);
       if (it == int_to_string.end()) {
@@ -17,7 +18,7 @@ int64_t ScheduleIds::insertIdByString(string sid) {
         int_to_string.insert(make_pair(id, sid));
         break;
       }
-      id = hasher(sid + to_string(i));
+      id = test ? hasher(sid + to_string(i)) % 5 : hasher(sid + to_string(i));
     }
     return id;
   } else {
