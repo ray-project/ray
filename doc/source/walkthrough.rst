@@ -40,7 +40,7 @@ Ray enables arbitrary Python functions to be executed asynchronously. These asyn
     def remote_function():
         return 1
 
-This causes a few things changes in behavior:
+This causes a few changes in behavior:
 
     1. **Invocation:** The regular version is called with ``regular_function()``, whereas the remote version is called with ``remote_function.remote()``.
     2. **Return values:** ``regular_function`` immediately executes and returns ``1``, whereas ``remote_function`` immediately returns an object ID (a future) and then creates a task that will be executed on a worker process. The result can be retrieved with ``ray.get``.
@@ -145,7 +145,7 @@ Below are more examples of resource specifications:
   def f():
       return 1
 
-Further, remote function can return multiple object IDs.
+Further, remote functions can return multiple object IDs.
 
 .. code-block:: python
 
@@ -188,7 +188,7 @@ Object IDs can be created in multiple ways.
 Fetching Results
 ----------------
 
-The command ``ray.get(x_id)`` takes an object ID and creates a Python object
+The command ``ray.get(x_id, timeout=None)`` takes an object ID and creates a Python object
 from the corresponding remote object. First, if the current node's object store
 does not contain the object, the object is downloaded. Then, if the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
 or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
@@ -199,6 +199,22 @@ Otherwise, we deserialize the object data into a Python object.
     y = 1
     obj_id = ray.put(y)
     assert ray.get(obj_id) == 1
+
+You can also set a timeout to return early from a ``get`` that's blocking for too long.
+
+.. code-block:: python
+
+    from ray.exceptions import RayTimeoutException
+
+    @ray.remote
+    def long_running_function()
+        time.sleep(8)
+
+    obj_id = long_running_function.remote()
+    try:
+        ray.get(obj_id, timeout=4)
+    except RayTimeoutError:
+        print("`get` timed out.")
 
 .. autofunction:: ray.get
     :noindex:

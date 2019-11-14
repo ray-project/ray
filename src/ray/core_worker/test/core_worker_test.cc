@@ -683,7 +683,8 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   RAY_CHECK_OK(provider.Delete(ids_set));
 
   usleep(200 * 1000);
-  RAY_CHECK_OK(provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception));
+  ASSERT_TRUE(
+      provider.Get(ids_set, 0, RandomTaskId(), &results, &got_exception).IsTimedOut());
   ASSERT_TRUE(!got_exception);
   ASSERT_EQ(results.size(), 0);
 
@@ -811,7 +812,7 @@ TEST_F(SingleNodeTest, TestObjectInterface) {
   // wait for objects being deleted, so wait a while for plasma store
   // to process the command.
   usleep(200 * 1000);
-  RAY_CHECK_OK(core_worker.Get(ids, 0, &results));
+  ASSERT_TRUE(core_worker.Get(ids, 0, &results).IsTimedOut());
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
@@ -872,12 +873,12 @@ TEST_F(TwoNodeTest, TestObjectInterfaceCrossNodes) {
   // to process the command.
   usleep(1000 * 1000);
   // Verify objects are deleted from both machines.
-  RAY_CHECK_OK(worker2.Get(ids, 0, &results));
+  ASSERT_TRUE(worker2.Get(ids, 0, &results).IsTimedOut());
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
 
-  RAY_CHECK_OK(worker1.Get(ids, 0, &results));
+  ASSERT_TRUE(worker1.Get(ids, 0, &results).IsTimedOut());
   ASSERT_EQ(results.size(), 2);
   ASSERT_TRUE(!results[0]);
   ASSERT_TRUE(!results[1]);
