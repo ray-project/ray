@@ -62,15 +62,16 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
   std::unique_lock<std::mutex> guard(mutex_);
   actor_states_.erase(actor_id);
   actor_states_.emplace(
-      actor_id,
-      ActorStateData(actor_data.state(), actor_data.ip_address(), actor_data.port()));
+      actor_id, ActorStateData(actor_data.state(), actor_data.address().ip_address(),
+                               actor_data.address().port()));
 
   if (actor_data.state() == ActorTableData::ALIVE) {
     // Check if this actor is the one that we're interested, if we already have
     // a connection to the actor, or have pending requests for it, we should
     // create a new connection.
     if (pending_requests_.count(actor_id) > 0 && rpc_clients_.count(actor_id) == 0) {
-      ConnectAndSendPendingTasks(actor_id, actor_data.ip_address(), actor_data.port());
+      ConnectAndSendPendingTasks(actor_id, actor_data.address().ip_address(),
+                                 actor_data.address().port());
     }
   } else {
     // Remove rpc client if it's dead or being reconstructed.

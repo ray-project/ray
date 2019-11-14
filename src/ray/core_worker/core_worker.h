@@ -1,9 +1,7 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
@@ -455,8 +453,11 @@ class CoreWorker {
   /// RPC server used to receive tasks to execute.
   rpc::GrpcServer core_worker_server_;
 
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
+
   // Client to the GCS shared by core worker interfaces.
-  gcs::RedisGcsClient gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;

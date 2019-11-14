@@ -966,6 +966,20 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   auto worker = std::make_shared<Worker>(worker_id, message->worker_pid(), language,
                                          message->port(), client, client_call_manager_);
   Status status;
+  flatbuffers::FlatBufferBuilder fbb;
+  auto reply = ray::protocol::CreateRegisterClientReply(
+      fbb, to_flatbuf(fbb, gcs_client_->client_table().GetLocalClientId()));
+  fbb.Finish(reply);
+  client->WriteMessageAsync(
+      static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
+      fbb.GetBufferPointer(), [this, client](const ray::Status &status) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Failed to send RegisterClientReply to client, so disconnecting";
+          ProcessDisconnectClientMessage(client);
+        }
+      });
+
   if (message->is_worker()) {
     // Register the new worker.
     if (worker_pool_.RegisterWorker(std::move(worker)).ok()) {
@@ -1180,6 +1194,36 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
+<<<<<<< HEAD
+=======
+void NodeManager::ProcessRequestWorkerLeaseMessage(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the resource spec submitted by the client.
+  auto fbs_message = flatbuffers::GetRoot<protocol::WorkerLeaseRequest>(message_data);
+  rpc::Task task_message;
+  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
+      fbs_message->resource_spec()->data(), fbs_message->resource_spec()->size()));
+
+  // Override the task dispatch to call back to the client instead of executing the
+  // task directly on the worker. TODO(ekl) handle spilling case
+  Task task(task_message);
+  task.OnDispatchInstead([this, client](const std::shared_ptr<void> granted,
+                                        const std::string &address, int port) {
+    std::shared_ptr<Worker> client_worker = worker_pool_.GetRegisteredWorker(client);
+    if (client_worker == nullptr) {
+      client_worker = worker_pool_.GetRegisteredDriver(client);
+    }
+    if (client_worker == nullptr) {
+      RAY_LOG(FATAL) << "TODO: Lost worker for lease request " << client;
+    } else {
+      client_worker->WorkerLeaseGranted(address, port);
+      leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
+    }
+  });
+  SubmitTask(task, Lineage());
+}
+
+>>>>>>> 0ab387dfbd7d9174c20957df4996f42befb729d3
 void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   // Read the resource spec submitted by the client.
   auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
@@ -1398,6 +1442,11 @@ void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
                                    rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task;
   task.mutable_task_spec()->CopyFrom(request.task_spec());
+  // Set the caller's node ID.
+  if (task.task_spec().caller_address().raylet_id() == "") {
+    task.mutable_task_spec()->mutable_caller_address()->set_raylet_id(
+        gcs_client_->client_table().GetLocalClientId().Binary());
+  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
@@ -2081,6 +2130,8 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
     actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
+    actor_info_ptr->mutable_owner_address()->CopyFrom(
+        task_spec.GetMessage().caller_address());
   } else {
     // If we've already seen this actor, it means that this actor was reconstructed.
     // Thus, its previous state must be RECONSTRUCTING.
@@ -2100,14 +2151,12 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
         actor_info_ptr->remaining_reconstructions() - 1);
   }
 
-  // Set the ip address & port, which could change after reconstruction.
-  actor_info_ptr->set_ip_address(
-      gcs_client_->client_table().GetLocalClient().node_manager_address());
-  actor_info_ptr->set_port(port);
-
   // Set the new fields for the actor's state to indicate that the actor is
   // now alive on this node manager.
-  actor_info_ptr->set_node_manager_id(
+  actor_info_ptr->mutable_address()->set_ip_address(
+      gcs_client_->client_table().GetLocalClient().node_manager_address());
+  actor_info_ptr->mutable_address()->set_port(port);
+  actor_info_ptr->mutable_address()->set_raylet_id(
       gcs_client_->client_table().GetLocalClientId().Binary());
   actor_info_ptr->set_state(ActorTableData::ALIVE);
   return actor_info_ptr;

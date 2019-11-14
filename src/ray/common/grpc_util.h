@@ -5,6 +5,7 @@
 #include <google/protobuf/repeated_field.h>
 #include <grpcpp/grpcpp.h>
 #include <sstream>
+
 #include "status.h"
 
 namespace ray {

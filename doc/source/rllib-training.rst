@@ -567,12 +567,17 @@ You can use the `data output API <rllib-offline.html>`__ to save episode traces 
 Log Verbosity
 ~~~~~~~~~~~~~
 
-You can control the trainer log level via the ``"log_level"`` flag. Valid values are "INFO" (default), "DEBUG", "WARN", and "ERROR". This can be used to increase or decrease the verbosity of internal logging. For example:
+You can control the trainer log level via the ``"log_level"`` flag. Valid values are "DEBUG", "INFO", "WARN" (default), and "ERROR". This can be used to increase or decrease the verbosity of internal logging. You can also use the ``-v`` and ``-vv`` flags. For example, the following two commands are about equivalent:
 
 .. code-block:: bash
 
     rllib train --env=PongDeterministic-v4 \
         --run=A2C --config '{"num_workers": 2, "log_level": "DEBUG"}'
+
+    rllib train --env=PongDeterministic-v4 \
+        --run=A2C --config '{"num_workers": 2}' -vv
+
+The default log level is ``WARN``. We strongly recommend using at least ``INFO`` level logging for development.
 
 Stack Traces
 ~~~~~~~~~~~~

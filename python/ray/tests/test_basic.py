@@ -1190,6 +1190,7 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
+<<<<<<< HEAD
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
@@ -1199,6 +1200,9 @@ def test_get_dict(ray_start_regular):
         "num_nodes": 2,
     }], indirect=True)
 def test_direct_call_simple(ray_start_cluster):
+=======
+def test_direct_call_simple(ray_start_regular):
+>>>>>>> 0ab387dfbd7d9174c20957df4996f42befb729d3
     @ray.remote
     def f(x):
         return x + 1
@@ -1272,10 +1276,6 @@ def test_direct_actor_errors(ray_start_regular):
         return 1
 
     a = Actor._remote(is_direct_call=True)
-
-    # cannot pass returns to other methods directly
-    with pytest.raises(Exception):
-        ray.get(f.remote(a.f.remote(2)))
 
     # cannot pass returns to other methods even in a list
     with pytest.raises(Exception):
@@ -2975,11 +2975,7 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
-    ray.init(
-        num_cpus=5,
-        num_gpus=3,
-        resources={"CustomResource": 1},
-        include_webui=False)
+    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -3064,7 +3060,6 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
     job_table = ray.jobs()
-    print(job_table)
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -3182,7 +3177,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id, include_webui=False)
+    ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id
