@@ -227,6 +227,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
 
       RayFunction func(ray::Language::PYTHON, {});
       TaskOptions options;
+      options.is_direct_call = true;
 
       std::vector<ObjectID> return_ids;
       RAY_CHECK_OK(driver.SubmitTask(func, args, options, &return_ids));

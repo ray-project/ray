@@ -121,6 +121,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const TaskSpecification &resource_spec, const rpc::Address *address) {
+  RAY_CHECK(resource_spec.GetMessage().task_id().size() > 0);
   if (worker_request_pending_) {
     return;
   }
@@ -131,20 +132,20 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     ClientID raylet_id = ClientID::FromBinary(address->raylet_id());
     auto it = remote_lease_clients_.find(raylet_id);
     if (it == remote_lease_clients_.end()) {
-      RAY_LOG(ERROR) << "Connecting to raylet " << raylet_id;
+      RAY_LOG(DEBUG) << "Connecting to raylet " << raylet_id;
       it = remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*address)).first;
     }
-    RAY_LOG(ERROR) << "Sending " << resource_spec.TaskId() << " to raylet " << raylet_id;
+    RAY_LOG(DEBUG) << "Sending " << resource_spec.TaskId() << " to raylet " << raylet_id;
     lease_client = *it->second;
   }
 
-  RAY_CHECK_OK(lease_client_.RequestWorkerLease(
+  RAY_CHECK_OK(lease_client.RequestWorkerLease(
       resource_spec,
       [this, resource_spec](const Status &status, const rpc::WorkerLeaseReply &reply) {
+        RAY_CHECK(resource_spec.GetMessage().task_id().size() > 0);
         if (status.ok()) {
-          RAY_LOG(ERROR) << "Raylet string " << reply.raylet_id().size();
           if (reply.raylet_id() == "") {
-            RAY_LOG(ERROR) << "Lease granted " << resource_spec.TaskId();
+            RAY_LOG(DEBUG) << "Lease granted " << resource_spec.TaskId();
             HandleWorkerLeaseGranted({reply.address(), reply.port()});
           } else {
             absl::MutexLock lock(&mu_);
@@ -156,7 +157,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RequestNewWorkerIfNeeded(resource_spec, &address);
           }
         } else {
-          RAY_LOG(ERROR) << "RETRY lease " << resource_spec.TaskId();
+          RAY_LOG(DEBUG) << "Retrying lease request " << resource_spec.TaskId();
           // Retry the worker lease request. TODO(swang): Fail after some
           // number of attempts.
           absl::MutexLock lock(&mu_);

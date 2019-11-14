@@ -386,7 +386,7 @@ ray::Status RayletClient::RequestWorkerLease(
     const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) {
   ray::rpc::WorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
-  return grpc_client_->RequestWorkerLease(request, /*callback=*/callback);
+  return grpc_client_->RequestWorkerLease(request, callback);
 }
 
 ray::Status RayletClient::ReturnWorker(int worker_port) {
