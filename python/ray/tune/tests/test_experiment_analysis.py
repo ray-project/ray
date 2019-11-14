@@ -15,7 +15,6 @@ from ray.tune.examples.async_hyperband_example import MyTrainableClass
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
-
     def setUp(self):
         class MockTrainable(Trainable):
             def _setup(self, config):
@@ -39,6 +38,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
             def _restore(self, checkpoint_path):
                 pass
+
         self.MockTrainable = MockTrainable
         ray.init(local_mode=False, num_cpus=1)
 
