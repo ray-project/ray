@@ -82,7 +82,7 @@ class CoreWorkerDirectTaskSubmitter {
   void OnWorkerIdle(const WorkerAddress &addr, bool was_error);
 
   /// Request a new worker from the raylet if no such requests are currently in
-  /// flight.
+  /// flight and there are tasks queued.
   void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec,
                                 const rpc::Address *address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -91,7 +91,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// to the raylet once it finishes its task and either the lease term has
   /// expired, or there is no more work it can take on. The worker should be
   /// returned to the raylet via the given lease client.
-  void HandleWorkerLeaseGranted(const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client);
+  void HandleWorkerLeaseGranted(const WorkerAddress &addr,
+                                std::shared_ptr<WorkerLeaseInterface> lease_client);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
@@ -121,11 +122,12 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Cache of gRPC clients to other workers.
   absl::flat_hash_map<WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-    client_cache_ GUARDED_BY(mu_);
+      client_cache_ GUARDED_BY(mu_);
 
   /// Map from worker address to the lease client through which it should be
   /// returned.
-  absl::flat_hash_map<WorkerAddress, std::shared_ptr<WorkerLeaseInterface>> leased_workers_ GUARDED_BY(mu_);
+  absl::flat_hash_map<WorkerAddress, std::shared_ptr<WorkerLeaseInterface>>
+      leased_workers_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
   bool worker_request_pending_ GUARDED_BY(mu_) = false;

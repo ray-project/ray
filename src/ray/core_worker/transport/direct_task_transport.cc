@@ -93,7 +93,8 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   return Status::OK();
 }
 
-void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
+void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
+    const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   // Setup client state for this worker.
   {
     absl::MutexLock lock(&mu_);
@@ -101,7 +102,8 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress
 
     auto it = client_cache_.find(addr);
     if (it == client_cache_.end()) {
-      client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+      client_cache_[addr] =
+          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
       RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
     }
     leased_workers_[addr] = std::move(lease_client);
@@ -156,12 +158,14 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // may get swapped out by the time the callback fires.
   TaskSpecification resource_spec_copy(resource_spec.GetMessage());
   RAY_CHECK_OK(lease_client->RequestWorkerLease(
-      resource_spec_copy, [this, resource_spec_copy, lease_client](const Status &status,
-                                                     const rpc::WorkerLeaseReply &reply) mutable {
+      resource_spec_copy,
+      [this, resource_spec_copy, lease_client](
+          const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
         if (status.ok()) {
           if (reply.raylet_id() == "") {
             RAY_LOG(DEBUG) << "Lease granted " << resource_spec_copy.TaskId();
-            HandleWorkerLeaseGranted({reply.address(), reply.port()}, std::move(lease_client));
+            HandleWorkerLeaseGranted({reply.address(), reply.port()},
+                                     std::move(lease_client));
           } else {
             absl::MutexLock lock(&mu_);
             worker_request_pending_ = false;
