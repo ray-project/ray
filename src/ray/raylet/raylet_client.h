@@ -87,11 +87,14 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
-  /// \return The connection information.
+  /// \param language Language of the worker.
+  /// \param raylet_id This will be populated with the local raylet's ClientID.
+  /// \param port The port that the worker will listen on for gRPC requests, if
+  /// any.
   RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               int port = -1);
+               ClientID *raylet_id, int port = -1);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 

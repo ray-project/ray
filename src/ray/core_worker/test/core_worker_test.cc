@@ -499,6 +499,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   int64_t start_ms = current_time_ms();
   const auto num_tasks = 10000 * 10;
   RAY_LOG(INFO) << "start creating " << num_tasks << " PushTaskRequests";
+  rpc::Address address;
   for (int i = 0; i < num_tasks; i++) {
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
@@ -507,8 +508,8 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     TaskSpecBuilder builder;
     builder.SetCommonTaskSpec(RandomTaskId(), function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
-                              RandomTaskId(), num_returns, /*is_direct*/ false, resources,
-                              resources);
+                              RandomTaskId(), address, num_returns, /*is_direct*/ false,
+                              resources, resources);
     // Set task arguments.
     for (const auto &arg : args) {
       if (arg.IsPassedByReference()) {
