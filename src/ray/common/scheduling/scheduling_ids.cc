@@ -2,8 +2,12 @@
 using namespace std;
 
 int64_t StringIdMap::get(const string sid) {
-  if (string_to_int_.count(sid) == 0) return -1;
-  return string_to_int_[sid];
+  auto it = string_to_int_.find(sid);
+  if (it == string_to_int_.end()) {
+    return -1;
+  } else {
+    return it->second;
+  }
 };
 
 int64_t StringIdMap::insert(const string sid, bool test) {
