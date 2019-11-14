@@ -26,7 +26,7 @@ function properly.
 Skein Configuration
 -------------------
 
-A Ray job is configured to run as two `Skein services`_. :
+A Ray job is configured to run as two `Skein services`:
 
 1. The ``ray-head`` service that starts the Ray head node and then runs the
    application.
