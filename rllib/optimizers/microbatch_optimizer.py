@@ -32,8 +32,7 @@ class MicrobatchOptimizer(PolicyOptimizer):
     def __init__(self,
                  workers,
                  train_batch_size=10000,
-                 microbatch_size=1000,
-                 standardize_fields=frozenset([])):
+                 microbatch_size=1000):
         PolicyOptimizer.__init__(self, workers)
 
         if train_batch_size <= microbatch_size:
@@ -42,7 +41,6 @@ class MicrobatchOptimizer(PolicyOptimizer):
                 "size, got {} vs {}".format(microbatch_size, train_batch_size))
 
         self.update_weights_timer = TimerStat()
-        self.standardize_fields = standardize_fields
         self.sample_timer = TimerStat()
         self.grad_timer = TimerStat()
         self.throughput = RunningStat()
@@ -99,11 +97,6 @@ class MicrobatchOptimizer(PolicyOptimizer):
                     if policy_id not in samples.policy_batches:
                         continue
                     batch = samples.policy_batches[policy_id]
-                    for field in self.standardize_fields:
-                        value = batch[field]
-                        standardized = (value - value.mean()) / max(
-                            1e-4, value.std())
-                        batch[field] = standardized
                     grad_out, info_out = (
                         self.workers.local_worker().compute_gradients(
                             MultiAgentBatch({
