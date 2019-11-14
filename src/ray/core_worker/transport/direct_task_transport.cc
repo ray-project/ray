@@ -84,16 +84,16 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     // TODO(ekl) should have a queue per distinct resource type required
     absl::MutexLock lock(&mu_);
-    RequestNewWorkerIfNeeded(task_spec);
     queued_tasks_.push_back(task_spec);
     // The task is now queued and will be picked up by the next leased or newly
     // idle worker. We are guaranteed a worker will show up since we called
     // RequestNewWorkerIfNeeded() earlier while holding mu_.
+    RequestNewWorkerIfNeeded(task_spec);
   });
   return Status::OK();
 }
 
-void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> &lease_client) {
+void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   // Setup client state for this worker.
   {
     absl::MutexLock lock(&mu_);
@@ -101,11 +101,10 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(const WorkerAddress
 
     auto it = client_cache_.find(addr);
     if (it == client_cache_.end()) {
-      client_cache_[addr] =
-      {std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr)),
-        lease_client};
+      client_cache_[addr] = std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
       RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
     }
+    leased_workers_[addr] = std::move(lease_client);
   }
 
   // Try to assign it work.
@@ -116,23 +115,24 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
                                                  bool was_error) {
   absl::MutexLock lock(&mu_);
   if (queued_tasks_.empty() || was_error) {
-    auto &lease_client = client_cache_[addr].second;
+    auto lease_client = std::move(leased_workers_[addr]);
+    leased_workers_.erase(addr);
     RAY_CHECK_OK(lease_client->ReturnWorker(addr.second));
   } else {
-    auto &client = *client_cache_[addr].first;
+    auto &client = *client_cache_[addr];
     PushNormalTask(addr, client, queued_tasks_.front());
     queued_tasks_.pop_front();
   }
-  // We have a queue of tasks, try to request more workers.
-  if (!queued_tasks_.empty()) {
-    RequestNewWorkerIfNeeded(queued_tasks_.front());
-  }
+  RequestNewWorkerIfNeeded(queued_tasks_.front());
 }
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const TaskSpecification &resource_spec, const rpc::Address *address) {
-  RAY_CHECK(resource_spec.GetMessage().task_id().size() > 0);
   if (worker_request_pending_) {
+    return;
+  }
+  if (queued_tasks_.empty()) {
+    // We don't have any tasks to run, so no need to request a worker.
     return;
   }
 
@@ -161,7 +161,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
         if (status.ok()) {
           if (reply.raylet_id() == "") {
             RAY_LOG(DEBUG) << "Lease granted " << resource_spec_copy.TaskId();
-            HandleWorkerLeaseGranted({reply.address(), reply.port()}, lease_client);
+            HandleWorkerLeaseGranted({reply.address(), reply.port()}, std::move(lease_client));
           } else {
             absl::MutexLock lock(&mu_);
             worker_request_pending_ = false;
@@ -173,11 +173,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           }
         } else {
           RAY_LOG(DEBUG) << "Retrying lease request " << resource_spec_copy.TaskId();
-          // Retry the worker lease request. TODO(swang): Fail after some
-          // number of attempts.
           absl::MutexLock lock(&mu_);
           worker_request_pending_ = false;
-          RequestNewWorkerIfNeeded(resource_spec_copy);
+          if (lease_client != local_lease_client_) {
+            // A remote request failed. Retry the worker lease request locally
+            // if it's still in the queue.
+            // TODO(swang): Fail after some number of retries?
+            RAY_LOG(ERROR) << "Attempt to schedule task to remote node failed, retrying";
+            RequestNewWorkerIfNeeded(resource_spec_copy);
+          } else {
+            RAY_LOG(FATAL) << "Lost connection with local raylet.";
+          }
         }
       }));
   worker_request_pending_ = true;
