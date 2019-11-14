@@ -373,7 +373,7 @@ class TBXLogger(Logger):
             self._file_writer.close()
 
 
-DEFAULT_LOGGERS = (JsonLogger, CSVLogger, TBXLogger)
+DEFAULT_LOGGERS = (JsonLogger, CSVLogger, tf2_compat_logger)
 
 
 class UnifiedLogger(Logger):
