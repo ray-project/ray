@@ -156,6 +156,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // objects are all fetched if timeout is -1.
   int unsuccessful_attempts = 0;
   bool should_break = false;
+  bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
@@ -171,14 +172,14 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;
-      should_break = remaining_timeout <= 0;
+      timed_out = remaining_timeout <= 0;
     }
 
     size_t previous_size = remaining.size();
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
                                                  /*fetch_only=*/false, task_id, results,
                                                  got_exception));
-    should_break = should_break || *got_exception;
+    should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
       unsuccessful_attempts++;
@@ -192,6 +193,11 @@ Status CoreWorkerPlasmaStoreProvider::Get(
         return status;
       }
     }
+  }
+
+  if (!remaining.empty() && timed_out) {
+    RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
+    return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with
