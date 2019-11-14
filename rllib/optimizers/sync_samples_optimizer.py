@@ -139,7 +139,7 @@ class SyncSamplesOptimizer(PolicyOptimizer):
                 "Minibatching not implemented for multi-agent in simple mode")
 
         if "state_in_0" in samples.data:
-            logger.warn("Not shuffling RNN data for SGD in simple mode")
+            logger.warning("Not shuffling RNN data for SGD in simple mode")
         else:
             samples.shuffle()
 

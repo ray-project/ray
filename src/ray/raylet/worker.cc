@@ -25,8 +25,8 @@ Worker::Worker(const WorkerID &worker_id, pid_t pid, const Language &language, i
       client_call_manager_(client_call_manager),
       is_detached_actor_(false) {
   if (port_ > 0) {
-    rpc_client_ = std::unique_ptr<rpc::WorkerTaskClient>(
-        new rpc::WorkerTaskClient("127.0.0.1", port_, client_call_manager_));
+    rpc_client_ = std::unique_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient("127.0.0.1", port_, client_call_manager_));
   }
 }
 
@@ -169,6 +169,24 @@ void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
       });
   if (!status.ok()) {
     RAY_LOG(ERROR) << "Failed to send wait complete: " << status.ToString();
+  }
+}
+
+void Worker::WorkerLeaseGranted(const std::string &address, int port) {
+  RAY_CHECK(!address.empty());
+  RAY_CHECK(port_ > 0);
+  rpc::WorkerLeaseGrantedRequest request;
+  request.set_address(address);
+  request.set_port(port);
+  auto status = rpc_client_->WorkerLeaseGranted(
+      request, [address, port](Status status, const rpc::WorkerLeaseGrantedReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Failed to reply to lease request: " << status.ToString()
+                         << " for " << address << ":" << port;
+        }
+      });
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to reply to lease request: " << status.ToString();
   }
 }
 

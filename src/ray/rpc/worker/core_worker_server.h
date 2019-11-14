@@ -1,5 +1,5 @@
-#ifndef RAY_RPC_WORKER_SERVER_H
-#define RAY_RPC_WORKER_SERVER_H
+#ifndef RAY_RPC_CORE_WORKER_SERVER_H
+#define RAY_RPC_CORE_WORKER_SERVER_H
 
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
@@ -13,14 +13,14 @@ class CoreWorker;
 
 namespace rpc {
 
-/// The `GrpcServer` for `WorkerService`.
-class WorkerGrpcService : public GrpcService {
+/// The `GrpcServer` for `CoreWorkerService`.
+class CoreWorkerGrpcService : public GrpcService {
  public:
   /// Constructor.
   ///
   /// \param[in] main_service See super class.
   /// \param[in] handler The service handler that actually handle the requests.
-  WorkerGrpcService(boost::asio::io_service &main_service, CoreWorker &core_worker);
+  CoreWorkerGrpcService(boost::asio::io_service &main_service, CoreWorker &core_worker);
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
@@ -32,7 +32,7 @@ class WorkerGrpcService : public GrpcService {
 
  private:
   /// The grpc async service object.
-  WorkerService::AsyncService service_;
+  CoreWorkerService::AsyncService service_;
 
   /// The core worker that actually handles the requests.
   CoreWorker &core_worker_;
@@ -41,4 +41,4 @@ class WorkerGrpcService : public GrpcService {
 }  // namespace rpc
 }  // namespace ray
 
-#endif
+#endif  // RAY_RPC_CORE_WORKER_SERVER_H

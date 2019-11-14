@@ -177,7 +177,8 @@ def run(args, parser):
         experiments,
         scheduler=_make_scheduler(args),
         queue_trials=args.queue_trials,
-        resume=args.resume)
+        resume=args.resume,
+        concurrent=True)
 
 
 if __name__ == "__main__":

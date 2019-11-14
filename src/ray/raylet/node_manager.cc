@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <fstream>
+#include <memory>
 
 #include "ray/common/status.h"
 
@@ -895,8 +896,11 @@ void NodeManager::ProcessClientMessage(
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::SubmitTask: {
-    ProcessSubmitTaskMessage(message_data);
+  case protocol::MessageType::RequestWorkerLease: {
+    ProcessRequestWorkerLeaseMessage(client, message_data);
+  } break;
+  case protocol::MessageType::ReturnWorker: {
+    ProcessReturnWorkerMessage(message_data);
   } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
@@ -1034,6 +1038,10 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
 void NodeManager::HandleWorkerAvailable(
     const std::shared_ptr<LocalClientConnection> &client) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+  HandleWorkerAvailable(worker);
+}
+
+void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(worker);
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
@@ -1175,16 +1183,41 @@ void NodeManager::ProcessDisconnectClientMessage(
   // these can be leaked.
 }
 
-void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
-  // Read the task submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+void NodeManager::ProcessRequestWorkerLeaseMessage(
+    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
+  // Read the resource spec submitted by the client.
+  auto fbs_message = flatbuffers::GetRoot<protocol::WorkerLeaseRequest>(message_data);
   rpc::Task task_message;
   RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
+      fbs_message->resource_spec()->data(), fbs_message->resource_spec()->size()));
 
-  // Submit the task to the raylet. Since the task was submitted
-  // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task_message), Lineage());
+  // Override the task dispatch to call back to the client instead of executing the
+  // task directly on the worker. TODO(ekl) handle spilling case
+  Task task(task_message);
+  task.OnDispatchInstead([this, client](const std::shared_ptr<void> granted,
+                                        const std::string &address, int port) {
+    std::shared_ptr<Worker> client_worker = worker_pool_.GetRegisteredWorker(client);
+    if (client_worker == nullptr) {
+      client_worker = worker_pool_.GetRegisteredDriver(client);
+    }
+    if (client_worker == nullptr) {
+      RAY_LOG(FATAL) << "TODO: Lost worker for lease request " << client;
+    } else {
+      client_worker->WorkerLeaseGranted(address, port);
+      leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
+    }
+  });
+  SubmitTask(task, Lineage());
+}
+
+void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
+  // Read the resource spec submitted by the client.
+  auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
+  auto worker_port = fbs_message->worker_port();
+  RAY_LOG(DEBUG) << "Return worker " << worker_port;
+  std::shared_ptr<Worker> worker = leased_workers_[worker_port];
+  leased_workers_.erase(worker_port);
+  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1388,6 +1421,18 @@ void NodeManager::ProcessReportActiveObjectIDs(
   auto message = flatbuffers::GetRoot<protocol::ReportActiveObjectIDs>(message_data);
   worker->SetActiveObjectIds(
       unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
+}
+
+void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
+                                   rpc::SubmitTaskReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) {
+  rpc::Task task;
+  task.mutable_task_spec()->CopyFrom(request.task_spec());
+
+  // Submit the task to the raylet. Since the task was submitted
+  // locally, there is no uncommitted lineage.
+  SubmitTask(Task(task), Lineage());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -1958,7 +2003,12 @@ bool NodeManager::AssignTask(const Task &task) {
   ResourceIdSet resource_id_set =
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
 
-  worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
+  if (task.OnDispatch() != nullptr) {
+    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
+    finish_assign_task_callback(Status::OK());
+  } else {
+    worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
+  }
 
   // We assigned this task to a worker.
   // (Note this means that we sent the task to the worker. The assignment

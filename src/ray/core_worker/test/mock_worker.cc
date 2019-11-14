@@ -19,10 +19,10 @@ namespace ray {
 class MockWorker {
  public:
   MockWorker(const std::string &store_socket, const std::string &raylet_socket,
-             const gcs::GcsClientOptions &gcs_options)
+             int node_manager_port, const gcs::GcsClientOptions &gcs_options)
       : worker_(WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
                 JobID::FromInt(1), gcs_options, /*log_dir=*/"",
-                /*node_id_address=*/"127.0.0.1",
+                /*node_id_address=*/"127.0.0.1", node_manager_port,
                 std::bind(&MockWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7)) {}
 
   void StartExecutingTasks() { worker_.StartExecutingTasks(); }
@@ -71,12 +71,13 @@ class MockWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 3);
+  RAY_CHECK(argc == 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
+  auto node_manager_port = std::stoi(std::string(argv[3]));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  ray::MockWorker worker(store_socket, raylet_socket, gcs_options);
+  ray::MockWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
   worker.StartExecutingTasks();
   return 0;
 }
