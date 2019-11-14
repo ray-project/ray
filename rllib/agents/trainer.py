@@ -47,7 +47,7 @@ COMMON_CONFIG = {
     # Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level will also
     # periodically print out summaries of relevant internal dataflow (this is
     # also printed out once at startup at the INFO level).
-    "log_level": "INFO",
+    "log_level": "WARN",
     # Callbacks that will be run during various phases of training. These all
     # take a single "info" dict as an argument. For episode callbacks, custom
     # metrics can be attached to the episode by updating the episode object's
@@ -479,6 +479,11 @@ class Trainer(Trainable):
         self.raw_user_config = config
         self.config = merged_config
         Trainer._validate_config(self.config)
+        log_level = self.config.get("log_level")
+        if log_level in ["WARN", "ERROR"]:
+            logger.info("Current log_level is {}. For more information, "
+                        "set 'log_level': 'INFO' / 'DEBUG' or use the -v and "
+                        "-vv flags.".format(log_level))
         if self.config.get("log_level"):
             logging.getLogger("ray.rllib").setLevel(self.config["log_level"])
 

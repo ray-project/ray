@@ -157,8 +157,7 @@ class SerializationContext(object):
                 serialization_context)
 
             def id_serializer(obj):
-                if isinstance(obj,
-                              ray.ObjectID) and obj.is_direct_actor_type():
+                if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
                     raise NotImplementedError(
                         "Objects produced by direct actor calls cannot be "
                         "passed to other tasks as arguments.")
@@ -191,8 +190,7 @@ class SerializationContext(object):
                 custom_deserializer=actor_handle_deserializer)
 
             def id_serializer(obj):
-                if isinstance(obj,
-                              ray.ObjectID) and obj.is_direct_actor_type():
+                if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
                     raise NotImplementedError(
                         "Objects produced by direct actor calls cannot be "
                         "passed to other tasks as arguments.")
