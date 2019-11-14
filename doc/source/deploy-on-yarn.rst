@@ -5,16 +5,16 @@ Deploying on YARN
 
   Running Ray on YARN is still a work in progress. If you have a
   suggestion for how to improve this documentation or want to request
-  a missing feature, please feel free to push a Pull Request or see the
-  `Questions or Issues?`_ section below.
+  a missing feature, please feel free to create a pull request or get in touch
+  using one of the channels in the `Questions or Issues?`_ section below.
 
 This document assumes that you have access to a YARN cluster and will walk
 you through using `Skein`_ to deploy a YARN job that starts a Ray cluster and
 runs an example script on it.
 
-Skein uses a declarative specification (either written as a yaml file or using a python API) and allows users to launch jobs and scale applications without the user ever touching java.
+Skein uses a declarative specification (either written as a yaml file or using the Python API) and allows users to launch jobs and scale applications without the need to write Java code.
 
-You will need to install Skein first: ``pip install skein``.
+You will firt need to install Skein: ``pip install skein``.
 
 The Skein ``yaml`` file and example Ray program used here are provided in the
 `Ray repository`_ to get you started. Refer to the provided ``yaml``
@@ -34,7 +34,7 @@ A Ray job is configured to run as two `Skein services`_. :
    You can change the number of instances in this configuration or at runtime
    using ``skein scale`` to scale the cluster up/down.
 
-Both are composed of what files are needed to run them and what commands are needed to start each service.
+The specification for each services consists of necessary files and commands that will be run to start the service.
 
 .. code-block:: yaml
 
@@ -62,15 +62,10 @@ Both are composed of what files are needed to run them and what commands are nee
             script:
                 ...
 
-Resource Specification
-~~~~~~~~~~~~~~~~~~~~~~
-
-
-
 Packaging Dependencies
 ----------------------
 
-Use the ``files`` to stage listed files for the application to use. See `the Skein file distribution page <https://jcrist.github.io/skein/distributing-files.html>`_ for more information.
+Use the ``files`` option to specify files that will be copied into the YARN container for the application to use. See `the Skein file distribution page <https://jcrist.github.io/skein/distributing-files.html>`_ for more information.
 
 .. code-block:: yaml
 
@@ -94,12 +89,12 @@ Use the ``files`` to stage listed files for the application to use. See `the Ske
 Ray Setup in YARN
 -----------------
 
-Below is a walkthrough of the script we add to start the ``ray-head``. Note that this assumes each application is using a new Ray cluster rather than reusing the same cluster.
+Below is a walkthrough of the bash commands used to start the ``ray-head`` and ``ray-worker`` services. Note that this configuration will launch a new Ray cluster for each application, not reuse the same cluster.
 
 Head node commands
 ~~~~~~~~~~~~~~~~~~
 
-We start by activating a pre-existing environment for dependency management.
+Start by activating a pre-existing environment for dependency management.
 
 .. code-block:: bash
 
@@ -111,26 +106,26 @@ Obtain the Skein Application ID which is used when pushing addresses to worker s
 
     APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
 
-Register the Ray head addresses needed by the workers with the Skein key-value store.
+Register the Ray head addresses needed by the workers in the Skein key-value store using the Application ID.
 
 .. code-block:: bash
 
     skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
 
-This command starts all the processes needed on the ray head node. By default, we set object store memory
+Start all the processes needed on the ray head node. By default, we set object store memory
 and heap memory to roughly 200 MB. This is conservative and should be set according to application needs.
 
 .. code-block:: bash
 
     ray start --head --redis-port=6379 --object-store-memory=200000000 --memory 200000000 --num-cpus=1
 
-This executes the user script.
+Execute the user script containing the Ray program.
 
 .. code-block:: bash
 
     python example.py
 
-After the user script has executed, all started processes should also die. Note that we put this in the setup script of the service.
+Clean up all started processes even if the application fails or is killed.
 
 .. code-block:: bash
 
@@ -141,14 +136,14 @@ After the user script has executed, all started processes should also die. Note 
 Worker node commands
 ~~~~~~~~~~~~~~~~~~~~
 
-This command gets any addresses it needs (e.g. the head node) from the skein key-value store.
+Fetch the address of the head node from the Skein key-value store.
 
 .. code-block:: bash
 
     APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
     RAY_HEAD_ADDRESS=$(skein kv get --key=RAY_HEAD_ADDRESS "$APP_ID")
 
-The below command starts all the processes needed on a ray worker node, blocking until killed with sigterm. After sigterm, all started processes should also die (ray stop).
+Start all of the processes needed on a ray worker node, blocking until killed by Skein/YARN via SIGTERM. After receiving SIGTERM, all started processes should also die (ray stop).
 
 .. code-block:: bash
 
@@ -163,7 +158,7 @@ Within your Ray script, use the following to connect to the started Ray cluster:
 .. code-block:: python
 
     if __name__ == "__main__":
-        DRIVER_MEMORY = 100 * 1024 * 1024  # 100MB, but set this to anything you want.
+        DRIVER_MEMORY = 100 * 1024 * 1024  # 100MB here, but set this based on the application (subject to the YARN container limit).
         ray.init(
             address="localhost:6379", driver_object_store_memory=DRIVER_MEMORY)
         main()
@@ -174,14 +169,14 @@ You can use the following command to launch the application as specified by the 
 
     skein application submit [TEST.YAML]
 
-You can see the job running on the YARN dashboard.
+Once it has been submitted, you can see the job running on the YARN dashboard.
 
 .. image:: images/yarn-job.png
 
 Cleaning Up
 -----------
 
-To clean up, use the following:
+To clean up a running job, use the following:
 
 .. code-block:: bash
 
