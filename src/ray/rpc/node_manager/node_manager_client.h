@@ -101,6 +101,15 @@ class NodeManagerWorkerClient
     return call->GetStatus();
   }
 
+  ray::Status ReturnWorker(const ReturnWorkerRequest &request,
+                                 const ClientCallback<ReturnWorkerReply> &callback) {
+    auto call = client_call_manager_
+                    .CreateCall<NodeManagerService, ReturnWorkerRequest, ReturnWorkerReply>(
+                        *stub_, &NodeManagerService::Stub::PrepareAsyncReturnWorker,
+                        request, callback);
+    return call->GetStatus();
+  }
+
  private:
   /// Constructor.
   ///

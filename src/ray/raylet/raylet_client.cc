@@ -388,8 +388,9 @@ ray::Status RayletClient::RequestWorkerLease(
 }
 
 ray::Status RayletClient::ReturnWorker(int worker_port) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateReturnWorkerRequest(fbb, worker_port);
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::ReturnWorker, &fbb);
+  ray::rpc::ReturnWorkerRequest request;
+  request.set_worker_port(worker_port);
+  return grpc_client_->ReturnWorker(request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
+      RAY_CHECK_OK(status);
+      });
 }
