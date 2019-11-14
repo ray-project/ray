@@ -3,15 +3,12 @@
 
 #include <unordered_map>
 #include <string>
-#include <gtest/gtest_prod.h>
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
   std::unordered_map<std::string, int64_t> string_to_int_;
   std::unordered_map<int64_t, std::string> int_to_string_;
   std::hash<std::string> hasher_;
-
-  FRIEND_TEST(SchedulingTest, SchedulingIdTest);
 
 public:
   StringIdMap() {};
