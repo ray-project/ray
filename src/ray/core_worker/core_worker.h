@@ -1,9 +1,7 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
@@ -328,11 +326,11 @@ class CoreWorker {
   /// \return Status::Invalid if we don't have this actor handle.
   Status GetActorHandle(const ActorID &actor_id, ActorHandle **actor_handle) const;
 
-  /**
-   * The following methods are handlers for the core worker's gRPC server, which follow
-   * a macro-generated call convention. These are executed on the io_service_ and
-   * post work to the appropriate event loop.
-   */
+  ///
+  /// The following methods are handlers for the core worker's gRPC server, which follow
+  /// a macro-generated call convention. These are executed on the io_service_ and
+  /// post work to the appropriate event loop.
+  ///
 
   /// Implements gRPC server handler.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
@@ -461,7 +459,7 @@ class CoreWorker {
   rpc::GrpcServer core_worker_server_;
 
   // Client to the GCS shared by core worker interfaces.
-  gcs::RedisGcsClient gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
