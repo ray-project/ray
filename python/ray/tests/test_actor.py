@@ -2402,10 +2402,10 @@ def test_actor_reconstruction_on_node_failure_actor_owner(ray_start_cluster_head
             self.actor = MyActor.remote()
 
         def increase(self):
-            return self.actor.increase.remote()
+            return ray.get(self.actor.increase.remote())
 
         def get_object_store_socket(self):
-            return self.actor.get_object_store_socket.remote()
+            return ray.get(self.actor.get_object_store_socket.remote())
 
     # add a node (with 2 "a" resources).
     add_node()
