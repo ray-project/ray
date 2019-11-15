@@ -95,8 +95,10 @@ cdef class TaskSpec:
                         :self.task_spec.get().ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
-                    else:
+                    elif metadata == PICKLE_BUFFER_METADATA:
                         obj = pickle.loads(data)
+                    else:
+                        obj = data
                     arg_list.append(obj)
         elif lang == <int32_t>LANGUAGE_JAVA:
             arg_list = num_args * ["<java-argument>"]

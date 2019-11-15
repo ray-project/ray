@@ -1,4 +1,5 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
 
@@ -13,13 +14,20 @@ void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> valu
       if (id == obj_id) {
         auto *mutable_arg = msg.mutable_args(i);
         mutable_arg->clear_object_ids();
-        if (value->HasData()) {
-          const auto &data = value->GetData();
-          mutable_arg->set_data(data->Data(), data->Size());
-        }
-        if (value->HasMetadata()) {
-          const auto &metadata = value->GetMetadata();
-          mutable_arg->set_metadata(metadata->Data(), metadata->Size());
+        if (value->IsInPlasmaError()) {
+          // Promote the object id to plasma.
+          mutable_arg->add_object_ids(
+              obj_id.WithTransportType(TaskTransportType::RAYLET).Binary());
+        } else {
+          // Inline the object value.
+          if (value->HasData()) {
+            const auto &data = value->GetData();
+            mutable_arg->set_data(data->Data(), data->Size());
+          }
+          if (value->HasMetadata()) {
+            const auto &metadata = value->GetMetadata();
+            mutable_arg->set_metadata(metadata->Data(), metadata->Size());
+          }
         }
         found = true;
       }
@@ -52,7 +60,7 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
   num_pending_ += 1;
 
   for (const auto &obj_id : state->local_dependencies) {
-    in_memory_store_.GetAsync(
+    in_memory_store_->GetAsync(
         obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
           bool complete = false;
@@ -128,23 +136,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   worker_request_pending_ = true;
 }
 
-void CoreWorkerDirectTaskSubmitter::TreatTaskAsFailed(const TaskID &task_id,
-                                                      int num_returns,
-                                                      const rpc::ErrorType &error_type) {
-  RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
-                 << ", error_type: " << ErrorType_Name(error_type);
-  for (int i = 0; i < num_returns; i++) {
-    const auto object_id = ObjectID::ForTaskReturn(
-        task_id, /*index=*/i + 1,
-        /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
-    std::string meta = std::to_string(static_cast<int>(error_type));
-    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(in_memory_store_.Put(RayObject(nullptr, meta_buffer), object_id));
-  }
-}
-
-// TODO(ekl) consider reconsolidating with DirectActorTransport.
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(const WorkerAddress &addr,
                                                    rpc::CoreWorkerClientInterface &client,
                                                    TaskSpecification &task_spec) {
@@ -157,30 +148,15 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const WorkerAddress &addr,
       [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
         OnWorkerIdle(addr, /*error=*/!status.ok());
         if (!status.ok()) {
-          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED);
+          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
+                            in_memory_store_);
           return;
         }
-        for (int i = 0; i < reply.return_objects_size(); i++) {
-          const auto &return_object = reply.return_objects(i);
-          ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
-          std::shared_ptr<LocalMemoryBuffer> data_buffer;
-          if (return_object.data().size() > 0) {
-            data_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.data().data())),
-                return_object.data().size());
-          }
-          std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-          if (return_object.metadata().size() > 0) {
-            metadata_buffer = std::make_shared<LocalMemoryBuffer>(
-                const_cast<uint8_t *>(
-                    reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
-                return_object.metadata().size());
-          }
-          RAY_CHECK_OK(
-              in_memory_store_.Put(RayObject(data_buffer, metadata_buffer), object_id));
-        }
+        WriteObjectsToMemoryStore(reply, in_memory_store_);
       });
-  RAY_CHECK_OK(status);
+  if (!status.ok()) {
+    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
+                      in_memory_store_);
+  }
 }
 };  // namespace ray
