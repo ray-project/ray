@@ -1,8 +1,8 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
-#include <thread>
 #include <string>
+#include <thread>
 
 #include "ray/common/scheduling/scheduling_ids.h"
 using namespace std;

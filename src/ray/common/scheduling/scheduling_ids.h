@@ -1,8 +1,8 @@
 #ifndef RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
 #define RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
 
-#include <unordered_map>
 #include <string>
+#include <unordered_map>
 
 /// Class to map string IDs to unique integer IDs and back.
 class StringIdMap {
@@ -10,9 +10,9 @@ class StringIdMap {
   std::unordered_map<int64_t, std::string> int_to_string_;
   std::hash<std::string> hasher_;
 
-public:
-  StringIdMap() {};
-  ~StringIdMap() {};
+ public:
+  StringIdMap(){};
+  ~StringIdMap(){};
 
   /// Get integer ID associated with an existing string ID.
   ///
