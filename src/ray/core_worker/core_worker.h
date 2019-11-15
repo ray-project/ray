@@ -113,6 +113,15 @@ class CoreWorker {
     reference_counter_.RemoveReference(object_id);
   }
 
+  /// Promote an object to plasma. If it already exists locally, it will be
+  /// put into the plasma store. If it doesn't yet exist, it will be spilled to
+  /// plasma once available.
+  ///
+  /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
+  ///
+  /// \param[in] object_id The object ID to promote to plasma.
+  void PromoteObjectToPlasma(const ObjectID &object_id);
+
   ///
   /// Public methods related to storing and retrieving objects.
   ///
@@ -482,10 +491,10 @@ class CoreWorker {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// Plasma store interface.
-  std::unique_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
+  std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// In-memory store interface.
-  CoreWorkerMemoryStoreProvider memory_store_provider_;
+  std::shared_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
 
   ///
   /// Fields related to task submission.

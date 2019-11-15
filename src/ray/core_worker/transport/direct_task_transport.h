@@ -23,7 +23,7 @@ struct TaskState {
 // This class is thread-safe.
 class LocalDependencyResolver {
  public:
-  LocalDependencyResolver(CoreWorkerMemoryStoreProvider &store_provider)
+  LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : in_memory_store_(store_provider), num_pending_(0) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
@@ -42,7 +42,7 @@ class LocalDependencyResolver {
 
  private:
   /// The store provider.
-  CoreWorkerMemoryStoreProvider in_memory_store_;
+  std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
 
   /// Number of tasks pending dependency resolution.
   std::atomic<int> num_pending_;
@@ -58,9 +58,9 @@ typedef std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(WorkerAddr
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(WorkerLeaseInterface &lease_client,
-                                ClientFactoryFn client_factory,
-                                CoreWorkerMemoryStoreProvider store_provider)
+  CoreWorkerDirectTaskSubmitter(
+      WorkerLeaseInterface &lease_client, ClientFactoryFn client_factory,
+      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
       : lease_client_(lease_client),
         client_factory_(client_factory),
         in_memory_store_(store_provider),
@@ -93,10 +93,6 @@ class CoreWorkerDirectTaskSubmitter {
   void PushNormalTask(const WorkerAddress &addr, rpc::CoreWorkerClientInterface &client,
                       TaskSpecification &task_spec);
 
-  /// Mark a direct call as failed by storing errors for its return objects.
-  void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
-                         const rpc::ErrorType &error_type);
-
   // Client that can be used to lease and return workers.
   WorkerLeaseInterface &lease_client_;
 
@@ -104,7 +100,7 @@ class CoreWorkerDirectTaskSubmitter {
   ClientFactoryFn client_factory_;
 
   /// The store provider.
-  CoreWorkerMemoryStoreProvider in_memory_store_;
+  std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
