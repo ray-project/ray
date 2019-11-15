@@ -17,7 +17,7 @@ RUN pip install gym[atari]==0.10.11 opencv-python-headless tensorflow lz4 keras 
 RUN pip install --upgrade bayesian-optimization
 RUN pip install --upgrade hyperopt==0.1.2
 RUN pip install ConfigSpace==0.4.10
-RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost
+RUN pip install --upgrade sigopt nevergrad scikit-optimize hpbandster lightgbm xgboost tensorboardX
 RUN pip install -U mlflow
 RUN pip install -U pytest-remotedata>=0.3.1
 
