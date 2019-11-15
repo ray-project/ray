@@ -82,9 +82,11 @@ class CoreWorkerDirectTaskSubmitter {
   void OnWorkerIdle(const WorkerAddress &addr, bool was_error);
 
   /// Request a new worker from the raylet if no such requests are currently in
-  /// flight and there are tasks queued.
+  /// flight and there are tasks queued. If a raylet address is provided, then
+  /// the worker should be requested from the raylet at that address. Else, the
+  /// worker should be requested from the local raylet.
   void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec,
-                                const rpc::Address *address = nullptr)
+                                const rpc::Address *raylet_address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned
@@ -127,7 +129,7 @@ class CoreWorkerDirectTaskSubmitter {
   /// Map from worker address to the lease client through which it should be
   /// returned.
   absl::flat_hash_map<WorkerAddress, std::shared_ptr<WorkerLeaseInterface>>
-      leased_workers_ GUARDED_BY(mu_);
+      worker_to_lease_client_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
   bool worker_request_pending_ GUARDED_BY(mu_) = false;

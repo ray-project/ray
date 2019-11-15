@@ -1418,7 +1418,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
 
   // Override the task dispatch to call back to the client instead of executing the
-  // task directly on the worker. TODO(ekl) handle spilling case
+  // task directly on the worker.
   Task task(task_message);
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
@@ -1426,8 +1426,10 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
       [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
                                                   const std::string &address, int port) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
-        reply->set_address(address);
-        reply->set_port(port);
+        reply->mutable_worker_address()->set_ip_address(address);
+        reply->mutable_worker_address()->set_port(port);
+        reply->mutable_worker_address()->set_raylet_id(
+            gcs_client_->client_table().GetLocalClientId().Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
         // TODO(swang): Release worker if other end hangs up (can be done with
@@ -1438,9 +1440,9 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
                                             const std::string &address, int port) {
         RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
-        reply->set_address(address);
-        reply->set_port(port);
-        reply->set_retry_at_raylet_id(spillback_to.Binary());
+        reply->mutable_retry_at_raylet_address()->set_ip_address(address);
+        reply->mutable_retry_at_raylet_address()->set_port(port);
+        reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
   SubmitTask(task, Lineage());
@@ -2498,13 +2500,10 @@ void NodeManager::ForwardTask(
   if (task.OnSpillback() != nullptr) {
     GcsNodeInfo node_info;
     bool found = gcs_client_->client_table().GetClient(node_id, &node_info);
-    if (!found) {
-      RAY_LOG(INFO) << "No node manager client found for GCS client id " << node_id;
-      task.OnSpillback()(ClientID::Nil(), "", 0);
-    } else {
-      task.OnSpillback()(node_id, node_info.node_manager_address(),
-                         node_info.node_manager_port());
-    }
+    RAY_CHECK(found) << "Spilling back to a node manager, but no GCS info found for node "
+                     << node_id;
+    task.OnSpillback()(node_id, node_info.node_manager_address(),
+                       node_info.node_manager_port());
     return;
   }
 

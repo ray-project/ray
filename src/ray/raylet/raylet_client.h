@@ -231,7 +231,6 @@ class RayletClient : public WorkerLeaseInterface {
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const JobID job_id_;
-  // const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.
