@@ -42,4 +42,4 @@ class StringIdMap {
   int64_t count();
 };
 
-#endif // RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
+#endif  // RAY_COMMON_SCHEDULING_SCHEDULING_IDS_H
