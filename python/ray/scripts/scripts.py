@@ -787,6 +787,10 @@ def microbenchmark():
     from ray.ray_perf import main
     main()
 
+@cli.command()
+def clusterbenchmark():
+    from ray.ray_cluster_perf import main
+    main()
 
 @cli.command()
 @click.option(
