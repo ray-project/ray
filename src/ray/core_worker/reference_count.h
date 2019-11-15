@@ -25,7 +25,11 @@ class ReferenceCounter {
   /// Decrease the reference count for the ObjectID by one. If the reference count reaches
   /// zero, it will be erased from the map and the reference count for all of its
   /// dependencies will be decreased be one.
-  void RemoveReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  ///
+  /// \param[in] object_id The object to to decrement the count for.
+  /// \param[in] deleted List to store objects that hit zero ref count.
+  void RemoveReference(const ObjectID &object_id, std::vector<ObjectID> *deleted)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Set the dependencies for the ObjectID. Dependencies for each ObjectID must be
   /// set at most once. The direct reference count for the ObjectID is set to zero and the
@@ -36,6 +40,9 @@ class ReferenceCounter {
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
+
+  /// Returns whether this object has an active reference.
+  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
@@ -51,7 +58,10 @@ class ReferenceCounter {
   /// Recursive helper function for decreasing reference counts. Will recursively call
   /// itself on any dependencies whose reference count reaches zero as a result of
   /// removing the reference.
-  void RemoveReferenceRecursive(const ObjectID &object_id)
+  ///
+  /// \param[in] object_id The object to to decrement the count for.
+  /// \param[in] deleted List to store objects that hit zero ref count.
+  void RemoveReferenceRecursive(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Protects access to the reference counting state.

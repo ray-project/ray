@@ -100,16 +100,19 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        int node_manager_port,
                        const TaskExecutionCallback &task_execution_callback,
                        std::function<Status()> check_signals,
-                       const std::function<void()> exit_handler)
+                       const std::function<void()> exit_handler,
+                       bool ref_counting_enabled)
     : worker_type_(worker_type),
       language_(language),
       log_dir_(log_dir),
+      ref_counting_enabled_(ref_counting_enabled),
       check_signals_(check_signals),
       worker_context_(worker_type, job_id),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       heartbeat_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
+      reference_counter_(std::make_shared<ReferenceCounter>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       grpc_service_(io_service_, *this) {
@@ -189,10 +192,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   plasma_store_provider_.reset(
       new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
-  memory_store_.reset(
-      new CoreWorkerMemoryStore([this](const RayObject &obj, const ObjectID &obj_id) {
+  memory_store_.reset(new CoreWorkerMemoryStore(
+      [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
-      }));
+      },
+      ref_counting_enabled ? reference_counter_ : nullptr));
   memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
@@ -282,7 +286,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
 
 void CoreWorker::ReportActiveObjectIDs() {
   std::unordered_set<ObjectID> active_object_ids =
-      reference_counter_.GetAllInScopeObjectIDs();
+      reference_counter_->GetAllInScopeObjectIDs();
   RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
   if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
     RAY_LOG(WARNING) << active_object_ids.size() << "object IDs are currently in scope. "
@@ -542,9 +546,8 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
-Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
-  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(task_spec));
-
+void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
+                                     const TaskTransportType transport_type) {
   size_t num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     num_returns--;
@@ -560,13 +563,10 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
     }
   }
 
-  if (task_deps->size() > 0) {
-    for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_.SetDependencies(task_spec.ReturnIdForPlasma(i), task_deps);
-    }
+  // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
+  for (size_t i = 0; i < num_returns; i++) {
+    reference_counter_->SetDependencies(task_spec.ReturnId(i, transport_type), task_deps);
   }
-
-  return Status::OK();
 }
 
 Status CoreWorker::SubmitTask(const RayFunction &function,
@@ -586,10 +586,13 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       function, args, task_options.num_returns, task_options.resources, {},
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
       return_ids);
+  TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    return direct_task_submitter_->SubmitTask(builder.Build());
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    return direct_task_submitter_->SubmitTask(task_spec);
   } else {
-    return raylet_client_->SubmitTask(builder.Build());
+    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
+    return raylet_client_->SubmitTask(task_spec);
   }
 }
 
@@ -623,7 +626,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Actor " << actor_id << " already exists";
 
   *return_actor_id = actor_id;
-  return SubmitTaskToRaylet(builder.Build());
+  TaskSpecification task_spec = builder.Build();
+  PinObjectReferences(task_spec, TaskTransportType::RAYLET);
+  return raylet_client_->SubmitTask(task_spec);
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -659,10 +664,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   // Submit task.
   Status status;
+  TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
-    status = direct_actor_submitter_->SubmitTask(builder.Build());
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {
-    status = SubmitTaskToRaylet(builder.Build());
+    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
+    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
   }
   return status;
 }
@@ -830,9 +838,9 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     }
   }
 
-  if (task_spec.IsNormalTask() && reference_counter_.NumObjectIDsInScope() != 0) {
+  if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
     RAY_LOG(DEBUG)
-        << "There were " << reference_counter_.NumObjectIDsInScope()
+        << "There were " << reference_counter_->NumObjectIDsInScope()
         << " ObjectIDs left in scope after executing task " << task_spec.TaskId()
         << ". This is either caused by keeping references to ObjectIDs in Python between "
            "tasks (e.g., in global variables) or indicates a problem with Ray's "

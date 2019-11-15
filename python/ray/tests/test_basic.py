@@ -1211,11 +1211,30 @@ def test_direct_call_simple(ray_start_regular):
         return x + 1
 
     f_direct = f.options(is_direct_call=True)
-    print("a")
     assert ray.get(f_direct.remote(2)) == 3
-    print("b")
     assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
         range(1, 101))
+
+
+def test_direct_call_refcount(ray_start_regular):
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    @ray.remote
+    def sleep():
+        time.sleep(.1)
+        return 1
+
+    # Multiple gets should not hang with ref counting enabled.
+    f_direct = f.options(is_direct_call=True)
+    x = f_direct.remote(2)
+    ray.get(x)
+    ray.get(x)
+
+    # Temporary objects should be retained for chained callers.
+    y = f_direct.remote(sleep.options(is_direct_call=True).remote())
+    assert ray.get(y) == 2
 
 
 def test_direct_call_matrix(shutdown_only):
@@ -1407,7 +1426,7 @@ def test_direct_actor_recursive(ray_start_regular):
             return x * 2
 
     a = Actor._remote(is_direct_call=True)
-    b = Actor._remote(args=[a], is_direct_call=False)
+    b = Actor._remote(args=[a], is_direct_call=True)
     c = Actor._remote(args=[b], is_direct_call=True)
 
     result = ray.get([c.f.remote(i) for i in range(100)])
