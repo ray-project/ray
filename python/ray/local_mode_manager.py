@@ -28,7 +28,7 @@ class LocalModeObjectID(ObjectID):
             new.value = self.value
         return new
 
-    def __deepcopy__(self, memo={}):
+    def __deepcopy__(self, memo=None):
         new = LocalModeObjectID(self.binary())
         if hasattr(self, "value"):
             new.value = self.value
