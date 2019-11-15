@@ -21,7 +21,7 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       object_manager_server_("ObjectManager", config_.object_manager_port,
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service, 8) {
+      client_call_manager_(main_service, config_.rpc_service_threads_number) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;

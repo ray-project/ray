@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
 
   int num_cpus = static_cast<int>(static_resource_conf["CPU"]);
   object_manager_config.rpc_service_threads_number =
-      std::min(std::max(2, num_cpus / 2), 8);
+      std::min(std::max(2, num_cpus / 4), 8);
   object_manager_config.object_chunk_size =
       RayConfig::instance().object_manager_default_chunk_size();
 
