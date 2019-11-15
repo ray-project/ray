@@ -41,7 +41,7 @@ class ReferenceCounter {
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
-  /// Return whether this object has an active reference.
+  /// Returns whether this object has an active reference.
   bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).

@@ -90,7 +90,8 @@ class CoreWorkerMemoryStore {
   /// Protect the two maps above.
   absl::Mutex mu_;
 
-  /// If enabled, holds a reference to local worker ref counter.
+  /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
+  /// mandatory once Java is supported.
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
 };
 
