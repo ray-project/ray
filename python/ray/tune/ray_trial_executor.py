@@ -284,8 +284,9 @@ class RayTrialExecutor(TrialExecutor):
         trainable = trial.runner
         with warn_if_slow("reset_config"):
             try:
-                reset_val = ray.get(trainable.reset_config.remote(new_config),
-                                    DEFAULT_GET_TIMEOUT)
+                reset_val = ray.get(
+                    trainable.reset_config.remote(new_config),
+                    DEFAULT_GET_TIMEOUT)
             except RayTimeoutError:
                 logger.exception("Trial %s: reset_config timed out.")
                 return False
@@ -586,8 +587,9 @@ class RayTrialExecutor(TrialExecutor):
                 with warn_if_slow("sync_to_new_location"):
                     trial.sync_logger_to_new_location(worker_ip)
                 with warn_if_slow("restore_from_disk"):
-                    ray.get(trial.runner.restore.remote(value),
-                            DEFAULT_GET_TIMEOUT)
+                    ray.get(
+                        trial.runner.restore.remote(value),
+                        DEFAULT_GET_TIMEOUT)
         except RayTimeoutError:
             logger.exception(
                 "Trial %s: Unable to restore - runner task timed "
