@@ -101,6 +101,15 @@ class RayletClient : public WorkerLeaseInterface {
   /// \return ray::Status.
   ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
 
+  /// TODO(zhijunfu): this is only used by java for now, will be removed
+  /// after java is updated to choose a port for node manager.
+  ///
+  /// Submit a task using the raylet code path.
+  ///
+  /// \param The task specification.
+  /// \return ray::Status.
+  ray::Status SubmitTaskLegacy(const ray::TaskSpecification &task_spec);
+
   /// Tell the raylet that the client has finished executing a task.
   ///
   /// \return ray::Status.

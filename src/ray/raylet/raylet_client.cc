@@ -230,6 +230,14 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
 }
 
+ray::Status RayletClient::SubmitTaskLegacy(const ray::TaskSpecification &task_spec) {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateSubmitTaskRequest(
+      fbb, fbb.CreateString(task_spec.Serialize()));
+  fbb.Finish(message);	
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
+}
+
 ray::Status RayletClient::TaskDone() {
   return conn_->WriteMessage(MessageType::TaskDone);
 }
