@@ -755,6 +755,7 @@ pyx_library(
         "python/ray/_raylet.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
+        "python/ray/streaming/__init__.pxd",
         "python/ray/streaming/includes/*.pxd",
         "python/ray/streaming/includes/*.pxi",
     ]),
