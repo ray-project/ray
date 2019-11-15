@@ -27,19 +27,5 @@ std::string StreamingUtility::Hexqid2str(const std::string &q_id_hex) {
 
 std::string StreamingUtility::GetHostname() { return boost::asio::ip::host_name(); }
 
-void StreamingUtility::Split(const ray::ObjectID &q_id,
-                             std::vector<std::string> &q_splited_vec) {
-  for (uint32_t i = kUniqueIDSize - 4; i < kUniqueIDSize; i += 2) {
-    q_splited_vec.push_back(std::to_string(q_id.Data()[i] * 0x100 + q_id.Data()[i + 1]));
-  }
-}
-
-std::string StreamingUtility::Qid2EdgeInfo(const ray::ObjectID &q_id) {
-  std::vector<std::string> str_vec;
-  Split(q_id, str_vec);
-  STREAMING_CHECK(str_vec.size() == 2);
-  return str_vec[0] + "-" + str_vec[1];
-}
-
 }  // namespace streaming
 }  // namespace ray

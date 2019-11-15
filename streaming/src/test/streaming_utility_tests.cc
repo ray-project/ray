@@ -18,20 +18,6 @@ TEST(StreamingUtilityTest, test_Hex2str) {
   EXPECT_TRUE(std::memcmp(StreamingUtility::Hexqid2str("100f").c_str(), data2, 2) == 0);
 }
 
-TEST(StreamingUtilityTest, testsplit) {
-  std::string qid_hex = "00000000000000009ae6745c0000000000010002";
-  ray::ObjectID q_id = ray::ObjectID::FromBinary(StreamingUtility::Hexqid2str(qid_hex));
-  std::vector<std::string> splited_vec;
-  StreamingUtility::Split(q_id, splited_vec);
-  EXPECT_TRUE(splited_vec[0] == "1" && splited_vec[1] == "2");
-}
-
-TEST(StreamingUtilityTest, test_edge_split) {
-  std::string qid_hex = "00000000000000009ae6745c0000000000010002";
-  ray::ObjectID q_id = ray::ObjectID::FromBinary(StreamingUtility::Hexqid2str(qid_hex));
-  EXPECT_TRUE(StreamingUtility::Qid2EdgeInfo(q_id) == "1-2");
-}
-
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
