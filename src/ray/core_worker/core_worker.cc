@@ -670,7 +670,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
     status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {
     PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-    raylet_client_->SubmitTask(task_spec);
+    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
   }
   return status;
 }
