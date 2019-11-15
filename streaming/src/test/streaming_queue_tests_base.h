@@ -302,36 +302,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
 
   void TearDown() {}
 
-  // Test normal tasks.
-  void TestNormalTask(const std::unordered_map<std::string, double> &resources);
-
-  // Test actor tasks.
-  void TestActorTask(const std::unordered_map<std::string, double> &resources,
-                     bool is_direct_call);
-
-  // Test actor failure case, verify that the tasks would either succeed or
-  // fail with exceptions, in that case the return objects fetched from `Get`
-  // contain errors.
-  void TestActorFailure(const std::unordered_map<std::string, double> &resources,
-                        bool is_direct_call);
-
-  // Test actor failover case. Verify that actor can be reconstructed successfully,
-  // and as long as we wait for actor reconstruction before submitting new tasks,
-  // it is guaranteed that all tasks are successfully completed.
-  void TestActorReconstruction(const std::unordered_map<std::string, double> &resources,
-                               bool is_direct_call);
-
-  // Test actor performance.
-  void TestActorPerformance(const std::unordered_map<std::string, double> &resources,
-                            bool is_direct_call, bool use_no_returns);
-
-  void TestWaitMultipleActorCreations(
-      const std::unordered_map<std::string, double> &resources, bool is_direct_call);
-
  protected:
-  bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
-                                   bool wait_alive, int timeout_ms);
-
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
   gcs::GcsClientOptions gcs_options_;
