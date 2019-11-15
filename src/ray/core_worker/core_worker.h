@@ -470,10 +470,6 @@ class CoreWorker {
   // Keeps track of object ID reference counts.
   ReferenceCounter reference_counter_;
 
-  /// Node manager port. If this is set to 0, use local domain socket to
-  /// submit tasks to raylet, otherwise use grpc.
-  int node_manager_port_;
-
   ///
   /// Fields related to storing and retrieving objects.
   ///

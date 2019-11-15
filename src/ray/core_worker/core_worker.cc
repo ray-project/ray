@@ -78,7 +78,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       heartbeat_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      node_manager_port_(node_manager_port),
       memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
       memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
@@ -540,9 +539,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
   if (task_options.is_direct_call) {
     return direct_task_submitter_->SubmitTask(builder.Build());
   } else {
-    return node_manager_port_ > 0
-      raylet_client_->SubmitTask(builder.Build()) :
-      raylet_client_->SubmitTaskLegacy(builder.Build());
+    return raylet_client_->SubmitTask(builder.Build());
   }
 }
 

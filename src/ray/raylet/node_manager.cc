@@ -902,9 +902,6 @@ void NodeManager::ProcessClientMessage(
   case protocol::MessageType::ReturnWorker: {
     ProcessReturnWorkerMessage(message_data);
   } break;
-  case protocol::MessageType::SubmitTask: {	
-    ProcessSubmitTaskMessage(message_data);	
-  } break;  
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
@@ -1221,18 +1218,6 @@ void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
   std::shared_ptr<Worker> worker = leased_workers_[worker_port];
   leased_workers_.erase(worker_port);
   HandleWorkerAvailable(worker);
-}
-
-void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {	
-  // Read the task submitted by the client.	
-  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);	
-  rpc::Task task_message;	
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(	
-      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));	
-
-  // Submit the task to the raylet. Since the task was submitted	
-  // locally, there is no uncommitted lineage.	
-  SubmitTask(Task(task_message), Lineage());	
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
