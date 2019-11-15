@@ -150,7 +150,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   RayObject buffer(std::make_shared<LocalMemoryBuffer>(data, sizeof(data)), nullptr);
 
   auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter());
-  CoreWorkerMemoryStore store(rc);
+  CoreWorkerMemoryStore store(nullptr, rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK_OK(store.Put(id2, buffer));
