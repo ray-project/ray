@@ -223,14 +223,15 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
 
 void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
   if (!is_async_) {
+    RAY_LOG(INFO) << "SIMON: Setting actor as async, creating new fiber thread";
     fiber_shutdown_event_ = std::make_shared<FiberEvent>();
     fiber_runner_thread_.reset(new std::thread([&]() {
       boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-      RAY_LOG(INFO) << "Starting fiber thread";
-      fiber_shutdown_event_->wait();
+      RAY_LOG(INFO) << "SIMON: Starting fiber thread";
+      fiber_shutdown_event_->Wait();
     }));
+    is_async_ = true;
   }
-  is_async_ = true;
 };
 
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
@@ -245,7 +246,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     return;
   }
   SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
-  SetActorAsAsync();
+  if (worker_context_.CurrentActorIsAsync()) {
+    SetActorAsAsync();
+  }
 
   // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
   // the raylet, which is a central bottleneck. In the future, we should inline
@@ -262,63 +265,63 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, pool_)));
+                                  task_main_io_service_, *waiter_, pool_, use_async_)));
     it = result.first;
   }
-  it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                  [this, reply, send_reply_callback, task_spec]() {
-                    auto num_returns = task_spec.NumReturns();
-                    RAY_CHECK(num_returns > 0);
-                    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-                      // Decrease to account for the dummy object id.
-                      num_returns--;
-                    }
+  it->second->Add(
+      request.sequence_number(), request.client_processed_up_to(),
+      [this, reply, send_reply_callback, task_spec]() {
+        auto num_returns = task_spec.NumReturns();
+        RAY_CHECK(num_returns > 0);
+        if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+          // Decrease to account for the dummy object id.
+          num_returns--;
+        }
 
-                    // TODO(edoakes): resource IDs are currently kept track of in the
-                    // raylet, need to come up with a solution for this.
-                    ResourceMappingType resource_ids;
-                    std::vector<std::shared_ptr<RayObject>> return_objects;
-                    auto status = task_handler_(task_spec, resource_ids, &return_objects);
-                    if (status.IsSystemExit()) {
-                      // In Python, SystemExit can only be raised on the main thread. To
-                      // work around this when we are executing tasks on worker threads,
-                      // we re-post the exit event explicitly on the main thread.
-                      task_main_io_service_.post([this]() { exit_handler_(); });
-                      return;
-                    }
-                    RAY_CHECK(return_objects.size() == num_returns)
-                        << return_objects.size() << "  " << num_returns;
+        // TODO(edoakes): resource IDs are currently kept track of in the
+        // raylet, need to come up with a solution for this.
+        ResourceMappingType resource_ids;
+        std::vector<std::shared_ptr<RayObject>> return_objects;
+        auto status = task_handler_(task_spec, resource_ids, &return_objects);
+        if (status.IsSystemExit()) {
+          // In Python, SystemExit can only be raised on the main thread. To
+          // work around this when we are executing tasks on worker threads,
+          // we re-post the exit event explicitly on the main thread.
+          task_main_io_service_.post([this]() { exit_handler_(); });
+          return;
+        }
+        RAY_CHECK(return_objects.size() == num_returns)
+            << return_objects.size() << "  " << num_returns;
 
-                    for (size_t i = 0; i < return_objects.size(); i++) {
-                      auto return_object = reply->add_return_objects();
-                      ObjectID id = ObjectID::ForTaskReturn(
-                          task_spec.TaskId(), /*index=*/i + 1,
-                          /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
-                      return_object->set_object_id(id.Binary());
+        for (size_t i = 0; i < return_objects.size(); i++) {
+          auto return_object = reply->add_return_objects();
+          ObjectID id = ObjectID::ForTaskReturn(
+              task_spec.TaskId(), /*index=*/i + 1,
+              /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+          return_object->set_object_id(id.Binary());
 
-                      // The object is nullptr if it already existed in the object store.
-                      const auto &result = return_objects[i];
-                      if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
-                        return_object->set_in_plasma(true);
-                      } else {
-                        if (result->GetData() != nullptr) {
-                          return_object->set_data(result->GetData()->Data(),
-                                                  result->GetData()->Size());
-                        }
-                        if (result->GetMetadata() != nullptr) {
-                          return_object->set_metadata(result->GetMetadata()->Data(),
-                                                      result->GetMetadata()->Size());
-                        }
-                      }
-                    }
+          // The object is nullptr if it already existed in the object store.
+          const auto &result = return_objects[i];
+          if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+            return_object->set_in_plasma(true);
+          } else {
+            if (result->GetData() != nullptr) {
+              return_object->set_data(result->GetData()->Data(),
+                                      result->GetData()->Size());
+            }
+            if (result->GetMetadata() != nullptr) {
+              return_object->set_metadata(result->GetMetadata()->Data(),
+                                          result->GetMetadata()->Size());
+            }
+          }
+        }
 
-                    send_reply_callback(status, nullptr, nullptr);
-                  },
-                  [send_reply_callback]() {
-                    send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr,
-                                        nullptr);
-                  },
-                  dependencies);
+        send_reply_callback(status, nullptr, nullptr);
+      },
+      [send_reply_callback]() {
+        send_reply_callback(Status::Invalid("client cancelled rpc"), nullptr, nullptr);
+      },
+      dependencies);
 }
 
 void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(

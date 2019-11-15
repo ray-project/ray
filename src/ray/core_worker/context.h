@@ -38,6 +38,8 @@ class WorkerContext {
 
   int CurrentActorMaxConcurrency() const;
 
+  bool CurrentActorIsAsync() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
@@ -49,6 +51,7 @@ class WorkerContext {
   ActorID current_actor_id_;
   bool current_task_is_direct_call_ = false;
   int current_actor_max_concurrency_ = 1;
+  bool current_actor_is_async_ = false;
 
  private:
   static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);

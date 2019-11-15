@@ -101,6 +101,8 @@ message ActorCreationTaskSpec {
   int32 max_concurrency = 6;
   // Whether the actor is persistent
   bool is_detached = 7;
+  // Whether the actor use async actor calls
+  bool is_async = 8;
 }
 
 // Task spec of an actor task.

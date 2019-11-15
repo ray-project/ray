@@ -218,12 +218,14 @@ class FiberEvent {
  public:
   typedef std::shared_ptr<FiberEvent> ptr;
 
-  void wait() {
+  // Block the fiber until the event is notified.
+  void Wait() {
     std::unique_lock<boost::fibers::mutex> lock(mutex);
     cond.wait(lock, [this]() { return ready; });
   }
 
-  void notify() {
+  // Notify the event and unblock all waiters.
+  void Notify() {
     {
       std::unique_lock<boost::fibers::mutex> lock(mutex);
       ready = true;
@@ -243,12 +245,14 @@ class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   std::shared_ptr<BoundedExecutor> pool = nullptr,
-                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
+                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds,
+                  bool use_async = false)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()),
-        pool_(pool) {}
+        pool_(pool),
+        use_async_(use_async) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -292,11 +296,13 @@ class SchedulingQueue {
            pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
       auto request = head->second;
-      if (pool_ != nullptr) {
+      if (use_async_) {
+        boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();
+      } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
         request.Accept();
-            }
+      }
       pending_tasks_.erase(head);
       next_seq_no_++;
     }
@@ -346,6 +352,8 @@ class SchedulingQueue {
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
+
+  bool use_async_;
 
   friend class SchedulingQueueTest;
 };
@@ -406,6 +414,7 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
 
+  bool use_async_ = false;
   bool is_async_ = false;
   std::shared_ptr<FiberEvent> fiber_shutdown_event_;
   std::shared_ptr<std::thread> fiber_runner_thread_;

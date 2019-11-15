@@ -357,7 +357,8 @@ class ActorClass(object):
                 is_direct_call=None,
                 max_concurrency=None,
                 name=None,
-                detached=False):
+                detached=False,
+                is_async=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -380,6 +381,8 @@ class ActorClass(object):
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.
+            is_async: Turn on async actor calls. This only works with direct
+                actor calls.
 
         Returns:
             A handle to the newly created actor.
@@ -398,6 +401,9 @@ class ActorClass(object):
                 "setting max_concurrency requires is_direct_call=True")
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
+
+        if is_async and not is_direct_call:
+            raise ValueError("setting is_async requires is_direct_call=True")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
@@ -486,7 +492,7 @@ class ActorClass(object):
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
                 actor_placement_resources, is_direct_call, max_concurrency,
-                detached)
+                detached, is_async)
 
         actor_handle = ActorHandle(
             actor_id,
