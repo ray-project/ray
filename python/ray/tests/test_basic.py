@@ -1293,7 +1293,16 @@ def test_direct_call_matrix(shutdown_only):
                     check(source_actor, dest_actor, is_large, out_of_band)
 
 
-def test_direct_call_chain(ray_start_regular):
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }],
+    indirect=True)
+def test_direct_call_chain(ray_start_cluster):
     @ray.remote
     def g(x):
         return x + 1
