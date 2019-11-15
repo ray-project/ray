@@ -56,7 +56,7 @@ class LoggerSuite(unittest.TestCase):
 
     def testTBXself):
         config = {"a": 2, "b": 5}
-        t = Trial(evaluated_params=config, trial_id="json")
+        t = Trial(evaluated_params=config, trial_id="tbx")
         logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
         logger.on_result(result(2, 4))
         logger.on_result(result(2, 4))
