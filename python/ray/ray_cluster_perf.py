@@ -8,9 +8,6 @@ import ray
 
 from ray.tests.cluster_utils import Cluster
 
-# Only run tests matching this filter pattern.
-filter_pattern = os.environ.get("TESTS_TO_RUN", "")
-
 def main():
     print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     cluster = Cluster(initialize_head=True, connect=True, head_node_args={"object_store_memory":20*1024*1024*1024, "num_cpus":16})
@@ -32,7 +29,6 @@ def main():
             time.sleep(1)
         return np.mean(diffs), np.std(diffs)
 
-    time.sleep(20)
     time_diff, time_diff_std = ray.get(f.remote(object_id_list))
 
     print ("latency to get an 1G object over network", round(time_diff, 2), "+-", round(time_diff_std, 2))
