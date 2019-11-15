@@ -32,7 +32,7 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   ids.remove(hasher(to_string(2)));
   ASSERT_EQ(ids.count(), num - 2);
 
-  ASSERT_TRUE(ids.get(to_string(3)) == hasher(to_string(3)));
+  ASSERT_TRUE(ids.get(to_string(3)) == static_cast<int64_t>(hasher(to_string(3))));
 
   ASSERT_TRUE(ids.get(to_string(100)) == -1);
 
