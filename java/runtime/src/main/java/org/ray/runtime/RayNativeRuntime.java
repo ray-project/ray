@@ -109,6 +109,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     nativeCoreWorkerPointer = nativeInitCoreWorker(rayConfig.workerMode.getNumber(),
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
+        rayConfig.nodeManagerPort,
         (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
         new GcsClientOptions(rayConfig));
     Preconditions.checkState(nativeCoreWorkerPointer != 0);
@@ -180,7 +181,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   }
 
   private static native long nativeInitCoreWorker(int workerMode, String storeSocket,
-      String rayletSocket, byte[] jobId, GcsClientOptions gcsClientOptions);
+      String rayletSocket, int nodeManagerPort, byte[] jobId, GcsClientOptions gcsClientOptions);
 
   private static native void nativeRunTaskExecutor(long nativeCoreWorkerPointer,
       TaskExecutor taskExecutor);

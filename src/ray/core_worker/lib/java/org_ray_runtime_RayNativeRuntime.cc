@@ -31,7 +31,7 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWorker(
     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
-    jbyteArray jobId, jobject gcsClientOptions) {
+    jint nodeManagerPort, jbyteArray jobId, jobject gcsClientOptions) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
   auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);

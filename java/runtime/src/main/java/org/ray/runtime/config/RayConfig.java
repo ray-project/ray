@@ -52,6 +52,7 @@ public class RayConfig {
   public final Long objectStoreSize;
 
   public final String rayletSocketName;
+  public final int nodeManagerPort;
   public final List<String> rayletConfigParameters;
 
   public final String jobResourcePath;
@@ -154,6 +155,8 @@ public class RayConfig {
 
     // Raylet socket name.
     rayletSocketName = config.getString("ray.raylet.socket-name");
+    // Raylet node manager port.
+    nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
 
     // Raylet parameters.
     rayletConfigParameters = new ArrayList<>();
