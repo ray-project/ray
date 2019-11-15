@@ -9,7 +9,6 @@ import ray
 from ray.tests.cluster_utils import Cluster
 
 def main():
-    print("Tip: set TESTS_TO_RUN='pattern' to run a subset of benchmarks")
     cluster = Cluster(initialize_head=True, connect=True, head_node_args={"object_store_memory":20*1024*1024*1024, "num_cpus":16})
     client_node = cluster.add_node(object_store_memory=20*1024*1024*1024, num_gpus=1, num_cpus=16)
 
