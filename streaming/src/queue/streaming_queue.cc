@@ -132,12 +132,6 @@ void WriterQueue::Send() {
   while (!IsPendingEmpty()) {
     // FIXME: front -> send -> pop
     QueueItem item = PopPending();
-
-    // pack
-    // std::vector<TaskArg> task_args;
-    // CreateSendMsgTask(item, task_args);
-    // SubmitActorTask
-    //
     DataMessage msg(actor_id_, peer_actor_id_, queue_id_, item.SeqId(), item.Buffer(),
                     item.IsRaw());
     std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
@@ -202,23 +196,6 @@ void WriterQueue::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
   min_consumed_id_ = notify_msg->SeqId();
   // TODO: Async notify user thread
 }
-
-// void WriterQueue::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
-//  uint64_t seq_id = notify_msg->SeqId();
-//
-//  QueueItem item = FrontProcessed();
-//  STREAMING_LOG(INFO) << "OnNotify target seq_id: " << seq_id << " min seq_id: " <<
-//  item.SeqId(); if (item.SeqId() == QUEUE_INVALID_SEQ_ID || seq_id < item.SeqId()) {
-//    STREAMING_LOG(WARNING) << "OnNotify invalid seq_id: " << seq_id;
-//    return;
-//  }
-//
-//  while(item.SeqId() <= seq_id) {
-//    STREAMING_LOG(INFO) << "OnNotify Pop " << item.SeqId();
-//    PopProcessed();
-//    item = FrontProcessed();
-//  }
-//}
 
 int WriterQueue::SendPullItems(uint64_t target_seq_id, uint64_t first_seq_id, uint64_t last_seq_id) {
   STREAMING_LOG(INFO) << "SendPullItems : "
@@ -295,20 +272,6 @@ std::shared_ptr<LocalMemoryBuffer> WriterQueue::OnPull(std::shared_ptr<PullReque
 
 void ReaderQueue::OnConsumed(uint64_t seq_id) {
   STREAMING_LOG(INFO) << "OnConsumed: " << seq_id;
-  //  if (seq_id < min_consumed_id_) {
-  //    STREAMING_LOG(WARNING) << "OnConsumed nothing to consume: " << seq_id;
-  //    return;
-  //  }
-  //  // delete item in local, and then notify upstream
-  //  for (uint64_t id = min_consumed_id_; id <= seq_id; id++) {
-  //    QueueItem item = PopProcessed();
-  //    STREAMING_CHECK(item.SeqId() == id) << item.SeqId() << " " << id;
-  //    STREAMING_LOG(INFO) << "OnConsumed Pop: " << seq_id;
-  //    /// TODO: release buffer
-  //  }
-  //
-  //  min_consumed_id_ = seq_id + 1;
-
   QueueItem item = FrontProcessed();
   while (item.SeqId() <= seq_id) {
     PopProcessed();

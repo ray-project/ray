@@ -16,7 +16,6 @@ using namespace std::placeholders;
 
 const uint32_t MESSAGE_BOUND_SIZE = 10000;
 const uint32_t DEFAULT_STREAMING_MESSAGE_BUFFER_SIZE = 1000;
-// const uint32_t MESSAGE_BARRIER_INTERVAL = 1000;
 
 namespace ray {
 namespace streaming {
@@ -91,11 +90,6 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
         writer_client->WriteMessageToBufferRing(q_id, data, buffer_len,
                                                 StreamingMessageType::Message);
       }
-      // if (i % MESSAGE_BARRIER_INTERVAL == 0) {
-      //   STREAMING_LOG(DEBUG) << "broadcast barrier, barrier id => " << i;
-      //   writer_client->BroadcastBarrier(i / MESSAGE_BARRIER_INTERVAL,
-      //                                   i / MESSAGE_BARRIER_INTERVAL, temp_data, 4);
-      // }
       ++i;
     }
 
@@ -208,23 +202,6 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
       STREAMING_LOG(INFO) << "message size => " << message_list.size()
                            << " from queue id => " << msg->from.Hex()
                            << " last message id => " << msg->meta->GetLastMessageId();
-
-      // if (reader_client->GetConfig().GetStreaming_strategy_() ==
-      //     StreamingStrategy::EXACTLY_ONCE) {
-      //   // check barrier for excatly once
-      //   std::unordered_set<uint64_t> cp_id_set;
-      //   cp_id_set.insert(msg->last_barrier_id);
-
-      //   for (auto &q_id : queue_id_vec) {
-      //     cp_id_set.insert(queue_last_cp_id[q_id]);
-      //     STREAMING_LOG(DEBUG) << "q id " << q_id.Hex() << ", cp id=>"
-      //                          << queue_last_cp_id[q_id];
-      //   }
-      //   STREAMING_LOG(DEBUG) << "cp set size =>" << cp_id_set.size();
-      //   STREAMING_CHECK(cp_id_set.size() <= 2) << cp_id_set.size();
-
-      //   queue_last_cp_id[msg->from] = msg->last_barrier_id;
-      // }
 
       recevied_message_cnt += message_list.size();
       for (auto &item : message_list) {

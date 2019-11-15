@@ -1,5 +1,3 @@
-
-
 namespace ray {
 namespace streaming {
 
@@ -120,10 +118,6 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
     std::string forked_serialized_str;
-    // peer_actor_handle.Fork().Serialize(&forked_serialized_str);
-    // ActorHandle* peer_actor_handle = nullptr;
-    // driver.GetActorHandle(peer_actor_id, &peer_actor_handle);
-    // peer_actor_handle->Serialize(&forked_serialized_str);
     Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str);
     STREAMING_CHECK(st.ok());
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;

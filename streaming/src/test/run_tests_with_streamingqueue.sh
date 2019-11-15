@@ -46,8 +46,6 @@ sleep 2s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
 sleep 2s
 # Run tests.
-#./bazel-bin/streaming/src/streaming_writer_tests_with_streamingqueue $STORE_EXEC $RAYLET_EXEC $STREAMING_TEST_WORKER_EXEC --gtest_filter=StreamingTest/StreamingExactlySameTest.streaming_exactly_same_operator_test/1
-#./bazel-bin/streaming/src/streaming_writer_tests_with_streamingqueue $STORE_EXEC $RAYLET_EXEC $STREAMING_TEST_WORKER_EXEC --gtest_filter=StreamingTest/StreamingWriterTest.streaming_rescale_exactly_once_test/0
 ./bazel-bin/streaming/src/streaming_writer_tests_with_streamingqueue $STORE_EXEC $RAYLET_EXEC $STREAMING_TEST_WORKER_EXEC
 sleep 1s
 bazel run //:redis-cli -- -p 6379 shutdown
