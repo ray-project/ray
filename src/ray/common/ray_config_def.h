@@ -52,7 +52,9 @@ RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 
 /// The duration between heartbeats sent from the workers to the raylet.
 /// If set to a negative value, the heartbeats will not be sent.
-RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 500)
+/// These are used to report active object IDs for garbage collection and
+/// to ensure that workers go down when the raylet dies unexpectedly.
+RAY_CONFIG(int64_t, worker_heartbeat_timeout_milliseconds, 1000)
 
 /// These are used by the worker to set timeouts and to batch requests when
 /// getting objects.
@@ -94,7 +96,8 @@ RAY_CONFIG(int64_t, max_num_to_reconstruct, 10000)
 RAY_CONFIG(int64_t, raylet_fetch_request_size, 10000)
 
 /// The maximum number of active object IDs to report in a heartbeat.
-RAY_CONFIG(size_t, raylet_max_active_object_ids, 1000)
+/// # NOTE: currently disabled by default.
+RAY_CONFIG(size_t, raylet_max_active_object_ids, 0)
 
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.

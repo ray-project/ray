@@ -598,13 +598,29 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
     from ray.tune.logger import DEFAULT_LOGGERS
 
     tune.run(
-        MyTrainableClass
+        MyTrainableClass,
         name="experiment_name",
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
 
+.. warning:: If you run into issues for TensorBoard logging, consider using the TensorBoardX Logger (``from ray.tune.logger import TBXLogger``)
+
+TBXLogger (TensorboardX)
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune provides a logger using `TensorBoardX <https://github.com/lanpa/tensorboardX>`_. You can install tensorboardX via ``pip install tensorboardX``. This logger automatically outputs loggers similar to the default TensorFlow logging format but is nice if you are undergoing a TF1 to TF2 transition. By default, it will log any scalar value provided via the result dictionary along with HParams information.
+
+.. code-block:: python
+
+    from ray.tune.logger import TBXLogger
+
+    tune.run(
+        MyTrainableClass,
+        name="experiment_name",
+        loggers=[TBXLogger]
+    )
 
 MLFlow
 ~~~~~~

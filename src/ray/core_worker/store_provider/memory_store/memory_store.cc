@@ -108,8 +108,9 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 }
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
-    std::function<void(const RayObject &, const ObjectID &)> store_in_plasma)
-    : store_in_plasma_(store_in_plasma) {}
+    std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
+    std::shared_ptr<ReferenceCounter> counter)
+    : store_in_plasma_(store_in_plasma), ref_counter_(counter) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -154,6 +155,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
 
   {
     absl::MutexLock lock(&mu_);
+
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
       return Status::ObjectExists("object already exists in the memory store");
@@ -179,10 +181,15 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
       auto &get_requests = object_request_iter->second;
       for (auto &get_request : get_requests) {
         get_request->Set(object_id, object_entry);
-        if (get_request->ShouldRemoveObjects()) {
+        // If ref counting is enabled, override the removal behaviour.
+        if (get_request->ShouldRemoveObjects() && ref_counter_ == nullptr) {
           should_add_entry = false;
         }
       }
+    }
+    // Don't put it in the store, since we won't get a callback for deletion.
+    if (ref_counter_ != nullptr && !ref_counter_->HasReference(object_id)) {
+      should_add_entry = false;
     }
 
     if (should_add_entry) {
@@ -231,8 +238,11 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
     RAY_CHECK(count <= num_objects);
 
-    for (const auto &object_id : ids_to_remove) {
-      objects_.erase(object_id);
+    // Clean up the objects if ref counting is off.
+    if (ref_counter_ == nullptr) {
+      for (const auto &object_id : ids_to_remove) {
+        objects_.erase(object_id);
+      }
     }
 
     // Return if all the objects are obtained.
@@ -298,8 +308,7 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
-  // If obj is in plasma, we defer to the plasma store for the Contains() call.
-  return it != objects_.end() && !it->second->IsInPlasmaError();
+  return it != objects_.end();
 }
 
 }  // namespace ray
