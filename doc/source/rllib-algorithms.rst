@@ -126,6 +126,8 @@ Advantage Actor-Critic (A2C, A3C)
 `[paper] <https://arxiv.org/abs/1602.01783>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/a3c/a3c.py>`__
 RLlib implements A2C and A3C using SyncSamplesOptimizer and AsyncGradientsOptimizer respectively for policy optimization. These algorithms scale to up to 16-32 worker processes depending on the environment. Both a TensorFlow (LSTM), and PyTorch version are available.
 
+A2C also supports microbatching (i.e., gradient accumulation), which can be enabled by setting the ``microbatch_size`` config. Microbatching allows for training with a ``train_batch_size`` much larger than GPU memory. See also the `microbatch optimizer implementation <https://github.com/ray-project/ray/blob/master/rllib/optimizers/microbatch_optimizer.py>`__.
+
 .. figure:: a2c-arch.svg
 
     A2C architecture
