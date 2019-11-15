@@ -502,9 +502,7 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
-Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
-  RAY_RETURN_NOT_OK(raylet_client_->SubmitTask(task_spec));
-
+void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec) {
   size_t num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     num_returns--;
@@ -525,8 +523,6 @@ Status CoreWorker::SubmitTaskToRaylet(const TaskSpecification &task_spec) {
       reference_counter_->SetDependencies(task_spec.ReturnIdForPlasma(i), task_deps);
     }
   }
-
-  return Status::OK();
 }
 
 Status CoreWorker::SubmitTask(const RayFunction &function,
@@ -546,10 +542,12 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       function, args, task_options.num_returns, task_options.resources, {},
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
       return_ids);
+  TaskSpecification task_spec = builder.Build();
+  PinObjectReferences(task_spec);
   if (task_options.is_direct_call) {
-    return direct_task_submitter_->SubmitTask(builder.Build());
+    return direct_task_submitter_->SubmitTask(task_spec);
   } else {
-    return raylet_client_->SubmitTask(builder.Build());
+    return raylet_client_->SubmitTask(task_spec);
   }
 }
 
@@ -583,7 +581,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Actor " << actor_id << " already exists";
 
   *return_actor_id = actor_id;
-  return SubmitTaskToRaylet(builder.Build());
+  TaskSpecification task_spec = builder.Build();
+  PinObjectReferences(task_spec);
+  return raylet_client_->SubmitTask(task_spec);
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -618,10 +618,12 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
 
   // Submit task.
   Status status;
+  TaskSpecification task_spec = builder.Build();
+  PinObjectReferences(task_spec);
   if (is_direct_call) {
-    status = direct_actor_submitter_->SubmitTask(builder.Build());
+    status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {
-    status = SubmitTaskToRaylet(builder.Build());
+    raylet_client_->SubmitTask(task_spec);
   }
   return status;
 }

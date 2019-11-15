@@ -366,8 +366,9 @@ class CoreWorker {
   /// Private methods related to task submission.
   ///
 
-  /// Submit the task to the raylet and add its dependencies to the reference counter.
-  Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
+  /// Add task dependencies to the reference counter. This prevents the argument
+  /// objects from early eviction, and also adds the return object.
+  void PinObjectReferences(const TaskSpecification &task_spec);
 
   /// Give this worker a handle to an actor.
   ///
