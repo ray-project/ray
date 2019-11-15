@@ -368,7 +368,8 @@ class CoreWorker {
 
   /// Add task dependencies to the reference counter. This prevents the argument
   /// objects from early eviction, and also adds the return object.
-  void PinObjectReferences(const TaskSpecification &task_spec);
+  void PinObjectReferences(const TaskSpecification &task_spec,
+                           const TaskTransportType transport_type);
 
   /// Give this worker a handle to an actor.
   ///

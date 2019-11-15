@@ -502,7 +502,8 @@ TaskID CoreWorker::GetCallerId() const {
   return caller_id;
 }
 
-void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec) {
+void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
+                                     const TaskTransportType transport_type) {
   size_t num_returns = task_spec.NumReturns();
   if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
     num_returns--;
@@ -518,10 +519,9 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec) {
     }
   }
 
-  if (task_deps->size() > 0) {
-    for (size_t i = 0; i < num_returns; i++) {
-      reference_counter_->SetDependencies(task_spec.ReturnIdForPlasma(i), task_deps);
-    }
+  // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
+  for (size_t i = 0; i < num_returns; i++) {
+    reference_counter_->SetDependencies(task_spec.ReturnId(i, transport_type), task_deps);
   }
 }
 
@@ -543,10 +543,11 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       task_options.is_direct_call ? TaskTransportType::DIRECT : TaskTransportType::RAYLET,
       return_ids);
   TaskSpecification task_spec = builder.Build();
-  PinObjectReferences(task_spec);
   if (task_options.is_direct_call) {
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
+    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     return raylet_client_->SubmitTask(task_spec);
   }
 }
@@ -582,7 +583,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
-  PinObjectReferences(task_spec);
+  PinObjectReferences(task_spec, TaskTransportType::RAYLET);
   return raylet_client_->SubmitTask(task_spec);
 }
 
@@ -619,10 +620,11 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   // Submit task.
   Status status;
   TaskSpecification task_spec = builder.Build();
-  PinObjectReferences(task_spec);
   if (is_direct_call) {
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {
+    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     raylet_client_->SubmitTask(task_spec);
   }
   return status;
