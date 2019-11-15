@@ -10,8 +10,8 @@ import time
 import traceback
 
 import ray
-from ray.exceptions import RayError
-from ray import ObjectID, ray_constants
+from ray.exceptions import RayTimeoutError
+from ray import ray_constants
 from ray.resource_spec import ResourceSpec
 from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
@@ -20,7 +20,6 @@ from ray.tune.resources import Resources
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.util import warn_if_slow
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
@@ -36,35 +35,6 @@ class _LocalWrapper(object):
     def unwrap(self):
         """Returns the wrapped result."""
         return self._result
-
-
-class RayTimeoutError(RayError):
-    pass
-
-
-def get_with_timeout(obj_id, timeout=DEFAULT_GET_TIMEOUT):
-    """Gets object IDs with a timeout.
-
-    Args:
-        obj_id (ObjectID): Object ID for object that may or may not be ready.
-        timeout (float): The maximum amount of time in seconds to wait.
-
-    Returns:
-        A Python object.
-
-    Raises:
-        TimeoutError: Error indicating timeout.
-    """
-    # TODO(ujvl): This is a stopgap solution to alleviate the effect of a
-    #  slow ray.get (eg: during failure). It should be replaced with a call to
-    #  ray.get(obj_id, timeout) which is currently not possible.
-    done, waiting = ray.wait([obj_id], timeout=timeout)
-    if done:
-        # This can still be slow if a failure occurs here. However, the IDs
-        # are ready so hopefully it will be fast enough to evade failure.
-        return ray.get(done[0])
-    else:
-        raise RayTimeoutError("Timeout exceeded trying to get object IDs.")
 
 
 class RayTrialExecutor(TrialExecutor):
@@ -314,8 +284,8 @@ class RayTrialExecutor(TrialExecutor):
         trainable = trial.runner
         with warn_if_slow("reset_config"):
             try:
-                reset_val = get_with_timeout(
-                    trainable.reset_config.remote(new_config))
+                reset_val = ray.get(trainable.reset_config.remote(new_config),
+                                    DEFAULT_GET_TIMEOUT)
             except RayTimeoutError:
                 logger.exception("Trial %s: reset_config timed out.")
                 return False
@@ -384,7 +354,7 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         with warn_if_slow("fetch_result"):
-            result = get_with_timeout(trial_future[0])
+            result = ray.get(trial_future[0], DEFAULT_GET_TIMEOUT)
 
         # For local mode
         if isinstance(result, _LocalWrapper):
@@ -611,12 +581,13 @@ class RayTrialExecutor(TrialExecutor):
                 logger.info("Trial %s: Attempting restoration from %s", trial,
                             checkpoint.value)
                 with warn_if_slow("get_current_ip"):
-                    worker_ip = get_with_timeout(
-                        trial.runner.current_ip.remote())
+                    worker_ip = ray.get(trial.runner.current_ip.remote(),
+                                        DEFAULT_GET_TIMEOUT)
                 with warn_if_slow("sync_to_new_location"):
                     trial.sync_logger_to_new_location(worker_ip)
                 with warn_if_slow("restore_from_disk"):
-                    get_with_timeout(trial.runner.restore.remote(value))
+                    ray.get(trial.runner.restore.remote(value),
+                            DEFAULT_GET_TIMEOUT)
         except RayTimeoutError:
             logger.exception(
                 "Trial %s: Unable to restore - runner task timed "
@@ -639,8 +610,9 @@ class RayTrialExecutor(TrialExecutor):
             A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
-            return get_with_timeout(
-                trial.runner.export_model.remote(trial.export_formats))
+            return ray.get(
+                trial.runner.export_model.remote(trial.export_formats),
+                DEFAULT_GET_TIMEOUT)
         return {}
 
     def has_gpus(self):

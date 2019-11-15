@@ -311,10 +311,6 @@ class Worker(object):
                     "which is not an ray.ObjectID.".format(object_id))
 
         if self.mode == LOCAL_MODE:
-            # TODO(ujvl): Remove check when local mode moved to core worker.
-            if timeout is not None:
-                raise ValueError(
-                    "`get` must be called with timeout=None in local mode.")
             return self.local_mode_manager.get_objects(object_ids)
 
         timeout_ms = int(timeout * 1000) if timeout else -1
@@ -1407,8 +1403,8 @@ def get(object_ids, timeout=None):
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
-        timeout (float): The maximum amount of time in seconds to wait before
-            returning.
+        timeout (Optional[float]): The maximum amount of time in seconds to
+            wait before returning.
 
     Returns:
         A Python object or a list of Python objects.
