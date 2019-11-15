@@ -14,6 +14,7 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
+  RAY_CHECK(object_id.IsDirectCallType());
   Status status = store_->Put(object_id, object);
   if (status.IsObjectExists()) {
     // Object already exists in store, treat it as ok.

@@ -158,9 +158,7 @@ class SerializationContext(object):
 
             def id_serializer(obj):
                 if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
-                    raise NotImplementedError(
-                        "Objects produced by direct actor calls cannot be "
-                        "passed to other tasks as arguments.")
+                    obj = self.worker.core_worker.promote_object_to_plasma(obj)
                 return pickle.dumps(obj)
 
             def id_deserializer(serialized_obj):
@@ -191,9 +189,7 @@ class SerializationContext(object):
 
             def id_serializer(obj):
                 if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
-                    raise NotImplementedError(
-                        "Objects produced by direct actor calls cannot be "
-                        "passed to other tasks as arguments.")
+                    obj = self.worker.core_worker.promote_object_to_plasma(obj)
                 return obj.__reduce__()
 
             def id_deserializer(serialized_obj):

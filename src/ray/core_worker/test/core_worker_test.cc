@@ -637,14 +637,14 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
 
   std::vector<ObjectID> ids(buffers.size());
   for (size_t i = 0; i < ids.size(); i++) {
-    ids[i] = ObjectID::FromRandom();
+    ids[i] = ObjectID::FromRandom().WithDirectTransportType();
     RAY_CHECK_OK(provider.Put(buffers[i], ids[i]));
   }
 
   absl::flat_hash_set<ObjectID> wait_ids(ids.begin(), ids.end());
   absl::flat_hash_set<ObjectID> wait_results;
 
-  ObjectID nonexistent_id = ObjectID::FromRandom();
+  ObjectID nonexistent_id = ObjectID::FromRandom().WithDirectTransportType();
   wait_ids.insert(nonexistent_id);
   RAY_CHECK_OK(
       provider.Wait(wait_ids, ids.size() + 1, 100, RandomTaskId(), &wait_results));
@@ -693,9 +693,9 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   std::vector<ObjectID> ready_ids(buffers.size());
   std::vector<ObjectID> unready_ids(buffers.size());
   for (size_t i = 0; i < unready_ids.size(); i++) {
-    ready_ids[i] = ObjectID::FromRandom();
+    ready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
     RAY_CHECK_OK(provider.Put(buffers[i], ready_ids[i]));
-    unready_ids[i] = ObjectID::FromRandom();
+    unready_ids[i] = ObjectID::FromRandom().WithDirectTransportType();
   }
 
   auto thread_func = [&unready_ids, &provider, &buffers]() {

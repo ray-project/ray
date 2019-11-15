@@ -107,7 +107,9 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
   return nullptr;
 }
 
-CoreWorkerMemoryStore::CoreWorkerMemoryStore() {}
+CoreWorkerMemoryStore::CoreWorkerMemoryStore(
+    std::function<void(const RayObject &, const ObjectID &)> store_in_plasma)
+    : store_in_plasma_(store_in_plasma) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -127,7 +129,25 @@ void CoreWorkerMemoryStore::GetAsync(
   }
 }
 
+std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
+    const ObjectID &object_id) {
+  absl::MutexLock lock(&mu_);
+  auto iter = objects_.find(object_id);
+  if (iter != objects_.end()) {
+    auto obj = iter->second;
+    if (obj->IsInPlasmaError()) {
+      return nullptr;
+    }
+    return obj;
+  }
+  RAY_CHECK(store_in_plasma_ != nullptr)
+      << "Cannot promote object without plasma provider callback.";
+  promoted_to_plasma_.insert(object_id);
+  return nullptr;
+}
+
 Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
+  RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
       std::make_shared<RayObject>(object.GetData(), object.GetMetadata(), true);
@@ -144,6 +164,13 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
       auto &callbacks = async_callback_it->second;
       async_callbacks = std::move(callbacks);
       object_async_get_requests_.erase(async_callback_it);
+    }
+
+    auto promoted_it = promoted_to_plasma_.find(object_id);
+    if (promoted_it != promoted_to_plasma_.end()) {
+      RAY_CHECK(store_in_plasma_ != nullptr);
+      store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      promoted_to_plasma_.erase(promoted_it);
     }
 
     bool should_add_entry = true;

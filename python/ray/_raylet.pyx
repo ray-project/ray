@@ -1015,6 +1015,12 @@ cdef class CoreWorker:
         # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveObjectIDReference(c_object_id)
 
+    def promote_object_to_plasma(self, ObjectID object_id):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+        self.core_worker.get().PromoteObjectToPlasma(c_object_id)
+        return object_id.with_plasma_transport_type()
+
     # TODO: handle noreturn better
     cdef store_task_outputs(
             self, worker, outputs, const c_vector[CObjectID] return_ids,

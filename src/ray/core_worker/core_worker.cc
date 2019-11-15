@@ -25,9 +25,10 @@ void BuildCommonTaskSpec(
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
+      // TODO(ekl) remove this check once we deprecate TaskTransportType::RAYLET
       if (transport_type == ray::TaskTransportType::RAYLET) {
         RAY_CHECK(!arg.GetReference().IsDirectCallType())
-            << "NotImplemented: passing direct call objects to other tasks";
+            << "Passing direct call objects to non-direct tasks is not allowed.";
       }
       builder.AddByRefArg(arg.GetReference());
     } else {
@@ -61,6 +62,37 @@ void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
 
 namespace ray {
 
+// Prepare direct call args for sending to a direct call *actor*. Direct call actors
+// always resolve their dependencies remotely, so we need some client-side preprocessing
+// to ensure they don't try to resolve a direct call object ID remotely (which is
+// impossible).
+//  - Direct call args that are local and small will be inlined.
+//  - Direct call args that are non-local or large will be promoted to plasma.
+// Note that args for direct call *tasks* are handled by LocalDependencyResolver.
+std::vector<TaskArg> PrepareDirectActorCallArgs(
+    const std::vector<TaskArg> &args,
+    std::shared_ptr<CoreWorkerMemoryStore> memory_store) {
+  std::vector<TaskArg> out;
+  for (const auto &arg : args) {
+    if (arg.IsPassedByReference() && arg.GetReference().IsDirectCallType()) {
+      const ObjectID &obj_id = arg.GetReference();
+      // TODO(ekl) we should consider resolving these dependencies on the client side
+      // for actor calls. It is a little tricky since we have to also preserve the
+      // task ordering so we can't simply use LocalDependencyResolver.
+      std::shared_ptr<RayObject> obj = memory_store->GetOrPromoteToPlasma(obj_id);
+      if (obj != nullptr) {
+        out.push_back(TaskArg::PassByValue(obj));
+      } else {
+        out.push_back(TaskArg::PassByReference(
+            obj_id.WithTransportType(TaskTransportType::RAYLET)));
+      }
+    } else {
+      out.push_back(arg);
+    }
+  }
+  return out;
+}
+
 CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
@@ -78,8 +110,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
       heartbeat_timer_(io_service_),
       core_worker_server_(WorkerTypeString(worker_type), 0 /* let grpc choose a port */),
-      memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
-      memory_store_provider_(memory_store_),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
       grpc_service_(io_service_, *this) {
@@ -159,6 +189,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   plasma_store_provider_.reset(
       new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
+  memory_store_.reset(
+      new CoreWorkerMemoryStore([this](const RayObject &obj, const ObjectID &obj_id) {
+        RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
+      }));
+  memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -267,6 +302,15 @@ void CoreWorker::ReportActiveObjectIDs() {
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
 }
 
+void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
+  RAY_CHECK(object_id.IsDirectCallType());
+  auto value = memory_store_->GetOrPromoteToPlasma(object_id);
+  if (value != nullptr) {
+    RAY_CHECK_OK(
+        plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
+  }
+}
+
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   // Currently only the Plasma store supports client options.
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);
@@ -324,9 +368,9 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       local_timeout_ms = std::max(static_cast<int64_t>(0),
                                   timeout_ms - (current_time_ms() - start_time));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_.Get(memory_object_ids, local_timeout_ms,
-                                                 worker_context_.GetCurrentTaskID(),
-                                                 &result_map, &got_exception));
+    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
+                                                  worker_context_.GetCurrentTaskID(),
+                                                  &result_map, &got_exception));
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
@@ -379,7 +423,7 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   if (object_id.IsDirectCallType()) {
     // Note that the memory store returns false if the object value is
     // ErrorType::OBJECT_IN_PLASMA.
-    RAY_RETURN_NOT_OK(memory_store_provider_.Contains(object_id, &found));
+    RAY_RETURN_NOT_OK(memory_store_provider_->Contains(object_id, &found));
   }
   if (!found) {
     // We check plasma as a fallback in all cases, since a direct call object
@@ -430,7 +474,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
     // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
     // consider waiting on them in plasma as well to ensure they are local.
-    RAY_RETURN_NOT_OK(memory_store_provider_.Wait(
+    RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
         memory_object_ids, num_objects - static_cast<int>(ready.size()),
         /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
   }
@@ -453,7 +497,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_provider_.Wait(
+      RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
           memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
           worker_context_.GetCurrentTaskID(), &ready));
     }
@@ -477,7 +521,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
-  RAY_RETURN_NOT_OK(memory_store_provider_.Delete(memory_object_ids));
+  RAY_RETURN_NOT_OK(memory_store_provider_->Delete(memory_object_ids));
 
   return Status::OK();
 }
@@ -602,10 +646,11 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
-  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, num_returns, task_options.resources,
-                      {}, transport_type, return_ids);
+  BuildCommonTaskSpec(
+      builder, actor_handle->CreationJobID(), actor_task_id,
+      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
+      function, is_direct_call ? PrepareDirectActorCallArgs(args, memory_store_) : args,
+      num_returns, task_options.resources, {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);
@@ -848,7 +893,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandleAssignTask(const rpc::AssignTaskRequest &request,
                                   rpc::AssignTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  if (worker_context_.CurrentTaskIsDirectCall()) {
+  if (worker_context_.CurrentActorIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor only accepts direct calls."), nullptr,
                         nullptr);
     return;
