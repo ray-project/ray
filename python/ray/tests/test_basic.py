@@ -2227,6 +2227,17 @@ def test_local_mode(shutdown_only):
     _ = RemoteActor2.remote()
     assert ray.get(actor1.function1.remote()) == 0
 
+    # Test passing ObjectIDs.
+    @ray.remote
+    def direct_dep(input):
+        return input
+
+    @ray.remote
+    def indirect_dep(input):
+        return ray.get(direct_dep.remote(input[0]))
+
+    assert ray.get(indirect_dep.remote(["hello"])) == "hello"
+
 
 def test_resource_constraints(shutdown_only):
     num_workers = 20
