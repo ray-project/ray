@@ -61,11 +61,12 @@ class CoreWorker {
   /// \param[in] node_ip_address IP address of the node.
   /// \param[in] node_manager_port Port of the local raylet.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
-  /// \parma[in] check_signals Language worker function to check for signals and handle
+  /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \parma[in] exit_handler Language worker function to orderly shutdown the worker.
+  /// \param[in] exit_handler Language worker function to orderly shutdown the worker.
   ///            We guarantee this will be run on the main thread of the worker.
+  /// \param[in] ref_counting_enabled Whether to enable object ref counting.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const Language language,
@@ -74,7 +75,8 @@ class CoreWorker {
              const std::string &log_dir, const std::string &node_ip_address,
              int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             std::function<void()> exit_handler = nullptr);
+             std::function<void()> exit_handler = nullptr,
+             bool ref_counting_enabled = false);
 
   ~CoreWorker();
 
@@ -103,14 +105,18 @@ class CoreWorker {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddObjectIDReference(const ObjectID &object_id) {
-    reference_counter_.AddReference(object_id);
+    reference_counter_->AddReference(object_id);
   }
 
   /// Decrease the reference count for this object ID.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) {
-    reference_counter_.RemoveReference(object_id);
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveReference(object_id, &deleted);
+    if (ref_counting_enabled_) {
+      memory_store_->Delete(deleted);
+    }
   }
 
   /// Promote an object to plasma. If it already exists locally, it will be
@@ -369,8 +375,10 @@ class CoreWorker {
   /// Private methods related to task submission.
   ///
 
-  /// Submit the task to the raylet and add its dependencies to the reference counter.
-  Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
+  /// Add task dependencies to the reference counter. This prevents the argument
+  /// objects from early eviction, and also adds the return object.
+  void PinObjectReferences(const TaskSpecification &task_spec,
+                           const TaskTransportType transport_type);
 
   /// Give this worker a handle to an actor.
   ///
@@ -434,6 +442,9 @@ class CoreWorker {
   /// Directory where log files are written.
   const std::string log_dir_;
 
+  /// Whether local reference counting is enabled.
+  const bool ref_counting_enabled_;
+
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
@@ -481,7 +492,7 @@ class CoreWorker {
   std::thread io_thread_;
 
   // Keeps track of object ID reference counts.
-  ReferenceCounter reference_counter_;
+  std::shared_ptr<ReferenceCounter> reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.
