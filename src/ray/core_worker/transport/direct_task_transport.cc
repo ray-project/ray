@@ -162,7 +162,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       [this, resource_spec_copy, lease_client](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
         if (status.ok()) {
-          if (reply.raylet_id() == "") {
+          if (reply.retry_at_raylet_id() == "") {
             RAY_LOG(DEBUG) << "Lease granted " << resource_spec_copy.TaskId();
             HandleWorkerLeaseGranted({reply.address(), reply.port()},
                                      std::move(lease_client));
@@ -172,7 +172,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             rpc::Address address;
             address.set_ip_address(reply.address());
             address.set_port(reply.port());
-            address.set_raylet_id(reply.raylet_id());
+            address.set_raylet_id(reply.retry_at_raylet_id());
             RequestNewWorkerIfNeeded(resource_spec_copy, &address);
           }
         } else {

@@ -77,6 +77,8 @@ class WorkerLeaseInterface {
   /// \param worker_port The local port of the worker on the raylet node.
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port) = 0;
+
+  virtual ~WorkerLeaseInterface(){};
 };
 
 class RayletClient : public WorkerLeaseInterface {

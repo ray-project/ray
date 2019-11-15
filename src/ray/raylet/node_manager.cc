@@ -1440,7 +1440,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
         reply->set_address(address);
         reply->set_port(port);
-        reply->set_raylet_id(spillback_to.Binary());
+        reply->set_retry_at_raylet_id(spillback_to.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
   SubmitTask(task, Lineage());
