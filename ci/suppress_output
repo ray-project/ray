@@ -19,6 +19,7 @@ watchdog() {
 watchdog & 2>/dev/null
 WATCHDOG_PID=$!
 
+export RAY_FORCE_DIRECT=1
 time "$@" >$TMPFILE 2>&1
 
 CODE=$?
