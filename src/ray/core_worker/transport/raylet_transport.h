@@ -32,7 +32,7 @@ class CoreWorkerRayletTaskReceiver {
 
  private:
   /// Raylet client.
-  std::shared_ptr<RayletClient> raylet_client_;
+  std::shared_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.
