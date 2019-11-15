@@ -11,7 +11,6 @@ import time
 import tempfile
 import os
 from numbers import Number
-from python.ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.logger import pretty_print, UnifiedLogger
