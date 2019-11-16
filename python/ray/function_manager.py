@@ -120,17 +120,9 @@ class FunctionDescriptor(object):
         function_name = function.__name__
         class_name = ""
 
-        pickled_function_hasher = hashlib.sha1()
-        try:
-            # If we are running a script or are in IPython, include the source
-            # code in the hash.
-            pickled_function = pickle.dumps(function)
-            pickled_function_hasher.update(pickled_function)
-            pickled_function_hash = pickled_function_hasher.digest()
-        except (IOError, OSError, TypeError):
-            # Source code may not be available:
-            # e.g. Cython or Python interpreter.
-            pickled_function_hash = b""
+        hasher = hashlib.sha1()
+        hasher.update(pickle.dumps(function))
+        pickled_function_hash = hasher.digest()
 
         return cls(module_name, function_name, class_name,
                    pickled_function_hash)
