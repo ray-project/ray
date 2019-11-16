@@ -88,17 +88,12 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
             if workers_only:
                 A = []
             else:
-                A = [
-                    node_id for node_id in provider.non_terminated_nodes({
-                        TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
-                    })
-                ]
-
-            A += [
-                node_id for node_id in provider.non_terminated_nodes({
-                    TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                A = provider.non_terminated_nodes({
+                    TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
                 })
-            ]
+            A += provider.non_terminated_nodes({
+                TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+            })
             return A
 
         # Loop here to check that both the head and worker nodes are actually

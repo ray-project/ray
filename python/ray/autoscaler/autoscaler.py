@@ -279,7 +279,7 @@ class LoadMetrics(object):
             now - t for t in self.last_heartbeat_time_by_ip.values()
         ]
         most_delayed_heartbeats = sorted(
-            list(self.last_heartbeat_time_by_ip.items()),
+            self.last_heartbeat_time_by_ip.items(),
             key=lambda pair: pair[1])[:5]
         most_delayed_heartbeats = {
             ip: (now - t)
