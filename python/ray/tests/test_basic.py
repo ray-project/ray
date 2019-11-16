@@ -1035,34 +1035,34 @@ def test_redefining_remote_functions(shutdown_only):
     # Check that we can redefine functions even when the remote function source
     # doesn't change (see https://github.com/ray-project/ray/issues/6130).
     @ray.remote
-    def f():
+    def g():
         return nonexistent()
 
     with pytest.raises(ray.exceptions.RayTaskError, match="nonexistent"):
-        ray.get(f.remote())
+        ray.get(g.remote())
 
     def nonexistent():
         return 1
 
     # Redefine the function and make sure it succeeds.
     @ray.remote
-    def f():
+    def g():
         return nonexistent()
 
-    assert ray.get(f.remote()) == 1
+    assert ray.get(g.remote()) == 1
 
     # Check the same thing but when the redefined function is inside of another
     # task.
     @ray.remote
-    def g(i):
+    def h(i):
         @ray.remote
-        def h():
+        def j():
             return i
 
-        return h.remote()
+        return j.remote()
 
     for i in range(20):
-        assert ray.get(ray.get(g.remote(i))) == i
+        assert ray.get(ray.get(h.remote(i))) == i
 
 
 @pytest.mark.skipif(RAY_FORCE_DIRECT, reason="reconstruction not implemented")
