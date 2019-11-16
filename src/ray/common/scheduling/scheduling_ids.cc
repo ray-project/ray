@@ -1,7 +1,7 @@
 #include "scheduling_ids.h"
 using namespace std;
 
-int64_t StringIdMap::get(const string sid) {
+int64_t StringIdMap::get(const string& sid) {
   auto it = string_to_int_.find(sid);
   if (it == string_to_int_.end()) {
     return -1;
@@ -10,7 +10,7 @@ int64_t StringIdMap::get(const string sid) {
   }
 };
 
-int64_t StringIdMap::insert(const string sid, bool test) {
+int64_t StringIdMap::insert(const string& sid, bool test) {
   auto sit = string_to_int_.find(sid);
   if (sit == string_to_int_.end()) {
     int64_t id = test ? hasher_(sid) % 10 : hasher_(sid);
@@ -18,8 +18,8 @@ int64_t StringIdMap::insert(const string sid, bool test) {
       auto it = int_to_string_.find(id);
       if (it == int_to_string_.end()) {
         /// No hash collision, so associated sid with id.
-        string_to_int_.insert(make_pair(sid, id));
-        int_to_string_.insert(make_pair(id, sid));
+        string_to_int_.emplace(sid, id);
+        int_to_string_.emplace(id, sid);
         break;
       }
       id = test ? hasher_(sid + to_string(i)) % 10 : hasher_(sid + to_string(i));
@@ -30,7 +30,7 @@ int64_t StringIdMap::insert(const string sid, bool test) {
   }
 };
 
-void StringIdMap::remove(const string sid) {
+void StringIdMap::remove(const string& sid) {
   auto sit = string_to_int_.find(sid);
   if (sit != string_to_int_.end()) {
     uint64_t id = string_to_int_[sid];

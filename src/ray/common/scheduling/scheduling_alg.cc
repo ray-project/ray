@@ -15,7 +15,7 @@ void ClusterResources::add(int64_t node_id, const NodeResources &node_resources)
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new. Add it to the list.
-    nodes_.insert(make_pair(node_id, node_resources));
+    nodes_.emplace(node_id, node_resources);
   } else {
     // This node exists. Update it's resources.
     NodeResources &nr = it->second;
@@ -101,9 +101,9 @@ int64_t ClusterResources::getSchedulableNode(const TaskReq &task_req, int64_t *v
   if (it != nodes_.end()) {
     int64_t v = isSchedulable(task_req, it->second);
     if (v == 0) {
-      auto it_p = task_req.placement_hints.find(0);
+      auto it_p = task_req.placement_hints.find(local_node_id_);
       if (it_p != task_req.placement_hints.end()) {
-        return 0;
+        return local_node_id_;
       }
     }
   }
