@@ -964,26 +964,6 @@ def test_variable_number_of_args(shutdown_only):
 def test_defining_remote_functions(shutdown_only):
     ray.init(num_cpus=3)
 
-    # Test that we can define a remote function in the shell.
-    @ray.remote
-    def f(x):
-        return x + 1
-
-    assert ray.get(f.remote(0)) == 1
-
-    # Test that we can redefine the remote function.
-    @ray.remote
-    def f(x):
-        return x + 10
-
-    while True:
-        val = ray.get(f.remote(0))
-        assert val in [1, 10]
-        if val == 10:
-            break
-        else:
-            logger.info("Still using old definition of f, trying again.")
-
     # Test that we can close over plain old data.
     data = [
         np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
@@ -1028,8 +1008,29 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
 
+
 def test_redefining_remote_functions(shutdown_only):
     ray.init(num_cpus=1)
+
+    # Test that we can define a remote function in the shell.
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    assert ray.get(f.remote(0)) == 1
+
+    # Test that we can redefine the remote function.
+    @ray.remote
+    def f(x):
+        return x + 10
+
+    while True:
+        val = ray.get(f.remote(0))
+        assert val in [1, 10]
+        if val == 10:
+            break
+        else:
+            logger.info("Still using old definition of f, trying again.")
 
     # Check that we can redefine functions even when the remote function source
     # doesn't change (see https://github.com/ray-project/ray/issues/6130).
@@ -1057,6 +1058,7 @@ def test_redefining_remote_functions(shutdown_only):
         @ray.remote
         def h():
             return i
+
         return h.remote()
 
     for i in range(20):
