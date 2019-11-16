@@ -125,16 +125,9 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
   RequestNewWorkerIfNeeded(queued_tasks_.front());
 }
 
-void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
-    const TaskSpecification &resource_spec, const rpc::Address *raylet_address) {
-  if (worker_request_pending_) {
-    return;
-  }
-  if (queued_tasks_.empty()) {
-    // We don't have any tasks to run, so no need to request a worker.
-    return;
-  }
-
+std::shared_ptr<WorkerLeaseInterface>
+CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
+    const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
   if (raylet_address) {
     // Connect to raylet.
@@ -146,15 +139,30 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           remote_lease_clients_.emplace(raylet_id, lease_client_factory_(*raylet_address))
               .first;
     }
-    RAY_LOG(DEBUG) << "Sending " << resource_spec.TaskId() << " to raylet " << raylet_id;
     lease_client = it->second;
   } else {
     lease_client = local_lease_client_;
   }
 
+  return lease_client;
+}
+
+void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
+    const TaskSpecification &resource_spec, const rpc::Address *raylet_address) {
+  if (worker_request_pending_) {
+    return;
+  }
+  if (queued_tasks_.empty()) {
+    // We don't have any tasks to run, so no need to request a worker.
+    return;
+  }
+
   // NOTE(swang): We must copy the resource spec here because the resource spec
-  // may get swapped out by the time the callback fires.
+  // may get swapped out by the time the callback fires. If we change this so
+  // that we associate the granted worker with the requested resource spec,
+  // then we can just pass the ref instead of copying.
   TaskSpecification resource_spec_copy(resource_spec.GetMessage());
+  auto lease_client = GetOrConnectLeaseClient(raylet_address);
   RAY_CHECK_OK(lease_client->RequestWorkerLease(
       resource_spec_copy,
       [this, resource_spec_copy, lease_client](

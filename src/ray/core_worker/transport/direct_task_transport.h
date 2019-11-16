@@ -81,6 +81,12 @@ class CoreWorkerDirectTaskSubmitter {
   /// processing the worker, we don't attempt to re-use the worker.
   void OnWorkerIdle(const WorkerAddress &addr, bool was_error);
 
+  /// Get an existing lease client or connect a new one. If a raylet_address is
+  /// provided, this connects to a remote raylet. Else, this connects to the
+  /// local raylet.
+  std::shared_ptr<WorkerLeaseInterface> GetOrConnectLeaseClient(
+      const rpc::Address *raylet_address) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
@@ -90,9 +96,8 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Callback for when the raylet grants us a worker lease. The worker is returned
-  /// to the raylet once it finishes its task and either the lease term has
-  /// expired, or there is no more work it can take on. The worker should be
-  /// returned to the raylet via the given lease client.
+  /// to the raylet via the given lease client once the task queue is empty.
+  /// TODO: Implement a lease term by which we need to return the worker.
   void HandleWorkerLeaseGranted(const WorkerAddress &addr,
                                 std::shared_ptr<WorkerLeaseInterface> lease_client);
 

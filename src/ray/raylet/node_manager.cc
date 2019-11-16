@@ -1432,8 +1432,9 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
             gcs_client_->client_table().GetLocalClientId().Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
-        // TODO(swang): Release worker if other end hangs up (can be done with
-        // lease timeout).
+        // TODO(swang): Kill worker if other end hangs up.
+        // TODO(swang): Implement a lease term by which the owner needs to return the
+        // worker.
         leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
       });
   task.OnSpillbackInstead(
