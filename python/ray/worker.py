@@ -849,8 +849,11 @@ atexit.register(shutdown, True)
 def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
-
-signal.signal(signal.SIGTERM, sigterm_handler)
+try:
+    signal.signal(signal.SIGTERM, sigterm_handler)
+except ValueError:
+    logger.warning("Processes might not be terminated properly if SIGTERM is sent"
+                   "(tried to set signal from outside the main thread).")
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
