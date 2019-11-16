@@ -20,8 +20,6 @@ services:
         script: |
             # Activate the packaged conda environment
             #  - source environment/bin/activate
-            # This activates a pre-existing environment for dependency management.
-            source /home/rayonyarn/miniconda3/bin/activate
 
             # This register the Ray head addresses needed by the workers with the Skein key-value store.
             skein kv put current --key=RAY_HEAD_ADDRESS --value=$(hostname -i)
@@ -55,7 +53,6 @@ services:
         script: |
             # Activate the packaged conda environment
             #  - source environment/bin/activate
-            source /home/rayonyarn/miniconda3/bin/activate
 
             # This command gets any addresses it needs (e.g. the head node) from
             # the skein key-value store.
