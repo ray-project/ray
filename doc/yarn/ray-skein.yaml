@@ -1,6 +1,7 @@
 name: ray
 
 services:
+    # Head service
     ray-head:
         # There should only be one instance of the head node per cluster.
         instances: 1
@@ -21,11 +22,9 @@ services:
             #  - source environment/bin/activate
             # This activates a pre-existing environment for dependency management.
             source /home/rayonyarn/miniconda3/bin/activate
-            # This obtains the Skein Application ID which is used when pushing addresses to worker services.
-            APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
 
             # This register the Ray head addresses needed by the workers with the Skein key-value store.
-            skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) $APP_ID
+            skein kv put current --key=RAY_HEAD_ADDRESS --value=$(hostname -i)
 
             # This command starts all the processes needed on the ray head node.
             # By default, we set object store memory and heap memory to roughly 200 MB. This is conservative
@@ -38,8 +37,8 @@ services:
 
             # After the user script has executed, all started processes should also die.
             ray stop
-            skein application shutdown $APP_ID
-
+            skein application shutdown current
+    # Worker service
     ray-worker:
         # The number of instances to start initially. This can be scaled
         # dynamically later.
@@ -60,8 +59,7 @@ services:
 
             # This command gets any addresses it needs (e.g. the head node) from
             # the skein key-value store.
-            APP_ID=$(python -c 'import skein;print(skein.properties.application_id)')
-            RAY_HEAD_ADDRESS=$(skein kv get --key=RAY_HEAD_ADDRESS "$APP_ID")
+            RAY_HEAD_ADDRESS=$(skein kv get current --key=RAY_HEAD_ADDRESS)
 
             # The below command starts all the processes needed on a ray worker node, blocking until killed with sigterm.
             # After sigterm, all started processes should also die (ray stop).
