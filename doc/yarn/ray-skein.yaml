@@ -1,7 +1,7 @@
 name: ray
 
 services:
-    # Head service
+    # Head service.
     ray-head:
         # There should only be one instance of the head node per cluster.
         instances: 1
@@ -36,7 +36,7 @@ services:
             # After the user script has executed, all started processes should also die.
             ray stop
             skein application shutdown current
-    # Worker service
+    # Worker service.
     ray-worker:
         # The number of instances to start initially. This can be scaled
         # dynamically later.
@@ -56,7 +56,7 @@ services:
 
             # This command gets any addresses it needs (e.g. the head node) from
             # the skein key-value store.
-            RAY_HEAD_ADDRESS=$(skein kv get current --key=RAY_HEAD_ADDRESS)
+            RAY_HEAD_ADDRESS=$(skein kv get --key=RAY_HEAD_ADDRESS current)
 
             # The below command starts all the processes needed on a ray worker node, blocking until killed with sigterm.
             # After sigterm, all started processes should also die (ray stop).

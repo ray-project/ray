@@ -103,7 +103,7 @@ Register the Ray head addresses needed by the workers in the Skein key-value sto
 
 .. code-block:: bash
 
-    skein kv put current --key=RAY_HEAD_ADDRESS --value=$(hostname -i)
+    skein kv put --key=RAY_HEAD_ADDRESS --value=$(hostname -i) current
 
 Start all the processes needed on the ray head node. By default, we set object store memory
 and heap memory to roughly 200 MB. This is conservative and should be set according to application needs.
