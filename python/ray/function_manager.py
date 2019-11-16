@@ -101,7 +101,7 @@ class FunctionDescriptor(object):
                 "Invalid input for FunctionDescriptor.from_bytes_list")
 
     @classmethod
-    def from_function(cls, function):
+    def from_function(cls, function, pickled_function):
         """Create a FunctionDescriptor from a function instance.
 
         This function is used to create the function descriptor from
@@ -112,6 +112,9 @@ class FunctionDescriptor(object):
             cls: Current class which is required argument for classmethod.
             function: the python function used to create the function
                 descriptor.
+            pickled_function: This is factored in to ensure that any
+                modifications to the function result in a different function
+                descriptor.
 
         Returns:
             The FunctionDescriptor instance created according to the function.
@@ -121,7 +124,7 @@ class FunctionDescriptor(object):
         class_name = ""
 
         hasher = hashlib.sha1()
-        hasher.update(pickle.dumps(function))
+        hasher.update(pickled_function)
         pickled_function_hash = hasher.digest()
 
         return cls(module_name, function_name, class_name,
