@@ -137,7 +137,6 @@ int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscri
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_LOG(INFO) << "add() num_callbacks_: " << num_callbacks_;
   callback_items_.emplace(num_callbacks_,
                           CallbackItem(function, is_subscription, start_time));
   return num_callbacks_++;
@@ -145,14 +144,12 @@ int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscri
 
 RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_LOG(INFO) << "get() callback_index: " << callback_index;
   RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
   return callback_items_[callback_index];
 }
 
 void RedisCallbackManager::remove(int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
-  RAY_LOG(INFO) << "remove() num_callbacks_: " << callback_index;
   callback_items_.erase(callback_index);
 }
 
