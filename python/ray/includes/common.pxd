@@ -74,6 +74,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus RedisError(const c_string &msg)
 
         @staticmethod
+        CRayStatus TimedOut(const c_string &msg)
+
+        @staticmethod
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
@@ -89,7 +92,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
         c_bool IsRedisError()
+        c_bool IsTimedOut()
         c_bool IsInterrupted()
+        c_bool IsSystemExit()
 
         c_string ToString()
         c_string CodeAsString()
@@ -201,7 +206,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns,
+        CTaskOptions(int num_returns, c_bool is_direct_call,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":

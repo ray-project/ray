@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import logging
 from functools import wraps
 
@@ -87,6 +88,7 @@ class RemoteFunction(object):
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
+        self.direct_call_enabled = bool(os.environ.get("RAY_FORCE_DIRECT"))
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -134,6 +136,7 @@ class RemoteFunction(object):
                 args=None,
                 kwargs=None,
                 num_return_vals=None,
+                is_direct_call=None,
                 num_cpus=None,
                 num_gpus=None,
                 memory=None,
@@ -155,6 +158,8 @@ class RemoteFunction(object):
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
+        if is_direct_call is None:
+            is_direct_call = self.direct_call_enabled
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -162,8 +167,11 @@ class RemoteFunction(object):
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
-            list_args = ray.signature.flatten_args(self._function_signature,
-                                                   args, kwargs)
+            if not args and not kwargs and not self._function_signature:
+                list_args = []
+            else:
+                list_args = ray.signature.flatten_args(
+                    self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
                 object_ids = worker.local_mode_manager.execute(
@@ -172,7 +180,7 @@ class RemoteFunction(object):
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._function_descriptor_list, list_args, num_return_vals,
-                    resources)
+                    is_direct_call, resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

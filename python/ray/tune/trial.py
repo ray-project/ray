@@ -10,8 +10,10 @@ import uuid
 import time
 import tempfile
 import os
+from numbers import Number
 from ray.tune import TuneError
 from ray.tune.logger import pretty_print, UnifiedLogger
+from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -155,6 +157,9 @@ class Trial(object):
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
+
+        # stores in memory max/min/last result for each metric by trial
+        self.metric_analysis = {}
 
         self.history = []
         self.keep_checkpoints_num = keep_checkpoints_num
@@ -325,6 +330,20 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+        for metric, value in flatten_dict(result).items():
+            if isinstance(value, Number):
+                if metric not in self.metric_analysis:
+                    self.metric_analysis[metric] = {
+                        "max": value,
+                        "min": value,
+                        "last": value
+                    }
+                else:
+                    self.metric_analysis[metric]["max"] = max(
+                        value, self.metric_analysis[metric]["max"])
+                    self.metric_analysis[metric]["min"] = min(
+                        value, self.metric_analysis[metric]["min"])
+                    self.metric_analysis[metric]["last"] = value
 
     def compare_checkpoints(self, attr_mean):
         """Compares two checkpoints based on the attribute attr_mean param.

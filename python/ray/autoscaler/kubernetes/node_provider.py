@@ -59,7 +59,7 @@ class KubernetesNodeProvider(NodeProvider):
         return pod.metadata.labels
 
     def external_ip(self, node_id):
-        raise NotImplementedError("Must use internal IPs with kubernetes.")
+        raise NotImplementedError("Must use internal IPs with Kubernetes.")
 
     def internal_ip(self, node_id):
         pod = core_api().read_namespaced_pod_status(node_id, self.namespace)

@@ -9,6 +9,7 @@
 
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -62,19 +63,38 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient {
+/// Interface for leasing workers. Abstract for testing.
+class WorkerLeaseInterface {
+ public:
+  /// Requests a worker from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) = 0;
+
+  /// Returns a worker to the raylet.
+  /// \param worker_port The local port of the worker on the raylet node.
+  /// \return ray::Status
+  virtual ray::Status ReturnWorker(int worker_port) = 0;
+};
+
+class RayletClient : public WorkerLeaseInterface {
  public:
   /// Connect to the raylet.
   ///
+  /// \param grpc_client gRPC client to the raylet.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
-  /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
+  /// \param language Language of the worker.
+  /// \param raylet_id This will be populated with the local raylet's ClientID.
+  /// \param port The port that the worker will listen on for gRPC requests, if
+  /// any.
+  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+               const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               int port = -1);
+               ClientID *raylet_id, int port = -1);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -182,6 +202,12 @@ class RayletClient {
   /// \return ray::Status
   ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
+  /// Implements WorkerLeaseInterface.
+  ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) override;
+
+  /// Implements WorkerLeaseInterface.
+  ray::Status ReturnWorker(int worker_port) override;
+
   Language GetLanguage() const { return language_; }
 
   WorkerID GetWorkerID() const { return worker_id_; }
@@ -193,6 +219,9 @@ class RayletClient {
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
+  /// gRPC client to the raylet. Right now, this is only used for a couple
+  /// request types.
+  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
   const bool is_worker_;
   const JobID job_id_;

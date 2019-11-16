@@ -92,6 +92,8 @@ class Cluster(object):
             self.webui_url = self.head_node.webui_url
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
+            # Let grpc pick a port.
+            ray_params.update(node_manager_port=0)
             node = ray.node.Node(
                 ray_params,
                 head=False,

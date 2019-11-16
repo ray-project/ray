@@ -67,11 +67,6 @@ ERROR_KEY_PREFIX = b"Error:"
 logger = logging.getLogger(__name__)
 
 try:
-    import aiohttp
-except ImportError:
-    aiohttp = None
-
-try:
     import setproctitle
 except ImportError:
     setproctitle = None
@@ -291,7 +286,7 @@ class Worker(object):
         return context.deserialize_objects(data_metadata_pairs, object_ids,
                                            error_timeout)
 
-    def get_objects(self, object_ids):
+    def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_ids. This will
@@ -301,6 +296,8 @@ class Worker(object):
         Args:
             object_ids (List[object_id.ObjectID]): A list of the object IDs
                 whose values should be retrieved.
+            timeout (float): timeout (float): The maximum amount of time in
+                seconds to wait before returning.
 
         Raises:
             Exception if running in LOCAL_MODE and any of the object IDs do not
@@ -314,10 +311,15 @@ class Worker(object):
                     "which is not an ray.ObjectID.".format(object_id))
 
         if self.mode == LOCAL_MODE:
+            # TODO(ujvl): Remove check when local mode moved to core worker.
+            if timeout is not None:
+                raise ValueError(
+                    "`get` must be called with timeout=None in local mode.")
             return self.local_mode_manager.get_objects(object_ids)
 
+        timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_ids, self.current_task_id)
+            object_ids, self.current_task_id, timeout_ms)
         return self.deserialize_objects(data_metadata_pairs, object_ids)
 
     def run_function_on_all_workers(self, function,
@@ -546,8 +548,8 @@ def init(address=None,
          redis_password=None,
          plasma_directory=None,
          huge_pages=False,
-         include_webui=aiohttp is not None,
-         webui_host="localhost",
+         include_webui=False,
+         webui_host="127.0.0.1",
          job_id=None,
          configure_logging=True,
          logging_level=logging.INFO,
@@ -628,8 +630,8 @@ def init(address=None,
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster.
         webui_host: The host to bind the web UI server to. Can either be
-            localhost (127.0.0.1) or 0.0.0.0 (available from all interfaces).
-            By default, this is set to localhost to prevent access from
+            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to 127.0.0.1 to prevent access from
             external machines.
         job_id: The ID of this job.
         configure_logging: True if allow the logging cofiguration here.
@@ -1215,6 +1217,7 @@ def connect(node,
         gcs_options,
         node.get_logs_dir_path(),
         node.node_ip_address,
+        node.node_manager_port,
     )
     worker.raylet_client = ray._raylet.RayletClient(worker.core_worker)
 
@@ -1392,7 +1395,7 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def get(object_ids):
+def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -1404,11 +1407,15 @@ def get(object_ids):
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
+        timeout (float): The maximum amount of time in seconds to wait before
+            returning.
 
     Returns:
         A Python object or a list of Python objects.
 
     Raises:
+        RayTimeoutError: A RayTimeoutError is raised if a timeout is set and
+            the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
@@ -1424,7 +1431,8 @@ def get(object_ids):
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
-        values = worker.get_objects(object_ids)
+        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
+        values = worker.get_objects(object_ids, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()

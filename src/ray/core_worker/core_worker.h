@@ -1,9 +1,7 @@
 #ifndef RAY_CORE_WORKER_CORE_WORKER_H
 #define RAY_CORE_WORKER_CORE_WORKER_H
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/synchronization/mutex.h"
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
@@ -14,21 +12,24 @@
 #include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/raylet/raylet_client.h"
-#include "ray/rpc/worker/worker_client.h"
-#include "ray/rpc/worker/worker_server.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
+#include "ray/rpc/worker/core_worker_server.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
 /// add a new call to the worker gRPC server, do the following:
-/// 1) Add the rpc to the WorkerService in core_worker.proto, e.g., "ExampleCall"
+/// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
 /// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
 /// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS                       \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)               \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorAssignTask, 9999) \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
+  RAY_CORE_WORKER_RPC_HANDLER(WorkerLeaseGranted, 5)
 
 namespace ray {
 
@@ -58,21 +59,24 @@ class CoreWorker {
   /// \param[in] log_dir Directory to write logs to. If this is empty, logs
   ///            won't be written to a file.
   /// \param[in] node_ip_address IP address of the node.
+  /// \param[in] node_manager_port Port of the local raylet.
   /// \param[in] task_execution_callback Language worker callback to execute tasks.
-  /// \parma[in] check_signals Language worker function to check for signals and handle
+  /// \param[in] check_signals Language worker function to check for signals and handle
   ///            them. If the function returns anything but StatusOK, any long-running
   ///            operations in the core worker will short circuit and return that status.
-  /// \parma[in] exit_handler Language worker function to orderly shutdown the worker.
+  /// \param[in] exit_handler Language worker function to orderly shutdown the worker.
   ///            We guarantee this will be run on the main thread of the worker.
+  /// \param[in] ref_counting_enabled Whether to enable object ref counting.
   ///
   /// NOTE(zhijunfu): the constructor would throw if a failure happens.
   CoreWorker(const WorkerType worker_type, const Language language,
              const std::string &store_socket, const std::string &raylet_socket,
              const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
              const std::string &log_dir, const std::string &node_ip_address,
-             const TaskExecutionCallback &task_execution_callback,
+             int node_manager_port, const TaskExecutionCallback &task_execution_callback,
              std::function<Status()> check_signals = nullptr,
-             std::function<void()> exit_handler = nullptr);
+             std::function<void()> exit_handler = nullptr,
+             bool ref_counting_enabled = false);
 
   ~CoreWorker();
 
@@ -101,15 +105,28 @@ class CoreWorker {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddObjectIDReference(const ObjectID &object_id) {
-    reference_counter_.AddReference(object_id);
+    reference_counter_->AddReference(object_id);
   }
 
   /// Decrease the reference count for this object ID.
   ///
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) {
-    reference_counter_.RemoveReference(object_id);
+    std::vector<ObjectID> deleted;
+    reference_counter_->RemoveReference(object_id, &deleted);
+    if (ref_counting_enabled_) {
+      memory_store_->Delete(deleted);
+    }
   }
+
+  /// Promote an object to plasma. If it already exists locally, it will be
+  /// put into the plasma store. If it doesn't yet exist, it will be spilled to
+  /// plasma once available.
+  ///
+  /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
+  ///
+  /// \param[in] object_id The object ID to promote to plasma.
+  void PromoteObjectToPlasma(const ObjectID &object_id);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -317,28 +334,31 @@ class CoreWorker {
                                const std::vector<std::shared_ptr<Buffer>> &metadatas,
                                std::vector<std::shared_ptr<RayObject>> *return_objects);
 
-  /* Handlers for the worker's gRPC server. These are executed on the io_service_ and post
-   * work to the appropriate event loop.
-   */
+  ///
+  /// The following methods are handlers for the core worker's gRPC server, which follow
+  /// a macro-generated call convention. These are executed on the io_service_ and
+  /// post work to the appropriate event loop.
+  ///
 
-  /// Handle an "AssignTask" event corresponding to scheduling a normal or an actor task
-  /// on this worker from the raylet.
+  /// Implements gRPC server handler.
   void HandleAssignTask(const rpc::AssignTaskRequest &request,
                         rpc::AssignTaskReply *reply,
                         rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "DirectActorAssignTask" event corresponding to scheduling an actor task
-  /// on this worker from another worker.
-  void HandleDirectActorAssignTask(const rpc::DirectActorAssignTaskRequest &request,
-                                   rpc::DirectActorAssignTaskReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback);
+  /// Implements gRPC server handler.
+  void HandlePushTask(const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
+                      rpc::SendReplyCallback send_reply_callback);
 
-  /// Handle a "DirectActorAssignTask" event corresponding to the raylet notifiying this
-  /// worker that an argument is ready.
+  /// Implements gRPC server handler.
   void HandleDirectActorCallArgWaitComplete(
       const rpc::DirectActorCallArgWaitCompleteRequest &request,
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
+
+  /// Implements gRPC server handler.
+  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
+                                rpc::WorkerLeaseGrantedReply *reply,
+                                rpc::SendReplyCallback send_reply_callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
@@ -355,8 +375,10 @@ class CoreWorker {
   /// Private methods related to task submission.
   ///
 
-  /// Submit the task to the raylet and add its dependencies to the reference counter.
-  Status SubmitTaskToRaylet(const TaskSpecification &task_spec);
+  /// Add task dependencies to the reference counter. This prevents the argument
+  /// objects from early eviction, and also adds the return object.
+  void PinObjectReferences(const TaskSpecification &task_spec,
+                           const TaskTransportType transport_type);
 
   /// Give this worker a handle to an actor.
   ///
@@ -420,6 +442,9 @@ class CoreWorker {
   /// Directory where log files are written.
   const std::string log_dir_;
 
+  /// Whether local reference counting is enabled.
+  const bool ref_counting_enabled_;
+
   /// Application-language callback to check for signals that have been received
   /// since calling into C++. This will be called periodically (at least every
   /// 1s) during long-running operations.
@@ -444,15 +469,21 @@ class CoreWorker {
   /// Keeps the io_service_ alive.
   boost::asio::io_service::work io_work_;
 
+  /// Shared client call manager.
+  std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
   /// Timer used to periodically send heartbeat containing active object IDs to the
   /// raylet.
   boost::asio::steady_timer heartbeat_timer_;
 
   /// RPC server used to receive tasks to execute.
-  rpc::GrpcServer worker_server_;
+  rpc::GrpcServer core_worker_server_;
+
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
 
   // Client to the GCS shared by core worker interfaces.
-  gcs::RedisGcsClient gcs_client_;
+  std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
   // Client to the raylet shared by core worker interfaces.
   std::unique_ptr<RayletClient> raylet_client_;
@@ -461,7 +492,7 @@ class CoreWorker {
   std::thread io_thread_;
 
   // Keeps track of object ID reference counts.
-  ReferenceCounter reference_counter_;
+  std::shared_ptr<ReferenceCounter> reference_counter_;
 
   ///
   /// Fields related to storing and retrieving objects.
@@ -471,10 +502,10 @@ class CoreWorker {
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// Plasma store interface.
-  std::unique_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
+  std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
   /// In-memory store interface.
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
+  std::shared_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
 
   ///
   /// Fields related to task submission.
@@ -482,6 +513,9 @@ class CoreWorker {
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+
+  // Interface to submit non-actor tasks directly to leased workers.
+  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
@@ -514,10 +548,10 @@ class CoreWorker {
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
 
   /// Common rpc service for all worker modules.
-  rpc::WorkerGrpcService grpc_service_;
+  rpc::CoreWorkerGrpcService grpc_service_;
 
   // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectActorTaskReceiver> direct_actor_task_receiver_;
+  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
 
   friend class CoreWorkerTest;
 };
