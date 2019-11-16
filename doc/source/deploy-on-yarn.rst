@@ -50,9 +50,9 @@ The specification for each service consists of necessary files and commands that
                 ...
             script:
                 ...
-         ray-worker:
-             # Number of ray worker nodes to start initially.
-             # This can be scaled using 'skein container scale'.
+        ray-worker:
+            # Number of ray worker nodes to start initially.
+            # This can be scaled using 'skein container scale'.
             instances: 3
             resources:
                 # The resources for the worker node.
