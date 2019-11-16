@@ -7,7 +7,6 @@ import importlib
 import inspect
 import json
 import logging
-import sys
 import time
 import threading
 import traceback
@@ -121,22 +120,20 @@ class FunctionDescriptor(object):
         function_name = function.__name__
         class_name = ""
 
-        function_source_hasher = hashlib.sha1()
+        pickled_function_hasher = hashlib.sha1()
         try:
             # If we are running a script or are in IPython, include the source
             # code in the hash.
-            source = inspect.getsource(function)
-            if sys.version_info[0] >= 3:
-                source = source.encode()
-            function_source_hasher.update(source)
-            function_source_hash = function_source_hasher.digest()
+            pickled_function = pickle.dumps(function)
+            pickled_function_hasher.update(pickled_function)
+            pickled_function_hash = pickled_function_hasher.digest()
         except (IOError, OSError, TypeError):
             # Source code may not be available:
             # e.g. Cython or Python interpreter.
-            function_source_hash = b""
+            pickled_function_hash = b""
 
         return cls(module_name, function_name, class_name,
-                   function_source_hash)
+                   pickled_function_hash)
 
     @classmethod
     def from_class(cls, target_class):
