@@ -106,6 +106,7 @@ CLUSTER_CONFIG_SCHEMA = {
         {
             "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
             "container_name": (str, OPTIONAL),  # e.g., ray_docker
+            "pull_before_run": (bool, OPTIONAL),  # run `docker pull` first
             # shared options for starting head/worker docker
             "run_options": (list, OPTIONAL),
 
