@@ -1028,6 +1028,25 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
 
+    # Check that we can redefine functions even when the remote function source
+    # doesn't change (see https://github.com/ray-project/ray/issues/6130).
+    @ray.remote
+    def n():
+        return nonexistent()
+
+    with pytest.raises(ray.exceptions.RayTaskError, match="nonexistent"):
+        ray.get(n.remote())
+
+    def nonexistent():
+        return 1
+
+    # Redefine the function and make sure it succeeds.
+    @ray.remote
+    def n():
+        return nonexistent()
+
+    assert ray.get(n.remote()) == 1
+
 
 @pytest.mark.skipif(RAY_FORCE_DIRECT, reason="reconstruction not implemented")
 def test_submit_api(shutdown_only):
