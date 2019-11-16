@@ -202,7 +202,7 @@ def RunnerHandler(runner):
             path = parts.path
 
             if path == "/trials":
-                return [t for t in runner.get_trials()]
+                return list(runner.get_trials())
             else:
                 trial_id = path.split("/")[-1]
                 return runner.get_trial(trial_id)
