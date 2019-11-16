@@ -31,7 +31,7 @@ void RedisAsyncContext::ResetRawRedisAsyncContext() {
 }
 
 void RedisAsyncContext::RedisAsyncHandleRead() {
-  // `redisAsyncHandleRead` is already thread-safe, so no lock here.
+  std::lock_guard<std::mutex> lock(mutex_);
   redisAsyncHandleRead(redis_async_context_);
 }
 
