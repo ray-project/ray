@@ -2523,7 +2523,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     """Test actor checkpointing on a remote node."""
     # Place the actor on the remote node.
     cluster = ray_start_cluster_2_nodes
-    remote_node = [node for node in cluster.worker_nodes]
+    remote_node = list(cluster.worker_nodes)
     actor_cls = ray.remote(max_reconstructions=1)(ray_checkpointable_actor_cls)
     actor = actor_cls.remote()
     while (ray.get(actor.node_id.remote()) != remote_node[0].unique_id):
