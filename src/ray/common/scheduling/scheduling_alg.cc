@@ -5,7 +5,7 @@
 
 using namespace std;
 
-ClusterResources::ClusterResources(int64_t local_node_id, const NodeResources &node_resources) {
+ClusterResources::ClusterResources(int64_t local_node_id, const NodeResources &local_node_resources) {
   local_node_id_ = local_node_id;
   add(local_node_id, node_resources);
 }
