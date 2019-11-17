@@ -412,9 +412,9 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
     char dummy_meta[5] = {'D', 'U', 'M', 'M', 'Y'};
      std::shared_ptr<LocalMemoryBuffer> dummy_meta_buf =
       std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy_meta, 5, true);
-    char dummy[0] = {};
+    char dummy[1] = {' '};
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
-        std::make_shared<LocalMemoryBuffer>((uint8_t *)(dummy), 0, true);
+        std::make_shared<LocalMemoryBuffer>((uint8_t *)(dummy), 1, true);
     args.emplace_back(TaskArg::PassByValue(
         std::make_shared<RayObject>(std::move(dummyBuffer), dummy_meta_buf, true)));
   }
@@ -444,10 +444,10 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
     char dummy_meta[5] = {'D', 'U', 'M', 'M', 'Y'};
      std::shared_ptr<LocalMemoryBuffer> dummy_meta_buf =
       std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy_meta, 5, true);
-    char dummy[0] = {};
+    char dummy[1] = {' '};
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>(
-            (uint8_t *)(dummy), 0, true);
+            (uint8_t *)(dummy), 1, true);
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(dummyBuffer, dummy_meta_buf, true)));
   }
