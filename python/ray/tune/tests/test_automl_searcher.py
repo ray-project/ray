@@ -59,7 +59,7 @@ class AutoMLSearcherTest(unittest.TestCase):
 
         self.assertEqual(len(searcher.next_trials()), 0)
         for i, trial in enumerate(trials):
-            rewards = [x for x in range(i, i + 10)]
+            rewards = list(range(i, i + 10))
             random.shuffle(rewards)
             for reward in rewards:
                 searcher.on_trial_result(trial.trial_id, {"reward": reward})

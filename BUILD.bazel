@@ -218,6 +218,7 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_googletest//:gtest",
         "@plasma//:plasma_client",
     ],
 )
@@ -430,6 +431,16 @@ cc_test(
     copts = COPTS,
     deps = [
         ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_test",
+    srcs = ["src/ray/common/scheduling/scheduling_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
         "@com_google_googletest//:gtest_main",
     ],
 )
