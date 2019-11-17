@@ -110,8 +110,6 @@ class QueueManager {
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                   std::vector<ObjectID> &failed_queues, QueueType type);
 
-  void SetMinConsumedSeqId(const ObjectID &queue_id, uint64_t seq_id);
-
   void UpdateUpActor(const ObjectID &queue_id, const ActorID &actor_id);
   void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
 

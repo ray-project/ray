@@ -8,9 +8,6 @@ enum MessageType:long {
   StreamingQueueNotificationMsg,
   // Message
   StreamingQueueDataMsg,
-  //
-  StreamingQueueGetLastMsgId,
-  StreamingQueueGetLastMsgIdRsp,
   // For test
   StreamingQueueTestInitMsg,
   StreamingQueueTestCheckStatusRspMsg,

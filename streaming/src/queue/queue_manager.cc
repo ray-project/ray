@@ -331,13 +331,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::DispatchMessageSync(
   return result;
 }
 
-void QueueManager::SetMinConsumedSeqId(const ObjectID &queue_id, uint64_t seq_id) {
-  auto it = downstream_queues_.find(queue_id);
-  RAY_CHECK(it != downstream_queues_.end());
-
-  return it->second->SetMinConsumedSeqId(seq_id);
-}
-
 bool QueueManager::CheckQueue(const ObjectID &queue_id, QueueType type) {
   auto it = actors_.find(queue_id);
   STREAMING_CHECK(it != actors_.end());

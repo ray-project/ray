@@ -85,8 +85,6 @@ void StreamingQueueWriter::WaitQueuesInCluster(const std::vector<ObjectID> &queu
 
 void StreamingQueueWriter::GetMinConsumedSeqID(const ObjectID &queue_id,
                                                uint64_t &min_consumed_id) {
-  // RAY_LOG(DEGBU) << "Only can be used for debug & monitor";
-
   min_consumed_id = queue_writer_->GetMinConsumedSeqID(queue_id);
 }
 

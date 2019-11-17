@@ -140,8 +140,6 @@ class WriterQueue : public Queue {
 
   uint64_t EvictionLimit() { return eviction_limit_; }
 
-  void SetMinConsumedSeqId(uint64_t seq_id) { min_consumed_id_ = seq_id; }
-
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
 
   void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) { 
@@ -193,7 +191,6 @@ class ReaderQueue : public Queue {
   void OnData(QueueItem &item);
 
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
-  void SetMinConsumedSeqId(uint64_t seq_id) { min_consumed_id_ = seq_id; }
 
   uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
   uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
