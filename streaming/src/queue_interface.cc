@@ -73,10 +73,6 @@ Status StreamingQueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id,
   return Status::OK();
 }
 
-void StreamingQueueWriter::PullQueueToLocal(const ObjectID &queue_id) {
-  RAY_CHECK(false) << "PullQueueToLocal not implemented";
-}
-
 void StreamingQueueWriter::WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
                                                int64_t timeout_ms,
                                                std::vector<ObjectID> &failed_queues) {
@@ -88,19 +84,10 @@ void StreamingQueueWriter::GetMinConsumedSeqID(const ObjectID &queue_id,
   min_consumed_id = queue_writer_->GetMinConsumedSeqID(queue_id);
 }
 
-// TODO:
-void StreamingQueueWriter::GetUnconsumedBytes(const ObjectID &queue_id,
-                                              uint32_t &unconsumed_bytes) {}
-
 Status StreamingQueueWriter::PushQueueItem(const ObjectID &queue_id, uint64_t seq_id,
                                            uint8_t *data, uint32_t data_size,
                                            uint64_t timestamp) {
   return queue_writer_->PushSync(queue_id, seq_id, data, data_size, timestamp);
-}
-
-bool StreamingQueueWriter::NotifyResubscribe(const ObjectID &queue_id) {
-  RAY_LOG(INFO) << "Not implemented NotifyResubscribe";
-  return true;
 }
 
 void StreamingQueueWriter::CleanupSubscription(const ObjectID &queue_id) {
