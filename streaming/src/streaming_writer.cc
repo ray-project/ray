@@ -91,6 +91,7 @@ StreamingStatus StreamingWriter::WriteBufferToChannel(ProducerChannelInfo &chann
 }
 
 void StreamingWriter::Run() {
+  STREAMING_LOG(INFO) << "WriterLoopForward start";
   loop_thread_ = std::make_shared<std::thread>(&StreamingWriter::WriterLoopForward, this);
 }
 

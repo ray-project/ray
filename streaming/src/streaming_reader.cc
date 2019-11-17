@@ -68,6 +68,7 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   sort(input_queue_ids_.begin(), input_queue_ids_.end(),
        [](const ObjectID &a, const ObjectID &b) { return a.Hash() < b.Hash(); });
   std::copy(input_ids.begin(), input_ids.end(), std::back_inserter(unready_queue_ids_));
+  InitChannel();
 }
 
 StreamingStatus StreamingReader::InitChannel() {
