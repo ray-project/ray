@@ -90,8 +90,10 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
+    DUMMY_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
+from ray.signature import DUMMY_TYPE
 
 # pyarrow cannot be imported until after _raylet finishes initializing
 # (see ray/__init__.py for details).
@@ -429,11 +431,14 @@ cdef deserialize_args(
         # Passed by value.
         if arg_reference_ids[i].IsNil():
             data = Buffer.make(c_args[i].get().GetData())
-            if (c_args[i].get().HasMetadata()
-                and Buffer.make(
-                    c_args[i].get().GetMetadata()).to_pybytes()
-                    == RAW_BUFFER_METADATA):
-                args.append(data)
+            if c_args[i].get().HasMetadata():
+                meta = Buffer.make(c_args[i].get().GetMetadata()).to_pybytes()
+                if meta == RAW_BUFFER_METADATA:
+                    args.append(data)
+                elif meta == DUMMY_METADATA:
+                    args.append(DUMMY_TYPE)
+                else:
+                    raise Exception("Unsupported meta " + str(meta))
             else:
                 args.append(pickle.loads(data.to_pybytes()))
         # Passed by reference.
