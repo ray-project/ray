@@ -12,6 +12,8 @@ import time
 import logging
 import os
 import sys
+import inspect
+import asyncio
 
 from libc.stdint cimport (
     int32_t,
@@ -547,7 +549,11 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
-            return execution_info.function(actor, *arguments, **kwarguments)
+            function = execution_info.function
+            if inspect.iscoroutinefunction(function):
+
+            else:
+                return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -718,6 +724,9 @@ cdef class CoreWorker:
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, exit_handler))
+
+        self.async_thread = None
+        self.async_event_loop = None
 
     def disconnect(self):
         with nogil:
@@ -1055,3 +1064,8 @@ cdef class CoreWorker:
             else:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
+
+    # def create_or_get_event_loop(self):
+    #     if self.async_event_loop is None:
+    #         self.async_event_loop = asyncio.new_event_loop()
+    #     if self.async_thread

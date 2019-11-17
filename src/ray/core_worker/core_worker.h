@@ -4,6 +4,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "boost/fiber/all.hpp"
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
@@ -346,6 +347,9 @@ class CoreWorker {
   void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
                                 rpc::WorkerLeaseGrantedReply *reply,
                                 rpc::SendReplyCallback send_reply_callback);
+
+  std::shared_ptr<FiberEvent> PrepareYieldCurrentFiber();
+  void YieldCurrentFiber(std::shared_ptr<FiberEvent> event);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.

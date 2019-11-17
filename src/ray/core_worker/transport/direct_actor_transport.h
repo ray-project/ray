@@ -244,9 +244,8 @@ class FiberEvent {
 class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  std::shared_ptr<BoundedExecutor> pool = nullptr,
-                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds,
-                  bool use_async = false)
+                  std::shared_ptr<BoundedExecutor> pool = nullptr, bool use_async = false,
+                  int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
@@ -296,6 +295,11 @@ class SchedulingQueue {
            pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
       auto request = head->second;
+
+      // REMOVE ME
+      RAY_CHECK(use_async_);
+      RAY_LOG(DEBUG) << "Simon: inside ScheduleRequests, use_async_ is " << use_async_;
+
       if (use_async_) {
         boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();
       } else if (pool_ != nullptr) {
@@ -414,7 +418,6 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
 
-  bool use_async_ = false;
   bool is_async_ = false;
   std::shared_ptr<FiberEvent> fiber_shutdown_event_;
   std::shared_ptr<std::thread> fiber_runner_thread_;

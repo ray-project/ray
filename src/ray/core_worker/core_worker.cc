@@ -1,9 +1,12 @@
 #include <cstdlib>
 
+#include "boost/fiber/all.hpp"
+
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace {
@@ -869,6 +872,17 @@ void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &
   direct_task_submitter_->HandleWorkerLeaseGranted(
       std::make_pair(request.address(), request.port()));
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+std::shared_ptr<FiberEvent> CoreWorker::PrepareYieldCurrentFiber() {
+  RAY_CHECK(worker_context_.CurrentActorIsAsync());
+  return std::make_shared<FiberEvent>();
+}
+
+void CoreWorker::YieldCurrentFiber(std::shared_ptr<FiberEvent> event) {
+  RAY_CHECK(worker_context_.CurrentActorIsAsync());
+  boost::this_fiber::yield();
+  event->Wait();
 }
 
 }  // namespace ray

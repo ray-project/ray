@@ -48,6 +48,11 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
+cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+    cdef cppclass CFiberEvent "ray::FiberEvent":
+        void Wait()
+        void Notify()
+
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CCoreWorker "ray::CoreWorker":
         CCoreWorker(const CWorkerType worker_type, const CLanguage language,
@@ -123,3 +128,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only, c_bool delete_creating_tasks)
         c_string MemoryUsageString()
+
+        shared_ptr[CFiberEvent] PrepareYieldCurrentFiber()
+        void YieldCurrentFiber(shared_ptr[CFiberEvent])
