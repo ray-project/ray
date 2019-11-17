@@ -115,13 +115,6 @@ void StreamingQueueWriter::GetLastQueueItem(const ObjectID &queue_id,
   sequence_id = queue_writer_->GetLastQueueItem(queue_id);
 }
 
-uint64_t StreamingQueueWriter::GetLastMsgId(const ObjectID &queue_id,
-                                            uint64_t &last_queue_seq_id) {
-  uint64_t last_queue_msg_id;
-  queue_writer_->GetPeerLastMsgId(queue_id, last_queue_msg_id, last_queue_seq_id);
-  return last_queue_msg_id;
-}
-
 Status StreamingQueueWriter::DeleteQueue(const ObjectID &queue_id) {
   return Status::OK();
 }

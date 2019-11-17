@@ -80,13 +80,6 @@ uint64_t QueueWriter::GetLastQueueItem(const ObjectID &queue_id) {
   return QUEUE_INVALID_SEQ_ID;
 }
 
-void QueueWriter::GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id, 
-                                       uint64_t &last_queue_seq_id) {
-  auto queue = manager_->GetUpQueue(queue_id);
-  last_queue_msg_id = queue->GetPeerLastMsgId();
-  last_queue_seq_id = queue->GetPeerLastSeqId();
-}
-
 QueueReader::~QueueReader() {
   manager_->ReleaseAllDownQueues();
 }
@@ -246,12 +239,6 @@ std::shared_ptr<Message> QueueManager::ParseMessage(
   case queue::flatbuf::MessageType::StreamingQueueCheckRspMsg:
     message = CheckRspMessage::FromBytes(bytes);
     break;
-  case queue::flatbuf::MessageType::StreamingQueueGetLastMsgId:
-    message= GetLastMsgIdMessage::FromBytes(bytes);
-    break;
-  case queue::flatbuf::MessageType::StreamingQueueGetLastMsgIdRsp:
-    message= GetLastMsgIdRspMessage::FromBytes(bytes);
-    break;
   default:
     STREAMING_CHECK(false) << "nonsupport message type: "
                            << queue::flatbuf::EnumNameMessageType(*type);
@@ -316,14 +303,6 @@ void QueueManager::DispatchMessageInternal(
   } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueCheckRspMsg) {
     this->OnCheckQueueRsp(std::dynamic_pointer_cast<CheckRspMessage>(msg));
     STREAMING_CHECK(false) << "Should not receive StreamingQueueCheckRspMsg";
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueGetLastMsgId) {
-    std::shared_ptr<LocalMemoryBuffer> last_msg_result =
-        this->OnGetLastMsgId(std::dynamic_pointer_cast<GetLastMsgIdMessage>(msg));
-    if (callback != nullptr) {
-      callback(last_msg_result);
-    }
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueGetLastMsgIdRsp) {
-    STREAMING_CHECK(false) << "Should not receive StreamingQueueGetLastMsgIdRsp";
   } else {
     STREAMING_CHECK(false) << "message type should be added: "
                            << queue::flatbuf::EnumNameMessageType(msg->Type());
@@ -521,70 +500,6 @@ void QueueManager::OnCheckQueueRsp(std::shared_ptr<CheckRspMessage> check_rsp_ms
   STREAMING_CHECK(it != check_queue_requests_.end());
 
   it->second.callback_(queue::flatbuf::StreamingQueueError::OK == check_rsp_msg->Error());
-}
-
-void QueueManager::GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id,
-                                        uint64_t &last_queue_seq_id) {
-  STREAMING_LOG(INFO) << "GetPeerLastMsgId qid: " << queue_id;
-  auto it = actors_.find(queue_id);
-  STREAMING_CHECK(it != actors_.end());
-  ActorID &peer_actor_id = it->second.second;
-
-  GetLastMsgIdMessage msg(actor_id_, peer_actor_id, queue_id);
-  std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-  auto transport_it = GetOutTransport(queue_id);
-  STREAMING_CHECK(transport_it != nullptr);
-  std::shared_ptr<LocalMemoryBuffer> result_buffer =
-      transport_it->SendForResultWithRetry(std::move(buffer), 10, COMMON_SYNC_CALL_TIMEOUTT_MS);
-  if (result_buffer == nullptr) {
-    last_queue_msg_id = 0;
-    last_queue_seq_id = QUEUE_INVALID_SEQ_ID;
-    return;
-  }
-
-  std::shared_ptr<Message> result_msg = ParseMessage(result_buffer);
-  STREAMING_CHECK(result_msg->Type() ==
-                  queue::flatbuf::MessageType::StreamingQueueGetLastMsgIdRsp);
-  std::shared_ptr<GetLastMsgIdRspMessage> get_rsp_msg =
-      std::dynamic_pointer_cast<GetLastMsgIdRspMessage>(result_msg);
-  STREAMING_LOG(INFO) << "GetPeerLastMsgId return queue_id: " << get_rsp_msg->QueueId()
-                      << " error: " << queue::flatbuf::EnumNameStreamingQueueError(get_rsp_msg->Error());
-  STREAMING_CHECK(get_rsp_msg->PeerActorId() == actor_id_);
-
-  if (queue::flatbuf::StreamingQueueError::OK != get_rsp_msg->Error()) {
-    // return 0 because Producer::FetchLastMessageIdFromQueue return 0 defaultly.
-    last_queue_msg_id = 0;
-    // set to QUEUE_INVALID_SEQ_ID because Producer::FetchLastMessageIdFromQueue 'queue_last_seq_id == static_cast<uint64_t>(-1)'
-    last_queue_seq_id = QUEUE_INVALID_SEQ_ID;
-    return;
-  }
-
-  last_queue_seq_id = get_rsp_msg->SeqId();
-  last_queue_msg_id = get_rsp_msg->MsgId();
-}
-
-std::shared_ptr<LocalMemoryBuffer> QueueManager::OnGetLastMsgId(
-    std::shared_ptr<GetLastMsgIdMessage> get_msg) {
-  STREAMING_LOG(WARNING) << "OnGetLastMsgId " << get_msg->QueueId();
-  auto down_queue = downstream_queues_.find(get_msg->QueueId());
-  if (down_queue == downstream_queues_.end()) {
-    STREAMING_LOG(WARNING) << "OnGetLastMsgId " << get_msg->QueueId() << " not found.";
-    queue::flatbuf::StreamingQueueError err_code = queue::flatbuf::StreamingQueueError::QUEUE_NOT_EXIST;
-    GetLastMsgIdRspMessage msg(get_msg->PeerActorId(), get_msg->ActorId(),
-                               get_msg->QueueId(), QUEUE_INVALID_SEQ_ID,
-                               0, err_code);
-    std::shared_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-    return buffer;
-  } else {
-    queue::flatbuf::StreamingQueueError err_code = queue::flatbuf::StreamingQueueError::OK;
-    GetLastMsgIdRspMessage msg(get_msg->PeerActorId(), get_msg->ActorId(),
-                               get_msg->QueueId(), down_queue->second->GetLastRecvSeqId(),
-                               down_queue->second->GetLastRecvMsgId(), err_code);
-    std::shared_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-  
-    return buffer;
-  }
 }
 
 void QueueManager::ReleaseAllUpQueues() {

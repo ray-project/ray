@@ -32,7 +32,6 @@ class QueueWriter {
                   uint32_t data_size, uint64_t timestamp,
                   bool raw = false /*only for test*/);
   uint64_t GetLastQueueItem(const ObjectID &queue_id);
-  void GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id, uint64_t &last_queue_seq_id);
 
  private:
   std::shared_ptr<QueueManager> manager_;
@@ -121,16 +120,11 @@ class QueueManager {
   std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
   std::shared_ptr<Transport> GetInTransport();
 
-  void GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id, uint64_t &last_queue_seq_id);
-
   void Stop();
 
   std::shared_ptr<LocalMemoryBuffer> OnCheckQueue(
       std::shared_ptr<CheckMessage> check_msg);
   void OnCheckQueueRsp(std::shared_ptr<CheckRspMessage> check_rsp_msg);
-
-  std::shared_ptr<LocalMemoryBuffer> OnGetLastMsgId(
-      std::shared_ptr<GetLastMsgIdMessage> get_msg);
 
   void DispatchMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   std::shared_ptr<LocalMemoryBuffer> DispatchMessageSync(

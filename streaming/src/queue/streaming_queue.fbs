@@ -58,21 +58,6 @@ table StreamingQueueResubscribeMsg {
   queue_id: string;
 }
 
-table StreamingQueueGetLastMsgId {
-  src_actor_id: string;
-  dst_actor_id: string;
-  queue_id: string;
-}
-
-table StreamingQueueGetLastMsgIdRsp {
-  src_actor_id: string;
-  dst_actor_id: string;
-  queue_id: string;
-  seq_id: ulong;
-  msg_id: ulong;
-  err_code: StreamingQueueError;
-}
-
 // for test
 enum StreamingQueueTestRole:int {
   WRITER,

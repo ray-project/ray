@@ -182,59 +182,6 @@ std::shared_ptr<ResubscribeMessage> ResubscribeMessage::FromBytes(uint8_t *bytes
   return resub_msg;
 }
 
-void GetLastMsgIdMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueueGetLastMsgId(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()));
-  builder.Finish(message);
-}
-
-std::shared_ptr<GetLastMsgIdMessage> GetLastMsgIdMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message = flatbuffers::GetRoot<queue::flatbuf::StreamingQueueGetLastMsgId>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-
-  std::shared_ptr<GetLastMsgIdMessage> get_last_msg_id_msg =
-      std::make_shared<GetLastMsgIdMessage>(src_actor_id, dst_actor_id, queue_id);
-
-  return get_last_msg_id_msg;
-}
-
-void GetLastMsgIdRspMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueueGetLastMsgIdRsp(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()), seq_id_, msg_id_, err_code_);
-  builder.Finish(message);
-}
-
-std::shared_ptr<GetLastMsgIdRspMessage> GetLastMsgIdRspMessage::FromBytes(
-    uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueueGetLastMsgIdRsp>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  uint64_t seq_id = message->seq_id();
-  uint64_t msg_id = message->msg_id();
-  queue::flatbuf::StreamingQueueError err_code = message->err_code();
-
-  std::shared_ptr<GetLastMsgIdRspMessage> get_last_msg_id_rsp_msg =
-      std::make_shared<GetLastMsgIdRspMessage>(src_actor_id, dst_actor_id, queue_id,
-                                               seq_id, msg_id, err_code);
-  return get_last_msg_id_rsp_msg;
-}
-
 void TestInitMsg::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> queue_id_strs;
   for (auto &queue_id : queue_ids_) {

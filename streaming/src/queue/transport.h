@@ -137,49 +137,6 @@ class ResubscribeMessage : public Message {
       queue::flatbuf::MessageType::StreamingQueueResubscribeMsg;
 };
 
-class GetLastMsgIdMessage : public Message {
- public:
-  GetLastMsgIdMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                      const ObjectID &queue_id)
-      : Message(actor_id, peer_actor_id, queue_id) {}
-  virtual ~GetLastMsgIdMessage() {}
-
-  static std::shared_ptr<GetLastMsgIdMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
-  queue::flatbuf::MessageType Type() { return type_; }
-
- private:
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueGetLastMsgId;
-};
-
-class GetLastMsgIdRspMessage : public Message {
- public:
-  GetLastMsgIdRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                         const ObjectID &queue_id, uint64_t seq_id, uint64_t msg_id,
-                         queue::flatbuf::StreamingQueueError error)
-      : Message(actor_id, peer_actor_id, queue_id),
-        seq_id_(seq_id),
-        msg_id_(msg_id),
-        err_code_(error) {}
-  virtual ~GetLastMsgIdRspMessage() {}
-
-  static std::shared_ptr<GetLastMsgIdRspMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
-  queue::flatbuf::MessageType Type() { return type_; }
-  queue::flatbuf::StreamingQueueError Error() { return err_code_; }
-
-  uint64_t SeqId() { return seq_id_; }
-  uint64_t MsgId() { return msg_id_; }
-
- private:
-  uint64_t seq_id_;
-  uint64_t msg_id_;
-  queue::flatbuf::StreamingQueueError err_code_;
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueGetLastMsgIdRsp;
-};
-
 class TestInitMsg : public Message {
  public:
   TestInitMsg(const queue::flatbuf::StreamingQueueTestRole role,

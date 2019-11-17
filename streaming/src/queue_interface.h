@@ -103,7 +103,6 @@ class StreamingQueueWriter : public QueueWriterInterface {
   void CleanupSubscription(const ObjectID &queue_id);
   void GetLastQueueItem(const ObjectID &queue_id, std::shared_ptr<uint8_t> &data,
                         uint32_t &data_size, uint64_t &sequence_id);
-  virtual uint64_t GetLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_seq_id);
   Status DeleteQueue(const ObjectID &queue_id);
   bool UsePull() { return false; }
 
