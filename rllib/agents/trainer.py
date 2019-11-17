@@ -57,7 +57,7 @@ COMMON_CONFIG = {
     #   2. These batches are concatenated and we perform an epoch of SGD.
     #
     # If we further set num_envs_per_worker=5, then the sample batches will be
-    # of size 5*100 = 500, and RLlib will only collects 2 batches per epoch.
+    # of size 5*100 = 500, and RLlib will only collect 2 batches per epoch.
     #
     # The exact workflow here can vary per algorithm. For example, PPO further
     # divides the train batch into minibatches for multi-epoch SGD.
@@ -143,7 +143,7 @@ COMMON_CONFIG = {
         "on_episode_step": None,      # arg: {"env": .., "episode": ...}
         "on_episode_end": None,       # arg: {"env": .., "episode": ...}
         "on_sample_end": None,        # arg: {"samples": .., "worker": ...}
-        "on_train_result": None,      # arag: {"trainer": ..., "result": ...}
+        "on_train_result": None,      # arg: {"trainer": ..., "result": ...}
         "on_postprocess_traj": None,  # arg: {
                                       #   "agent_id": ..., "episode": ...,
                                       #   "pre_batch": (before processing),

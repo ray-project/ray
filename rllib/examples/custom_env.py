@@ -50,7 +50,7 @@ class SimpleCorridor(gym.Env):
         elif action == 1:
             self.cur_pos += 1
         done = self.cur_pos >= self.end_pos
-        return [self.cur_pos], 1000 if done else 0, done, {}
+        return [self.cur_pos], 1 if done else 0, done, {}
 
 
 class CustomModel(TFModelV2):
