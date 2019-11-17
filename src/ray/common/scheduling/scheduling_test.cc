@@ -293,7 +293,9 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
 TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   ClusterResources cluster_resources;
   NodeResources nr;
+  int64_t node_id = 1;
 
+  /// Add node.
   {
     NodeResources node_resources;
     vector<int64_t> pred_capacities {10, 5, 3};
@@ -301,13 +303,15 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
     vector<int64_t> cust_capacities {5, 5};
     initNodeResources(node_resources, pred_capacities,
                       cust_ids, cust_capacities);
-    cluster_resources.AddOrUpdateNode(1, node_resources);
+    cluster_resources.AddOrUpdateNode(node_id, node_resources);
     nr = node_resources;
   }
 
-  NodeResources *pnr = cluster_resources.GetNodeResources(1);
+  /// Check whether node resources were correctly added.
+  NodeResources *pnr = cluster_resources.GetNodeResources(node_id);
   ASSERT_TRUE(nodeResourcesEqual(*pnr, nr));
 
+  /// Update node.
   {
     NodeResources node_resources;
     vector<int64_t> pred_capacities {10, 10};
@@ -315,11 +319,11 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
     vector<int64_t> cust_capacities {6, 6};
     initNodeResources(node_resources, pred_capacities,
                       cust_ids, cust_capacities);
-    cluster_resources.AddOrUpdateNode(1, node_resources);
+    cluster_resources.AddOrUpdateNode(node_id, node_resources);
     nr = node_resources;
   }
-
-  pnr = cluster_resources.GetNodeResources(1);
+  /// Check whether node resources were correctly updated.
+  pnr = cluster_resources.GetNodeResources(node_id);
   ASSERT_TRUE(nodeResourcesEqual(*pnr, nr));
 }
 
