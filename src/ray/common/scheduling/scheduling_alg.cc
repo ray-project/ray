@@ -7,17 +7,17 @@ using namespace std;
 
 ClusterResources::ClusterResources(int64_t local_node_id, const NodeResources &local_node_resources) {
   local_node_id_ = local_node_id;
-  add(local_node_id, node_resources);
+  AddOrUpdateNode(local_node_id, local_node_resources);
 }
 
-void ClusterResources::AddNode(int64_t node_id, const NodeResources &node_resources) {
+void ClusterResources::AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources) {
 
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    // This node is new. Add it to the list.
+    // This node is new. Add it to the map.
     nodes_.emplace(node_id, node_resources);
   } else {
-    // This node exists. Update it's resources.
+    // This node exists. Update its resources.
     NodeResources &nr = it->second;
 
     // First, update its predefined resources.
@@ -36,7 +36,7 @@ void ClusterResources::AddNode(int64_t node_id, const NodeResources &node_resour
   }
 }
 
-bool ClusterResources::remove(int64_t node_id) {
+bool ClusterResources::RemoveNode(int64_t node_id) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     /// Node not found.
@@ -49,7 +49,7 @@ bool ClusterResources::remove(int64_t node_id) {
   }
 }
 
-int64_t ClusterResources::isSchedulable(const TaskReq &task_req, const NodeResources &nr) {
+int64_t ClusterResources::IsSchedulable(const TaskReq &task_req, const NodeResources &nr) {
   int violations = 0;
 
   /// First, check predefined resources.
@@ -89,7 +89,7 @@ int64_t ClusterResources::isSchedulable(const TaskReq &task_req, const NodeResou
   return violations;
 }
 
-int64_t ClusterResources::getSchedulableNode(const TaskReq &task_req, int64_t *violations) {
+int64_t ClusterResources::GetSchedulableNode(const TaskReq &task_req, int64_t *violations) {
   /// Min number of violations across all nodes that can schedule the request.
   int64_t min_violations = INT_MAX;
   /// Node associated to min_violations.
@@ -99,7 +99,7 @@ int64_t ClusterResources::getSchedulableNode(const TaskReq &task_req, int64_t *v
   /// Check whether local node is schedulable.
   auto it = nodes_.find(local_node_id_);
   if (it != nodes_.end()) {
-    int64_t v = isSchedulable(task_req, it->second);
+    int64_t v = IsSchedulable(task_req, it->second);
     if (v == 0) {
       auto it_p = task_req.placement_hints.find(local_node_id_);
       if (it_p != task_req.placement_hints.end()) {
@@ -114,7 +114,7 @@ int64_t ClusterResources::getSchedulableNode(const TaskReq &task_req, int64_t *v
        it_p != task_req.placement_hints.end(); ++it_p) {
     auto it = nodes_.find(*it_p);
     if (it != nodes_.end()) {
-      int64_t v = isSchedulable(task_req, it->second);
+      int64_t v = IsSchedulable(task_req, it->second);
       if (v == 0) {
         return it->first;
       }
@@ -126,7 +126,7 @@ int64_t ClusterResources::getSchedulableNode(const TaskReq &task_req, int64_t *v
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
     /// Return -1 if node not schedulable. otherwise return the number
     /// of soft constraint violations.
-    int64_t v = isSchedulable(task_req, it->second);
+    int64_t v = IsSchedulable(task_req, it->second);
 
     /// If a hard constraint has been violated, ignnore this node.
     if (v == -1) {
@@ -155,7 +155,7 @@ int64_t ClusterResources::getSchedulableNode(const TaskReq &task_req, int64_t *v
   return best_node;
 }
 
-bool ClusterResources::updateAvailableResources(int64_t node_id, const TaskReq &task_req) {
+bool ClusterResources::UpdateNodeAvailableResources(int64_t node_id, const TaskReq &task_req) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
@@ -163,7 +163,7 @@ bool ClusterResources::updateAvailableResources(int64_t node_id, const TaskReq &
   NodeResources &nr = it->second;
 
   /// Just double check this node can still schedule the task request.
-  if (isSchedulable(task_req, nr) == -1) {
+  if (IsSchedulable(task_req, nr) == -1) {
     return false;
   }
 
@@ -189,7 +189,7 @@ bool ClusterResources::updateAvailableResources(int64_t node_id, const TaskReq &
   return true;
 }
 
-NodeResources* ClusterResources::getNodeResources(int64_t node_id) {
+NodeResources* ClusterResources::GetNodeResources(int64_t node_id) {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     return &it->second;
@@ -199,6 +199,6 @@ NodeResources* ClusterResources::getNodeResources(int64_t node_id) {
 }
 
 /// Get number of nodes in the cluster.
-int64_t ClusterResources::count() {
+int64_t ClusterResources::Count() {
   return nodes_.size();
 }

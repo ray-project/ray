@@ -83,13 +83,13 @@ public:
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
-  void add(int64_t node_id, const NodeResources &node_resources);
+  void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
   ///
   /// \param ID of the node to be removed.
-  bool remove(int64_t node_id);
+  bool RemoveNode(int64_t node_id);
 
    /// Check whether a task request can be scheduled given a node's resources.
    ///
@@ -100,7 +100,7 @@ public:
    ///           least a hard constraints is violated.
    ///           >= 0, the number soft constraint violations. If 0, no
    ///           constraint is violatede.
-  int64_t isSchedulable(const TaskReq &task_req, const NodeResources &nr);
+  int64_t IsSchedulable(const TaskReq &task_req, const NodeResources &nr);
 
    ///  Find a node in the cluster on which we can schedule a given task request.
    ///
@@ -125,7 +125,7 @@ public:
    ///
    ///  \return -1, if no node can schedule the current request; otherwise,
    ///          return the ID of a node that can schedule the task request.
-  int64_t getSchedulableNode(const TaskReq &task_req, int64_t *violations);
+  int64_t GetSchedulableNode(const TaskReq &task_req, int64_t *violations);
 
   /// Update the available resources of a node when a task request is
   /// scheduled on the given node.
@@ -135,13 +135,13 @@ public:
   ///
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
-  bool updateAvailableResources(int64_t node_id, const TaskReq &task_req);
+  bool UpdateNodeAvailableResources(int64_t node_id, const TaskReq &task_req);
 
   /// Return a pointer to the resources associated to the given node.
-  NodeResources* getNodeResources(int64_t node_id);
+  NodeResources* GetNodeResources(int64_t node_id);
 
   /// Get number of nodes in the cluster.
-  int64_t count();
+  int64_t Count();
 };
 
 #endif // RAY_COMMON_SCHEDULING_SCHEDULING_H
