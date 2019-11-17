@@ -111,17 +111,6 @@ COMMON_CONFIG = {
     # The default learning rate.
     "lr": 0.0001,
 
-    # === Settings for Multi-Agent Environments ===
-    "multiagent": {
-        # Map from policy ids to tuples of (policy_cls, obs_space,
-        # act_space, config). See rollout_worker.py for more info.
-        "policies": {},
-        # Function mapping agent ids to policy ids.
-        "policy_mapping_fn": None,
-        # Optional whitelist of policies to train, or None for all policies.
-        "policies_to_train": None,
-    },
-
     # === Debug Settings ===
     # Whether to write episode stats and videos to the agent log dir. This is
     # typically located in ~/ray_results.
@@ -305,6 +294,17 @@ COMMON_CONFIG = {
     "output_compress_columns": ["obs", "new_obs"],
     # Max output file size before rolling over to a new file.
     "output_max_file_size": 64 * 1024 * 1024,
+
+    # === Settings for Multi-Agent Environments ===
+    "multiagent": {
+        # Map from policy ids to tuples of (policy_cls, obs_space,
+        # act_space, config). See rollout_worker.py for more info.
+        "policies": {},
+        # Function mapping agent ids to policy ids.
+        "policy_mapping_fn": None,
+        # Optional whitelist of policies to train, or None for all policies.
+        "policies_to_train": None,
+    },
 }
 # __sphinx_doc_end__
 # yapf: enable
