@@ -110,11 +110,11 @@ class QueueLinkImpl(QueueLink):
     def set_ray_runtime(self, runtime):
         self.__configuration[Config.TASK_JOB_ID] = runtime[Config.TASK_JOB_ID]
 
-    def on_streaming_transfer(self, buffer: bytes):
+    def on_streaming_transfer(self, buffer):
         """used in direct call mode"""
         self.queue_link.on_streaming_transfer(buffer)
 
-    def on_streaming_transfer_sync(self, buffer: bytes):
+    def on_streaming_transfer_sync(self, buffer):
         """used in direct call mode"""
         return self.queue_link.on_streaming_transfer_sync(buffer)
 

@@ -71,7 +71,9 @@ class JobWorker(object):
     def start(self):
         self.t = threading.Thread(target=self.run, daemon=True)
         self.t.start()
-        logger.info("%s started", self.__class__.__name__)
+        processor_name = self.operator.processor_class.__name__
+        actor_id = ray.worker.global_worker.actor_id
+        logger.info("%s %s started, actor id %s", self.__class__.__name__, processor_name, actor_id)
         # self.t.join()
 
     def run(self):
@@ -84,13 +86,15 @@ class JobWorker(object):
         if self.output_gate:
             self.output_gate.close()
 
-    def on_streaming_transfer(self, buffer: bytes):
+    def on_streaming_transfer(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        print("on_streaming_transfer")
-        self.queue_link.on_streaming_transfer(buffer)
+        buffer = buffer.to_pybytes()
+        self.queue_link.on_streaming_transfer(buffer.to_pybytes())
 
-    def on_streaming_transfer_sync(self, buffer: bytes):
+    def on_streaming_transfer_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        print("on_streaming_transfer_sync")
-        logger.error("on_streaming_transfer_sync")
-        self.queue_link.on_streaming_transfer_sync(buffer)
+        buffer = buffer.to_pybytes()
+        if self.queue_link is None:
+            return b' '*4  # special flag to indicate this actor not ready
+        result = self.queue_link.on_streaming_transfer_sync(buffer)
+        return result
