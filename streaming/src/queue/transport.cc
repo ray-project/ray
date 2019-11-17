@@ -408,6 +408,16 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
       std::make_shared<LocalMemoryBuffer>((uint8_t *)meta_data, 3, true);
 
   std::vector<TaskArg> args;
+  if (async_func_.GetLanguage() == Language::PYTHON) {
+    char dummy_meta[5] = {'D', 'U', 'M', 'M', 'Y'};
+     std::shared_ptr<LocalMemoryBuffer> dummy_meta_buf =
+      std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy_meta, 5, true);
+    char dummy[0] = {};
+    std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
+        std::make_shared<LocalMemoryBuffer>((uint8_t *)(dummy), 0, true);
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(std::move(dummyBuffer), dummy_meta_buf, true)));
+  }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
 
@@ -430,13 +440,24 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
       std::make_shared<LocalMemoryBuffer>((uint8_t *)meta_data, 3, true);
 
   std::vector<TaskArg> args;
+  if (async_func_.GetLanguage() == Language::PYTHON) {
+    char dummy_meta[5] = {'D', 'U', 'M', 'M', 'Y'};
+     std::shared_ptr<LocalMemoryBuffer> dummy_meta_buf =
+      std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy_meta, 5, true);
+    char dummy[0] = {};
+    std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
+        std::make_shared<LocalMemoryBuffer>(
+            (uint8_t *)(dummy), 0, true);
+    args.emplace_back(
+        TaskArg::PassByValue(std::make_shared<RayObject>(dummyBuffer, dummy_meta_buf, true)));
+  }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(buffer, meta, true)));
 
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<ObjectID> return_ids;
   ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, sync_func_, args,
-                                                         options, &return_ids);
+                                                 options, &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask fail.";
   }
@@ -483,7 +504,7 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResultWithRetry(
   STREAMING_LOG(INFO) << "SendForResultWithRetry retry_cnt: " << retry_cnt
                       << " timeout_ms: " << timeout_ms;
   std::shared_ptr<LocalMemoryBuffer> buffer_shared = std::move(buffer);
-  for (int cnt=0; cnt<retry_cnt; cnt++) {
+  for (int cnt = 0; cnt < retry_cnt; cnt++) {
     auto result = SendForResult(buffer_shared, timeout_ms);
     if (result != nullptr) {
       return result;
