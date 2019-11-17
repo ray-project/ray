@@ -89,13 +89,11 @@ class JobWorker(object):
 
     def on_streaming_transfer(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        buffer = buffer.to_pybytes()
         self.queue_link.on_streaming_transfer(buffer.to_pybytes())
 
     def on_streaming_transfer_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        buffer = buffer.to_pybytes()
         if self.queue_link is None:
             return b' '*4  # special flag to indicate this actor not ready
-        result = self.queue_link.on_streaming_transfer_sync(buffer)
+        result = self.queue_link.on_streaming_transfer_sync(buffer.to_pybytes())
         return result
