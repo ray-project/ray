@@ -33,6 +33,7 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
+    CBuffer,
     CLanguage,
     CRayObject,
     CRayStatus,
@@ -695,15 +696,24 @@ cdef void push_objects_into_return_vector(
         shared_ptr[CBuffer] metadata
         shared_ptr[CRayObject] ray_object
         int64_t data_size
+        const unsigned char[:] bytes_data
 
     for serialized_object in py_objects:
-        data_size = serialized_object.total_bytes
-        data = dynamic_pointer_cast[
-            CBuffer, LocalMemoryBuffer](
-                make_shared[LocalMemoryBuffer](data_size))
-        stream = pyarrow.FixedSizeBufferWriter(
-            pyarrow.py_buffer(Buffer.make(data)))
-        serialized_object.write_to(stream)
+        if type(serialized_object) == bytes:
+            bytes_data = serialized_object
+            data_size = bytes_data.nbytes
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                make_shared[LocalMemoryBuffer](
+                    <uint8_t *>(&bytes_data[0]), data_size))
+        else:
+            data_size = serialized_object.total_bytes
+            data = dynamic_pointer_cast[
+                CBuffer, LocalMemoryBuffer](
+                    make_shared[LocalMemoryBuffer](data_size))
+            stream = pyarrow.FixedSizeBufferWriter(
+                pyarrow.py_buffer(Buffer.make(data)))
+            serialized_object.write_to(stream)
         ray_object = make_shared[CRayObject](data, metadata)
         returns.push_back(ray_object)
 

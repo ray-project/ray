@@ -131,11 +131,12 @@ cdef class QueueLink:
             queue_logger.warning("failed queue amounts => %s", remain_id_vec.size())
         if <uint32_t>status != <uint32_t>(libstreaming.StatusOK):
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
+            queue_logger.error(msg)
             del writer
             raise QueueInitException(msg, qid_vector_to_list(remain_id_vec))
-        
-        queue_logger.info("create native producer succeed")
+
         writer.Run()
+        queue_logger.info("create native producer succeed")
         self.producer = QueueProducer()
         self.producer.writer = writer
         return self.producer
