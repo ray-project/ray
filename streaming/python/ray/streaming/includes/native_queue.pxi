@@ -7,28 +7,15 @@ from libcpp.list cimport list as c_list
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
-    CLanguage,
-    CRayObject,
-    CRayStatus,
-    CGcsClientOptions,
-    CTaskArg,
-    CTaskType,
     CRayFunction,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
     LocalMemoryBuffer,
-    TASK_TYPE_NORMAL_TASK,
-    TASK_TYPE_ACTOR_CREATION_TASK,
-    TASK_TYPE_ACTOR_TASK,
-    WORKER_TYPE_WORKER,
-    WORKER_TYPE_DRIVER,
 )
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CJobID,
-    CTaskID,
     CObjectID
 )
 from ray._raylet cimport (
@@ -190,14 +177,18 @@ cdef class QueueLink:
             uint32_t length = value.nbytes
             shared_ptr[CLocalMemoryBuffer] buffer =\
                 make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), length)
-        self.queue_client.OnMessage(buffer)
+        with nogil:
+            self.queue_client.OnMessage(buffer)
 
     def on_streaming_transfer_sync(self, const unsigned char[:] value):
         cdef:
             uint32_t length = value.nbytes
             shared_ptr[CLocalMemoryBuffer] buffer =\
                 make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), length)
-            shared_ptr[CLocalMemoryBuffer] result_buffer = self.queue_client.OnMessageSync(buffer)
+            shared_ptr[CLocalMemoryBuffer] result_buffer
+        with nogil:
+            result_buffer = self.queue_client.OnMessageSync(buffer)
+        cdef:
             uint8_t* result_data = result_buffer.get().Data()
             int32_t result_data_size = result_buffer.get().Size()
         return result_data[:result_data_size]
@@ -218,7 +209,11 @@ cdef class QueueProducer:
         """support zero-copy bytes, bytearray, array of unsigned char"""
         cdef:
             CObjectID native_id = qid.data
-            uint64_t msg_id = self.writer.WriteMessageToBufferRing(native_id, <uint8_t *>(&value[0]), value.nbytes)
+            uint64_t msg_id
+            uint8_t *data = <uint8_t *>(&value[0])
+            uint32_t size = value.nbytes
+        with nogil:
+            msg_id = self.writer.WriteMessageToBufferRing(native_id, data, size)
         return msg_id
 
     def stop(self):
@@ -241,8 +236,10 @@ cdef class QueueConsumer:
     def pull(self, uint32_t timeout_millis):
         cdef:
             shared_ptr[CStreamingReaderBundle] bundle
-            CStreamingStatus status = self.reader.GetBundle(timeout_millis, bundle)
-            uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
+            CStreamingStatus status
+        with nogil:
+            status = self.reader.GetBundle(timeout_millis, bundle)
+        cdef uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
         if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
             if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
                 raise QueueInterruptException("consumer interrupted")

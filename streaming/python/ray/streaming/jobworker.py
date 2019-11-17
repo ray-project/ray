@@ -77,6 +77,7 @@ class JobWorker(object):
         # self.t.join()
 
     def run(self):
+        logger.info("start running")
         self.processor_instance.run(self.input_gate, self.output_gate)
         self.close()
 
