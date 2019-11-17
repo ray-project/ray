@@ -123,7 +123,7 @@ class warn_if_slow(object):
 
     def __init__(self, name, threshold=None):
         self.name = name
-        self.threshold = threshold if threshold else self.DEFAULT_THRESHOLD
+        self.threshold = threshold or self.DEFAULT_THRESHOLD
         self.too_slow = False
 
     def __enter__(self):

@@ -113,7 +113,7 @@ class CheckpointManager(object):
         except KeyError:
             if old_checkpoint not in self._membership:
                 old_checkpoint.delete()
-            logger.error("Result dict has no key: %s. "
+            logger.error("Result dict has no key: {}. "
                          "checkpoint_score_attr must be set to a key in the "
                          "result dict.".format(self._checkpoint_score_attr))
             return

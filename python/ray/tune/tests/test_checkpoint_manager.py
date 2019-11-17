@@ -7,7 +7,7 @@ import random
 import sys
 import unittest
 
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager, logger
 
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
@@ -21,7 +21,10 @@ class CheckpointManagerTest(unittest.TestCase):
         return {"i": i}
 
     def testOnCheckpointOrdered(self):
-        """Tests monotonically increasing priorities."""
+        """
+        Tests increasing priorities. Also tests that that the worst checkpoints
+        are deleted when necessary.
+        """
         keep_checkpoints_num = 2
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
         checkpoints = [
@@ -43,7 +46,10 @@ class CheckpointManagerTest(unittest.TestCase):
         self.assertIn(checkpoints[2], best_checkpoints)
 
     def testOnCheckpointUnordered(self):
-        """Tests priorities that aren't inserted in ascending order."""
+        """
+        Tests priorities that aren't inserted in ascending order. Also tests
+        that the worst checkpoints are deleted when necessary.
+        """
         keep_checkpoints_num = 2
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
         checkpoints = [
@@ -65,6 +71,9 @@ class CheckpointManagerTest(unittest.TestCase):
         self.assertIn(checkpoints[1], best_checkpoints)
 
     def testBestCheckpoints(self):
+        """
+        Tests that the best checkpoints are tracked and ordered correctly.
+        """
         keep_checkpoints_num = 4
         checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
         checkpoints = [
@@ -80,3 +89,18 @@ class CheckpointManagerTest(unittest.TestCase):
         self.assertEqual(len(best_checkpoints), keep_checkpoints_num)
         for i in range(len(best_checkpoints)):
             self.assertEqual(best_checkpoints[i].value, i + 12)
+
+    def testOnCheckpointUnavailableAttribute(self):
+        """
+        Tests that an error is logged when the associated result of the
+        checkpoint has no checkpoint score attribute.
+        """
+        keep_checkpoints_num = 1
+        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+
+        no_attr_checkpoint = Checkpoint(Checkpoint.MEMORY, 0, {})
+        with patch.object(logger, "error") as log_error_mock:
+            checkpoint_manager.on_checkpoint(no_attr_checkpoint)
+            log_error_mock.assert_called_once()
+            # The newest checkpoint should still be set despite this error.
+            assert checkpoint_manager.newest_checkpoint == no_attr_checkpoint
