@@ -165,109 +165,10 @@ Status WriterQueue::TryEvictItems() {
   return Status::OK();
 }
 
-uint64_t WriterQueue::MockSend() {
-  uint64_t count = 0;
-  STREAMING_LOG(INFO) << "MockSend in";
-  while (!IsPendingEmpty()) {
-    STREAMING_LOG(INFO) << "MockSend";
-    QueueItem item = PopPending();
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    count++;
-  }
-  STREAMING_LOG(INFO) << "MockSend out";
-
-  return count;
-}
-
-void WriterQueue::SendPullItem(QueueItem &item, uint64_t first_seq_id,
-                               uint64_t last_seq_id) {
-  PullDataMessage msg(actor_id_, peer_actor_id_, queue_id_, first_seq_id, item.SeqId(),
-                      last_seq_id, item.Buffer(), item.IsRaw());
-  STREAMING_CHECK(item.Buffer()->Data() != nullptr);
-  std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-  transport_->Send(std::move(buffer));
-}
-
-void WriterQueue::CreateSendMsgTask(QueueItem &item, std::vector<TaskArg> &args) {}
-
 void WriterQueue::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
   STREAMING_LOG(INFO) << "OnNotify target seq_id: " << notify_msg->SeqId();
   min_consumed_id_ = notify_msg->SeqId();
   // TODO: Async notify user thread
-}
-
-int WriterQueue::SendPullItems(uint64_t target_seq_id, uint64_t first_seq_id, uint64_t last_seq_id) {
-  STREAMING_LOG(INFO) << "SendPullItems : "
-                      << " target_seq_id: " << target_seq_id
-                      << " first_seq_id: " << first_seq_id
-                      << " last_seq_id: " << last_seq_id;
-  int count = 0;
-  auto it = buffer_queue_.begin();
-  std::advance(it, target_seq_id - first_seq_id);
-  for (; it != watershed_iter_; it++) {
-    STREAMING_LOG(INFO) << "OnPull send seq_id " << (*it).SeqId() << "(" << first_seq_id
-                        << "/" << last_seq_id << ")"
-                        << " to peer.";
-    SendPullItem(*it, first_seq_id, last_seq_id);
-    count++;
-  }
-
-  is_pulling_ = false;
-  return count;
-}
-
-// TODO: What will happen if user push items while we are OnPull ?
-// lock to sync OnPull and Push
-std::shared_ptr<LocalMemoryBuffer> WriterQueue::OnPull(std::shared_ptr<PullRequestMessage> pull_msg, bool async, boost::asio::io_service &service) {
-  std::unique_lock<std::mutex> lock(mutex_);
-  uint64_t target_seq_id = pull_msg->SeqId();
-  STREAMING_CHECK(peer_actor_id_ == pull_msg->ActorId())
-      << peer_actor_id_ << " " << pull_msg->ActorId();
-
-  auto it = buffer_queue_.begin();
-  uint64_t first_seq_id = (*it).SeqId();
-  // TODO: fix last_seq_id
-  int distance = std::distance(it, watershed_iter_);
-  uint64_t last_seq_id = first_seq_id + distance - 1;
-  STREAMING_LOG(INFO) << "OnPull target_seq_id: " << target_seq_id
-                      << " last_seq_id: " << last_seq_id
-                      << " first_seq_id: " << first_seq_id
-                      << " async: " << async;
-
-  if (target_seq_id <= last_seq_id && target_seq_id >= first_seq_id) {
-    if (async) {
-      is_pulling_ = true;
-      STREAMING_LOG(INFO) << "OnPull async, return";
-      service.post(std::bind(&WriterQueue::SendPullItems, this, target_seq_id, first_seq_id, last_seq_id));
-      PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
-                              pull_msg->QueueId(), queue::flatbuf::StreamingQueueError::OK);
-      std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-      return std::move(buffer);
-    }
-
-    int count = SendPullItems(target_seq_id, first_seq_id, last_seq_id);
-    STREAMING_LOG(INFO) << "OnPull total count: " << count;
-    PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
-                            pull_msg->QueueId(), queue::flatbuf::StreamingQueueError::OK);
-    std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-    transport_->Send(std::move(buffer));
-    return nullptr;
-  } else {
-    STREAMING_LOG(WARNING) << "There is no valid data to pull.";
-    PullResponseMessage msg(pull_msg->PeerActorId(), pull_msg->ActorId(),
-                            pull_msg->QueueId(),
-                            queue::flatbuf::StreamingQueueError::NO_VALID_DATA_TO_PULL);
-    std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-    if (async) {
-      return std::move(buffer);
-    } else {
-      transport_->Send(std::move(buffer));
-      return nullptr;
-    }
-  }
 }
 
 void ReaderQueue::OnConsumed(uint64_t seq_id) {
@@ -293,19 +194,6 @@ void ReaderQueue::Notify(uint64_t seq_id) {
 
 void ReaderQueue::CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args) {}
 
-/// TODO: add timeout
-bool ReaderQueue::PullPeerSync(uint64_t seq_id) {
-  PullRequestMessage msg(actor_id_, peer_actor_id_, queue_id_, seq_id, /*sync*/false);
-  std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-  promise_for_pull_.reset(new PromiseWrapper());
-  transport_->Send(std::move(buffer));
-
-  Status st = promise_for_pull_->WaitFor(PULL_UPPSTREAM_DATA_TIMEOUT_MS);
-  promise_for_pull_ = nullptr;
-  return st.ok();
-}
-
 void ReaderQueue::OnData(QueueItem &item) {
   if (item.SeqId() != expect_seq_id_) {
     STREAMING_LOG(WARNING) << "OnData ignore seq_id: " << item.SeqId()
@@ -320,40 +208,6 @@ void ReaderQueue::OnData(QueueItem &item) {
                        << " msg_id: " << last_recv_msg_id_;
   Push(item);
   expect_seq_id_++;
-}
-
-void ReaderQueue::OnPullData(std::shared_ptr<PullDataMessage> msg) {
-  // TODO: fix timestamp parameter
-  STREAMING_LOG(INFO) << "OnPullData recv seq_id " << msg->SeqId() << "("
-                      << msg->FirstSeqId() << "/" << msg->LastSeqId() << ")";
-  QueueItem item(msg->SeqId(), msg->Buffer(), 0, msg->IsRaw());
-  STREAMING_CHECK(msg->Buffer()->Data() != nullptr);
-
-  if (item.SeqId() != expect_seq_id_) {
-    STREAMING_LOG(WARNING) << "OnPullData ignore seq_id: " << item.SeqId()
-                           << " expect_seq_id_: " << expect_seq_id_;
-    return;
-  }
-
-  Push(item);
-  expect_seq_id_++;
-
-  STREAMING_CHECK(msg->SeqId() >= msg->FirstSeqId() && msg->SeqId() <= msg->LastSeqId())
-      << "(" << msg->FirstSeqId() << "/" << msg->SeqId() << "/" << msg->LastSeqId()
-      << ")";
-  if (msg->SeqId() == msg->LastSeqId()) {
-    STREAMING_LOG(INFO) << "Pull DATA Done";
-  }
-}
-
-void ReaderQueue::OnPullResponse(std::shared_ptr<PullResponseMessage> msg) {
-  if (nullptr == promise_for_pull_) return;
-
-  if (msg->Error() == queue::flatbuf::StreamingQueueError::OK) {
-    promise_for_pull_->Notify(Status::OK());
-  } else {
-    promise_for_pull_->Notify(Status::Invalid("No invalid data."));
-  }
 }
 
 }  // namespace streaming

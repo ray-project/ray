@@ -32,7 +32,6 @@ class QueueWriter {
                   uint32_t data_size, uint64_t timestamp,
                   bool raw = false /*only for test*/);
   uint64_t GetLastQueueItem(const ObjectID &queue_id);
-  void GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id, uint64_t &last_queue_seq_id);
 
  private:
   std::shared_ptr<QueueManager> manager_;
@@ -111,12 +110,6 @@ class QueueManager {
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                   std::vector<ObjectID> &failed_queues, QueueType type);
 
-  // NOTE: Pull queue from downstream to upstream, is an optional feature,
-  // to simplify the implementation, not supported.
-  void PullPeer(const ObjectID &queue_id, uint64_t seq_id);
-
-  void SetMinConsumedSeqId(const ObjectID &queue_id, uint64_t seq_id);
-
   void UpdateUpActor(const ObjectID &queue_id, const ActorID &actor_id);
   void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
 
@@ -125,25 +118,15 @@ class QueueManager {
   std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
   std::shared_ptr<Transport> GetInTransport();
 
-  void GetPeerLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_msg_id, uint64_t &last_queue_seq_id);
-
   void Stop();
 
   std::shared_ptr<LocalMemoryBuffer> OnCheckQueue(
       std::shared_ptr<CheckMessage> check_msg);
   void OnCheckQueueRsp(std::shared_ptr<CheckRspMessage> check_rsp_msg);
 
-  std::shared_ptr<LocalMemoryBuffer> OnGetLastMsgId(
-      std::shared_ptr<GetLastMsgIdMessage> get_msg);
-
   void DispatchMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   std::shared_ptr<LocalMemoryBuffer> DispatchMessageSync(
       std::shared_ptr<LocalMemoryBuffer> buffer);
-
-  /// Try to pull items whose seq id >= seq_id from upstream queue.
-  /// This async version return whether seq_id exists in peer synchronously.
-  bool PullPeerAsync(const ObjectID &queue_id, const ActorID &actor_id,
-                   const ActorID &peer_actor_id, uint64_t start_seq_id);
 
   void ReleaseAllUpQueues();
 

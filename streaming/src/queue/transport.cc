@@ -157,173 +157,6 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
   return check_rsp_msg;
 }
 
-void PullRequestMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueuePullRequestMsg(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()), seq_id_, async_);
-  builder.Finish(message);
-}
-
-std::shared_ptr<PullRequestMessage> PullRequestMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueuePullRequestMsg>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  uint64_t seq_id = message->seq_id();
-  bool async = message->async();
-
-  std::shared_ptr<PullRequestMessage> pull_msg =
-      std::make_shared<PullRequestMessage>(src_actor_id, dst_actor_id, queue_id, seq_id, async);
-
-  return pull_msg;
-}
-
-void PullDataMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueuePullDataMsg(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()), first_seq_id_, seq_id_, last_seq_id_,
-      buffer_->Size(), raw_);
-  builder.Finish(message);
-}
-
-std::shared_ptr<PullDataMessage> PullDataMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  uint64_t *fbs_length = (uint64_t *)bytes;
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message = flatbuffers::GetRoot<queue::flatbuf::StreamingQueuePullDataMsg>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  uint64_t first_seq_id = message->first_seq_id();
-  uint64_t seq_id = message->seq_id();
-  uint64_t last_seq_id = message->last_seq_id();
-  uint64_t length = message->length();
-  bool raw = message->raw();
-
-  bytes += *fbs_length;
-  /// COPY
-  std::shared_ptr<LocalMemoryBuffer> buffer =
-      std::make_shared<LocalMemoryBuffer>(bytes, (size_t)length, true);
-  std::shared_ptr<PullDataMessage> pull_data_msg = std::make_shared<PullDataMessage>(
-      src_actor_id, dst_actor_id, queue_id, first_seq_id, seq_id, last_seq_id, buffer, raw);
-
-  return pull_data_msg;
-}
-
-void PullResponseMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueuePullResponseMsg(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()), err_code_);
-  builder.Finish(message);
-}
-
-std::shared_ptr<PullResponseMessage> PullResponseMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueuePullResponseMsg>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  queue::flatbuf::StreamingQueueError err_code = message->err_code();
-
-  std::shared_ptr<PullResponseMessage> pull_rsp_msg =
-      std::make_shared<PullResponseMessage>(src_actor_id, dst_actor_id, queue_id,
-                                            err_code);
-
-  return pull_rsp_msg;
-}
-
-void ResubscribeMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueueResubscribeMsg(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()));
-  builder.Finish(message);
-}
-
-std::shared_ptr<ResubscribeMessage> ResubscribeMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueueResubscribeMsg>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-
-  std::shared_ptr<ResubscribeMessage> resub_msg =
-      std::make_shared<ResubscribeMessage>(src_actor_id, dst_actor_id, queue_id);
-
-  return resub_msg;
-}
-
-void GetLastMsgIdMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueueGetLastMsgId(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()));
-  builder.Finish(message);
-}
-
-std::shared_ptr<GetLastMsgIdMessage> GetLastMsgIdMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message = flatbuffers::GetRoot<queue::flatbuf::StreamingQueueGetLastMsgId>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-
-  std::shared_ptr<GetLastMsgIdMessage> get_last_msg_id_msg =
-      std::make_shared<GetLastMsgIdMessage>(src_actor_id, dst_actor_id, queue_id);
-
-  return get_last_msg_id_msg;
-}
-
-void GetLastMsgIdRspMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueueGetLastMsgIdRsp(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()), seq_id_, msg_id_, err_code_);
-  builder.Finish(message);
-}
-
-std::shared_ptr<GetLastMsgIdRspMessage> GetLastMsgIdRspMessage::FromBytes(
-    uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueueGetLastMsgIdRsp>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-  uint64_t seq_id = message->seq_id();
-  uint64_t msg_id = message->msg_id();
-  queue::flatbuf::StreamingQueueError err_code = message->err_code();
-
-  std::shared_ptr<GetLastMsgIdRspMessage> get_last_msg_id_rsp_msg =
-      std::make_shared<GetLastMsgIdRspMessage>(src_actor_id, dst_actor_id, queue_id,
-                                               seq_id, msg_id, err_code);
-  return get_last_msg_id_rsp_msg;
-}
-
 void TestInitMsg::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> queue_id_strs;
   for (auto &queue_id : queue_ids_) {
@@ -423,10 +256,16 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
 
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<ObjectID> return_ids;
+  std::vector<std::shared_ptr<RayObject>> results;
   ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, async_func_, args,
                                                          options, &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask fail. " << st;
+  }
+
+  Status get_st = core_worker_->Get(return_ids, -1, &results);
+  if (!get_st.ok()) {
+    STREAMING_LOG(ERROR) << "Get fail.";
   }
 }
 

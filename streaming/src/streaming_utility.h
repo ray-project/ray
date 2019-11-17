@@ -15,56 +15,7 @@ class StreamingUtility {
 
   static std::string Hexqid2str(const std::string &q_id_hex);
 
-  static std::string Qid2EdgeInfo(const ray::ObjectID &q_id);
-
   static std::string GetHostname();
-
-  static void Split(const ray::ObjectID &q_id, std::vector<std::string> &q_splited_vec);
-
-  template <typename T>
-  static std::string join(const T &v, const std::string &delimiter,
-                          const std::string &prefix = "",
-                          const std::string &suffix = "") {
-    std::stringstream ss;
-    size_t i = 0;
-    ss << prefix;
-    for (const auto &elem : v) {
-      if (i != 0) {
-        ss << delimiter;
-      }
-      ss << elem;
-      i++;
-    }
-    ss << suffix;
-    return ss.str();
-  }
-
-  template <class InputIterator>
-  static std::string join(InputIterator first, InputIterator last,
-                          const std::string &delim, const std::string &arround = "") {
-    std::string a = arround;
-    while (first != last) {
-      a += std::to_string(*first);
-      first++;
-      if (first != last) a += delim;
-    }
-    a += arround;
-    return a;
-  }
-
-  template <class InputIterator>
-  static std::string join(InputIterator first, InputIterator last,
-                          std::function<std::string(InputIterator)> func,
-                          const std::string &delim, const std::string &arround = "") {
-    std::string a = arround;
-    while (first != last) {
-      a += func(first);
-      first++;
-      if (first != last) a += delim;
-    }
-    a += arround;
-    return a;
-  }
 };
 
 class AutoSpinLock {

@@ -1,4 +1,3 @@
-
 #ifndef QUEUE_INTERFACE_H
 #define QUEUE_INTERFACE_H
 
@@ -44,20 +43,15 @@ class QueueWriterInterface {
                                    const int64_t timeout_ms = 0) = 0;
   virtual Status SetQueueEvictionLimit(const ObjectID &queue_id,
                                        uint64_t eviction_limit) = 0;
-  virtual void PullQueueToLocal(const ObjectID &queue_id) = 0;
   virtual void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
                                    int64_t timeout_ms,
                                    std::vector<ObjectID> &failed_queues) = 0;
   virtual void GetMinConsumedSeqID(const ObjectID &queue_id,
                                    uint64_t &min_consumed_id) = 0;
-  virtual void GetUnconsumedBytes(const ObjectID &queue_id,
-                                  uint32_t &unconsumed_bytes) = 0;
-  virtual bool NotifyResubscribe(const ObjectID &queue_id) = 0;
   virtual void CleanupSubscription(const ObjectID &queue_id) = 0;
   virtual void GetLastQueueItem(const ObjectID &queue_id, std::shared_ptr<uint8_t> &data,
                                 uint32_t &data_size, uint64_t &sequence_id) = 0;
   virtual Status DeleteQueue(const ObjectID &queue_id) = 0;
-  virtual bool UsePull() = 0;
 };
 
 class QueueReaderInterface {
@@ -88,24 +82,19 @@ class StreamingQueueWriter : public QueueWriterInterface {
   ~StreamingQueueWriter() {}
 
   Status CreateQueue(const ObjectID &queue_id, int64_t data_size,
-                     ActorID &actor_handle);
-  bool IsQueueFoundInLocal(const ObjectID &queue_id, const int64_t timeout_ms);
-  Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit);
+                     ActorID &actor_handle) override;
+  bool IsQueueFoundInLocal(const ObjectID &queue_id, const int64_t timeout_ms) override;
+  Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit) override;
 
-  void PullQueueToLocal(const ObjectID &queue_id);
   void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                           std::vector<ObjectID> &failed_queues);
-  void GetMinConsumedSeqID(const ObjectID &queue_id, uint64_t &min_consumed_id);
-  void GetUnconsumedBytes(const ObjectID &queue_id, uint32_t &unconsumed_bytes);
+                           std::vector<ObjectID> &failed_queues) override;
+  void GetMinConsumedSeqID(const ObjectID &queue_id, uint64_t &min_consumed_id) override;
   Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
-                       uint32_t data_size, uint64_t timestamp);
-  bool NotifyResubscribe(const ObjectID &queue_id);
-  void CleanupSubscription(const ObjectID &queue_id);
+                       uint32_t data_size, uint64_t timestamp) override;
+  void CleanupSubscription(const ObjectID &queue_id) override;
   void GetLastQueueItem(const ObjectID &queue_id, std::shared_ptr<uint8_t> &data,
-                        uint32_t &data_size, uint64_t &sequence_id);
-  virtual uint64_t GetLastMsgId(const ObjectID &queue_id, uint64_t &last_queue_seq_id);
-  Status DeleteQueue(const ObjectID &queue_id);
-  bool UsePull() { return false; }
+                        uint32_t &data_size, uint64_t &sequence_id) override;
+  Status DeleteQueue(const ObjectID &queue_id) override;
 
  private:
   std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
@@ -124,15 +113,15 @@ class StreamingQueueReader : public QueueReaderInterface {
   ~StreamingQueueReader() {}
 
   bool GetQueue(const ObjectID &queue_id, int64_t timeout_ms, uint64_t start_seq_id,
-                ActorID &actor_handle);
+                ActorID &actor_handle) override;
   Status GetQueueItem(const ObjectID &object_id, uint8_t *&data, uint32_t &data_size,
-                      uint64_t &seq_id, uint64_t timeout_ms = -1);
-  void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id);
-  void GetLastSeqID(const ObjectID &object_id, uint64_t &last_seq_id);
+                      uint64_t &seq_id, uint64_t timeout_ms = -1) override;
+  void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id) override;
+  void GetLastSeqID(const ObjectID &object_id, uint64_t &last_seq_id) override;
 
   void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                           std::vector<ObjectID> &failed_queues);
-  Status DeleteQueue(const ObjectID &queue_id);
+                           std::vector<ObjectID> &failed_queues) override;
+  Status DeleteQueue(const ObjectID &queue_id) override;
 
  private:
   std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
