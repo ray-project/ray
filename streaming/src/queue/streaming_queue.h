@@ -127,16 +127,8 @@ class WriterQueue : public Queue {
   /// NOTE: this callback function is called in queue thread.
   void OnNotify(std::shared_ptr<NotificationMessage> notify_msg);
 
-  /// Callback function, will be called when downstream queue wants to
-  /// pull some items form our upstream queue.
-  /// NOTE: this callback function is called in queue thread.
-  std::shared_ptr<LocalMemoryBuffer> OnPull(std::shared_ptr<PullRequestMessage> pull_msg, bool async, boost::asio::io_service &service);
-
   /// Send items through direct call.
   void Send();
-
-  /// Just for tests.
-  uint64_t MockSend();
 
   /// Called when user pushs item into queue. The count of items
   /// can be evicted, determined by eviction_limit_ and min_consumed_id_.
@@ -160,11 +152,6 @@ class WriterQueue : public Queue {
   uint64_t GetPeerLastMsgId() { return peer_last_msg_id_; }
 
   uint64_t GetPeerLastSeqId() { return peer_last_seq_id_; }
-
- private:
-  void SendPullItem(QueueItem &item, uint64_t first_seq_id, uint64_t last_seq_id);
-  int SendPullItems(uint64_t target_seq_id, uint64_t first_seq_id, uint64_t last_seq_id);
-  void CreateSendMsgTask(QueueItem &item, std::vector<TaskArg> &args);
 
  private:
   ActorID actor_id_;
@@ -203,18 +190,7 @@ class ReaderQueue : public Queue {
   /// then notify upstream queue.
   void OnConsumed(uint64_t seq_id);
 
-  /// Callback function, will be called when PullPeer response comes.
-  /// NOTE: this callback function is called in queue thread.
-  void OnPullResponse(std::shared_ptr<PullResponseMessage> msg);
-
   void OnData(QueueItem &item);
-  /// Callback function, will be called when PullPeer DATA comes.
-  /// TODO: can be combined with OnData
-  /// NOTE: this callback function is called in queue thread.
-  void OnPullData(std::shared_ptr<PullDataMessage> msg);
-
-  /// PullPeer async version, wait for upstream return.
-  bool PullPeerSync(uint64_t seq_id);
 
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
   void SetMinConsumedSeqId(uint64_t seq_id) { min_consumed_id_ = seq_id; }

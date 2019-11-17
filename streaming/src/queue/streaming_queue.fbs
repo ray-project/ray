@@ -6,12 +6,8 @@ enum MessageType:long {
   StreamingQueueCheckRspMsg,
   // Notify consumed
   StreamingQueueNotificationMsg,
-  // Try to pull data from peer
-  StreamingQueuePullRequestMsg,
-  StreamingQueuePullResponseMsg,
   // Message
   StreamingQueueDataMsg,
-  StreamingQueuePullDataMsg,
   StreamingQueueResubscribeMsg,
   //
   StreamingQueueGetLastMsgId,
@@ -28,125 +24,53 @@ enum StreamingQueueError:int {
 }
 
 table StreamingQueueCheckMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
 }
 
 table StreamingQueueCheckRspMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-err_code:
-  StreamingQueueError;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
+  err_code: StreamingQueueError;
 }
 
 table StreamingQueueNotificationMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-seq_id:
-  ulong;
-}
-
-table StreamingQueuePullRequestMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-seq_id:
-  ulong;
-async:
-  bool;
-}
-
-table StreamingQueuePullResponseMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-err_code:
-  StreamingQueueError;
-}
-
-table StreamingQueuePullDataMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-first_seq_id:
-  ulong;
-seq_id:
-  ulong;
-last_seq_id:
-  ulong;
-length:
-  ulong;
-raw:
-  bool;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
+  seq_id: ulong;
 }
 
 table StreamingQueueDataMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-seq_id:
-  ulong;
-length:
-  ulong;
-raw:
-  bool;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
+  seq_id: ulong;
+  length: ulong;
+  raw: bool;
 }
 
 table StreamingQueueResubscribeMsg {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
 }
 
 table StreamingQueueGetLastMsgId {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
 }
 
 table StreamingQueueGetLastMsgIdRsp {
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-queue_id:
-  string;
-seq_id:
-  ulong;
-msg_id:
-  ulong;
-err_code:
-  StreamingQueueError;
+  src_actor_id: string;
+  dst_actor_id: string;
+  queue_id: string;
+  seq_id: ulong;
+  msg_id: ulong;
+  err_code: StreamingQueueError;
 }
 
 // for test
@@ -156,29 +80,18 @@ enum StreamingQueueTestRole:int {
 }
 
 table StreamingQueueTestInitMsg {
-role:
-  StreamingQueueTestRole;
-src_actor_id:
-  string;
-dst_actor_id:
-  string;
-actor_handle:
-  string;
-queue_ids:
-  [string];
-rescale_queue_ids:
-  [string];
-test_suite_name:
-  string;
-test_name:
-  string;
-param:
-  ulong;
+  role: StreamingQueueTestRole;
+  src_actor_id: string;
+  dst_actor_id: string;
+  actor_handle: string;
+  queue_ids: [string];
+  rescale_queue_ids: [string];
+  test_suite_name: string;
+  test_name: string;
+  param: ulong;
 }
 
 table StreamingQueueTestCheckStatusRspMsg {
-test_name:
-  string;
-status:
-  bool;
+  test_name: string;
+  status: bool;
 }

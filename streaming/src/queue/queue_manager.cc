@@ -20,10 +20,10 @@ void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
   manager_->UpdateUpActor(queue_id, actor_id);
   manager_->UpdateDownActor(queue_id, peer_actor_id);
 
-  std::vector<ObjectID> queue_ids, failed_queues;
-  queue_ids.push_back(queue_id);
-  WaitQueues(queue_ids, 10*1000, failed_queues);
-  STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
+  // std::vector<ObjectID> queue_ids, failed_queues;
+  // queue_ids.push_back(queue_id);
+  // WaitQueues(queue_ids, 10*1000, failed_queues);
+  // STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
 }
 
 bool QueueWriter::IsQueueExist(const ObjectID &queue_id) {
@@ -101,17 +101,8 @@ bool QueueReader::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
   std::vector<ObjectID> queue_ids;
   queue_ids.push_back(queue_id);
 
-  if (start_seq_id != 1) {
-    STREAMING_LOG(INFO) << "Need pull data from upstream, start_seq_id: " << start_seq_id;
-    // STREAMING_LOG(INFO) << "PullPeerSync with timeout";
-    // return queue->PullPeerSync(start_seq_id);
-    STREAMING_LOG(INFO) << "PullPeerAsync ";
-    return manager_->PullPeerAsync(queue_id, actor_id, peer_actor_id, start_seq_id);
-    // return true;
-  } else {
-    STREAMING_LOG(INFO) << "No need pull data from upstream";
-    return true;
-  }
+  STREAMING_LOG(INFO) << "No need pull data from upstream";
+  return true;
 }
 
 void QueueReader::GetQueueItem(const ObjectID &queue_id, uint8_t *&data,
@@ -252,15 +243,6 @@ std::shared_ptr<Message> QueueManager::ParseMessage(
   case queue::flatbuf::MessageType::StreamingQueueCheckMsg:
     message = CheckMessage::FromBytes(bytes);
     break;
-  case queue::flatbuf::MessageType::StreamingQueuePullRequestMsg:
-    message = PullRequestMessage::FromBytes(bytes);
-    break;
-  case queue::flatbuf::MessageType::StreamingQueuePullResponseMsg:
-    message = PullResponseMessage::FromBytes(bytes);
-    break;
-  case queue::flatbuf::MessageType::StreamingQueuePullDataMsg:
-    message = PullDataMessage::FromBytes(bytes);
-    break;
   case queue::flatbuf::MessageType::StreamingQueueCheckRspMsg:
     message = CheckRspMessage::FromBytes(bytes);
     break;
@@ -325,43 +307,6 @@ void QueueManager::DispatchMessageInternal(
 
     QueueItem item(data_msg);
     queue->second->OnData(item);
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueuePullRequestMsg) {
-    if (upstream_state_ != StreamingQueueState::Running) {
-      STREAMING_LOG(WARNING) << "up queues are not running.";
-      return;
-    }
-    auto queue = upstream_queues_.find(msg->QueueId());
-    STREAMING_CHECK(queue != upstream_queues_.end());
-    std::shared_ptr<PullRequestMessage> pull_msg =
-        std::dynamic_pointer_cast<PullRequestMessage>(msg);
-
-    if (pull_msg->IsAsync() && callback != nullptr) {
-      callback(queue->second->OnPull(pull_msg, true, queue_service_));
-    } else {
-      queue->second->OnPull(pull_msg, false, queue_service_);
-    }
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueuePullDataMsg) {
-    if (downstream_state_ != StreamingQueueState::Running) {
-      STREAMING_LOG(WARNING) << "down queues are not running.";
-      return;
-    }
-    auto queue = downstream_queues_.find(msg->QueueId());
-    STREAMING_CHECK(queue != downstream_queues_.end());
-    std::shared_ptr<PullDataMessage> pull_data_msg =
-        std::dynamic_pointer_cast<PullDataMessage>(msg);
-
-    queue->second->OnPullData(pull_data_msg);
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueuePullResponseMsg) {
-    if (downstream_state_ != StreamingQueueState::Running) {
-      STREAMING_LOG(WARNING) << "down queues are not running.";
-      return;
-    }
-    auto queue = downstream_queues_.find(msg->QueueId());
-    STREAMING_CHECK(queue != downstream_queues_.end());
-    std::shared_ptr<PullResponseMessage> pull_rsp_msg =
-        std::dynamic_pointer_cast<PullResponseMessage>(msg);
-
-    queue->second->OnPullResponse(pull_rsp_msg);
   } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueCheckMsg) {
     std::shared_ptr<LocalMemoryBuffer> check_result =
         this->OnCheckQueue(std::dynamic_pointer_cast<CheckMessage>(msg));
@@ -405,14 +350,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::DispatchMessageSync(
   STREAMING_CHECK(st.ok());
 
   return result;
-}
-
-void QueueManager::PullPeer(const ObjectID &queue_id, uint64_t start_seq_id) {
-  auto it = downstream_queues_.find(queue_id);
-  RAY_CHECK(it != downstream_queues_.end());
-
-  it->second->SetExpectSeqId(start_seq_id);
-  it->second->PullPeerSync(start_seq_id);
 }
 
 void QueueManager::SetMinConsumedSeqId(const ObjectID &queue_id, uint64_t seq_id) {
@@ -648,37 +585,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::OnGetLastMsgId(
   
     return buffer;
   }
-}
-
-bool QueueManager::PullPeerAsync(const ObjectID &queue_id, const ActorID &actor_id,
-                   const ActorID &peer_actor_id, uint64_t start_seq_id) {
-  PullRequestMessage msg(actor_id, peer_actor_id, queue_id, start_seq_id, /*async*/true);
-  std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-  auto transport_it = GetOutTransport(queue_id);
-  STREAMING_CHECK(transport_it != nullptr);
-  std::shared_ptr<LocalMemoryBuffer> result_buffer = transport_it->SendForResultWithRetry(std::move(buffer), 10, PULL_UPPSTREAM_DATA_TIMEOUT_MS);
-  if (result_buffer == nullptr) {
-    return false;
-  }
-
-  std::shared_ptr<Message> result_msg = ParseMessage(result_buffer);
-  STREAMING_CHECK(result_msg->Type() ==
-                  queue::flatbuf::MessageType::StreamingQueuePullResponseMsg);
-  std::shared_ptr<PullResponseMessage> response_msg =
-      std::dynamic_pointer_cast<PullResponseMessage>(result_msg);
-
-  STREAMING_LOG(INFO) << "PullPeerAsync error: " << queue::flatbuf::EnumNameStreamingQueueError(response_msg->Error())
-                      << " start_seq_id: " << start_seq_id;
-  auto queue = downstream_queues_.find(queue_id);
-  STREAMING_CHECK(queue!=downstream_queues_.end());
-
-  if (response_msg->Error() == queue::flatbuf::StreamingQueueError::OK) {
-    STREAMING_LOG(INFO) << "Set queue " << queue_id << " expect_seq_id to " << start_seq_id;
-    queue->second->SetExpectSeqId(start_seq_id);
-  }
-
-  return response_msg->Error() == queue::flatbuf::StreamingQueueError::OK;
 }
 
 void QueueManager::ReleaseAllUpQueues() {

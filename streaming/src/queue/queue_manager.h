@@ -111,10 +111,6 @@ class QueueManager {
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                   std::vector<ObjectID> &failed_queues, QueueType type);
 
-  // NOTE: Pull queue from downstream to upstream, is an optional feature,
-  // to simplify the implementation, not supported.
-  void PullPeer(const ObjectID &queue_id, uint64_t seq_id);
-
   void SetMinConsumedSeqId(const ObjectID &queue_id, uint64_t seq_id);
 
   void UpdateUpActor(const ObjectID &queue_id, const ActorID &actor_id);
@@ -139,11 +135,6 @@ class QueueManager {
   void DispatchMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   std::shared_ptr<LocalMemoryBuffer> DispatchMessageSync(
       std::shared_ptr<LocalMemoryBuffer> buffer);
-
-  /// Try to pull items whose seq id >= seq_id from upstream queue.
-  /// This async version return whether seq_id exists in peer synchronously.
-  bool PullPeerAsync(const ObjectID &queue_id, const ActorID &actor_id,
-                   const ActorID &peer_actor_id, uint64_t start_seq_id);
 
   void ReleaseAllUpQueues();
 
