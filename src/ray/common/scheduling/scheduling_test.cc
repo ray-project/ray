@@ -105,69 +105,42 @@ void initCluster(ClusterResources &cluster_resources, int n)
   }
 }
 
-void initNodeResources1(NodeResources &node,
-  int64_t *pred_capacities, int pred_len,
-  int64_t *cust_ids, int64_t *cust_capacities,
-  int cust_len) {
+bool nodeResourcesEqual(NodeResources &nr1, NodeResources& nr2) {
 
-  for (int i = 0; i < pred_len; i++) {
-    ResourceCapacity rc;
-    rc.total = rc.available = pred_capacities[i];
-    node.capacities.push_back(rc);
+  if (nr1.capacities.size() != nr2.capacities.size()) {
+    cout << nr1.capacities.size() << " " << nr2.capacities.size() << endl;
+    return false;
   }
 
-  if (pred_len < NUM_PREDIFINED_RESOURCES) {
-    for (int i = pred_len; i < NUM_PREDIFINED_RESOURCES; i++) {
-      ResourceCapacity rc;
-      rc.total = rc.available = 0;
-      node.capacities.push_back(rc);
+  for (int i = 0; i < nr1.capacities.size(); i++) {
+    if (nr1.capacities[i].available != nr2.capacities[i].available) {
+      return false;
+    }
+    if (nr1.capacities[i].total != nr2.capacities[i].total) {
+      return false;
     }
   }
 
-  ResourceCapacity rc;
-  for (int i = 0; i < cust_len; i++) {
-    rc.total = rc.available = cust_capacities[i];
-    node.custom_resources.insert(pair<int64_t, ResourceCapacity>(cust_ids[i], rc));
+  if (nr1.custom_resources.size() != nr2.custom_resources.size()) {
+    return false;
   }
+
+  auto cr1 = nr1.custom_resources;
+  auto cr2 = nr2.custom_resources;
+  for (auto it1 = cr1.begin(); it1 != cr1.end(); ++it1) {
+    auto it2 = cr2.find(it1->first);
+    if (it2 == cr2.end()) {
+      return false;
+    }
+    if (it1->second.total != it2->second.total) {
+      return false;
+    }
+    if (it1->second.available != it2->second.available) {
+      return false;
+    }
+  }
+  return true;
 }
-
-void initCluster1(ClusterResources &cluster_resources, int n)
-{
-
-  int64_t pred_capacities[NUM_PREDIFINED_RESOURCES];
-  int64_t cust_ids[NUM_PREDIFINED_RESOURCES];
-  int64_t cust_capacities[NUM_PREDIFINED_RESOURCES];
-  int i, k;
-
-  for (i = 0; i < n; i++) {
-    NodeResources node_resources;
-
-    for (k = 0; k < NUM_PREDIFINED_RESOURCES; k++) {
-      if (rand() % 3 == 0) {
-        pred_capacities[k] = 0;
-      } else {
-        pred_capacities[k] = rand() % 10;
-      }
-    }
-
-    int m = min(rand() % NUM_PREDIFINED_RESOURCES, n);
-
-    int start = rand() % n;
-    for (k = 0; k < m; k++) {
-      cust_ids[k] = (start + k) % n;
-      cust_capacities[k] = rand() % 10;
-    }
-
-    initNodeResources1(node_resources, pred_capacities, NUM_PREDIFINED_RESOURCES,
-                            cust_ids, cust_capacities, m);
-
-    cluster_resources.AddOrUpdateNode(i, node_resources);
-
-    node_resources.custom_resources.clear();
-  }
-}
-
-
 
 namespace ray {
 
@@ -212,7 +185,7 @@ TEST_F(SchedulingTest, SchedulingInitClusterTest) {
   int num_nodes = 10;
   ClusterResources cluster_resources;
 
-  initCluster1(cluster_resources, num_nodes);
+  initCluster(cluster_resources, num_nodes);
 
   ASSERT_EQ(cluster_resources.Count(), num_nodes);
 }
@@ -223,7 +196,7 @@ TEST_F(SchedulingTest, SchedulingDeleteClusterNodeTest) {
 
   ClusterResources cluster_resources;
 
-  initCluster1(cluster_resources, num_nodes);
+  initCluster(cluster_resources, num_nodes);
   cluster_resources.RemoveNode(remove_id);
 
   ASSERT_TRUE(num_nodes - 1 == cluster_resources.Count());
@@ -234,7 +207,7 @@ TEST_F(SchedulingTest, SchedulingModifyClusterNodeTest) {
   int64_t update_id = 2;
   ClusterResources cluster_resources;
 
-  initCluster1(cluster_resources, num_nodes);
+  initCluster(cluster_resources, num_nodes);
 
   NodeResources node_resources;
   vector<int64_t> pred_capacities;
@@ -315,6 +288,41 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
     }
   }
 }
+
+
+TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
+  ClusterResources cluster_resources;
+  NodeResources nr;
+
+  {
+    NodeResources node_resources;
+    vector<int64_t> pred_capacities {10, 5, 3};
+    vector<int64_t> cust_ids {1, 2};
+    vector<int64_t> cust_capacities {5, 5};
+    initNodeResources(node_resources, pred_capacities,
+                      cust_ids, cust_capacities);
+    cluster_resources.AddOrUpdateNode(1, node_resources);
+    nr = node_resources;
+  }
+
+  NodeResources *pnr = cluster_resources.GetNodeResources(1);
+  ASSERT_TRUE(nodeResourcesEqual(*pnr, nr));
+
+  {
+    NodeResources node_resources;
+    vector<int64_t> pred_capacities {10, 10};
+    vector<int64_t> cust_ids {2, 3};
+    vector<int64_t> cust_capacities {6, 6};
+    initNodeResources(node_resources, pred_capacities,
+                      cust_ids, cust_capacities);
+    cluster_resources.AddOrUpdateNode(1, node_resources);
+    nr = node_resources;
+  }
+
+  pnr = cluster_resources.GetNodeResources(1);
+  ASSERT_TRUE(nodeResourcesEqual(*pnr, nr));
+}
+
 
 TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Create cluster resources containing local node.
