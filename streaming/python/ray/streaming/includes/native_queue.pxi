@@ -274,7 +274,7 @@ cdef class QueueConsumer:
             raise Exception("Unsupported bundle type {}".format(bundle_type))
 
     def stop(self):
-        self.writer.Stop()
+        self.reader.Stop()
 
 cdef c_vector[CObjectID] bytes_list_to_qid_vec(list py_queue_ids) except *:
     assert len(py_queue_ids) > 0
