@@ -8,7 +8,6 @@ enum MessageType:long {
   StreamingQueueNotificationMsg,
   // Message
   StreamingQueueDataMsg,
-  StreamingQueueResubscribeMsg,
   //
   StreamingQueueGetLastMsgId,
   StreamingQueueGetLastMsgIdRsp,
@@ -50,12 +49,6 @@ table StreamingQueueDataMsg {
   seq_id: ulong;
   length: ulong;
   raw: bool;
-}
-
-table StreamingQueueResubscribeMsg {
-  src_actor_id: string;
-  dst_actor_id: string;
-  queue_id: string;
 }
 
 // for test

@@ -20,10 +20,10 @@ void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
   manager_->UpdateUpActor(queue_id, actor_id);
   manager_->UpdateDownActor(queue_id, peer_actor_id);
 
-  // std::vector<ObjectID> queue_ids, failed_queues;
-  // queue_ids.push_back(queue_id);
-  // WaitQueues(queue_ids, 10*1000, failed_queues);
-  // STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
+  std::vector<ObjectID> queue_ids, failed_queues;
+  queue_ids.push_back(queue_id);
+  WaitQueues(queue_ids, 10*1000, failed_queues);
+  STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
 }
 
 bool QueueWriter::IsQueueExist(const ObjectID &queue_id) {

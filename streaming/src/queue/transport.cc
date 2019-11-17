@@ -157,31 +157,6 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
   return check_rsp_msg;
 }
 
-void ResubscribeMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
-  auto message = queue::flatbuf::CreateStreamingQueueResubscribeMsg(
-      builder, builder.CreateString(actor_id_.Binary()),
-      builder.CreateString(peer_actor_id_.Binary()),
-      builder.CreateString(queue_id_.Binary()));
-  builder.Finish(message);
-}
-
-std::shared_ptr<ResubscribeMessage> ResubscribeMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
-  bytes += sizeof(uint64_t);
-
-  /// TODO: Verify buffer
-  auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueueResubscribeMsg>(bytes);
-  ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
-  ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
-  ObjectID queue_id = ObjectID::FromBinary(message->queue_id()->str());
-
-  std::shared_ptr<ResubscribeMessage> resub_msg =
-      std::make_shared<ResubscribeMessage>(src_actor_id, dst_actor_id, queue_id);
-
-  return resub_msg;
-}
-
 void TestInitMsg::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> queue_id_strs;
   for (auto &queue_id : queue_ids_) {

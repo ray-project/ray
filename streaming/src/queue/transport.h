@@ -121,22 +121,6 @@ class CheckRspMessage : public Message {
       queue::flatbuf::MessageType::StreamingQueueCheckRspMsg;
 };
 
-class ResubscribeMessage : public Message {
- public:
-  ResubscribeMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                     const ObjectID &queue_id)
-      : Message(actor_id, peer_actor_id, queue_id) {}
-  virtual ~ResubscribeMessage() {}
-
-  static std::shared_ptr<ResubscribeMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
-  queue::flatbuf::MessageType Type() { return type_; }
-
- private:
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueResubscribeMsg;
-};
-
 class TestInitMsg : public Message {
  public:
   TestInitMsg(const queue::flatbuf::StreamingQueueTestRole role,
