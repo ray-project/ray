@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import enum
 import logging
+import cloudpickle
 
 logger = logging.getLogger(__name__)
 logger.setLevel("DEBUG")
@@ -63,7 +64,7 @@ class Operator(object):
         self.type = op_type
         self.processor_class = processor_class
         self.name = name
-        self.logic = logic  # The operator's logic
+        self._logic = cloudpickle.dumps(logic)  # The operator's logic
         self.num_instances = num_instances
         # One partitioning strategy per downstream operator (default: forward)
         self.partitioning_strategies = {}
@@ -105,3 +106,7 @@ class Operator(object):
             log.format(self.id, self.name, self.processor_class, self.logic,
                        self.num_instances, self.partitioning_strategies,
                        self.other_args))
+
+    @property
+    def logic(self):
+        return cloudpickle.loads(self._logic)

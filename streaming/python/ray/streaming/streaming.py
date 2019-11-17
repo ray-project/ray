@@ -359,10 +359,8 @@ class Environment(object):
         init_waits = []
         for actor_handle in self.execution_graph.actor_handles:
             init_waits.append(actor_handle.init.remote(pickle.dumps(self)))
-            # assert ray.get() is True
         for wait in init_waits:
             assert ray.get(wait) is True
-
         logger.info("running...")
         # start
         exec_handles = []
