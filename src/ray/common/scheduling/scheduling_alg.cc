@@ -10,7 +10,7 @@ ClusterResources::ClusterResources(int64_t local_node_id, const NodeResources &l
   add(local_node_id, node_resources);
 }
 
-void ClusterResources::add(int64_t node_id, const NodeResources &node_resources) {
+void ClusterResources::AddNode(int64_t node_id, const NodeResources &node_resources) {
 
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
