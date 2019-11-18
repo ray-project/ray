@@ -132,8 +132,9 @@ class CoreWorkerDirectTaskSubmitter {
       client_cache_ GUARDED_BY(mu_);
 
   /// Map from worker address to the lease client through which it should be
-  /// returned.
-  absl::flat_hash_map<WorkerAddress, std::shared_ptr<WorkerLeaseInterface>>
+  /// returned and its lease expiration time.
+  absl::flat_hash_map<WorkerAddress,
+                      std::pair<std::shared_ptr<WorkerLeaseInterface>, int64_t>>
       worker_to_lease_client_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
