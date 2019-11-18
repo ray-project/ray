@@ -41,10 +41,14 @@ class MockRayletClient : public WorkerLeaseInterface {
   bool GrantWorkerLease(const std::string &address, int port,
                         const ClientID &retry_at_raylet_id) {
     rpc::WorkerLeaseReply reply;
-    reply.set_address(address);
-    reply.set_port(port);
     if (!retry_at_raylet_id.IsNil()) {
-      reply.set_retry_at_raylet_id(retry_at_raylet_id.Binary());
+      reply.mutable_retry_at_raylet_address()->set_ip_address(address);
+      reply.mutable_retry_at_raylet_address()->set_port(port);
+      reply.mutable_retry_at_raylet_address()->set_raylet_id(retry_at_raylet_id.Binary());
+    } else {
+      reply.mutable_worker_address()->set_ip_address(address);
+      reply.mutable_worker_address()->set_port(port);
+      reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
     }
     if (callbacks.size() == 0) {
       return false;
