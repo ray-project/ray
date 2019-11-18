@@ -216,6 +216,8 @@ class BoundedExecutor {
 
 /// Used by async actor mode. The fiber event will be used
 /// from python to switch control among different coroutines.
+/// Taken from boost::fiber examples
+/// https://github.com/boostorg/fiber/blob/7be4f860e733a92d2fa80a848dd110df009a20e1/examples/wait_stuff.cpp#L115-L142
 class FiberEvent {
  public:
   // Block the fiber until the event is notified.
