@@ -4,7 +4,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "boost/fiber/all.hpp"
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
