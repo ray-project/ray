@@ -58,7 +58,7 @@ class DataChannel(object):
             self.str_qid)
 
 
-_CLOSE_FLAG = b''
+_CLOSE_FLAG = b' '
 
 
 # Pulls and merges data from multiple input channels
@@ -115,8 +115,8 @@ class DataInput(object):
             return pickle.loads(msg_data)
 
     def close(self):
-        self.consumer.stop()
-        self.consumer.close()
+        # don't stop StreamingReader to since empty message may still in sending
+        pass
 
 
 # Selects output channel(s) and pushes data
@@ -214,9 +214,9 @@ class DataOutput(object):
         self.producer = self.queue_link.register_queue_producer(qids, to_actors)
 
     def close(self):
-        """Close the channel (True) by propagating 'None'
+        """Close the channel (True) by propagating _CLOSE_FLAG
 
-        None is used as special type of record that is propagated from sources
+        _CLOSE_FLAG is used as special type of record that is propagated from sources
         to sink to notify that the end of data in a stream.
         """
         for channel in self.channels:
