@@ -70,7 +70,6 @@ class Trainable(object):
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
-        log_sys_usage = self.config.get("log_sys_usage", False)
 
         if logger_creator:
             self._result_logger = logger_creator(self.config)
@@ -92,6 +91,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = False
+
         start_time = time.time()
         self._setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
@@ -101,6 +101,7 @@ class Trainable(object):
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
         self._local_ip = ray.services.get_node_ip_address()
+        log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
     @classmethod
@@ -112,11 +113,11 @@ class Trainable(object):
 
         Example:
             >>> def default_resource_request(cls, config):
-                    return Resources(
-                        cpu=0,
-                        gpu=0,
-                        extra_cpu=config["workers"],
-                        extra_gpu=int(config["use_gpu"]) * config["workers"])
+            >>>     return Resources(
+            >>>         cpu=0,
+            >>>         gpu=0,
+            >>>         extra_cpu=config["workers"],
+            >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
         """
 
         return None
@@ -171,7 +172,6 @@ class Trainable(object):
         Returns:
             A dict that describes training progress.
         """
-
         start = time.time()
         result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
@@ -239,17 +239,6 @@ class Trainable(object):
 
         return result
 
-    def delete_checkpoint(self, checkpoint_dir):
-        """Removes subdirectory within checkpoint_folder
-
-        Args:
-            checkpoint_dir : path to checkpoint
-        """
-        if os.path.isfile(checkpoint_dir):
-            shutil.rmtree(os.path.dirname(checkpoint_dir))
-        else:
-            shutil.rmtree(checkpoint_dir)
-
     def save(self, checkpoint_dir=None):
         """Saves the current model state to a checkpoint.
 
@@ -262,9 +251,9 @@ class Trainable(object):
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-
         checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
                                       "checkpoint_{}".format(self._iteration))
+
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
         checkpoint = self._save(checkpoint_dir)
@@ -293,7 +282,7 @@ class Trainable(object):
                 "time_total": self._time_total,
                 "episodes_total": self._episodes_total,
                 "saved_as_dict": saved_as_dict,
-                "ray_version": ray.__version__
+                "ray_version": ray.__version__,
             }, f)
         return checkpoint_path
 
@@ -305,10 +294,8 @@ class Trainable(object):
         Returns:
             Object holding checkpoint data.
         """
-
         tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
         checkpoint_path = self.save(tmpdir)
-
         # Save all files in subtree.
         data = {}
         for basedir, _, file_names in os.walk(tmpdir):
@@ -356,7 +343,7 @@ class Trainable(object):
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
         self._restored = True
-        logger.info("Restored from checkpoint: {}".format(checkpoint_path))
+        logger.info("Restored from checkpoint: %s", checkpoint_path)
         state = {
             "_iteration": self._iteration,
             "_timesteps_total": self._timesteps_total,
@@ -398,7 +385,7 @@ class Trainable(object):
             export_dir (str): Optional dir to place the exported model.
                 Defaults to self.logdir.
 
-        Return:
+        Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
         export_dir = export_dir or self.logdir
@@ -422,7 +409,7 @@ class Trainable(object):
 
     def stop(self):
         """Releases all resources used by this trainable."""
-
+        self._result_logger.flush()
         self._result_logger.close()
         self._stop()
 
