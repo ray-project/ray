@@ -721,29 +721,4 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   return status;
 }
 
-Status CoreWorker::ActorLanguage(const ActorID &actor_id, Language *language) const {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-
-  *language = actor_handle->ActorLanguage();
-  return Status::OK();
-}
-
-Status CoreWorker::ActorCreationTaskFunctionDescriptor(
-    const ActorID &actor_id, std::vector<std::string> *function_descriptor) const {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-
-  *function_descriptor = actor_handle->ActorCreationTaskFunctionDescriptor();
-  return Status::OK();
-}
-
-Status CoreWorker::IsDirectCallActor(const ActorID &actor_id, bool *is_direct) const {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-
-  *is_direct = actor_handle->IsDirectCallActor();
-  return Status::OK();
-}
-
 }  // namespace ray

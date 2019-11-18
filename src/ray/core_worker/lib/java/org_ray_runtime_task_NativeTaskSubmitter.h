@@ -22,7 +22,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
  * Signature:
  * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)J
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
     JNIEnv *, jclass, jlong, jobject, jobject, jobject);
 
 /*
@@ -33,7 +33,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativ
  */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(JNIEnv *, jclass,
-                                                                    jlong, jbyteArray, jobject,
+                                                                    jlong, jlong, jobject,
                                                                     jobject, jint,
                                                                     jobject);
 

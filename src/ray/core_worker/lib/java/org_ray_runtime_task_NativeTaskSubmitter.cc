@@ -4,10 +4,11 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
+#include "ray/core_worker/task_interface.h"
 
-inline ray::CoreWorker &GetCoreWorker(
+inline ray::CoreWorkerTaskInterface &GetTaskInterfaceFromPointer(
     jlong nativeCoreWorkerPointer) {
-  return *reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer);
+  return reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)->Tasks();
 }
 
 inline ray::RayFunction ToRayFunction(JNIEnv *env, jobject functionDescriptor) {
@@ -123,7 +124,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  auto status = GetCoreWorker(nativeCoreWorkerPointer)
+  auto status = GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
                     .SubmitTask(ray_function, task_args, task_options, &return_ids);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
@@ -137,20 +138,20 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
  * Signature:
  * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)J
  */
-JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
     jobject args, jobject actorCreationOptions) {
   auto ray_function = ToRayFunction(env, functionDescriptor);
   auto task_args = ToTaskArgs(env, args);
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
 
-  ray::ActorID actor_id;
+  std::unique_ptr<ray::ActorHandle> actor_handle;
   auto status =
-      GetCoreWorker(nativeCoreWorkerPointer)
-          .CreateActor(ray_function, task_args, actor_creation_options, &actor_id);
+      GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
+          .CreateActor(ray_function, task_args, actor_creation_options, &actor_handle);
 
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
-  return IdToJavaByteArray<ray::ActorID>(env, actor_id);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, 0);
+  return reinterpret_cast<jlong>(actor_handle.release());
 }
 
 /*
@@ -161,16 +162,16 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativ
  */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
-    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jbyteArray actorId,
+    JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jlong nativeActorHandle,
     jobject functionDescriptor, jobject args, jint numReturns, jobject callOptions) {
-  auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
+  auto &actor_handle = *(reinterpret_cast<ray::ActorHandle *>(nativeActorHandle));
   auto ray_function = ToRayFunction(env, functionDescriptor);
   auto task_args = ToTaskArgs(env, args);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
   std::vector<ObjectID> return_ids;
-  auto status = GetCoreWorker(nativeCoreWorkerPointer)
-                    .SubmitActorTask(actor_id, ray_function, task_args, task_options,
+  auto status = GetTaskInterfaceFromPointer(nativeCoreWorkerPointer)
+                    .SubmitActorTask(actor_handle, ray_function, task_args, task_options,
                                      &return_ids);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);

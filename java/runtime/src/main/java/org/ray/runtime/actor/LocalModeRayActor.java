@@ -35,6 +35,11 @@ public class LocalModeRayActor implements RayActor, Externalizable {
     return actorId;
   }
 
+  @Override
+  public UniqueId getHandleId() {
+    return UniqueId.NIL;
+  }
+
   public ObjectId exchangePreviousActorTaskDummyObjectId(ObjectId previousActorTaskDummyObjectId) {
     return this.previousActorTaskDummyObjectId.getAndSet(previousActorTaskDummyObjectId);
   }

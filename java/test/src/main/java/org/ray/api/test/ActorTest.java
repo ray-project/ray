@@ -107,6 +107,14 @@ public class ActorTest extends BaseTest {
             .get());
   }
 
+  public void testForkingActorHandle() {
+    TestUtils.skipTestUnderSingleProcess();
+    RayActor<Counter> counter = Ray.createActor(Counter::new, 100);
+    Assert.assertEquals(Integer.valueOf(101), Ray.call(Counter::increaseAndGet, counter, 1).get());
+    RayActor<Counter> counter2 = ((NativeRayActor) counter).fork();
+    Assert.assertEquals(Integer.valueOf(103), Ray.call(Counter::increaseAndGet, counter2, 2).get());
+  }
+
   public void testUnreconstructableActorObject() throws InterruptedException {
     TestUtils.skipTestUnderSingleProcess();
     // The UnreconstructableException is created by raylet.
