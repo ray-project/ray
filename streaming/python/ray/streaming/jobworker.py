@@ -87,6 +87,9 @@ class JobWorker(object):
         if self.output_gate:
             self.output_gate.close()
 
+    def is_finished(self):
+        return self.t.is_alive()
+
     def on_streaming_transfer(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
         self.queue_link.on_streaming_transfer(buffer.to_pybytes())
