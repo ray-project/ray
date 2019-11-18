@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import itertools
 import json
 import random
 import numpy as np
@@ -15,6 +16,10 @@ except ImportError:
 import signal
 import sys
 import time
+try:
+    import asyncio
+except ImportError:
+    asyncio = None
 
 import ray
 import ray.ray_constants as ray_constants
@@ -2852,3 +2857,21 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_asyncio_actor(ray_start_regular):
+    @ray.remote
+    class AsyncActor:
+        async def sleep(self):
+            start = time.time()
+            await asyncio.sleep(1)
+            end = time.time()
+            return (start, end)
+
+    actor = AsyncActor.options(is_direct_call=True, is_async=True).remote()
+    result = ray.get([actor.sleep.remote() for _ in range(50)])
+    flatten_result = list(itertools.chain.from_iterable(result))
+    start, end = min(flatten_result), max(flatten_result)
+    assert end - start < 25
