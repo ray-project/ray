@@ -49,8 +49,8 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Push(const PushRequest &request, const ClientCallback<PushReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PushRequest, PushReply>(
-        *stubs_[push_rr_index_++ % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPush,
-        request, callback);
+        *stubs_[push_rr_index_++ % num_connections_],
+        &ObjectManagerService::Stub::PrepareAsyncPush, request, callback);
   }
 
   /// Pull object from remote object manager
@@ -59,8 +59,8 @@ class ObjectManagerClient {
   /// \param callback The callback function that handles reply from server
   void Pull(const PullRequest &request, const ClientCallback<PullReply> &callback) {
     client_call_manager_.CreateCall<ObjectManagerService, PullRequest, PullReply>(
-        *stubs_[pull_rr_index_++ % num_connections_], &ObjectManagerService::Stub::PrepareAsyncPull,
-        request, callback);
+        *stubs_[pull_rr_index_++ % num_connections_],
+        &ObjectManagerService::Stub::PrepareAsyncPull, request, callback);
   }
 
   /// Tell remote object manager to free objects
