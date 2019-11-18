@@ -4,6 +4,7 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <queue>
 #include <set>
 #include <utility>
 
@@ -17,7 +18,37 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
+namespace {
+
+/// Extend std::priority_queue to allow std::move out of the priority queue.
+template <class T, class Container = std::vector<T>,
+          class Compare = std::less<typename Container::value_type>>
+class extended_priority_queue : public std::priority_queue<T, Container, Compare> {
+ public:
+  T top_and_pop() {
+    std::pop_heap(c.begin(), c.end(), comp);
+    T value = std::move(c.back());
+    c.pop_back();
+    return value;
+  }
+
+ protected:
+  using std::priority_queue<T, Container, Compare>::c;
+  using std::priority_queue<T, Container, Compare>::comp;
+};
+
+}  // namespace
+
 namespace ray {
+
+class ComparePushTaskRequest {
+ public:
+  bool operator()(const std::unique_ptr<rpc::PushTaskRequest> &a,
+                  const std::unique_ptr<rpc::PushTaskRequest> &b) const {
+    return b->task_spec().actor_task_spec().actor_counter() <
+           a->task_spec().actor_task_spec().actor_counter();
+  }
+};
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
@@ -124,9 +155,17 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// subscribe updates for a specific actor.
   std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClient>> rpc_clients_;
 
-  /// Map from actor id to the actor's pending requests.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
+  /// Map from actor id to the actor's pending requests. Each actor's requests
+  /// are ordered by the task number in the request.
+  std::unordered_map<
+      ActorID, extended_priority_queue<std::unique_ptr<rpc::PushTaskRequest>,
+                                       std::vector<std::unique_ptr<rpc::PushTaskRequest>>,
+                                       ComparePushTaskRequest>>
       pending_requests_;
+
+  /// Map from actor id to the sequence number of the next task to send to that
+  /// actor.
+  std::unordered_map<ActorID, int64_t> next_sequence_number_;
 
   /// Map from actor id to the tasks that are waiting for reply.
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
