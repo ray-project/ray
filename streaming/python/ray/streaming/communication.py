@@ -58,6 +58,9 @@ class DataChannel(object):
             self.str_qid)
 
 
+_CLOSE_FLAG = b''
+
+
 # Pulls and merges data from multiple input channels
 class DataInput(object):
     """An input gate of an operator instance.
@@ -102,7 +105,7 @@ class DataInput(object):
             time.sleep(0.001)
             queue_item = self.consumer.pull(100)
         msg_data = queue_item.body()
-        if msg_data is None:
+        if msg_data == _CLOSE_FLAG:
             self.closed[queue_item.queue_id] = True
             if len(self.closed) == len(self.input_channels):
                 return None
@@ -217,7 +220,7 @@ class DataOutput(object):
         to sink to notify that the end of data in a stream.
         """
         for channel in self.channels:
-            self.producer.produce(channel.qid, pickle.dumps(None))
+            self.producer.produce(channel.qid, _CLOSE_FLAG)
         # stop StreamingWriter may cause None flag not sent to peer actor
 
     # Pushes the record to the output

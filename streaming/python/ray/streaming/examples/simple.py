@@ -45,7 +45,7 @@ if __name__ == "__main__":
                 .set_parallelism(2) \
                 .filter(filter_fn) \
                 .set_parallelism(2) \
-                .inspect(print)     # Prints the contents of the
+                .inspect(lambda x: print("result", x))     # Prints the contents of the
     # stream to stdout
     start = time.time()
     env_handle = env.execute()
