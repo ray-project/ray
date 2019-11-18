@@ -222,23 +222,23 @@ class FiberEvent {
  public:
   // Block the fiber until the event is notified.
   void Wait() {
-    std::unique_lock<boost::fibers::mutex> lock(mutex);
-    cond.wait(lock, [this]() { return ready; });
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    cond_.wait(lock, [this]() { return ready_; });
   }
 
   // Notify the event and unblock all waiters.
   void Notify() {
     {
-      std::unique_lock<boost::fibers::mutex> lock(mutex);
-      ready = true;
+      std::unique_lock<boost::fibers::mutex> lock(mutex_);
+      ready_ = true;
     }  // release mutex
-    cond.notify_one();
+    cond_.notify_one();
   }
 
  private:
-  boost::fibers::condition_variable cond;
-  boost::fibers::mutex mutex;
-  bool ready = false;
+  boost::fibers::condition_variable cond_;
+  boost::fibers::mutex mutex_;
+  bool ready_ = false;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -246,14 +246,15 @@ class FiberEvent {
 class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
-                  std::shared_ptr<BoundedExecutor> pool = nullptr, bool use_async = false,
+                  std::shared_ptr<BoundedExecutor> pool = nullptr,
+                  bool use_asyncio = false,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()),
         pool_(pool),
-        use_async_(use_async) {}
+        use_asyncio_(use_asyncio) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -298,7 +299,7 @@ class SchedulingQueue {
       auto head = pending_tasks_.begin();
       auto request = head->second;
 
-      if (use_async_) {
+      if (use_asyncio_) {
         boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
@@ -354,8 +355,9 @@ class SchedulingQueue {
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
-
-  bool use_async_;
+  /// Whether we should enqueue requests into asyncio pool. Setting this to true
+  /// will instantiate all tasks as fibers that can be yielded.
+  bool use_asyncio_;
 
   friend class SchedulingQueueTest;
 };
@@ -395,7 +397,7 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
 
-  void SetActorAsAsync(void);
+  void SetActorAsAsync();
 
  private:
   // Worker context.
@@ -415,10 +417,13 @@ class CoreWorkerDirectTaskReceiver {
   int max_concurrency_ = 1;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
-
+  /// Whether this actor use asyncio for concurrency.
   bool is_async_ = false;
-  std::shared_ptr<FiberEvent> fiber_shutdown_event_;
+  /// The thread that runs all asyncio fibers. is_async_ must be true.
   std::shared_ptr<std::thread> fiber_runner_thread_;
+  /// The fiber event used to block fiber_runner_thread_ from shutdown.
+  /// is_async_ must be true.
+  std::shared_ptr<FiberEvent> fiber_shutdown_event_;
 };
 
 }  // namespace ray
