@@ -7,6 +7,30 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+/*
+ * Class:     org_ray_runtime_actor_NativeRayActor
+ * Method:    nativeFork
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFork(JNIEnv *,
+                                                                             jclass,
+                                                                             jlong);
+
+/*
+ * Class:     org_ray_runtime_actor_NativeRayActor
+ * Method:    nativeGetActorId
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorId(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     org_ray_runtime_actor_NativeRayActor
+ * Method:    nativeGetActorHandleId
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorHandleId(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
@@ -14,7 +38,7 @@ extern "C" {
  * Signature: (J)I
  */
 JNIEXPORT jint JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(JNIEnv *, jclass, jlong, jbyteArray);
+Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
@@ -22,7 +46,7 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(JNIEnv *, jclass, jl
  * Signature: (J)Z
  */
 JNIEXPORT jboolean JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(JNIEnv *, jclass, jlong, jbyteArray);
+Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
@@ -31,7 +55,7 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(JNIEnv *, jcla
  */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
-    JNIEnv *, jclass, jlong, jbyteArray);
+    JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
@@ -39,15 +63,24 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
  * Signature: (J)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(JNIEnv *, jclass, jlong, jbyteArray);
+Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(JNIEnv *, jclass, jlong);
 
 /*
  * Class:     org_ray_runtime_actor_NativeRayActor
  * Method:    nativeDeserialize
  * Signature: ([B)J
  */
-JNIEXPORT jbyteArray JNICALL
-Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(JNIEnv *, jclass, jlong, jbyteArray);
+JNIEXPORT jlong JNICALL
+Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(JNIEnv *, jclass, jbyteArray);
+
+/*
+ * Class:     org_ray_runtime_actor_NativeRayActor
+ * Method:    nativeFree
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeFree(JNIEnv *,
+                                                                            jclass,
+                                                                            jlong);
 
 #ifdef __cplusplus
 }

@@ -215,14 +215,6 @@ void CoreWorker::RunIOService() {
 void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   worker_context_.SetCurrentTaskId(task_id);
   main_thread_task_id_ = task_id;
-  // NOTE(zhijunfu): AsyncUnsubscribe() is async and cannot guarantee
-  // that no actor update notifications will be received after it's called.
-  // If the worker receives a task which again adds actor handles for the
-  // same actors, then it's possible that there are two callbacks invoked
-  // for the same actor ID, which would crash when the second one tries to
-  // append the rpc client for the actor. So disable the logic below until
-  // we have a better solution.
-  /*
   // Clear all actor handles at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
     for (const auto &handle : actor_handles_) {
@@ -230,7 +222,6 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
     }
     actor_handles_.clear();
   }
-  */
 }
 
 void CoreWorker::AddActiveObjectID(const ObjectID &object_id) {
@@ -728,31 +719,6 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
   }
 
   return status;
-}
-
-Status CoreWorker::ActorLanguage(const ActorID &actor_id, Language *language) const {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-
-  *language = actor_handle->ActorLanguage();
-  return Status::OK();
-}
-
-Status CoreWorker::ActorCreationTaskFunctionDescriptor(
-    const ActorID &actor_id, std::vector<std::string> *function_descriptor) const {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-
-  *function_descriptor = actor_handle->ActorCreationTaskFunctionDescriptor();
-  return Status::OK();
-}
-
-Status CoreWorker::IsDirectCallActor(const ActorID &actor_id, bool *is_direct) const {
-  ActorHandle *actor_handle = nullptr;
-  RAY_RETURN_NOT_OK(GetActorHandle(actor_id, &actor_handle));
-
-  *is_direct = actor_handle->IsDirectCallActor();
-  return Status::OK();
 }
 
 }  // namespace ray

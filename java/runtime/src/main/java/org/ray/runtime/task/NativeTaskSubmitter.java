@@ -35,9 +35,9 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public RayActor createActor(FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       ActorCreationOptions options) {
-    byte[] actorId = nativeCreateActor(nativeCoreWorkerPointer, functionDescriptor, args,
+    long nativeActorHandle = nativeCreateActor(nativeCoreWorkerPointer, functionDescriptor, args,
         options);
-    return new NativeRayActor(nativeCoreWorkerPointer, actorId);
+    return new NativeRayActor(nativeActorHandle);
   }
 
   @Override
@@ -45,7 +45,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       List<FunctionArg> args, int numReturns, CallOptions options) {
     Preconditions.checkState(actor instanceof NativeRayActor);
     List<byte[]> returnIds = nativeSubmitActorTask(nativeCoreWorkerPointer,
-        actor.getId().getBytes(), functionDescriptor, args, numReturns,
+        ((NativeRayActor) actor).getNativeActorHandle(), functionDescriptor, args, numReturns,
         options);
     return returnIds.stream().map(ObjectId::new).collect(Collectors.toList());
   }
@@ -54,11 +54,11 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       FunctionDescriptor functionDescriptor, List<FunctionArg> args, int numReturns,
       CallOptions callOptions);
 
-  private static native byte[] nativeCreateActor(long nativeCoreWorkerPointer,
+  private static native long nativeCreateActor(long nativeCoreWorkerPointer,
       FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       ActorCreationOptions actorCreationOptions);
 
   private static native List<byte[]> nativeSubmitActorTask(long nativeCoreWorkerPointer,
-      byte[] actorId, FunctionDescriptor functionDescriptor, List<FunctionArg> args,
+      long nativeActorHandle, FunctionDescriptor functionDescriptor, List<FunctionArg> args,
       int numReturns, CallOptions callOptions);
 }
