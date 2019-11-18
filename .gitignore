@@ -143,16 +143,6 @@ java/**/.classpath
 java/**/.project
 java/runtime/native_dependencies/
 
-# streaming/java
-streaming/java/streaming-runtime/native_dependencies/
-streaming/java/streaming-runtime/src/main/java/org/ray/streaming/runtime/generated/
-streaming/java/**/.settings
-streaming/java/**/.project
-streaming/java/**/.classpath
-streaming/java/**/target
-streaming/java/**/lib
-streaming/build/**
-
 # streaming/python
 streaming/python/ray/streaming/generated/
 
