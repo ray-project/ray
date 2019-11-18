@@ -434,14 +434,14 @@ class TestObjectManager : public TestObjectManagerBase {
                    << "Server client ids:"
                    << "\n";
     GcsNodeInfo data;
-    gcs_client_1->client_table().GetClient(client_id_1, data);
+    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_1, &data));
     RAY_LOG(DEBUG) << (ClientID::FromBinary(data.node_id()).IsNil());
     RAY_LOG(DEBUG) << "Server 1 ClientID=" << ClientID::FromBinary(data.node_id());
     RAY_LOG(DEBUG) << "Server 1 ClientIp=" << data.node_manager_address();
     RAY_LOG(DEBUG) << "Server 1 ClientPort=" << data.node_manager_port();
     ASSERT_EQ(client_id_1, ClientID::FromBinary(data.node_id()));
     GcsNodeInfo data2;
-    gcs_client_1->client_table().GetClient(client_id_2, data2);
+    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_2, &data2));
     RAY_LOG(DEBUG) << "Server 2 ClientID=" << ClientID::FromBinary(data2.node_id());
     RAY_LOG(DEBUG) << "Server 2 ClientIp=" << data2.node_manager_address();
     RAY_LOG(DEBUG) << "Server 2 ClientPort=" << data2.node_manager_port();

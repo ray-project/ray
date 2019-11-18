@@ -15,7 +15,7 @@ class CoreWorkerRayletTaskReceiver {
       const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
       std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
-  CoreWorkerRayletTaskReceiver(std::unique_ptr<RayletClient> &raylet_client,
+  CoreWorkerRayletTaskReceiver(std::shared_ptr<RayletClient> &raylet_client,
                                const TaskHandler &task_handler,
                                const std::function<void()> &exit_handler);
 
@@ -32,7 +32,7 @@ class CoreWorkerRayletTaskReceiver {
 
  private:
   /// Raylet client.
-  std::unique_ptr<RayletClient> &raylet_client_;
+  std::shared_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;
   /// The callback function to exit the worker.

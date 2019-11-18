@@ -679,14 +679,14 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id) {
   return Append(JobID::Nil(), client_log_key_, node_info, nullptr);
 }
 
-void ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo &node_info) const {
+bool ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo *node_info) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
-  if (entry != node_cache_.end()) {
-    node_info = entry->second;
-  } else {
-    node_info.set_node_id(ClientID::Nil().Binary());
+  auto found = (entry != node_cache_.end());
+  if (found) {
+    *node_info = entry->second;
   }
+  return found;
 }
 
 const std::unordered_map<ClientID, GcsNodeInfo> &ClientTable::GetAllClients() const {

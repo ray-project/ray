@@ -201,15 +201,14 @@ ray::Status RayletConnection::AtomicRequestReply(
   return ReadMessage(reply_type, reply_message);
 }
 
+RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client)
+    : grpc_client_(std::move(grpc_client)) {}
+
 RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
                            const std::string &raylet_socket, const WorkerID &worker_id,
                            bool is_worker, const JobID &job_id, const Language &language,
                            ClientID *raylet_id, int port)
-    : grpc_client_(std::move(grpc_client)),
-      worker_id_(worker_id),
-      is_worker_(is_worker),
-      job_id_(job_id),
-      language_(language) {
+    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id), job_id_(job_id) {
   // For C++14, we could use std::make_unique
   conn_ = std::unique_ptr<RayletConnection>(new RayletConnection(raylet_socket, -1, -1));
 
@@ -381,17 +380,18 @@ ray::Status RayletClient::ReportActiveObjectIDs(
 }
 
 ray::Status RayletClient::RequestWorkerLease(
-    const ray::TaskSpecification &resource_spec) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateWorkerLeaseRequest(
-      fbb, fbb.CreateString(resource_spec.Serialize()));
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::RequestWorkerLease, &fbb);
+    const ray::TaskSpecification &resource_spec,
+    const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) {
+  ray::rpc::WorkerLeaseRequest request;
+  request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  return grpc_client_->RequestWorkerLease(request, callback);
 }
 
 ray::Status RayletClient::ReturnWorker(int worker_port) {
-  flatbuffers::FlatBufferBuilder fbb;
-  auto message = ray::protocol::CreateReturnWorkerRequest(fbb, worker_port);
-  fbb.Finish(message);
-  return conn_->WriteMessage(MessageType::ReturnWorker, &fbb);
+  ray::rpc::ReturnWorkerRequest request;
+  request.set_worker_port(worker_port);
+  return grpc_client_->ReturnWorker(
+      request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
+        RAY_CHECK_OK(status);
+      });
 }

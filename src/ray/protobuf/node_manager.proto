@@ -12,6 +12,29 @@ message SubmitTaskRequest {
 message SubmitTaskReply {
 }
 
+// Request a worker from the raylet with the specified resources.
+message WorkerLeaseRequest {
+  // Task containing the requested resources.
+  TaskSpec resource_spec = 1;
+}
+
+message WorkerLeaseReply {
+  // Address of the leased worker. If this is empty, then the request should be
+  // retried at the provided raylet address.
+  Address worker_address = 1;
+  // Address of the raylet to spill back to, if any.
+  Address retry_at_raylet_address = 2;
+}
+
+// Release a worker back to its raylet.
+message ReturnWorkerRequest {
+  // Port of the leased worker that we are now returning.
+  int32 worker_port = 1;
+}
+
+message ReturnWorkerReply {
+}
+
 message ForwardTaskRequest {
   // The ID of the task to be forwarded.
   bytes task_id = 1;
@@ -66,6 +89,10 @@ message NodeStatsReply {
 service NodeManagerService {
   // Submit a task (from a local or remote worker) to the node manager.
   rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
+  // Request a worker from the raylet.
+  rpc RequestWorkerLease(WorkerLeaseRequest) returns (WorkerLeaseReply);
+  // Release a worker back to its raylet.
+  rpc ReturnWorker(ReturnWorkerRequest) returns (ReturnWorkerReply);
   // Forward a task and its uncommitted lineage to the remote node manager.
   rpc ForwardTask(ForwardTaskRequest) returns (ForwardTaskReply);
   // Get the current node stats.

@@ -158,7 +158,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       node_ip_address, node_manager_port, *client_call_manager_);
   ClientID raylet_id;
-  raylet_client_ = std::unique_ptr<RayletClient>(new RayletClient(
+  raylet_client_ = std::shared_ptr<RayletClient>(new RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
@@ -227,10 +227,16 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          *raylet_client_,
+          raylet_client_,
           [this](WorkerAddress addr) {
             return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
                 addr.first, addr.second, *client_call_manager_));
+          },
+          [this](const rpc::Address &address) {
+            auto grpc_client = rpc::NodeManagerWorkerClient::make(
+                address.ip_address(), address.port(), *client_call_manager_);
+            return std::shared_ptr<RayletClient>(
+                new RayletClient(std::move(grpc_client)));
           },
           memory_store_provider_));
 }
@@ -928,16 +934,6 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
                                                                 send_reply_callback);
   });
-}
-
-void CoreWorker::HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
-                                          rpc::WorkerLeaseGrantedReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback) {
-  // Run this directly since the main thread may be tied up processing a task and
-  // we need to still continue processing these scheduling operations in the backend.
-  direct_task_submitter_->HandleWorkerLeaseGranted(
-      std::make_pair(request.address(), request.port()));
-  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 }  // namespace ray
