@@ -336,7 +336,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
-    shutil.rmtree(os.path.dirname(t1._checkpoint.value))
+    shutil.rmtree(os.path.dirname(t1.checkpoint.value))
 
     runner.step()  # Recovery step
     for i in range(3):
@@ -569,7 +569,7 @@ tune.run(
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
-    Experiment._register_if_needed(_Mock)
+    Experiment.register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
     runner = TrialRunner(

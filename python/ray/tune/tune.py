@@ -69,6 +69,7 @@ def run(run_or_experiment,
         sync_to_driver=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
+        sync_on_checkpoint=True,
         keep_checkpoints_num=None,
         checkpoint_score_attr=None,
         global_checkpoint_period=10,
@@ -118,18 +119,18 @@ def run(run_or_experiment,
             `num_samples` of times.
         local_dir (str): Local dir to save training results to.
             Defaults to ``~/ray_results``.
-        upload_dir (str): Optional URI to sync training results
-            to (e.g. ``s3://bucket``).
+        upload_dir (str): Optional URI to sync training results to
+            (e.g. ``s3://bucket``).
         trial_name_creator (func): Optional function for generating
             the trial string representation.
         loggers (list): List of logger creators to be used with
             each Trial. If None, defaults to ray.tune.logger.DEFAULT_LOGGERS.
             See `ray/tune/logger.py`.
         sync_to_cloud (func|str): Function for syncing the local_dir to and
-            from upload_dir. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If not provided, the sync command defaults to standard
-            S3 or gsutil sync comamnds.
+            from upload_dir. If string, then it must be a string template that
+            includes `{source}` and `{target}` for the syncer to run. If not
+            provided, the sync command defaults to standard S3 or gsutil sync
+            comamnds.
         sync_to_driver (func|str): Function for syncing trial logdir from
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
@@ -138,6 +139,11 @@ def run(run_or_experiment,
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the
             experiment regardless of the checkpoint_freq. Default is False.
+        sync_on_checkpoint (bool): Force sync-down of trial checkpoint, to
+            guarantee recoverability. If set to False, checkpoint syncing from
+            worker to driver is asynchronous. Set this to False only if
+            synchronous checkpointing is too slow and trial restoration
+            failures can be tolerated. Defaults to True.
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
@@ -223,7 +229,7 @@ def run(run_or_experiment,
             "not work with certain features.")
     for i, exp in enumerate(experiments):
         if not isinstance(exp, Experiment):
-            run_identifier = Experiment._register_if_needed(exp)
+            run_identifier = Experiment.register_if_needed(exp)
             experiments[i] = Experiment(
                 name=name,
                 run=run_identifier,
@@ -238,6 +244,7 @@ def run(run_or_experiment,
                 loggers=loggers,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
+                sync_on_checkpoint=sync_on_checkpoint,
                 keep_checkpoints_num=keep_checkpoints_num,
                 checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
