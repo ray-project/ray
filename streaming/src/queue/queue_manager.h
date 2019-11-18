@@ -31,7 +31,6 @@ class QueueWriter {
   Status PushSync(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                   uint32_t data_size, uint64_t timestamp,
                   bool raw = false /*only for test*/);
-  uint64_t GetLastQueueItem(const ObjectID &queue_id);
 
  private:
   std::shared_ptr<QueueManager> manager_;
@@ -49,9 +48,6 @@ class QueueReader {
   void GetQueueItem(const ObjectID &queue_id, uint8_t *&data, uint32_t &data_size,
                     uint64_t &seq_id, uint64_t timeout_ms = -1);
   void NotifyConsumedItem(const ObjectID &queue_id, uint64_t seq_id);
-  uint64_t GetLastSeqID(const ObjectID &queue_id);
-  void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                  std::vector<ObjectID> &failed_queues);
 
  private:
   std::shared_ptr<QueueManager> manager_;

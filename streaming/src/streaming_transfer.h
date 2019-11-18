@@ -17,7 +17,6 @@ class ProducerTransfer {
   virtual StreamingStatus ClearTransferCheckpoint(ProducerChannelInfo &channel_info,
                                                   uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
-  virtual StreamingStatus RefreshChannelInfo(ProducerChannelInfo &channel_info) = 0;
   virtual StreamingStatus ProduceItemToChannel(ProducerChannelInfo &channel_info,
                                                uint8_t *data, uint32_t data_size) = 0;
   virtual StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels,
@@ -39,7 +38,6 @@ class ConsumerTransfer {
   virtual StreamingStatus ClearTransferCheckpoint(ConsumerChannelInfo &channel_info,
                                                   uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
-  virtual StreamingStatus RefreshChannelInfo(ConsumerChannelInfo &channel_info) = 0;
   virtual StreamingStatus ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
                                                  uint64_t &offset_id, uint8_t *&data,
                                                  uint32_t &data_size,
@@ -65,10 +63,6 @@ class MockProducer : public ProducerTransfer {
   StreamingStatus ClearTransferCheckpoint(ProducerChannelInfo &channel_info,
                                           uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override {
-    return StreamingStatus::OK;
-  }
-
-  StreamingStatus RefreshChannelInfo(ProducerChannelInfo &channel_info) override {
     return StreamingStatus::OK;
   }
 
@@ -100,9 +94,6 @@ class MockConsumer : public ConsumerTransfer {
                                           uint64_t checkpoint_offset) override {
     return StreamingStatus::OK;
   }
-  StreamingStatus RefreshChannelInfo(ConsumerChannelInfo &channel_info) override {
-    return StreamingStatus::OK;
-  }
   StreamingStatus ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
                                          uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout) override;
@@ -124,7 +115,6 @@ class StreamingQueueProducer : public ProducerTransfer {
   StreamingStatus ClearTransferCheckpoint(ProducerChannelInfo &channel_info,
                                           uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
-  StreamingStatus RefreshChannelInfo(ProducerChannelInfo &channel_info) override;
   StreamingStatus ProduceItemToChannel(ProducerChannelInfo &channel_info, uint8_t *data,
                                        uint32_t data_size) override;
   StreamingStatus WaitChannelsReady(std::vector<ObjectID> &channels, uint32_t timeout,
@@ -146,8 +136,6 @@ class StreamingQueueProducer : public ProducerTransfer {
    */
   uint64_t FetchLastMessageIdFromQueue(const ObjectID &queue_id,
                                        uint64_t &last_queue_seq_id);
-  uint64_t FetchLastMessageIdFromQueueForStreamingQueue(const ObjectID &queue_id,
-                                                        uint64_t &last_queue_seq_id);
 
  private:
   std::shared_ptr<QueueWriterInterface> queue_writer_;
@@ -162,7 +150,6 @@ class StreamingQueueConsumer : public ConsumerTransfer {
   StreamingStatus ClearTransferCheckpoint(ConsumerChannelInfo &channel_info,
                                           uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
-  StreamingStatus RefreshChannelInfo(ConsumerChannelInfo &channel_info) override;
   StreamingStatus ConsumeItemFromChannel(ConsumerChannelInfo &channel_info,
                                          uint64_t &offset_id, uint8_t *&data,
                                          uint32_t &data_size, uint32_t timeout) override;

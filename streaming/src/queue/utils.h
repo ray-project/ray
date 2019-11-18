@@ -44,13 +44,6 @@ class PromiseWrapper {
   std::promise<bool> promise_;
   Status status_;
 };
-
- inline int64_t current_sys_time_us() {
-    std::chrono::microseconds mu_since_epoch =
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::system_clock::now().time_since_epoch());
-    return mu_since_epoch.count();
- }
 }  // namespace streaming
 }  // namespace ray
 #endif
