@@ -278,29 +278,3 @@ class DataOutput(object):
         for record in records:
             self.push(record)
 
-
-# Batched queue configuration
-class QueueConfig(object):
-    """The configuration of a batched queue.
-
-    Attributes:
-         max_size (int): The maximum size of the queue in number of batches
-         (if exceeded, backpressure kicks in).
-         max_batch_size (int): The size of each batch in number of records.
-         max_batch_time (float): The flush timeout per batch.
-         prefetch_depth (int): The  number of batches to prefetch from plasma.
-         background_flush (bool): Denotes whether a daemon flush thread should
-         be used (True) to flush batches to plasma.
-    """
-
-    def __init__(self,
-                 max_size=999999,
-                 max_batch_size=99999,
-                 max_batch_time=0.01,
-                 prefetch_depth=10,
-                 background_flush=False):
-        self.max_size = max_size
-        self.max_batch_size = max_batch_size
-        self.max_batch_time = max_batch_time
-        self.prefetch_depth = prefetch_depth
-        self.background_flush = background_flush

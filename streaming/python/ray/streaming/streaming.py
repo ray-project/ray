@@ -12,7 +12,6 @@ import ray
 import ray.streaming.processor as processor
 import ray.streaming.runtime.queue.queue_utils as queue_utils
 from ray.streaming.communication import DataChannel
-from ray.streaming.communication import QueueConfig
 from ray.streaming.config import Config
 from ray.streaming.jobworker import JobWorker
 from ray.streaming.operator import Operator, OpType
@@ -42,8 +41,6 @@ class Conf(object):
     streaming environment.
 
     Attributes:
-         queue_config (QueueConfig): Batched Queue configuration
-         (see: communication.py)
          A batched queue configuration includes the max queue size,
          the size of each batch (in number of elements), the batch flush
          timeout, and the number of batches to prefetch from plasma
@@ -52,7 +49,6 @@ class Conf(object):
     """
 
     def __init__(self, parallelism=1, queue_type=Config.MEMORY_QUEUE):
-        self.queue_config = QueueConfig()
         self.parallelism = parallelism
         self.queue_type = queue_type
         # ...
