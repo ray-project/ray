@@ -371,9 +371,9 @@ class Environment(object):
 
         return exec_handles
 
-    def await_finish(self):
+    def wait_finish(self):
         for actor_handle in self.execution_graph.actor_handles:
-            if not ray.get(actor_handle.is_finished.remote()):
+            while not ray.get(actor_handle.is_finished.remote()):
                 time.sleep(1)
 
     # Prints the logical dataflow graph

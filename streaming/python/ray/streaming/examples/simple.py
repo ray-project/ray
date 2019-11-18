@@ -50,7 +50,7 @@ if __name__ == "__main__":
     start = time.time()
     env_handle = env.execute()
     ray.get(env_handle)  # Stay alive until execution finishes
-    env.await_finish()
+    env.wait_finish()
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

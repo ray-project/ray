@@ -219,8 +219,7 @@ class DataOutput(object):
         """
         for channel in self.channels:
             self.producer.produce(channel.qid, pickle.dumps(None))
-        self.producer.stop()
-        self.producer.close()
+        # stop StreamingWriter may cause None flag not sent to peer actor
 
     # Pushes the record to the output
     # Each individual output queue flushes batches to plasma periodically

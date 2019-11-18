@@ -34,7 +34,9 @@ class JobWorker(object):
         self.env = None
         self.worker_id = worker_id
         self.operator = operator
+        processor_name = operator.processor_class.__name__
         processor_instance = operator.processor_class(operator)
+        self.processor_name = processor_name
         self.processor_instance = processor_instance
         self.queue_link = None
         self.input_channels = input_channels
@@ -71,14 +73,14 @@ class JobWorker(object):
     def start(self):
         self.t = threading.Thread(target=self.run, daemon=True)
         self.t.start()
-        processor_name = self.operator.processor_class.__name__
         actor_id = ray.worker.global_worker.actor_id
-        logger.info("%s %s started, actor id %s", self.__class__.__name__, processor_name, actor_id)
+        logger.info("%s %s started, actor id %s", self.__class__.__name__, self.processor_name, actor_id)
         # self.t.join()
 
     def run(self):
-        logger.info("start running")
+        logger.info("%s start running", self.processor_name)
         self.processor_instance.run(self.input_gate, self.output_gate)
+        logger.info("%s finished running", self.processor_name)
         self.close()
 
     def close(self):
@@ -88,7 +90,7 @@ class JobWorker(object):
             self.output_gate.close()
 
     def is_finished(self):
-        return self.t.is_alive()
+        return not self.t.is_alive()
 
     def on_streaming_transfer(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
