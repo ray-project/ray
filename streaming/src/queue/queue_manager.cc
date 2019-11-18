@@ -147,7 +147,6 @@ std::shared_ptr<WriterQueue> QueueManager::CreateUpQueue(const ObjectID &queue_i
           queue_id, actor_id, peer_actor_id, size, GetOutTransport(queue_id)));
   upstream_queues_[queue_id] = queue;
 
-  upstream_state_ = StreamingQueueState::Running;
   return queue;
 }
 
@@ -176,9 +175,6 @@ std::shared_ptr<ReaderQueue> QueueManager::CreateDownQueue(const ObjectID &queue
       std::unique_ptr<streaming::ReaderQueue>(new streaming::ReaderQueue(
           queue_id, actor_id, peer_actor_id, GetOutTransport(queue_id)));
   downstream_queues_[queue_id] = queue;
-
-  downstream_state_ = StreamingQueueState::Running;
-
   return queue;
 }
 
@@ -241,10 +237,6 @@ void QueueManager::DispatchMessageInternal(
                        << " type: " << queue::flatbuf::EnumNameMessageType(msg->Type());
 
   if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueNotificationMsg) {
-    if (upstream_state_ != StreamingQueueState::Running) {
-      STREAMING_LOG(WARNING) << "up queues are not running.";
-      return;
-    }
     auto queue = upstream_queues_.find(msg->QueueId());
     // STREAMING_CHECK(queue != upstream_queues_.end());
     if (queue == upstream_queues_.end()) {
@@ -260,10 +252,6 @@ void QueueManager::DispatchMessageInternal(
 
     queue->second->OnNotify(notify_msg);
   } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueDataMsg) {
-    if (downstream_state_ != StreamingQueueState::Running) {
-      STREAMING_LOG(WARNING) << "down queues are not running.";
-      return;
-    }
     auto queue = downstream_queues_.find(msg->QueueId());
     // STREAMING_CHECK(queue != downstream_queues_.end());
     if (queue == downstream_queues_.end()) {
@@ -480,7 +468,6 @@ void QueueManager::OnCheckQueueRsp(std::shared_ptr<CheckRspMessage> check_rsp_ms
 
 void QueueManager::ReleaseAllUpQueues() {
   STREAMING_LOG(INFO) << "ReleaseAllUpQueues";
-  upstream_state_ = StreamingQueueState::Destroyed;
   for (auto &it : upstream_queues_) {
     actors_.erase(it.first);
     out_transports_.erase(it.first);
@@ -490,7 +477,6 @@ void QueueManager::ReleaseAllUpQueues() {
 
 void QueueManager::ReleaseAllDownQueues() {
   STREAMING_LOG(INFO) << "ReleaseAllDownQueues size: " << downstream_queues_.size();
-  downstream_state_ = StreamingQueueState::Destroyed;
   for (auto &it : downstream_queues_) {
     actors_.erase(it.first);
     out_transports_.erase(it.first);
