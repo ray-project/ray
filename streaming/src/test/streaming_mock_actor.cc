@@ -317,16 +317,15 @@ class StreamingWorker {
                      const bool return_results_directly,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Only one arg param used in streaming.
-    STREAMING_CHECK(args.size() == 1);
+    STREAMING_CHECK(args.size() >= 1) << "args.size() = " << args.size();
 
     std::vector<std::string> function_descriptor = ray_function.GetFunctionDescriptor();
     STREAMING_LOG(INFO) << "StreamingWorker::ExecuteTask " << function_descriptor[0];
-    auto &data = args[0]->GetData();
-    std::shared_ptr<LocalMemoryBuffer> local_buffer =
-        std::make_shared<LocalMemoryBuffer>(data->Data(), data->Size(), true);
 
     std::string func_name = function_descriptor[0];
     if (func_name == "init") {
+      std::shared_ptr<LocalMemoryBuffer> local_buffer =
+        std::make_shared<LocalMemoryBuffer>(args[0]->GetData()->Data(), args[0]->GetData()->Size(), true);
       HandleInitTask(local_buffer);
     } else if (func_name == "execute_test") {
       STREAMING_LOG(INFO) << "Test name: " << function_descriptor[1];
@@ -339,6 +338,8 @@ class StreamingWorker {
         STREAMING_LOG(WARNING) << "Test has done!!";
         return Status::OK();
       }
+      std::shared_ptr<LocalMemoryBuffer> local_buffer =
+        std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(), args[1]->GetData()->Size(), true);
       auto result_buffer = queue_client_->OnMessageSync(local_buffer);
       results->push_back(std::make_shared<RayObject>(result_buffer, nullptr));
     } else if (func_name == "async_call_func") {
@@ -346,6 +347,8 @@ class StreamingWorker {
         STREAMING_LOG(WARNING) << "Test has done!!";
         return Status::OK();
       }
+      std::shared_ptr<LocalMemoryBuffer> local_buffer =
+        std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(), args[1]->GetData()->Size(), true);
       queue_client_->OnMessage(local_buffer);
     } else {
       STREAMING_LOG(WARNING) << "Invalid function name " << func_name;

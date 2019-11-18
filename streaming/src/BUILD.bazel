@@ -61,7 +61,7 @@ cc_library(
 cc_binary(
     name = "streaming_test_worker",
     srcs = [
-        "test/direct_call_workers.cc",
+        "test/streaming_mock_actor.cc",
     ],
     copts = ["-Itest/"],
     includes = [

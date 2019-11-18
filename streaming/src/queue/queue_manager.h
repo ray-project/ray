@@ -53,12 +53,6 @@ class QueueReader {
   std::shared_ptr<QueueManager> manager_;
 };
 
-enum class StreamingQueueState : uint8_t {
-  Init = 0,
-  Running = 1,
-  Destroyed = 2
-};
-
 /// QueueManager manages upstream and downstream queues for worker. Threre should be
 /// only one QueueManager instance for a worker. Singleton.
 /// QueueManager holds a boost.asio io_service (queue thread). For upstream, queue
@@ -70,7 +64,6 @@ class QueueManager {
  public:
   QueueManager(const ActorID &actor_id)
       : actor_id_(actor_id),
-      upstream_state_(StreamingQueueState::Init), downstream_state_(StreamingQueueState::Init),
       in_transport_(nullptr), queue_dummy_work_(queue_service_) {
     Init();
   }
@@ -153,8 +146,6 @@ class QueueManager {
   ActorID actor_id_;
   std::unordered_map<ObjectID, std::shared_ptr<streaming::WriterQueue>> upstream_queues_;
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>> downstream_queues_;
-  StreamingQueueState upstream_state_;
-  StreamingQueueState downstream_state_;
 
   std::unordered_map<ObjectID, std::pair<ActorID, ActorID>> actors_;
 
