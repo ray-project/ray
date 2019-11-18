@@ -13,7 +13,7 @@ build --enable_platform_specific_config
 build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc@-Werror
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt='\\.pb\\.cc$@-w'
-build --per_file_copt='external*@-w'
+build --per_file_copt='external/.*@-w'
 # Ignore minor warnings for host tools, which we generally can't control
 build --host_copt="-Wno-builtin-macro-redefined"
 build --host_copt="-Wno-inconsistent-missing-override"
