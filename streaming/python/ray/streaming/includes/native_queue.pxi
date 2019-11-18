@@ -203,6 +203,7 @@ cdef class QueueProducer:
     def __dealloc__(self):
         if self.writer != NULL:
             del self.writer
+            queue_logger.info("deleted StreamingWriter")
             self.writer = NULL
 
     def produce(self, ObjectID qid, const unsigned char[:] value):
@@ -218,6 +219,7 @@ cdef class QueueProducer:
 
     def stop(self):
         self.writer.Stop()
+        queue_logger.info("stopped StreamingWriter")
 
 cdef class QueueConsumer:
     cdef:
@@ -231,6 +233,7 @@ cdef class QueueConsumer:
     def __dealloc__(self):
         if self.reader != NULL:
             del self.reader
+            queue_logger.info("deleted StreamingReader")
             self.reader = NULL
 
     def pull(self, uint32_t timeout_millis):
@@ -275,6 +278,7 @@ cdef class QueueConsumer:
 
     def stop(self):
         self.reader.Stop()
+        queue_logger.info("stopped StreamingReader")
 
 cdef c_vector[CObjectID] bytes_list_to_qid_vec(list py_queue_ids) except *:
     assert len(py_queue_ids) > 0
