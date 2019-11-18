@@ -549,18 +549,22 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
-            result_or_coroutine = execution_info.function(actor, *arguments, **kwarguments)
-            
+            function = execution_info.function
+            result_or_coroutine = function(actor, *arguments, **kwarguments)
+
             if inspect.iscoroutine(result_or_coroutine):
                 loop = core_worker.create_or_get_event_loop()
                 coroutine = result_or_coroutine
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-                fiber_event = core_worker.core_worker.get().PrepareYieldCurrentFiber()
-                future.add_done_callback(lambda future: fiber_event.get().Notify())
+                fiber_event = (core_worker.core_worker.get()
+                               .PrepareYieldCurrentFiber())
+                future.add_done_callback(
+                    lambda future: fiber_event.get().Notify())
                 with nogil:
-                    core_worker.core_worker.get().YieldCurrentFiber(fiber_event)
+                    (core_worker.core_worker.get()
+                        .YieldCurrentFiber(fiber_event))
                 return future.result()
-            
+
             return result_or_coroutine
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
@@ -1078,7 +1082,7 @@ cdef class CoreWorker:
             self.async_event_loop = asyncio.new_event_loop()
         if self.async_thread is None:
             self.async_thread = threading.Thread(
-                target=lambda : self.async_event_loop.run_forever()
+                target=lambda: self.async_event_loop.run_forever()
             )
             self.async_thread.start()
 
