@@ -214,20 +214,18 @@ class BoundedExecutor {
   boost::asio::thread_pool pool_;
 };
 
+/// Used by async actor mode. The fiber event will be used
+/// from python to switch control among different coroutines.
 class FiberEvent {
  public:
-  typedef std::shared_ptr<FiberEvent> ptr;
-
   // Block the fiber until the event is notified.
   void Wait() {
-    RAY_LOG(DEBUG) << "fiber " << boost::this_fiber::get_id() << " called Wait";
     std::unique_lock<boost::fibers::mutex> lock(mutex);
     cond.wait(lock, [this]() { return ready; });
   }
 
   // Notify the event and unblock all waiters.
   void Notify() {
-    RAY_LOG(DEBUG) << "fiber " << boost::this_fiber::get_id() << " called Notify";
     {
       std::unique_lock<boost::fibers::mutex> lock(mutex);
       ready = true;
@@ -297,10 +295,6 @@ class SchedulingQueue {
            pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
       auto request = head->second;
-
-      // REMOVE ME
-      RAY_CHECK(use_async_);
-      RAY_LOG(DEBUG) << "Simon: inside ScheduleRequests, use_async_ is " << use_async_;
 
       if (use_async_) {
         boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();

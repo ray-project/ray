@@ -232,11 +232,9 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
     fiber_runner_thread_.reset(new std::thread([&]() {
       // This is the worker thread
       boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
-      RAY_LOG(DEBUG) << "Starting fiber thread";
 
       // Block until shutdown
       fiber_shutdown_event_->Wait();
-      RAY_LOG(INFO) << "SIMON: Stopping fiber thread";
     }));
     is_async_ = true;
   }
