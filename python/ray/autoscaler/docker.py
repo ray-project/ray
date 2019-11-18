@@ -53,7 +53,8 @@ def dockerize_if_needed(config):
 
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
-        config["setup_commands"]["common"].append(docker_pull_cmd)
+        common_setup_cmds = config["setup_commands"].setdefault("common", [])
+        common_setup_cmds.append(docker_pull_cmd)
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
                                           docker_mounts, cname,

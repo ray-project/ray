@@ -124,13 +124,14 @@ file_mounts: {
 }
 
 setup_commands:
-    # Wait until nvidia drivers are installed
-    - >-
-      timeout 300 bash -c "
-          command -v nvidia-smi && nvidia-smi
-          until [ \$? -eq 0 ]; do
+    common:
+        # Wait until nvidia drivers are installed
+        - >-
+          timeout 300 bash -c "
               command -v nvidia-smi && nvidia-smi
-          done"
+              until [ \$? -eq 0 ]; do
+                  command -v nvidia-smi && nvidia-smi
+              done"
 
 # List of shell commands to run to set up nodes.
 boot_commands:
@@ -153,12 +154,12 @@ start_ray_commands:
         - IN_DOCKER ray stop
     head:
         - >-
-        IN_DOCKER ulimit -n 65536;
-        ray start
-        --head
-        --redis-port=6379
-        --object-manager-port=8076
-        --autoscaling-config=~/ray_bootstrap_config.yaml
+          IN_DOCKER ulimit -n 65536;
+          ray start
+          --head
+          --redis-port=6379
+          --object-manager-port=8076
+          --autoscaling-config=~/ray_bootstrap_config.yaml
     worker:
         - >-
           IN_DOCKER ulimit -n 65536;

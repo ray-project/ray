@@ -221,11 +221,13 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-setup_commands: []
+setup_commands:
+    common: []
 
 # List of commands that will be run each time the node is booted.
 # On the first boot, these will run after `setup_commands`.
-boot_commands: []
+boot_commands:
+    common: []
 
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:

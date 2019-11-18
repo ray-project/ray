@@ -58,7 +58,8 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-setup_commands: []
+setup_commands:
+    common: []
 
 # List of commands that will be run each time the node is booted.
 # On the first boot, these will run after `setup_commands`.

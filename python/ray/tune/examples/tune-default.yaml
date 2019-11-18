@@ -7,4 +7,5 @@ max_workers: 3
 head_node: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
 worker_nodes: {InstanceType: c5.xlarge, ImageId: ami-0b294f219d14e6a82}
 setup_commands: # Set up each node.
-    - pip install ray torch torchvision tabulate tensorboard
+    common:
+        - pip install ray torch torchvision tabulate tensorboard
