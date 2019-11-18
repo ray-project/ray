@@ -14,6 +14,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -172,6 +173,9 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// The store provider.
   std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
+
+  /// Resolve local and remote dependencies;
+  LocalDependencyResolver resolver_;
 
   friend class CoreWorkerTest;
 };

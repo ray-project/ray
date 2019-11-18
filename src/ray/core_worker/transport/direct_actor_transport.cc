@@ -60,7 +60,9 @@ void WriteObjectsToMemoryStore(
 CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
     rpc::ClientCallManager &client_call_manager,
     std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-    : client_call_manager_(client_call_manager), in_memory_store_(store_provider) {}
+    : client_call_manager_(client_call_manager),
+      in_memory_store_(store_provider),
+      resolver_(in_memory_store_) {}
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();

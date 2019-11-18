@@ -7,49 +7,12 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
 namespace ray {
-
-struct TaskState {
-  /// The task to be run.
-  TaskSpecification task;
-  /// The remaining dependencies to resolve for this task.
-  absl::flat_hash_set<ObjectID> local_dependencies;
-};
-
-// This class is thread-safe.
-class LocalDependencyResolver {
- public:
-  LocalDependencyResolver(std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-      : in_memory_store_(store_provider), num_pending_(0) {}
-
-  /// Resolve all local and remote dependencies for the task, calling the specified
-  /// callback when done. Direct call ids in the task specification will be resolved
-  /// to concrete values and inlined.
-  //
-  /// Note: This method **will mutate** the given TaskSpecification.
-  ///
-  /// Postcondition: all direct call ids in arguments are converted to values.
-  void ResolveDependencies(const TaskSpecification &task,
-                           std::function<void()> on_complete);
-
-  /// Return the number of tasks pending dependency resolution.
-  /// TODO(ekl) this should be exposed in worker stats.
-  int NumPendingTasks() const { return num_pending_; }
-
- private:
-  /// The store provider.
-  std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
-
-  /// Number of tasks pending dependency resolution.
-  std::atomic<int> num_pending_;
-
-  /// Protects against concurrent access to internal state.
-  absl::Mutex mu_;
-};
 
 typedef std::pair<std::string, int> WorkerAddress;
 typedef std::function<std::shared_ptr<rpc::CoreWorkerClientInterface>(WorkerAddress)>
