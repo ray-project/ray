@@ -95,7 +95,7 @@ class AlwaysSameHeuristic(Policy):
                         info_batch=None,
                         episodes=None,
                         **kwargs):
-        return [x for x in state_batches[0]], state_batches, {}
+        return list(state_batches[0]), state_batches, {}
 
     def learn_on_batch(self, samples):
         pass

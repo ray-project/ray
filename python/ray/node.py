@@ -206,10 +206,10 @@ class Node(object):
 
         atexit.register(atexit_handler)
 
-        # Register the a handler to be called if we get a SIGTERM.
+        # Register the handler to be called if we get a SIGTERM.
         # In this case, we want to exit with an error code (1) after
         # cleaning up child processes.
-        def sigterm_handler():
+        def sigterm_handler(signum, frame):
             return clean_up_children(lambda *args, **kwargs: sys.exit(1))
 
         signal.signal(signal.SIGTERM, sigterm_handler)
@@ -605,9 +605,6 @@ class Node(object):
         # The dashboard is Python3.x only.
         if PY3 and self._ray_params.include_webui:
             self.start_dashboard()
-        else:
-            logger.info(
-                "To enable the Ray Web UI, run `pip install ray[dashboard]`.")
 
     def start_ray_processes(self):
         """Start all of the processes on the node."""

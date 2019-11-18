@@ -7,6 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/reference_count.h"
 
 namespace ray {
 
@@ -18,7 +19,14 @@ class CoreWorkerMemoryStore;
 /// actor call (see direct_actor_transport.cc).
 class CoreWorkerMemoryStore {
  public:
-  CoreWorkerMemoryStore();
+  /// Create a memory store.
+  ///
+  /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
+  /// \param[in] counter If not null, this enables ref counting for local objects,
+  ///            and the `remove_after_get` flag for Get() will be ignored.
+  CoreWorkerMemoryStore(
+      std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
+      std::shared_ptr<ReferenceCounter> counter = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -34,7 +42,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
   /// \param[in] remove_after_get When to remove the objects from store after `Get`
-  /// finishes.
+  /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
@@ -49,6 +57,14 @@ class CoreWorkerMemoryStore {
   void GetAsync(const ObjectID &object_id,
                 std::function<void(std::shared_ptr<RayObject>)> callback);
 
+  /// Get a single object if available. If the object is not local yet, or if the object
+  /// is local but is ErrorType::OBJECT_IN_PLASMA, then nullptr will be returned, and
+  /// the store will ensure the object is promoted to plasma once available.
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \return pointer to the local object, or nullptr if promoted to plasma.
+  std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
+
   /// Delete a list of objects from the object store.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
@@ -61,7 +77,28 @@ class CoreWorkerMemoryStore {
   /// \return Whether the store has the object.
   bool Contains(const ObjectID &object_id);
 
+  /// Returns the number of objects in this store.
+  ///
+  /// \return Count of objects in the store.
+  int Size() {
+    absl::MutexLock lock(&mu_);
+    return objects_.size();
+  }
+
  private:
+  /// Optional callback for putting objects into the plasma store.
+  std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
+
+  /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
+  /// mandatory once Java is supported.
+  std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
+
+  /// Protects the data structures below.
+  absl::Mutex mu_;
+
+  /// Set of objects that should be promoted to plasma once available.
+  absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
+
   /// Map from object ID to `RayObject`.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ GUARDED_BY(mu_);
 
@@ -73,9 +110,6 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ GUARDED_BY(mu_);
-
-  /// Protect the two maps above.
-  absl::Mutex mu_;
 };
 
 }  // namespace ray

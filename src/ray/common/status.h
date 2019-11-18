@@ -79,8 +79,9 @@ enum class StatusCode : char {
   UnknownError = 9,
   NotImplemented = 10,
   RedisError = 11,
-  Interrupted = 12,
-  SystemExit = 13,
+  TimedOut = 12,
+  Interrupted = 13,
+  SystemExit = 14,
 };
 
 #if defined(__clang__)
@@ -144,6 +145,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::RedisError, msg);
   }
 
+  static Status TimedOut(const std::string &msg) {
+    return Status(StatusCode::TimedOut, msg);
+  }
+
   static Status Interrupted(const std::string &msg) {
     return Status(StatusCode::Interrupted, msg);
   }
@@ -165,6 +170,7 @@ class RAY_EXPORT Status {
   bool IsUnknownError() const { return code() == StatusCode::UnknownError; }
   bool IsNotImplemented() const { return code() == StatusCode::NotImplemented; }
   bool IsRedisError() const { return code() == StatusCode::RedisError; }
+  bool IsTimedOut() const { return code() == StatusCode::TimedOut; }
   bool IsInterrupted() const { return code() == StatusCode::Interrupted; }
   bool IsSystemExit() const { return code() == StatusCode::SystemExit; }
 

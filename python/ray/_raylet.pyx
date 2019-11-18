@@ -86,7 +86,8 @@ from ray.exceptions import (
     RayError,
     RayletError,
     RayTaskError,
-    ObjectStoreFullError
+    ObjectStoreFullError,
+    RayTimeoutError,
 )
 from ray.experimental.no_return import NoReturn
 from ray.function_manager import FunctionDescriptor
@@ -140,6 +141,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ObjectStoreFullError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
+    elif status.IsTimedOut():
+        raise RayTimeoutError(message)
     else:
         raise RayletError(message)
 
@@ -419,10 +422,6 @@ cdef class RayletClient:
     @property
     def job_id(self):
         return JobID(self.client.GetJobID().Binary())
-
-    @property
-    def is_worker(self):
-        return self.client.IsWorker()
 
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
@@ -738,7 +737,7 @@ cdef class CoreWorker:
             raylet_socket.encode("ascii"), job_id.native(),
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
-            task_execution_handler, check_signals, exit_handler))
+            task_execution_handler, check_signals, exit_handler, True))
 
     def disconnect(self):
         with nogil:
@@ -1033,6 +1032,12 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_id.native()
         # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveObjectIDReference(c_object_id)
+
+    def promote_object_to_plasma(self, ObjectID object_id):
+        cdef:
+            CObjectID c_object_id = object_id.native()
+        self.core_worker.get().PromoteObjectToPlasma(c_object_id)
+        return object_id.with_plasma_transport_type()
 
     # TODO: handle noreturn better
     cdef store_task_outputs(

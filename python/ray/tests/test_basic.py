@@ -29,6 +29,7 @@ import pytest
 
 import ray
 from ray import signature
+from ray.exceptions import RayTimeoutError
 import ray.ray_constants as ray_constants
 import ray.tests.cluster_utils
 import ray.tests.utils
@@ -1190,20 +1191,137 @@ def test_get_dict(ray_start_regular):
     assert result == expected
 
 
-def test_direct_call_simple(ray_start_regular):
+def test_get_with_timeout(ray_start_regular):
+    @ray.remote
+    def f(a):
+        time.sleep(a)
+        return a
+
+    assert ray.get(f.remote(3), timeout=10) == 3
+
+    obj_id = f.remote(3)
+    with pytest.raises(RayTimeoutError):
+        ray.get(obj_id, timeout=2)
+    assert ray.get(obj_id, timeout=2) == 3
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }],
+    indirect=True)
+def test_direct_call_simple(ray_start_cluster):
     @ray.remote
     def f(x):
         return x + 1
 
     f_direct = f.options(is_direct_call=True)
-    print("a")
     assert ray.get(f_direct.remote(2)) == 3
-    print("b")
-    assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
-        range(1, 101))
+    for _ in range(10):
+        assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+            range(1, 101))
 
 
-def test_direct_call_chain(ray_start_regular):
+def test_direct_call_refcount(ray_start_regular):
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    @ray.remote
+    def sleep():
+        time.sleep(.1)
+        return 1
+
+    # Multiple gets should not hang with ref counting enabled.
+    f_direct = f.options(is_direct_call=True)
+    x = f_direct.remote(2)
+    ray.get(x)
+    ray.get(x)
+
+    # Temporary objects should be retained for chained callers.
+    y = f_direct.remote(sleep.options(is_direct_call=True).remote())
+    assert ray.get(y) == 2
+
+
+def test_direct_call_matrix(shutdown_only):
+    ray.init(object_store_memory=1000 * 1024 * 1024)
+
+    @ray.remote
+    class Actor(object):
+        def small_value(self):
+            return 0
+
+        def large_value(self):
+            return np.zeros(10 * 1024 * 1024)
+
+        def echo(self, x):
+            if isinstance(x, list):
+                x = ray.get(x[0])
+            return x
+
+    @ray.remote
+    def small_value():
+        return 0
+
+    @ray.remote
+    def large_value():
+        return np.zeros(10 * 1024 * 1024)
+
+    @ray.remote
+    def echo(x):
+        if isinstance(x, list):
+            x = ray.get(x[0])
+        return x
+
+    def check(source_actor, dest_actor, is_large, out_of_band):
+        print("CHECKING", "actor" if source_actor else "task", "to", "actor"
+              if dest_actor else "task", "large_object"
+              if is_large else "small_object", "out_of_band"
+              if out_of_band else "in_band")
+        if source_actor:
+            a = Actor.options(is_direct_call=True).remote()
+            if is_large:
+                x_id = a.large_value.remote()
+            else:
+                x_id = a.small_value.remote()
+        else:
+            if is_large:
+                x_id = large_value.options(is_direct_call=True).remote()
+            else:
+                x_id = small_value.options(is_direct_call=True).remote()
+        if out_of_band:
+            x_id = [x_id]
+        if dest_actor:
+            b = Actor.options(is_direct_call=True).remote()
+            x = ray.get(b.echo.remote(x_id))
+        else:
+            x = ray.get(echo.options(is_direct_call=True).remote(x_id))
+        if is_large:
+            assert isinstance(x, np.ndarray)
+        else:
+            assert isinstance(x, int)
+
+    for is_large in [False, True]:
+        for source_actor in [False, True]:
+            for dest_actor in [False, True]:
+                for out_of_band in [False, True]:
+                    check(source_actor, dest_actor, is_large, out_of_band)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }],
+    indirect=True)
+def test_direct_call_chain(ray_start_cluster):
     @ray.remote
     def g(x):
         return x + 1
@@ -1248,26 +1366,6 @@ def test_direct_actor_large_objects(ray_start_regular):
     assert len(done) == 1
     assert ray.worker.global_worker.core_worker.object_exists(obj_id)
     assert isinstance(ray.get(obj_id), np.ndarray)
-
-
-def test_direct_actor_errors(ray_start_regular):
-    @ray.remote
-    class Actor(object):
-        def __init__(self):
-            pass
-
-        def f(self, x):
-            return x * 2
-
-    @ray.remote
-    def f(x):
-        return 1
-
-    a = Actor._remote(is_direct_call=True)
-
-    # cannot pass returns to other methods even in a list
-    with pytest.raises(Exception):
-        ray.get(f.remote([a.f.remote(2)]))
 
 
 def test_direct_actor_pass_by_ref(ray_start_regular):
@@ -1347,7 +1445,7 @@ def test_direct_actor_recursive(ray_start_regular):
             return x * 2
 
     a = Actor._remote(is_direct_call=True)
-    b = Actor._remote(args=[a], is_direct_call=False)
+    b = Actor._remote(args=[a], is_direct_call=True)
     c = Actor._remote(args=[b], is_direct_call=True)
 
     result = ray.get([c.f.remote(i) for i in range(100)])
@@ -2147,6 +2245,17 @@ def test_local_mode(shutdown_only):
     actor1 = RemoteActor1.remote()
     _ = RemoteActor2.remote()
     assert ray.get(actor1.function1.remote()) == 0
+
+    # Test passing ObjectIDs.
+    @ray.remote
+    def direct_dep(input):
+        return input
+
+    @ray.remote
+    def indirect_dep(input):
+        return ray.get(direct_dep.remote(input[0]))
+
+    assert ray.get(indirect_dep.remote(["hello"])) == "hello"
 
 
 def test_resource_constraints(shutdown_only):
@@ -2963,11 +3072,7 @@ def test_global_state_api(shutdown_only):
     with pytest.raises(Exception, match=error_message):
         ray.jobs()
 
-    ray.init(
-        num_cpus=5,
-        num_gpus=3,
-        resources={"CustomResource": 1},
-        include_webui=False)
+    ray.init(num_cpus=5, num_gpus=3, resources={"CustomResource": 1})
 
     assert ray.cluster_resources()["CPU"] == 5
     assert ray.cluster_resources()["GPU"] == 3
@@ -3052,7 +3157,6 @@ def test_global_state_api(shutdown_only):
     assert object_table[result_id] == object_table_entry
 
     job_table = ray.jobs()
-    print(job_table)
 
     assert len(job_table) == 1
     assert job_table[0]["JobID"] == job_id.hex()
@@ -3170,7 +3274,7 @@ def test_workers(shutdown_only):
 
 def test_specific_job_id():
     dummy_driver_id = ray.JobID.from_int(1)
-    ray.init(num_cpus=1, job_id=dummy_driver_id, include_webui=False)
+    ray.init(num_cpus=1, job_id=dummy_driver_id)
 
     # in driver
     assert dummy_driver_id == ray._get_runtime_context().current_driver_id
