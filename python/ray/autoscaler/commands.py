@@ -19,14 +19,14 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
-    hash_launch_conf, fillout_defaults
+from ray.autoscaler.autoscaler import get_commands, validate_config, \
+    hash_runtime_conf, hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
-from ray.autoscaler.docker import with_docker_exec
+from ray.autoscaler.docker import maybe_docker_exec
 
 logger = logging.getLogger(__name__)
 
@@ -137,9 +137,9 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
-                initialization_commands=[],
                 setup_commands=[],
-                ray_start_commands=[],
+                boot_commands=[],
+                start_ray_commands=[],
                 runtime_hash="")
 
             _exec(updater, "ray stop", False, False)
@@ -234,15 +234,14 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 remote_key_path: config["auth"]["ssh_private_key"],
             })
 
+        setup_commands = get_commands(config, "setup_commands", head=True)
+        boot_commands = get_commands(config, "boot_commands", head=True)
+        start_ray_commands = get_commands(config, "start_ray_commands", head=True)
         if restart_only:
-            init_commands = []
-            ray_start_commands = config["head_start_ray_commands"]
+            setup_commands = []
+            boot_commands = []
         elif no_restart:
-            init_commands = config["head_setup_commands"]
-            ray_start_commands = []
-        else:
-            init_commands = config["head_setup_commands"]
-            ray_start_commands = config["head_start_ray_commands"]
+            start_ray_commands = []
 
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -251,9 +250,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            initialization_commands=config["initialization_commands"],
-            setup_commands=init_commands,
-            ray_start_commands=ray_start_commands,
+            setup_commands=setup_commands,
+            boot_commands=boot_commands,
+            start_ray_commands=start_ray_commands,
             runtime_hash=runtime_hash,
         )
         updater.start()
@@ -363,9 +362,9 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            initialization_commands=[],
             setup_commands=[],
-            ray_start_commands=[],
+            boot_commands=[],
+            start_ray_commands=[],
             runtime_hash="",
         )
 
@@ -373,7 +372,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             container_name = config["docker"]["container_name"]
             if not container_name:
                 raise ValueError("Docker container not specified in config.")
-            return with_docker_exec(
+            return maybe_docker_exec(
                 [command], container_name=container_name)[0]
 
         cmd = wrap_docker(cmd) if docker else cmd
@@ -457,9 +456,9 @@ def rsync(config_file, source, target, override_cluster_name, down):
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            initialization_commands=[],
             setup_commands=[],
-            ray_start_commands=[],
+            boot_commands=[],
+            start_ray_commands=[],
             runtime_hash="",
         )
         if down:

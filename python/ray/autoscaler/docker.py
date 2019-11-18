@@ -38,9 +38,21 @@ def dockerize_if_needed(config):
         assert cname, "Must provide container name!"
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
+    # Rewrite commands to include `docker exec` where needed
+    for k1 in ["boot_commands", "start_ray_commands"]:
+        config.setdefault(k1, {})
+        for k2 in ["common", "head", "worker"]:
+            env_vars = None
+            if k1 == "start_ray_commands" and k2 == "worker":
+                env_vars = ["RAY_HEAD_IP"]
+
+            config[k1][k2] = maybe_docker_exec(config[k1].get(k2, []),
+                                               container_name=cname,
+                                               env_vars=env_vars)
+
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
-        config["initialization_commands"].append(docker_pull_cmd)
+        config["setup_commands"]["common"].append(docker_pull_cmd)
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
                                           docker_mounts, cname,
@@ -50,31 +62,37 @@ def dockerize_if_needed(config):
                                             docker_mounts, cname,
                                             run_options + worker_run_options)
 
-    config["head_setup_commands"] = head_docker_start + (with_docker_exec(
-        config["head_setup_commands"], container_name=cname))
-    config["head_start_ray_commands"] = (
-        docker_autoscaler_setup(cname) + with_docker_exec(
-            config["head_start_ray_commands"], container_name=cname))
+    config["boot_commands"]["head"] = (head_docker_start +
+                                       config["boot_commands"]["head"])
+    config["start_ray_commands"]["head"] = (docker_autoscaler_setup(cname) +
+                                            config["boot_commands"]["head"])
 
-    config["worker_setup_commands"] = worker_docker_start + (with_docker_exec(
-        config["worker_setup_commands"], container_name=cname))
-    config["worker_start_ray_commands"] = with_docker_exec(
-        config["worker_start_ray_commands"],
-        container_name=cname,
-        env_vars=["RAY_HEAD_IP"])
+    config["boot_commands"]["worker"] = (worker_docker_start +
+                                         config["boot_commands"]["worker"])
 
     return config
 
 
-def with_docker_exec(cmds, container_name, env_vars=None):
+def maybe_docker_exec(cmds, container_name, env_vars=None):
+    """Wrap any commands starting with IN_DOCKER in docker exec."""
     env_str = ""
     if env_vars:
         env_str = " ".join(
             ["-e {env}=${env}".format(env=env) for env in env_vars])
-    return [
-        "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
-                                                  quote(cmd)) for cmd in cmds
-    ]
+
+    res = []
+    for cmd in cmds:
+        args = cmd.split(' ')
+        if not args[0] == 'IN_DOCKER':
+            res.append(cmd)
+            continue
+
+        cmd = ' '.join(args[1:])
+        dockerized_cmd = "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
+                                                                   quote(cmd))
+        res.append(dockerized_cmd)
+
+    return res
 
 
 def aptwait_cmd():
@@ -124,7 +142,7 @@ def docker_autoscaler_setup(cname):
         cmds.append("docker cp {path} {cname}:{dpath}".format(
             path=path, dpath=base_path, cname=cname))
         cmds.extend(
-            with_docker_exec(
+            maybe_docker_exec(
                 ["cp {} {}".format("/" + base_path, path)],
                 container_name=cname))
     return cmds

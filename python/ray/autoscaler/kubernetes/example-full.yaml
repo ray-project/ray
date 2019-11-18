@@ -220,26 +220,18 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-# List of commands that will be run before `setup_commands`. If docker is
-# enabled, these commands will run outside the container and before docker
-# is setup.
-initialization_commands: []
-
-# List of shell commands to run to set up nodes.
+# List of commands that will be run when the node is first created.
 setup_commands: []
 
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
+# List of commands that will be run each time the node is booted.
+# On the first boot, these will run after `setup_commands`.
+boot_commands: []
 
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
-
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+# Commands to start Ray on the nodes. You do not need to change this.
+start_ray_commands:
+    common:
+        - ray stop
+    head:
+      - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    worker:
+        - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

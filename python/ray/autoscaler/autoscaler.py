@@ -39,6 +39,19 @@ REQUIRED, OPTIONAL = True, False
 # For (a, b), if a is a dictionary object, then
 # no extra fields can be introduced.
 
+
+COMMANDS_SCHEMA = (
+        {
+            # Setup common to all nodes. These are run first.
+            "common": (list, OPTIONAL),
+            # Head node only.
+            "head": (list, OPTIONAL),
+            # Worker nodes only
+            "worker": (list, OPTIONAL),
+        },
+        OPTIONAL)
+
+
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
     "cluster_name": (str, REQUIRED),
@@ -130,30 +143,25 @@ CLUSTER_CONFIG_SCHEMA = {
     # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
     "file_mounts": (dict, OPTIONAL),
 
-    # List of commands that will be run before `setup_commands`. If docker is
-    # enabled, these commands will run outside the container and before docker
-    # is setup.
-    "initialization_commands": (list, OPTIONAL),
+    # Commands that will be run when the cluster is first created.
+    "setup_commands": COMMANDS_SCHEMA,
 
-    # List of common shell commands to run to setup nodes.
-    "setup_commands": (list, OPTIONAL),
+    # Commands that will be run whenever a node is booted.
+    "boot_commands": COMMANDS_SCHEMA,
 
-    # Commands that will be run on the head node after common setup.
-    "head_setup_commands": (list, OPTIONAL),
-
-    # Commands that will be run on worker nodes after common setup.
-    "worker_setup_commands": (list, OPTIONAL),
-
-    # Command to start ray on the head node. You shouldn't need to modify this.
-    "head_start_ray_commands": (list, OPTIONAL),
-
-    # Command to start ray on worker nodes. You shouldn't need to modify this.
-    "worker_start_ray_commands": (list, OPTIONAL),
+    # Commands that will be run whenever Ray is (re)started.
+    "start_ray_commands": COMMANDS_SCHEMA,
 
     # Whether to avoid restarting the cluster during updates. This field is
     # controlled by the ray --no-restart flag and cannot be set by the user.
     "no_restart": (None, OPTIONAL),
 }
+
+
+def get_commands(config, key, head):
+    """Get commands for a head or worker node under key `key`."""
+    kind_specific = "head" if head else "worker"
+    return config[key].get("common", []) + config[key].get(kind_specific, [])
 
 
 class LoadMetrics(object):
@@ -559,13 +567,14 @@ class StandardAutoscaler(object):
         # problems. They should at a minimum be spawned as daemon threads.
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
-        for node_id, commands, ray_start in (self.should_update(node_id)
-                                             for node_id in nodes):
+        for node_id in nodes:
+            node_id, setup_commands, boot_commands, ray_start = self.should_update(node_id)
             if node_id is not None:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, commands, ray_start)))
+                        args=(node_id, setup_commands,
+                              boot_commands, ray_start)))
         for t in T:
             t.start()
         for t in T:
@@ -583,8 +592,10 @@ class StandardAutoscaler(object):
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
-                new_config["worker_setup_commands"],
-                new_config["worker_start_ray_commands"]
+                new_config["setup_commands"]["common"],
+                new_config["setup_commands"]["worker"],
+                new_config["start_ray_commands"]["common"],
+                new_config["start_ray_commands"]["worker"],
             ])
             self.config = new_config
             self.launch_hash = new_launch_hash
@@ -663,10 +674,10 @@ class StandardAutoscaler(object):
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts={},
-            initialization_commands=[],
             setup_commands=[],
-            ray_start_commands=with_head_node_ip(
-                self.config["worker_start_ray_commands"]),
+            boot_commands=[],
+            start_ray_commands=with_head_node_ip(
+                get_commands(self.config, "start_ray_commands", head=False)),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
@@ -675,26 +686,25 @@ class StandardAutoscaler(object):
 
     def should_update(self, node_id):
         if not self.can_update(node_id):
-            return None, None, None  # no update
+            return None, None, None, None  # no update
 
         status = self.provider.node_tags(node_id).get(TAG_RAY_NODE_STATUS)
         if status == STATUS_UP_TO_DATE and self.files_up_to_date(node_id):
-            return None, None, None  # no update
+            return None, None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
+        setup_commands = get_commands(self.config, "setup_commands", head=False)
+        boot_commands = get_commands(self.config, "boot_commands", head=False)
+        ray_commands = get_commands(self.config, "start_ray_commands", head=False)
         if successful_updated and self.config.get("restart_only", False):
-            init_commands = []
-            ray_commands = self.config["worker_start_ray_commands"]
+            setup_commands = []
+            boot_commands = []
         elif successful_updated and self.config.get("no_restart", False):
-            init_commands = self.config["worker_setup_commands"]
             ray_commands = []
-        else:
-            init_commands = self.config["worker_setup_commands"]
-            ray_commands = self.config["worker_start_ray_commands"]
 
-        return (node_id, init_commands, ray_commands)
+        return node_id, setup_commands, boot_commands, ray_commands
 
-    def spawn_updater(self, node_id, init_commands, ray_start_commands):
+    def spawn_updater(self, node_id, setup_commands, boot_commands, start_ray_commands):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -702,10 +712,9 @@ class StandardAutoscaler(object):
             auth_config=self.config["auth"],
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
-            initialization_commands=with_head_node_ip(
-                self.config["initialization_commands"]),
-            setup_commands=with_head_node_ip(init_commands),
-            ray_start_commands=with_head_node_ip(ray_start_commands),
+            setup_commands=with_head_node_ip(setup_commands),
+            boot_commands=with_head_node_ip(boot_commands),
+            start_ray_commands=with_head_node_ip(start_ray_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
@@ -828,18 +837,9 @@ def validate_config(config, schema=CLUSTER_CONFIG_SCHEMA):
 def fillout_defaults(config):
     defaults = get_default_config(config["provider"])
     defaults.update(config)
-    merge_setup_commands(defaults)
     dockerize_if_needed(defaults)
     defaults["auth"] = defaults.get("auth", {})
     return defaults
-
-
-def merge_setup_commands(config):
-    config["head_setup_commands"] = (
-        config["setup_commands"] + config["head_setup_commands"])
-    config["worker_setup_commands"] = (
-        config["setup_commands"] + config["worker_setup_commands"])
-    return config
 
 
 def with_head_node_ip(cmds):

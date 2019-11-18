@@ -294,9 +294,9 @@ class NodeUpdater(object):
                  auth_config,
                  cluster_name,
                  file_mounts,
-                 initialization_commands,
                  setup_commands,
-                 ray_start_commands,
+                 boot_commands,
+                 start_ray_commands,
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False):
@@ -321,9 +321,9 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
-        self.initialization_commands = initialization_commands
         self.setup_commands = setup_commands
-        self.ray_start_commands = ray_start_commands
+        self.boot_commands = boot_commands
+        self.start_ray_commands = start_ray_commands
         self.runtime_hash = runtime_hash
 
     def run(self):
@@ -414,17 +414,18 @@ class NodeUpdater(object):
             # Run init commands
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+            # TODO(adam): how to only run these sometime?
             with LogTimer(self.log_prefix +
-                          "Initialization commands completed"):
-                for cmd in self.initialization_commands:
-                    self.cmd_runner.run(cmd)
-
-            with LogTimer(self.log_prefix + "Setup commands completed"):
+                          "Setup commands completed"):
                 for cmd in self.setup_commands:
                     self.cmd_runner.run(cmd)
 
+            with LogTimer(self.log_prefix + "Boot commands completed"):
+                for cmd in self.boot_commands:
+                    self.cmd_runner.run(cmd)
+
         with LogTimer(self.log_prefix + "Ray start commands completed"):
-            for cmd in self.ray_start_commands:
+            for cmd in self.start_ray_commands:
                 self.cmd_runner.run(cmd)
 
     def rsync_up(self, source, target):
