@@ -45,8 +45,8 @@ COMMON_CONFIG = {
     # this to 0 will force rollouts to be done in the trainer actor.
     "num_workers": 2,
     # Number of environments to evaluate vectorwise per worker. This enables
-    # model inference batching, which can improve performance a lot if
-    # inference is the bottleneck for rollouts.
+    # model inference batching, which can improve performance for inference
+    # bottlenecked workloads.
     "num_envs_per_worker": 1,
     # Default sample batch size (unroll length). Batches of this size are
     # collected from rollout workers until train_batch_size is met. When using
