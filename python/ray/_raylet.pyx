@@ -556,16 +556,13 @@ cdef execute_task(
                 coroutine = result_or_coroutine
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
                 event = core_worker.core_worker.get().PrepareYieldCurrentFiber()
-                print("is loop running?")
-                async def somthing():
-                    print("health check??")
-                loop.call_soon_threadsafe(somthing())
                 def done_callback(future):
                     print("inside done callback", future)
                     event.get().Notify()
                 future.add_done_callback(done_callback)
                 print("before yield")
-                core_worker.core_worker.get().YieldCurrentFiber(event)
+                with nogil:
+                    core_worker.core_worker.get().YieldCurrentFiber(event)
                 print("after yield and wait finish, the future is", future)
                 return future.result()
             
