@@ -4,6 +4,7 @@
 #include "streaming.h"
 
 namespace ray {
+namespace streaming {
 
 // Queue factory of writer and reader
 std::shared_ptr<QueueWriterInterface> CreateQueueWriter(
@@ -94,12 +95,6 @@ void StreamingQueueWriter::CleanupSubscription(const ObjectID &queue_id) {
   RAY_LOG(INFO) << "Not implemented CleanupSubscription";
 }
 
-void StreamingQueueWriter::GetLastQueueItem(const ObjectID &queue_id,
-                                            std::shared_ptr<uint8_t> &data,
-                                            uint32_t &data_size, uint64_t &sequence_id) {
-  sequence_id = queue_writer_->GetLastQueueItem(queue_id);
-}
-
 Status StreamingQueueWriter::DeleteQueue(const ObjectID &queue_id) {
   return Status::OK();
 }
@@ -142,10 +137,6 @@ void StreamingQueueReader::NotifyConsumedItem(const ObjectID &queue_id, uint64_t
   queue_reader_->NotifyConsumedItem(queue_id, seq_id);
 }
 
-void StreamingQueueReader::GetLastSeqID(const ObjectID &queue_id, uint64_t &last_seq_id) {
-  last_seq_id = queue_reader_->GetLastSeqID(queue_id);
-}
-
 void StreamingQueueReader::WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
                                                int64_t timeout_ms,
                                                std::vector<ObjectID> &failed_queues) {
@@ -157,4 +148,6 @@ void StreamingQueueReader::WaitQueuesInCluster(const std::vector<ObjectID> &queu
 Status StreamingQueueReader::DeleteQueue(const ObjectID &queue_id) {
   return Status::OK();
 }
+
+}  // namespace streaming
 }  // namespace ray

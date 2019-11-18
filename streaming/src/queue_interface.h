@@ -10,7 +10,7 @@
 #include <limits>
 
 namespace ray {
-
+namespace streaming {
 const uint64_t QUEUE_INTERFACE_INVALID = std::numeric_limits<uint64_t>::max();
 
 class QueueWriterInterface;
@@ -49,8 +49,6 @@ class QueueWriterInterface {
   virtual void GetMinConsumedSeqID(const ObjectID &queue_id,
                                    uint64_t &min_consumed_id) = 0;
   virtual void CleanupSubscription(const ObjectID &queue_id) = 0;
-  virtual void GetLastQueueItem(const ObjectID &queue_id, std::shared_ptr<uint8_t> &data,
-                                uint32_t &data_size, uint64_t &sequence_id) = 0;
   virtual Status DeleteQueue(const ObjectID &queue_id) = 0;
 };
 
@@ -64,8 +62,6 @@ class QueueReaderInterface {
                               uint32_t &data_size, uint64_t &seq_id,
                               uint64_t timeout_ms = -1) = 0;
   virtual void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id) = 0;
-  virtual void GetLastSeqID(const ObjectID &object_id, uint64_t &last_seq_id) = 0;
-
   virtual void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
                                    int64_t timeout_ms,
                                    std::vector<ObjectID> &failed_queues) = 0;
@@ -92,8 +88,6 @@ class StreamingQueueWriter : public QueueWriterInterface {
   Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                        uint32_t data_size, uint64_t timestamp) override;
   void CleanupSubscription(const ObjectID &queue_id) override;
-  void GetLastQueueItem(const ObjectID &queue_id, std::shared_ptr<uint8_t> &data,
-                        uint32_t &data_size, uint64_t &sequence_id) override;
   Status DeleteQueue(const ObjectID &queue_id) override;
 
  private:
@@ -117,8 +111,6 @@ class StreamingQueueReader : public QueueReaderInterface {
   Status GetQueueItem(const ObjectID &object_id, uint8_t *&data, uint32_t &data_size,
                       uint64_t &seq_id, uint64_t timeout_ms = -1) override;
   void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id) override;
-  void GetLastSeqID(const ObjectID &object_id, uint64_t &last_seq_id) override;
-
   void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                            std::vector<ObjectID> &failed_queues) override;
   Status DeleteQueue(const ObjectID &queue_id) override;
@@ -132,6 +124,7 @@ class StreamingQueueReader : public QueueReaderInterface {
   RayFunction sync_func_;
 };
 
+}  // namespace streaming
 }  // namespace ray
 
 #endif

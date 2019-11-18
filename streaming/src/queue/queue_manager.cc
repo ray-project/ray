@@ -75,11 +75,6 @@ Status QueueWriter::PushSync(const ObjectID &queue_id, uint64_t seq_id, uint8_t 
   return status;
 }
 
-/// Just return invalid seq_id because we do not pull data from downstream
-uint64_t QueueWriter::GetLastQueueItem(const ObjectID &queue_id) {
-  return QUEUE_INVALID_SEQ_ID;
-}
-
 QueueReader::~QueueReader() {
   manager_->ReleaseAllDownQueues();
 }
@@ -126,18 +121,6 @@ void QueueReader::NotifyConsumedItem(const ObjectID &queue_id, uint64_t seq_id) 
   STREAMING_LOG(DEBUG) << "QueueReader::NotifyConsumedItem";
   auto queue = manager_->GetDownQueue(queue_id);
   queue->OnConsumed(seq_id);
-}
-
-/// TODO: Maintain a seq_id represent last_seq_id ?
-uint64_t QueueReader::GetLastSeqID(const ObjectID &queue_id) {
-  auto queue = manager_->GetDownQueue(queue_id);
-
-  return queue->GetLastRecvSeqId();
-}
-
-void QueueReader::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                             std::vector<ObjectID> &failed_queues) {
-  manager_->WaitQueues(queue_ids, timeout_ms, failed_queues, UPSTREAM);
 }
 
 void QueueManager::Init() {
@@ -401,7 +384,7 @@ bool QueueManager::CheckQueueSync(const ObjectID &queue_id, QueueType type) {
 void QueueManager::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                               std::vector<ObjectID> &failed_queues, QueueType type) {
   failed_queues.insert(failed_queues.begin(), queue_ids.begin(), queue_ids.end());
-  uint64_t start_time_us = current_sys_time_us();
+  uint64_t start_time_us = current_time_ms();
   uint64_t current_time_us = start_time_us;
   while (!failed_queues.empty() && current_time_us < start_time_us + timeout_ms * 1000) {
     for (auto it = failed_queues.begin(); it != failed_queues.end();) {
@@ -414,7 +397,7 @@ void QueueManager::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t ti
         it++;
       }
     }
-    current_time_us = current_sys_time_us();
+    current_time_us = current_time_ms();
   }
 }
 

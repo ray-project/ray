@@ -44,7 +44,7 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(
   uint64_t queue_last_seq_id = 0;
   uint64_t last_message_id_in_queue = 0;
 
-  last_message_id_in_queue = FetchLastMessageIdFromQueueForStreamingQueue(
+  last_message_id_in_queue = FetchLastMessageIdFromQueue(
       channel_info.channel_id, queue_last_seq_id);
 
   if (!last_message_id_in_queue) {
@@ -97,22 +97,6 @@ StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel
 
 uint64_t StreamingQueueProducer::FetchLastMessageIdFromQueue(
     const ObjectID &queue_id, uint64_t &last_queue_seq_id) {
-  uint32_t data_size;
-  std::shared_ptr<uint8_t> data = nullptr;
-  queue_writer_->GetLastQueueItem(queue_id, data, data_size, last_queue_seq_id);
-  // Queue is empty, just return
-  if (data == nullptr) {
-    STREAMING_LOG(WARNING) << "Last item of queue [" << queue_id << "] is not found.";
-    return 0;
-  }
-  STREAMING_LOG(INFO) << "Get last queue item, data size: " << data_size
-                      << ", queue last seq id: " << last_queue_seq_id;
-  auto message_bundle = StreamingMessageBundleMeta::FromBytes(data.get());
-  return message_bundle->GetLastMessageId();
-}
-
-uint64_t StreamingQueueProducer::FetchLastMessageIdFromQueueForStreamingQueue(
-    const ObjectID &queue_id, uint64_t &last_queue_seq_id) {
   last_queue_seq_id = 0;
   return 0;
 }
@@ -126,16 +110,6 @@ StreamingStatus StreamingQueueProducer::DestroyTransferChannel(
 StreamingStatus StreamingQueueProducer::ClearTransferCheckpoint(
     ProducerChannelInfo &channel_info, uint64_t checkpoint_id,
     uint64_t checkpoint_offset) {
-  return StreamingStatus::OK;
-}
-
-StreamingStatus StreamingQueueProducer::RefreshChannelInfo(
-    ProducerChannelInfo &channel_info) {
-  uint64_t min_consumed_id = 0;
-  queue_writer_->GetMinConsumedSeqID(channel_info.channel_id, min_consumed_id);
-  if (min_consumed_id != static_cast<uint64_t>(-1)) {
-    channel_info.queue_info.consumed_seq_id = min_consumed_id;
-  }
   return StreamingStatus::OK;
 }
 
@@ -225,13 +199,6 @@ StreamingStatus StreamingQueueConsumer::DestroyTransferChannel(
 StreamingStatus StreamingQueueConsumer::ClearTransferCheckpoint(
     ConsumerChannelInfo &channel_info, uint64_t checkpoint_id,
     uint64_t checkpoint_offset) {
-  return StreamingStatus::OK;
-}
-
-StreamingStatus StreamingQueueConsumer::RefreshChannelInfo(
-    ConsumerChannelInfo &channel_info) {
-  auto &queue_info = channel_info.queue_info;
-  queue_reader_->GetLastSeqID(channel_info.channel_id, queue_info.last_seq_id);
   return StreamingStatus::OK;
 }
 
