@@ -1,13 +1,14 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import logging
-from time import sleep
-from queue import Queue
 
-from ray.streaming.queue.queue_interface import QueueMessage
-from ray.streaming.queue.queue_interface import QueueLink
+import logging
+from queue import Queue
+from time import sleep
+
 from ray.streaming.queue.queue_interface import QueueConsumer
+from ray.streaming.queue.queue_interface import QueueLink
+from ray.streaming.queue.queue_interface import QueueMessage
 from ray.streaming.queue.queue_interface import QueueProducer
 
 

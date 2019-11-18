@@ -4,13 +4,12 @@ from __future__ import print_function
 
 import hashlib
 import logging
+import pickle
 import sys
 import time
 
-import ray
 from ray.streaming.operator import PStrategy
 from ray.streaming.queue.queue_interface import QueueID
-import pickle
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

@@ -1,17 +1,13 @@
 from libc.stdint cimport *
-from libcpp cimport bool as c_bool, nullptr
+from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, make_shared
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.list cimport list as c_list
-from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
     CRayFunction,
-    LANGUAGE_CPP,
-    LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
-    LocalMemoryBuffer,
 )
 
 from ray.includes.unique_ids cimport (
@@ -30,10 +26,6 @@ from ray.includes.libcoreworker cimport CCoreWorker
 cimport ray.streaming.includes.libstreaming as libstreaming
 from ray.streaming.includes.libstreaming cimport (
     CStreamingStatus,
-    CStreamingMessageType,
-    CStreamingSerializable,
-    CStreamingMessageBundleType,
-    CStreamingMessageBundleMeta,
     CStreamingMessage,
     CStreamingMessageBundle,
     CStreamingReaderBundle,
@@ -48,7 +40,6 @@ from ray.streaming.includes.libstreaming cimport (
 
 from ray.function_manager import FunctionDescriptor
 from ray.streaming.queue.exception import QueueInitException, QueueInterruptException
-import ray.streaming.queue.queue_utils as queue_utils
 
 queue_logger = logging.getLogger(__name__)
 

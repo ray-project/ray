@@ -2,11 +2,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from enum import Enum
 from abc import ABCMeta, abstractmethod
+from enum import Enum
 
 import ray
 import ray.streaming.queue.queue_utils as queue_utils
+
 
 class QueueConfig:
     """

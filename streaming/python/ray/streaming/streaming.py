@@ -3,21 +3,20 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import pickle
 import sys
 import time
-import pickle
 
 import networkx as nx
-
 import ray
-from ray.streaming.communication import DataChannel, DataInput
-from ray.streaming.communication import DataOutput, QueueConfig
+import ray.streaming.processor as processor
+import ray.streaming.queue.queue_utils as queue_utils
+from ray.streaming.communication import DataChannel
+from ray.streaming.communication import QueueConfig
+from ray.streaming.config import Config
+from ray.streaming.jobworker import JobWorker
 from ray.streaming.operator import Operator, OpType
 from ray.streaming.operator import PScheme, PStrategy
-import ray.streaming.processor as processor
-from ray.streaming.config import Config
-import ray.streaming.queue.queue_utils as queue_utils
-from ray.streaming.jobworker import JobWorker
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")

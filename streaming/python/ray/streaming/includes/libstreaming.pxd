@@ -6,7 +6,6 @@
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
-from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.list cimport list as c_list
 from cpython cimport PyObject
