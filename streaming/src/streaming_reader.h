@@ -94,6 +94,7 @@ class StreamingReader : public StreamingCommon {
   ///  \param offset
   ///
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
+
  protected:
   virtual void InitTransfer();
 
@@ -113,7 +114,6 @@ class StreamingReader : public StreamingCommon {
 
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<StreamingReaderBundle> &message,
                                          bool &is_valid_break);
-
 };
 
 class StreamingReaderDirectCall : public StreamingReader {

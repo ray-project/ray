@@ -44,8 +44,8 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(
   uint64_t queue_last_seq_id = 0;
   uint64_t last_message_id_in_queue = 0;
 
-  last_message_id_in_queue = FetchLastMessageIdFromQueue(
-      channel_info.channel_id, queue_last_seq_id);
+  last_message_id_in_queue =
+      FetchLastMessageIdFromQueue(channel_info.channel_id, queue_last_seq_id);
 
   if (!last_message_id_in_queue) {
     if (last_message_id_in_queue < channel_info.current_message_id) {
