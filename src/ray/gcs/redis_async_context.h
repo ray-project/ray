@@ -62,7 +62,7 @@ class RedisAsyncContext {
   /// NOTE(micafan): All the `redisAsyncContext`-related functions only manipulate memory
   /// data and don't actually do any IO operations. So the perf impact of adding the lock
   /// should be minimum.
-  std::mutex mutex_;
+  std::recursive_mutex mutex_;
   redisAsyncContext *redis_async_context_{nullptr};
 };
 

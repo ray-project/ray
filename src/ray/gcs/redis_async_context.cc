@@ -31,14 +31,14 @@ void RedisAsyncContext::ResetRawRedisAsyncContext() {
 }
 
 void RedisAsyncContext::RedisAsyncHandleRead() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   redisAsyncHandleRead(redis_async_context_);
 }
 
 void RedisAsyncContext::RedisAsyncHandleWrite() {
   // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
   // it.
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   redisAsyncHandleWrite(redis_async_context_);
 }
 
@@ -50,7 +50,7 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
   int ret_code = 0;
   {
     // `redisvAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
   }
 
@@ -70,7 +70,7 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn, void *privd
   {
     // `redisAsyncCommandArgv` will mutate `redis_async_context_`, use a lock to protect
     // it.
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     ret_code =
         redisAsyncCommandArgv(redis_async_context_, fn, privdata, argc, argv, argvlen);
   }
