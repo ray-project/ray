@@ -6,7 +6,7 @@
 namespace ray {
 
 CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
-    std::unique_ptr<RayletClient> &raylet_client, const TaskHandler &task_handler,
+    std::shared_ptr<RayletClient> &raylet_client, const TaskHandler &task_handler,
     const std::function<void()> &exit_handler)
     : raylet_client_(raylet_client),
       task_handler_(task_handler),

@@ -421,10 +421,6 @@ cdef class RayletClient:
     def job_id(self):
         return JobID(self.client.GetJobID().Binary())
 
-    @property
-    def is_worker(self):
-        return self.client.IsWorker()
-
 cdef deserialize_args(
         const c_vector[shared_ptr[CRayObject]] &c_args,
         const c_vector[CObjectID] &arg_reference_ids):

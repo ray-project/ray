@@ -74,17 +74,6 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
-  /// Grants a worker to the client.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
-  virtual ray::Status WorkerLeaseGranted(
-      const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) {
-    return Status::NotImplemented("");
-  }
-
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -149,17 +138,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                                                 DirectActorCallArgWaitCompleteReply>(
         *stub_, &CoreWorkerService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
         request, callback);
-    return call->GetStatus();
-  }
-
-  ray::Status WorkerLeaseGranted(
-      const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) override {
-    auto call =
-        client_call_manager_.CreateCall<CoreWorkerService, WorkerLeaseGrantedRequest,
-                                        WorkerLeaseGrantedReply>(
-            *stub_, &CoreWorkerService::Stub::PrepareAsyncWorkerLeaseGranted, request,
-            callback);
     return call->GetStatus();
   }
 

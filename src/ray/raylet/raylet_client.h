@@ -69,12 +69,16 @@ class WorkerLeaseInterface {
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
   /// \return ray::Status
-  virtual ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) = 0;
+  virtual ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
   /// \return ray::Status
   virtual ray::Status ReturnWorker(int worker_port) = 0;
+
+  virtual ~WorkerLeaseInterface(){};
 };
 
 class RayletClient : public WorkerLeaseInterface {
@@ -95,6 +99,11 @@ class RayletClient : public WorkerLeaseInterface {
                const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
                ClientID *raylet_id, int port = -1);
+
+  /// Connect to the raylet via grpc only.
+  ///
+  /// \param grpc_client gRPC client to the raylet.
+  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -203,18 +212,16 @@ class RayletClient : public WorkerLeaseInterface {
   ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
 
   /// Implements WorkerLeaseInterface.
-  ray::Status RequestWorkerLease(const ray::TaskSpecification &resource_spec) override;
+  ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
 
   /// Implements WorkerLeaseInterface.
   ray::Status ReturnWorker(int worker_port) override;
 
-  Language GetLanguage() const { return language_; }
-
   WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
-
-  bool IsWorker() const { return is_worker_; }
 
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
@@ -223,9 +230,7 @@ class RayletClient : public WorkerLeaseInterface {
   /// request types.
   std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
-  const bool is_worker_;
   const JobID job_id_;
-  const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

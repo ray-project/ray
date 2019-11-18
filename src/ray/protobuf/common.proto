@@ -27,6 +27,7 @@ enum TaskType {
   ACTOR_TASK = 2;
 }
 
+// Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
   string ip_address = 2;

@@ -6,6 +6,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <sstream>
+
 #include "status.h"
 
 namespace ray {
