@@ -34,26 +34,28 @@ flatbuffer_cc_library(
 cc_library(
     name = "streaming_lib",
     srcs = glob([
-        "*.cc", "queue/*.cc"
+        "*.cc",
+        "queue/*.cc",
     ]),
     hdrs = glob([
-        "*.h", "queue/*.h"
+        "*.h",
+        "queue/*.h",
     ]),
     includes = ["."],
+    visibility = ["//visibility:public"],
     deps = [
         ":streaming_fbs",
         ":streaming_queue_fbs",
+        "//:core_worker_lib",
+        "//:ray_common",
         "//:ray_util",
         "//:raylet_lib",
-        "//:ray_common",
-        "//:core_worker_lib",
-        "@boost//:asio",
         "@boost//:any",
+        "@boost//:asio",
         "@boost//:circular_buffer",
         "@boost//:thread",
-        "@com_google_googletest//:gtest"
+        "@com_google_googletest//:gtest",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_binary(
@@ -61,10 +63,10 @@ cc_binary(
     srcs = [
         "test/direct_call_workers.cc",
     ],
+    copts = ["-Itest/"],
     includes = [
         "streaming/src/test",
     ],
-    copts = ["-Itest/"],
     deps = [
         ":streaming_lib",
     ],
@@ -103,13 +105,11 @@ cc_binary(
     ],
 )
 
-
-
 cc_binary(
     name = "streaming_writer_tests_with_streamingqueue",
     srcs = [
-        "test/streaming_writer_tests_with_streamingqueue.cc",
         "test/streaming_queue_tests_base.h",
+        "test/streaming_writer_tests_with_streamingqueue.cc",
     ],
     copts = ["-Itest/"],
     deps = [
@@ -130,11 +130,12 @@ cc_binary(
 genrule(
     name = "run_streaming_common_tests",
     srcs = [
-      ":streaming_message_ring_buffer_tests",
-      ":streaming_message_serialization_tests",
-      ":streaming_utility_tests",
-      ":streaming_mock_transfer",
+        ":streaming_message_ring_buffer_tests",
+        ":streaming_message_serialization_tests",
+        ":streaming_utility_tests",
+        ":streaming_mock_transfer",
     ],
+    outs = ["streaming_test_log.out"],
     cmd = """
       set -x &&
       date > $@
@@ -143,5 +144,4 @@ genrule(
       $(location streaming_utility_tests) >> $@ &&
       $(location streaming_mock_transfer) >> $@
     """,
-    outs = ["streaming_test_log.out"],
 )

@@ -1,19 +1,8 @@
 load("@//bazel:cython_library.bzl", "pyx_library")
 load("//:streaming/streaming.bzl", "flatbuffer_py_library")
 
-pyx_library(
-    name = "_streaming",
-    srcs = glob([
-        "ray/streaming/_streaming.pyx",
-        "ray/streaming/includes/*.pxd",
-        "ray/streaming/includes/*.pxi",
-    ]),
-    deps = [
-        "//streaming/src:streaming_lib"
-    ],
-)
-
 cc_flatbuffers_pkg = "ray/streaming/fbs/"
+
 flatbuffers_generated_files = [
     "StreamingConfigKey.py",
     "StreamingRole.py",
@@ -35,7 +24,7 @@ genrule(
     ],
     outs = [
         "ray/streaming/generated/" + file
-            for file in flatbuffers_generated_files
+        for file in flatbuffers_generated_files
     ],
     cmd = """
         for f in $(locations //streaming/python:streaming_py_fbs); do
@@ -44,7 +33,7 @@ genrule(
         done
     """,
     local = 1,
-    visibility = ["//visibility:public"]
+    visibility = ["//visibility:public"],
 )
 
 genrule(
@@ -53,7 +42,7 @@ genrule(
         ":generate_streaming_py_fbs",
     ],
     outs = [
-        "cp_streaming_py_fbs_generated.out"
+        "cp_streaming_py_fbs_generated.out",
     ],
     cmd = """
         set -e
@@ -70,5 +59,5 @@ genrule(
         echo $$(date) > $@
     """,
     local = 1,
-    visibility = ["//visibility:public"]
+    visibility = ["//visibility:public"],
 )
