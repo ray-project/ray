@@ -4,10 +4,10 @@ from typing import List
 
 import ray
 import ray.streaming as streaming
-import ray.streaming.queue.queue_utils as qutils
+import ray.streaming.runtime.queue.queue_utils as qutils
 from ray.actor import ActorHandle, ActorID
 from ray.streaming.config import Config
-from ray.streaming.queue.queue_interface import QueueLink, QueueConsumer, QueueProducer, QueueMessage, QueueID
+from ray.streaming.runtime.queue.queue_interface import QueueLink, QueueConsumer, QueueProducer, QueueMessage, QueueID
 
 
 class QueueMessageImpl(QueueMessage):

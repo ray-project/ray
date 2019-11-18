@@ -7,11 +7,11 @@ import pickle
 import threading
 
 import ray
-import ray.streaming.queue.streaming_queue as streaming_queue
+import ray.streaming.runtime.queue.streaming_queue as streaming_queue
 from ray.function_manager import FunctionDescriptor
 from ray.streaming.communication import DataInput, DataOutput
 from ray.streaming.config import Config
-from ray.streaming.queue.memory_queue import MemQueueLinkImpl
+from ray.streaming.runtime.queue.memory_queue import MemQueueLinkImpl
 
 logger = logging.getLogger(__name__)
 

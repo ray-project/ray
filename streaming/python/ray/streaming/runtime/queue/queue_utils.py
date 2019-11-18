@@ -1,7 +1,7 @@
 import logging
 import random
 
-import ray.streaming.queue.queue_constants as qc
+import ray.streaming.runtime.queue.queue_constants as qc
 
 logger = logging.getLogger(__name__)
 

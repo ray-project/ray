@@ -6,10 +6,10 @@ import logging
 from queue import Queue
 from time import sleep
 
-from ray.streaming.queue.queue_interface import QueueConsumer
-from ray.streaming.queue.queue_interface import QueueLink
-from ray.streaming.queue.queue_interface import QueueMessage
-from ray.streaming.queue.queue_interface import QueueProducer
+from ray.streaming.runtime.queue.queue_interface import QueueConsumer
+from ray.streaming.runtime.queue.queue_interface import QueueLink
+from ray.streaming.runtime.queue.queue_interface import QueueMessage
+from ray.streaming.runtime.queue.queue_interface import QueueProducer
 
 
 class MemQueueMessageImpl(QueueMessage):

@@ -9,7 +9,7 @@ import sys
 import time
 
 from ray.streaming.operator import PStrategy
-from ray.streaming.queue.queue_interface import QueueID
+from ray.streaming.runtime.queue.queue_interface import QueueID
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)

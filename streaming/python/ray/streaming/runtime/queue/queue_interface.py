@@ -6,7 +6,7 @@ from abc import ABCMeta, abstractmethod
 from enum import Enum
 
 import ray
-import ray.streaming.queue.queue_utils as queue_utils
+import ray.streaming.runtime.queue.queue_utils as queue_utils
 
 
 class QueueConfig:

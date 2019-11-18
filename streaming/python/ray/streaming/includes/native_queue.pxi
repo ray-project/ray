@@ -39,7 +39,7 @@ from ray.streaming.includes.libstreaming cimport (
 )
 
 from ray.function_manager import FunctionDescriptor
-from ray.streaming.queue.queue_interface import QueueInitException, QueueInterruptException
+from ray.streaming.runtime.queue.queue_interface import QueueInitException, QueueInterruptException
 
 queue_logger = logging.getLogger(__name__)
 

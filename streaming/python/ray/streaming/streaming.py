@@ -10,7 +10,7 @@ import time
 import networkx as nx
 import ray
 import ray.streaming.processor as processor
-import ray.streaming.queue.queue_utils as queue_utils
+import ray.streaming.runtime.queue.queue_utils as queue_utils
 from ray.streaming.communication import DataChannel
 from ray.streaming.communication import QueueConfig
 from ray.streaming.config import Config
