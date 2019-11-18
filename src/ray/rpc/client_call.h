@@ -123,16 +123,25 @@ class ClientCallManager {
   ///
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
-  explicit ClientCallManager(boost::asio::io_service &main_service)
-      : main_service_(main_service) {
-    // Start the polling thread.
-    polling_thread_ =
-        std::thread(&ClientCallManager::PollEventsFromCompletionQueue, this);
+  explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
+      : main_service_(main_service), num_threads_(num_threads) {
+    rr_index_ = rand() % num_threads_;
+    // Start the polling threads.
+    cqs_.reserve(num_threads_);
+    for (int i = 0; i < num_threads_; i++) {
+      cqs_.emplace_back();
+      polling_threads_.emplace_back(&ClientCallManager::PollEventsFromCompletionQueue,
+                                    this, i);
+    }
   }
 
   ~ClientCallManager() {
-    cq_.Shutdown();
-    polling_thread_.join();
+    for (auto &cq : cqs_) {
+      cq.Shutdown();
+    }
+    for (auto &polling_thread : polling_threads_) {
+      polling_thread.join();
+    }
   }
 
   /// Create a new `ClientCall` and send request.
@@ -155,8 +164,9 @@ class ClientCallManager {
       const Request &request, const ClientCallback<Reply> &callback) {
     auto call = std::make_shared<ClientCallImpl<Reply>>(callback);
     // Send request.
-    call->response_reader_ =
-        (stub.*prepare_async_function)(&call->context_, request, &cq_);
+    // Find the next completion queue to wait for response.
+    call->response_reader_ = (stub.*prepare_async_function)(
+        &call->context_, request, &cqs_[rr_index_++ % num_threads_]);
     call->response_reader_->StartCall();
     // Create a new tag object. This object will eventually be deleted in the
     // `ClientCallManager::PollEventsFromCompletionQueue` when reply is received.
@@ -174,7 +184,7 @@ class ClientCallManager {
   /// This function runs in a background thread. It keeps polling events from the
   /// `CompletionQueue`, and dispatches the event to the callbacks via the `ClientCall`
   /// objects.
-  void PollEventsFromCompletionQueue() {
+  void PollEventsFromCompletionQueue(int index) {
     void *got_tag;
     bool ok = false;
     auto deadline = gpr_inf_future(GPR_CLOCK_REALTIME);
@@ -183,7 +193,7 @@ class ClientCallManager {
     // synchronous cq_.Next blocks indefinitely in the case that the process
     // received a SIGTERM.
     while (true) {
-      auto status = cq_.AsyncNext(&got_tag, &ok, deadline);
+      auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       }
@@ -206,11 +216,17 @@ class ClientCallManager {
   /// The main event loop, to which the callback functions will be posted.
   boost::asio::io_service &main_service_;
 
-  /// The gRPC `CompletionQueue` object used to poll events.
-  grpc::CompletionQueue cq_;
+  /// The number of polling threads.
+  int num_threads_;
 
-  /// Polling thread to check the completion queue.
-  std::thread polling_thread_;
+  /// The index to send RPCs in a round-robin fashion
+  std::atomic<unsigned int> rr_index_;
+
+  /// The gRPC `CompletionQueue` object used to poll events.
+  std::vector<grpc::CompletionQueue> cqs_;
+
+  /// Polling threads to check the completion queue.
+  std::vector<std::thread> polling_threads_;
 };
 
 }  // namespace rpc
