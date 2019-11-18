@@ -881,6 +881,8 @@ std::shared_ptr<FiberEvent> CoreWorker::PrepareYieldCurrentFiber() {
 
 void CoreWorker::YieldCurrentFiber(std::shared_ptr<FiberEvent> event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
+  RAY_LOG(INFO) << "fiber " << boost::this_fiber::get_id()
+                << " is called to yield and wait on event";
   boost::this_fiber::yield();
   event->Wait();
 }

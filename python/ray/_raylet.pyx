@@ -549,11 +549,27 @@ cdef execute_task(
                             c_resources.find(b"object_store_memory")).second)))
 
         def function_executor(*arguments, **kwarguments):
-            function = execution_info.function
-            if inspect.iscoroutinefunction(function):
-
-            else:
-                return function(actor, *arguments, **kwarguments)
+            result_or_coroutine = execution_info.function(actor, *arguments, **kwarguments)
+            
+            if inspect.iscoroutine(result_or_coroutine):
+                loop = core_worker.create_or_get_event_loop()
+                coroutine = result_or_coroutine
+                future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+                event = core_worker.core_worker.get().PrepareYieldCurrentFiber()
+                print("is loop running?")
+                async def somthing():
+                    print("health check??")
+                loop.call_soon_threadsafe(somthing())
+                def done_callback(future):
+                    print("inside done callback", future)
+                    event.get().Notify()
+                future.add_done_callback(done_callback)
+                print("before yield")
+                core_worker.core_worker.get().YieldCurrentFiber(event)
+                print("after yield and wait finish, the future is", future)
+                return future.result()
+            
+            return result_or_coroutine
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -708,7 +724,10 @@ cdef write_serialized_object(
 
 
 cdef class CoreWorker:
-    cdef unique_ptr[CCoreWorker] core_worker
+    cdef:
+        unique_ptr[CCoreWorker] core_worker
+        object async_thread
+        object async_event_loop
 
     def __cinit__(self, is_driver, store_socket, raylet_socket,
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
@@ -724,9 +743,6 @@ cdef class CoreWorker:
             gcs_options.native()[0], log_dir.encode("utf-8"),
             node_ip_address.encode("utf-8"), node_manager_port,
             task_execution_handler, check_signals, exit_handler))
-
-        self.async_thread = None
-        self.async_event_loop = None
 
     def disconnect(self):
         with nogil:
@@ -1065,7 +1081,13 @@ cdef class CoreWorker:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
 
-    # def create_or_get_event_loop(self):
-    #     if self.async_event_loop is None:
-    #         self.async_event_loop = asyncio.new_event_loop()
-    #     if self.async_thread
+    def create_or_get_event_loop(self):
+        if self.async_event_loop is None:
+            self.async_event_loop = asyncio.new_event_loop()
+        if self.async_thread is None:
+            self.async_thread = threading.Thread(
+                target=lambda : self.async_event_loop.run_forever()
+            )
+            self.async_thread.start()
+
+        return self.async_event_loop

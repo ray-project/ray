@@ -220,12 +220,14 @@ class FiberEvent {
 
   // Block the fiber until the event is notified.
   void Wait() {
+    RAY_LOG(DEBUG) << "fiber " << boost::this_fiber::get_id() << " called Wait";
     std::unique_lock<boost::fibers::mutex> lock(mutex);
     cond.wait(lock, [this]() { return ready; });
   }
 
   // Notify the event and unblock all waiters.
   void Notify() {
+    RAY_LOG(DEBUG) << "fiber " << boost::this_fiber::get_id() << " called Notify";
     {
       std::unique_lock<boost::fibers::mutex> lock(mutex);
       ready = true;
