@@ -608,11 +608,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
-                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
-                      rpc_address_, function, args, 1, actor_creation_options.resources,
-                      actor_creation_options.placement_resources,
-                      TaskTransportType::RAYLET, &return_ids);
+  BuildCommonTaskSpec(
+      builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
+      next_task_index, GetCallerId(), rpc_address_, function,
+      PrepareDirectActorCallArgs(args, memory_store_), 1,
+      actor_creation_options.resources, actor_creation_options.placement_resources,
+      TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.is_direct_call,
@@ -651,11 +652,11 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
-  BuildCommonTaskSpec(
-      builder, actor_handle->CreationJobID(), actor_task_id,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, is_direct_call ? PrepareDirectActorCallArgs(args, memory_store_) : args,
-      num_returns, task_options.resources, {}, transport_type, return_ids);
+  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function,
+                      PrepareDirectActorCallArgs(args, memory_store_), num_returns,
+                      task_options.resources, {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);

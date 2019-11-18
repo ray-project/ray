@@ -262,6 +262,10 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   }
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),
                   [this, reply, send_reply_callback, task_spec]() {
+                    // We have posted an exit task onto the main event loop,
+                    // so shouldn't bother executing any further work.
+                    if (exiting_) return;
+
                     auto num_returns = task_spec.NumReturns();
                     RAY_CHECK(num_returns > 0);
                     if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
@@ -278,6 +282,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                       // In Python, SystemExit can only be raised on the main thread. To
                       // work around this when we are executing tasks on worker threads,
                       // we re-post the exit event explicitly on the main thread.
+                      exiting_ = true;
                       task_main_io_service_.post([this]() { exit_handler_(); });
                       return;
                     }
