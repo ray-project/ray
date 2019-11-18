@@ -7,9 +7,8 @@ import logging
 import time
 
 import ray
-from ray.streaming.streaming import Environment, Conf
-from ray.streaming.operator import OpType, PStrategy
 from ray.streaming.config import Config
+from ray.streaming.streaming import Environment, Conf
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +50,7 @@ if __name__ == "__main__":
     start = time.time()
     env_handle = env.execute()
     ray.get(env_handle)  # Stay alive until execution finishes
+    env.await_finish()
     end = time.time()
-    # time.sleep(1000)
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

@@ -207,32 +207,7 @@ class ExecutionGraph:
                 self.env.operators[dst_operator_id].name, dst_instance_index))
 
     def build_graph(self):
-        self.build_time = int(time.time() * 1000)
-        # gen auto-incremented unique task id for every operator instance
-        for node in nx.topological_sort(self.env.logical_topo):
-            operator = self.env.operators[node]
-            for i in range(operator.num_instances):
-                operator_instance_id = (operator.id, i)
-                self.task_ids[operator_instance_id] = self._gen_task_id()
-        channels = {}
-        for node in nx.topological_sort(self.env.logical_topo):
-            operator = self.env.operators[node]
-            # Generate downstream data channels
-            downstream_channels = self._generate_channels(operator)
-            channels[node] = downstream_channels
-        # op_id -> channels
-        input_channels = {}
-        output_channels = {}
-        print(channels)
-        for op_id, all_downstream_channels in channels.items():
-            for dst_op_channels in all_downstream_channels.values():
-                for channel in dst_op_channels:
-                    dst = input_channels.setdefault(channel.dst_operator_id, [])
-                    dst.append(channel)
-                    src = output_channels.setdefault(channel.src_operator_id, [])
-                    src.append(channel)
-        self.input_channels = input_channels
-        self.output_channels = output_channels
+        self.build_channels()
 
         # to support cyclic reference serialization
         try:
@@ -254,6 +229,33 @@ class ExecutionGraph:
                                              self.output_channels.get(node, []))
             if handles:
                 self.actor_handles.extend(handles)
+
+    def build_channels(self):
+        self.build_time = int(time.time() * 1000)
+        # gen auto-incremented unique task id for every operator instance
+        for node in nx.topological_sort(self.env.logical_topo):
+            operator = self.env.operators[node]
+            for i in range(operator.num_instances):
+                operator_instance_id = (operator.id, i)
+                self.task_ids[operator_instance_id] = self._gen_task_id()
+        channels = {}
+        for node in nx.topological_sort(self.env.logical_topo):
+            operator = self.env.operators[node]
+            # Generate downstream data channels
+            downstream_channels = self._generate_channels(operator)
+            channels[node] = downstream_channels
+        # op_id -> channels
+        input_channels = {}
+        output_channels = {}
+        for op_id, all_downstream_channels in channels.items():
+            for dst_op_channels in all_downstream_channels.values():
+                for channel in dst_op_channels:
+                    dst = input_channels.setdefault(channel.dst_operator_id, [])
+                    dst.append(channel)
+                    src = output_channels.setdefault(channel.src_operator_id, [])
+                    src.append(channel)
+        self.input_channels = input_channels
+        self.output_channels = output_channels
 
 
 # The execution environment for a streaming job
@@ -368,6 +370,11 @@ class Environment(object):
             exec_handles.append(actor_handle.start.remote())
 
         return exec_handles
+
+    def await_finish(self):
+        for actor_handle in self.execution_graph.actor_handles:
+            if not ray.get(actor_handle.is_finished.remote()):
+                time.sleep(1)
 
     # Prints the logical dataflow graph
     def print_logical_graph(self):

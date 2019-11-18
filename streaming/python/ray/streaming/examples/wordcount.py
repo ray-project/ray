@@ -5,12 +5,10 @@ from __future__ import print_function
 import argparse
 import logging
 import time
-import wikipedia
 
 import ray
+import wikipedia
 from ray.streaming.streaming import Environment
-from ray.streaming.batched_queue import BatchedQueue
-from ray.streaming.operator import OpType, PStrategy
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -108,6 +106,7 @@ if __name__ == "__main__":
     start = time.time()
     env_handle = env.execute()  # Deploys and executes the dataflow
     ray.get(env_handle)  # Stay alive until execution finishes
+    env.await_finish()
     end = time.time()
     logger.info("Elapsed time: {} secs".format(end - start))
     logger.debug("Output stream id: {}".format(stream.id))

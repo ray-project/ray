@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from ray.experimental.streaming.streaming import Environment
-from ray.experimental.streaming.operator import OpType, PStrategy
+from ray.streaming.streaming import Environment, ExecutionGraph
+from ray.streaming.operator import OpType, PStrategy
 
 
 def test_parallelism():
@@ -169,10 +169,12 @@ def _test_channels(environment, expected_channels):
         if operator.type == OpType.Map:
             map_id = id
     # Collect channels
+    environment.execution_graph = ExecutionGraph(environment)
+    environment.execution_graph.build_channels()
     channels_per_destination = []
     for operator in environment.operators.values():
         channels_per_destination.append(
-            environment._generate_channels(operator))
+            environment.execution_graph._generate_channels(operator))
     # Check actual connectivity
     actual = []
     for destination in channels_per_destination:
@@ -202,3 +204,7 @@ def test_channel_generation():
 def test_wordcount():
     """Tests a simple streaming wordcount."""
     pass
+
+
+if __name__ == "__main__":
+    test_channel_generation()
