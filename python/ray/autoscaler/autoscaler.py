@@ -39,18 +39,16 @@ REQUIRED, OPTIONAL = True, False
 # For (a, b), if a is a dictionary object, then
 # no extra fields can be introduced.
 
-
 COMMANDS_SCHEMA = (
-        {
-            # Setup common to all nodes. These are run first.
-            "common": (list, OPTIONAL),
-            # Head node only.
-            "head": (list, OPTIONAL),
-            # Worker nodes only
-            "worker": (list, OPTIONAL),
-        },
-        OPTIONAL)
-
+    {
+        # Setup common to all nodes. These are run first.
+        "common": (list, OPTIONAL),
+        # Head node only.
+        "head": (list, OPTIONAL),
+        # Worker nodes only
+        "worker": (list, OPTIONAL),
+    },
+    OPTIONAL)
 
 CLUSTER_CONFIG_SCHEMA = {
     # An unique identifier for the head node and workers of this cluster.
@@ -568,13 +566,14 @@ class StandardAutoscaler(object):
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id in nodes:
-            node_id, setup_commands, boot_commands, ray_start = self.should_update(node_id)
+            item = self.should_update(node_id)
+            node_id, setup_commands, boot_commands, ray_start = item
             if node_id is not None:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
-                        args=(node_id, setup_commands,
-                              boot_commands, ray_start)))
+                        args=(node_id, setup_commands, boot_commands,
+                              ray_start)))
         for t in T:
             t.start()
         for t in T:
@@ -693,9 +692,11 @@ class StandardAutoscaler(object):
             return None, None, None, None  # no update
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
-        setup_commands = get_commands(self.config, "setup_commands", head=False)
+        setup_commands = get_commands(
+            self.config, "setup_commands", head=False)
         boot_commands = get_commands(self.config, "boot_commands", head=False)
-        ray_commands = get_commands(self.config, "start_ray_commands", head=False)
+        ray_commands = get_commands(
+            self.config, "start_ray_commands", head=False)
         if successful_updated and self.config.get("restart_only", False):
             setup_commands = []
             boot_commands = []
@@ -704,7 +705,8 @@ class StandardAutoscaler(object):
 
         return node_id, setup_commands, boot_commands, ray_commands
 
-    def spawn_updater(self, node_id, setup_commands, boot_commands, start_ray_commands):
+    def spawn_updater(self, node_id, setup_commands, boot_commands,
+                      start_ray_commands):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],

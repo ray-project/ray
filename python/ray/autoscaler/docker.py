@@ -46,9 +46,10 @@ def dockerize_if_needed(config):
             if k1 == "start_ray_commands" and k2 == "worker":
                 env_vars = ["RAY_HEAD_IP"]
 
-            config[k1][k2] = maybe_docker_exec(config[k1].get(k2, []),
-                                               container_name=cname,
-                                               env_vars=env_vars)
+            config[k1][k2] = maybe_docker_exec(
+                config[k1].get(k2, []),
+                container_name=cname,
+                env_vars=env_vars)
 
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
@@ -62,13 +63,13 @@ def dockerize_if_needed(config):
                                             docker_mounts, cname,
                                             run_options + worker_run_options)
 
-    config["boot_commands"]["head"] = (head_docker_start +
-                                       config["boot_commands"]["head"])
-    config["start_ray_commands"]["head"] = (docker_autoscaler_setup(cname) +
-                                            config["boot_commands"]["head"])
+    config["boot_commands"]["head"] = (
+        head_docker_start + config["boot_commands"]["head"])
+    config["start_ray_commands"]["head"] = (
+        docker_autoscaler_setup(cname) + config["boot_commands"]["head"])
 
-    config["boot_commands"]["worker"] = (worker_docker_start +
-                                         config["boot_commands"]["worker"])
+    config["boot_commands"]["worker"] = (
+        worker_docker_start + config["boot_commands"]["worker"])
 
     return config
 
@@ -82,14 +83,14 @@ def maybe_docker_exec(cmds, container_name, env_vars=None):
 
     res = []
     for cmd in cmds:
-        args = cmd.split(' ')
-        if not args[0] == 'IN_DOCKER':
+        args = cmd.split(" ")
+        if not args[0] == "IN_DOCKER":
             res.append(cmd)
             continue
 
-        cmd = ' '.join(args[1:])
-        dockerized_cmd = "docker exec {} {} /bin/sh -c {} ".format(env_str, container_name,
-                                                                   quote(cmd))
+        cmd = " ".join(args[1:])
+        dockerized_cmd = "docker exec {} {} /bin/sh -c {} ".format(
+            env_str, container_name, quote(cmd))
         res.append(dockerized_cmd)
 
     return res

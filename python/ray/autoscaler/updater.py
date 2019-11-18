@@ -415,8 +415,7 @@ class NodeUpdater(object):
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
             # TODO(adam): how to only run these sometime?
-            with LogTimer(self.log_prefix +
-                          "Setup commands completed"):
+            with LogTimer(self.log_prefix + "Setup commands completed"):
                 for cmd in self.setup_commands:
                     self.cmd_runner.run(cmd)
 

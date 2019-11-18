@@ -236,7 +236,8 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
 
         setup_commands = get_commands(config, "setup_commands", head=True)
         boot_commands = get_commands(config, "boot_commands", head=True)
-        start_ray_commands = get_commands(config, "start_ray_commands", head=True)
+        start_ray_commands = get_commands(
+            config, "start_ray_commands", head=True)
         if restart_only:
             setup_commands = []
             boot_commands = []

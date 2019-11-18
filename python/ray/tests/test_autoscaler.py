@@ -963,8 +963,10 @@ class AutoscalingTest(unittest.TestCase):
                 invalid_provider, LoadMetrics(), update_interval_s=0)
 
     def testSetupCommandsWithNoNodeCaching(self):
-        expected_fields = ["setup_cmd", "worker_setup_cmd", "boot_cmd",
-                           "worker_boot_cmd", "start_ray", "worker_start_ray"]
+        expected_fields = [
+            "setup_cmd", "worker_setup_cmd", "boot_cmd", "worker_boot_cmd",
+            "start_ray", "worker_start_ray"
+        ]
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 1
         config["max_workers"] = 1
@@ -1022,8 +1024,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             1, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
-        for fld in (expected_setup_fields +
-                    expected_boot_fields +
+        for fld in (expected_setup_fields + expected_boot_fields +
                     expected_start_fields):
             runner.assert_has_call("172.0.0.0", fld)
 
@@ -1089,7 +1090,8 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         for i in [0, 1, 2]:
             runner.assert_not_has_call("172.0.0.{}".format(i), "setup_cmd")
-            runner.assert_not_has_call("172.0.0.{}".format(i), "worker_setup_cmd")
+            runner.assert_not_has_call("172.0.0.{}".format(i),
+                                       "worker_setup_cmd")
             runner.assert_has_call("172.0.0.{}".format(i), "start_ray")
             runner.assert_has_call("172.0.0.{}".format(i), "worker_start_ray")
         for i in [3, 4, 5, 6, 7, 8, 9]:
