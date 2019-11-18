@@ -6,15 +6,10 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
-import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
-import org.ray.api.runtime.RayRuntime;
-import org.ray.runtime.AbstractRayRuntime;
-import org.ray.runtime.RayNativeRuntime;
-import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.generated.Common.Language;
 
 /**
@@ -78,14 +73,6 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    RayRuntime runtime = Ray.internal();
-    if (runtime instanceof RayMultiWorkerNativeRuntime) {
-      runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
-    }
-    
-    Preconditions.checkState(runtime instanceof RayNativeRuntime);
-    nativeCoreWorkerPointer = ((RayNativeRuntime)runtime).getNativeCoreWorkerPointer();
-
     actorId = nativeDeserialize(nativeCoreWorkerPointer, (byte[]) in.readObject());
   }
 
