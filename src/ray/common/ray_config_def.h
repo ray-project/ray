@@ -52,7 +52,6 @@ RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 
 /// The maximum duration that workers can hold on to another worker's lease
 /// for direct task submission until it must be returned to the raylet.
-/// TODO(edoakes): what should we default to?
 RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
 
 /// The duration between heartbeats sent from the workers to the raylet.

@@ -1,5 +1,4 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
-#include "ray/common/ray_config.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
@@ -104,8 +103,7 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
           std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
       RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
     }
-    int64_t expiration =
-        current_time_ms() + RayConfig::instance().worker_lease_timeout_milliseconds();
+    int64_t expiration = current_time_ms() + lease_timeout_ms_;
     worker_to_lease_client_.emplace(addr,
                                     std::make_pair(std::move(lease_client), expiration));
   }
@@ -118,7 +116,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
                                                  bool was_error) {
   absl::MutexLock lock(&mu_);
   auto entry = worker_to_lease_client_[addr];
-  if (current_time_ms() > entry.second || queued_tasks_.empty() || was_error) {
+  if (was_error || queued_tasks_.empty() || current_time_ms() > entry.second) {
     RAY_CHECK_OK(entry.first->ReturnWorker(addr.second));
     worker_to_lease_client_.erase(addr);
   } else {

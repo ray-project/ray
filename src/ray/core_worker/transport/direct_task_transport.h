@@ -63,12 +63,14 @@ class CoreWorkerDirectTaskSubmitter {
   CoreWorkerDirectTaskSubmitter(
       std::shared_ptr<WorkerLeaseInterface> lease_client, ClientFactoryFn client_factory,
       LeaseClientFactoryFn lease_client_factory,
-      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
+      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider,
+      int64_t lease_timeout_ms)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
         in_memory_store_(store_provider),
-        resolver_(in_memory_store_) {}
+        resolver_(in_memory_store_),
+        lease_timeout_ms_(lease_timeout_ms) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -123,6 +125,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
+
+  /// The timeout for worker leases; after this duration, workers will be returned
+  /// to the raylet.
+  int64_t lease_timeout_ms_;
 
   // Protects task submission state below.
   absl::Mutex mu_;
