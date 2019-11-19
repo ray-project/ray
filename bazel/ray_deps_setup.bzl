@@ -75,6 +75,13 @@ def auto_http_archive(*, name=None, url=None, urls=True,
                         build_file_content=build_file_content,
                         strip_prefix=strip_prefix, **kwargs)
 
+def ray_foreign_rules_setup():
+    auto_http_archive(
+        name = "rules_foreign_cc",
+        url = "https://github.com/bazelbuild/rules_foreign_cc/archive/14b79e5a04558cff964f6466a09d9d0cdee2c126.tar.gz",
+        sha256 = "9feb84b1f73c9ff1285e1a7fd93c3876eb273fd53135de9246730443196ca475",
+    )
+
 def ray_deps_setup():
     auto_http_archive(
         name = "com_github_antirez_redis",

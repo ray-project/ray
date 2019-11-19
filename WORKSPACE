@@ -1,5 +1,13 @@
 workspace(name = "com_github_ray_project_ray")
 
+load("//bazel:ray_deps_setup.bzl", "ray_foreign_rules_setup")
+
+ray_foreign_rules_setup()
+
+load("@rules_foreign_cc//:workspace_definitions.bzl", "rules_foreign_cc_dependencies")
+
+rules_foreign_cc_dependencies(register_default_tools = True)
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
