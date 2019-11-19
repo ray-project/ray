@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 from multiprocessing import TimeoutError
+import random
 
 import ray
 
@@ -37,7 +38,7 @@ class AsyncResult(object):
         ready_ids, _ = ray.wait(
             self._object_id_list,
             num_returns=len(self._object_id_list),
-            timeout=0)
+            timeout=0.0)
         return len(ready_ids) == len(self._object_id_list)
 
     def successful(self):
@@ -87,6 +88,18 @@ class UnorderedIMapIterator(IMapIterator):
         return ray.get(ready_ids[0])
 
 
+@ray.remote
+class PoolActor(object):
+    def __init__(self, initializer=None, *initargs):
+        print("init actor")
+        if initializer:
+            print("\tinitializer")
+            initializer(*initargs)
+
+    def run(self, func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 class Pool(object):
     # TODO: what about context argument?
@@ -99,19 +112,52 @@ class Pool(object):
                  context=None):
         ray.init(num_cpus=processes)
         self._closed = False
-        self._decorator = ray.remote(max_calls=maxtasksperchild)
-        if initializer is not None:
-            if initargs is None:
-                initargs = ()
+        self._initializer = initializer
+        self._initargs = initargs if initargs else ()
+        self._maxtasksperchild = maxtasksperchild if maxtasksperchild else -1
+        self._actor_pool = [self._new_actor_entry() for _ in range(processes)]
+        self._actor_deletion_ids = []
 
-            def wrapped(worker_info):
-                initializer(*initargs)
+    def _wait_for_stopping_actors(self, timeout=None):
+        if len(self._actor_deletion_ids) == 0:
+            return
+        _, deleting = ray.wait(
+            self._actor_deletion_ids,
+            num_returns=len(self._actor_deletion_ids),
+            timeout=timeout)
+        self._actor_deletion_ids = deleting
 
-            ray.worker.global_worker.run_function_on_all_workers(wrapped)
+    def _stop_actor(self, actor):
+        # Remove finished deletion IDs so.
+        # The deletion task will block until the actor has finished executing
+        # all pending tasks.
+        self._wait_for_stopping_actors(timeout=0.0)
+        self._actor_deletion_ids.append(actor.__ray_terminate__.remote())
 
     def _check_running(self):
         if self._closed:
             raise ValueError("Pool not running")
+
+    def _new_actor_entry(self):
+        return (PoolActor.remote(self._initializer, *self._initargs), 0)
+
+    def _run(self, actor_index, func, args=None, kwargs=None):
+        if not args:
+            args = ()
+        if not kwargs:
+            kwargs = {}
+        actor, count = self._actor_pool[actor_index]
+        object_id = actor.run.remote(func, *args, **kwargs)
+        count += 1
+        if count == self._maxtasksperchild:
+            self._stop_actor(actor)
+            actor, count = self._new_actor_entry()
+        self._actor_pool[actor_index] = (actor, count)
+        return object_id
+
+    def _run_random(self, func, args=None, kwargs=None):
+        return self._run(
+            random.randrange(len(self._actor_pool)), func, args, kwargs)
 
     def apply(self, func, args=None, kwargs=None):
         return self.apply_async(func, args, kwargs).get()
@@ -124,22 +170,12 @@ class Pool(object):
                     callback=None,
                     error_callback=None):
         self._check_running()
-        if not args:
-            args = ()
-        if not kwargs:
-            kwargs = {}
-        remote_func = self._decorator(func)
-        object_id = remote_func.remote(*args, **kwargs)
+        object_id = self._run_random(func, args, kwargs)
         return AsyncResult(object_id, callback, error_callback)
 
-    # TODO: chunksize? batching?
     def map(self, func, iterable, chunksize=None):
-        return self.map_async(func, iterable).get()
-
-    def starmap(self, func, iterable, chunksize=None):
         self._check_running()
-        remote_func = self._decorator(func)
-        return ray.get([remote_func(*args) for args in iterable])
+        return self._map_async(func, iterable, unpack_args=False).get()
 
     def map_async(self,
                   func,
@@ -148,25 +184,54 @@ class Pool(object):
                   callback=None,
                   error_callback=None):
         self._check_running()
-        remote_func = self._decorator(func)
-        object_ids = [remote_func.remote(arg) for arg in iterable]
-        return AsyncResult(object_ids, callback, error_callback)
+        return self._map_async(
+            func,
+            iterable,
+            unpack_args=False,
+            callback=callback,
+            error_callback=error_callback)
+
+    def starmap(self, func, iterable, chunksize=None):
+        self._check_running()
+        return self._map_async(func, iterable, unpack_args=True).get()
 
     def starmap_async(self, func, iterable, callback=None,
                       error_callback=None):
         self._check_running()
-        remote_func = self._decorator(func)
-        object_ids = [remote_func.remote(*args) for args in iterable]
+        return self._map_async(
+            func,
+            iterable,
+            unpack_args=True,
+            callback=callback,
+            error_callback=error_callback)
+
+    # TODO: chunksize, callbacks
+    def _map_async(self,
+                   func,
+                   iterable,
+                   unpack_args=False,
+                   chunksize=None,
+                   callback=None,
+                   error_callback=None):
+        object_ids = []
+        # TODO: check that it's an iterable
+        for i, args in enumerate(iterable):
+            if not unpack_args:
+                args = (args, )
+            object_ids.append(
+                self._run(i % len(self._actor_pool), func, args=args))
         return AsyncResult(object_ids, callback, error_callback)
 
     # TODO: this shouldn't actually submit everything at once for memory
     # considerations. should just submit as we get results in iterator?
+    # TODO
     def imap(self, func, iterable, chunksize=None):
         self._check_running()
         remote_func = self._decorator(func)
         object_ids = [remote_func.remote(arg) for arg in iterable]
         return IMapIterator(object_ids, in_order=False)
 
+    # TODO
     def imap_unordered(self, func, iterable, chunksize=None):
         self._check_running()
         remote_func = self._decorator(func)
@@ -174,10 +239,15 @@ class Pool(object):
         return IMapIterator(object_ids, in_order=False)
 
     def close(self):
+        for actor, _ in self._actor_pool:
+            self._stop_actor(actor)
         self._closed = True
 
+    # TODO: shouldn't complete outstanding work.
     def terminate(self):
-        ray.shutdown()
+        return self.close()
 
     def join(self):
-        ray.shutdown()
+        if not self._closed:
+            raise ValueError("Pool is still running")
+        self._wait_for_stopping_actors()
