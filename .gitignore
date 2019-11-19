@@ -128,6 +128,7 @@ scripts/nodes.txt
 
 # Pytest Cache
 **/.pytest_cache
+**/.cache
 .benchmarks
 
 # Vscode
