@@ -39,7 +39,7 @@ void StreamingReader::InitTransfer() {
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   ray::JobID job_id =
-      JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
+      JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreamingTaskJobId()));
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
