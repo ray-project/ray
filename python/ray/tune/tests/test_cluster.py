@@ -624,7 +624,6 @@ class MyTrainableClass(Trainable):
         self.timestep += 1
         v = np.tanh(float(self.timestep) / self.config.get("width", 1))
         v *= self.config.get("height", 1)
-        time.sleep(2)
         return {{"mean_loss": v}}
     def _save(self, checkpoint_dir):
         path = os.path.join(checkpoint_dir, "checkpoint")
@@ -653,9 +652,6 @@ current_best_params = [
 ]
 config = {{
     "num_samples": 20,
-    "config": {{
-        "iterations": 100,
-    }},
     "stop": {{
         "training_iteration": 2
     }},
@@ -688,7 +684,7 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
             trials = runner.get_trials()
             if trials and len(trials) >= 10:
                 break
-        time.sleep(2)
+        time.sleep(.5)
 
     if not TrialRunner.checkpoint_exists(local_checkpoint_dir):
         raise RuntimeError("Checkpoint file didn't appear.")
@@ -715,14 +711,14 @@ run(MyTrainableClass, search_alg=algo, global_checkpoint_period=0,
             runner = TrialRunner(
                 resume="LOCAL", local_checkpoint_dir=local_checkpoint_dir)
             trials = runner.get_trials()
-            if (not runner._resumed) and (len(trials) == 0):
+            if len(trials) == 0:
                 continue  # nonblocking script hasn't resumed yet, wait
             reached = True
             assert len(trials) >= 10
             assert len(trials) <= 20
             if len(trials) == 20:
                 break
-        time.sleep(2)
+        time.sleep(.5)
     assert reached is True
 
     ray.shutdown()
