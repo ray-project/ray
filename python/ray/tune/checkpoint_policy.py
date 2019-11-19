@@ -7,7 +7,6 @@ import logging
 
 from ray.tune.result import DONE, TRAINING_ITERATION
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +37,6 @@ class CheckpointPolicy(object):
 
 
 class BasicCheckpointPolicy(CheckpointPolicy):
-
     def __init__(self,
                  frequency=None,
                  checkpoint_at_beginning=False,
@@ -65,9 +63,7 @@ class BasicCheckpointPolicy(CheckpointPolicy):
             return self._checkpoint_at_beginning
         if result.get(DONE) and self._checkpoint_at_end:
             return True
-        if self._frequency:
-            return result.get(TRAINING_ITERATION, 0) % self._frequency == 0
-        return False
+        return result.get(TRAINING_ITERATION, 0) % self._frequency == 0
 
     def checkpoint_score(self, result):
         if result is None:
@@ -76,7 +72,10 @@ class BasicCheckpointPolicy(CheckpointPolicy):
             score = result[self._scoring_attribute]
             return -score if self._score_desc else score
         except KeyError:
-            logger.error("Result dict has no key: %s. scoring_attribute "
-                         "must be set to a key in the result dict.",
-                         self._scoring_attribute)
+            logger.error(
+                "Result dict has no key: %s. scoring_attribute must be set "
+                "to a key in the result dict.", self._scoring_attribute)
         return None
+
+
+noop_policy = BasicCheckpointPolicy()

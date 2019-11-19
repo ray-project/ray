@@ -13,7 +13,7 @@ import os
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
-from ray.tune.checkpoint_policy import BasicCheckpointPolicy
+from ray.tune.checkpoint_policy import noop_policy
 from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -153,7 +153,7 @@ class Trial(object):
 
         self.sync_on_checkpoint = sync_on_checkpoint
         newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
-        checkpoint_policy = checkpoint_policy or BasicCheckpointPolicy()
+        checkpoint_policy = checkpoint_policy or noop_policy
         self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
                                                     checkpoint_policy)
         self.checkpoint_manager.newest_checkpoint = newest_checkpoint

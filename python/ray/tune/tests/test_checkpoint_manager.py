@@ -100,8 +100,8 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         keep_checkpoints_num = 1
         policy = BasicCheckpointPolicy(scoring_attribute="i")
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num,
-                                               checkpoint_policy=policy)
+        checkpoint_manager = CheckpointManager(
+            keep_checkpoints_num, checkpoint_policy=policy)
 
         no_attr_checkpoint = Checkpoint(Checkpoint.MEMORY, 0, {})
         checkpoint_manager.on_checkpoint(no_attr_checkpoint)

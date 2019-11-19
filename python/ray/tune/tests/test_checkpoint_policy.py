@@ -15,7 +15,6 @@ else:
 
 
 class BasicCheckpointPolicyTest(unittest.TestCase):
-
     def testShouldCheckpoint(self):
         pass
 
@@ -28,8 +27,8 @@ class BasicCheckpointPolicyTest(unittest.TestCase):
         checkpoint has no checkpoint score attribute.
         """
         keep_checkpoints_num = 1
-        checkpoint_manager = BasicCheckpointPolicy(keep_checkpoints_num,
-                                                   scoring_attribute="i")
+        checkpoint_manager = BasicCheckpointPolicy(
+            keep_checkpoints_num, scoring_attribute="i")
 
         no_attr_result = {}
         with patch.object(logger, "error") as log_error_mock:

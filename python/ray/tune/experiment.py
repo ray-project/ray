@@ -105,11 +105,18 @@ class Experiment(object):
         if checkpoint_score_attr:
             _raise_deprecation_note(
                 "checkpoint_score_attr", "checkpoint_policy", soft=True)
-        if checkpoint_policy and any([checkpoint_freq, checkpoint_score_attr,
-                                      checkpoint_at_end]):
+
+        soft_deprecated_params = [
+            checkpoint_freq, checkpoint_at_end, checkpoint_score_attr
+        ]
+        if checkpoint_policy and any(soft_deprecated_params):
             raise ValueError("Use checkpoint_policy instead of "
                              "{checkpoint_freq, checkpoint_at_end, "
                              "checkpoint_score_attr}.")
+        if callable(run) and any(soft_deprecated_params + [checkpoint_policy]):
+            raise ValueError("Invalid checkpointing configuration. Use "
+                             "tune.track.{checkpoint,restore} for trial fault "
+                             "tolerance in your training function.")
 
         stop = stop or {}
         if not isinstance(stop, dict) and not callable(stop):
@@ -255,7 +262,7 @@ def convert_to_experiment_list(experiments):
     will return an empty list.
 
     Arguments:
-        experiments (Experiment | list | dict): Experiments to run.
+        experiments (Experiment|list|dict): Experiments to run.
 
     Returns:
         List of experiments.
