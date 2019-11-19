@@ -248,6 +248,7 @@ CoreWorker::~CoreWorker() {
 
 void CoreWorker::Shutdown() {
   if (!shutdown_) {
+    shutdown_ = true;
     io_service_.stop();
     if (worker_type_ == WorkerType::WORKER) {
       task_execution_service_.stop();
@@ -256,7 +257,6 @@ void CoreWorker::Shutdown() {
       RayLog::ShutDownRayLog();
     }
   }
-  shutdown_ = true;
 }
 
 void CoreWorker::Disconnect() {
