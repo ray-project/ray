@@ -16,9 +16,9 @@
 #include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
-#include "ray/thirdparty/hiredis/adapters/ae.h"
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/adapters/ae.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 struct redisContext;

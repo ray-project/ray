@@ -71,6 +71,17 @@ def github_repository(*, name=None, remote=None, commit=None, tag=None,
 
 def ray_deps_setup():
     github_repository(
+        name = "redis",
+        build_file = "@//bazel:BUILD.redis",
+        tag = "5.0.3",
+        remote = "https://github.com/antirez/redis",
+        sha256 = "8e5997b447b1afdd1efd33731968484d2fe71c271fa7f1cd6b2476367e964e0e",
+        patches = [
+            "//thirdparty/patches:hiredis-async-include-dict.patch",
+        ],
+    )
+
+    github_repository(
         name = "rules_jvm_external",
         tag = "2.10",
         remote = "https://github.com/bazelbuild/rules_jvm_external",

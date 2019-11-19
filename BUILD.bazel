@@ -656,28 +656,22 @@ cc_library(
 )
 
 cc_library(
-    name = "hiredis",
+    name = "ae",
     srcs = glob(
         [
             "src/ray/thirdparty/ae/ae.c",
-            "src/ray/thirdparty/hiredis/*.c",
         ],
         exclude = [
-            "src/ray/thirdparty/hiredis/test.c",
         ],
     ),
     hdrs = glob([
         "src/ray/thirdparty/ae/*.h",
-        "src/ray/thirdparty/hiredis/*.h",
-        "src/ray/thirdparty/hiredis/adapters/*.h",
-        "src/ray/thirdparty/hiredis/dict.c",
         "src/ray/thirdparty/ae/ae_kqueue.c",
         "src/ray/thirdparty/ae/ae_epoll.c",
     ]),
     copts = COPTS,
     includes = [
         "src/ray/thirdparty/ae",
-        "src/ray/thirdparty/hiredis",
     ],
 )
 
@@ -696,14 +690,15 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
+        ":ae",
         ":gcs_cc_proto",
-        ":hiredis",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
         ":ray_util",
         ":stats_lib",
         "@boost//:asio",
+        "@redis//:hiredis",
     ],
 )
 
