@@ -294,9 +294,9 @@ class NodeUpdater(object):
                  auth_config,
                  cluster_name,
                  file_mounts,
-                 setup_commands,
-                 boot_commands,
-                 start_ray_commands,
+                 node_setup_commands,
+                 node_restart_commands,
+                 ray_restart_commands,
                  runtime_hash,
                  process_runner=subprocess,
                  use_internal_ip=False):
@@ -321,9 +321,9 @@ class NodeUpdater(object):
             remote: os.path.expanduser(local)
             for remote, local in file_mounts.items()
         }
-        self.setup_commands = setup_commands
-        self.boot_commands = boot_commands
-        self.start_ray_commands = start_ray_commands
+        self.node_setup_commands = node_setup_commands
+        self.node_restart_commands = node_restart_commands
+        self.ray_restart_commands = ray_restart_commands
         self.runtime_hash = runtime_hash
 
     def run(self):
@@ -416,15 +416,15 @@ class NodeUpdater(object):
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
             # TODO(adam): how to only run these sometime?
             with LogTimer(self.log_prefix + "Setup commands completed"):
-                for cmd in self.setup_commands:
+                for cmd in self.node_setup_commands:
                     self.cmd_runner.run(cmd)
 
             with LogTimer(self.log_prefix + "Boot commands completed"):
-                for cmd in self.boot_commands:
+                for cmd in self.node_restart_commands:
                     self.cmd_runner.run(cmd)
 
         with LogTimer(self.log_prefix + "Ray start commands completed"):
-            for cmd in self.start_ray_commands:
+            for cmd in self.ray_restart_commands:
                 self.cmd_runner.run(cmd)
 
     def rsync_up(self, source, target):

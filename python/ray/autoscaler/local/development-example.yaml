@@ -17,11 +17,11 @@ head_node: {}
 worker_nodes: {}
 file_mounts:
      "/tmp/ray_sha": "/YOUR/LOCAL/RAY/REPO/.git/refs/heads/YOUR_BRANCH"
-setup_commands:
+node_setup_commands:
     common: []
     head: []
     worker: []
-boot_commands:
+node_restart_commands:
     common:
         - source activate ray && test -e ray || git clone https://github.com/YOUR_GITHUB/ray.git
         - source activate ray && cd ray && git fetch && git reset --hard `cat /tmp/ray_sha`

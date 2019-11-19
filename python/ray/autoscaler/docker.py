@@ -39,11 +39,11 @@ def dockerize_if_needed(config):
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
     # Rewrite commands to include `docker exec` where needed
-    for k1 in ["boot_commands", "start_ray_commands"]:
+    for k1 in ["node_restart_commands", "ray_restart_commands"]:
         config.setdefault(k1, {})
         for k2 in ["common", "head", "worker"]:
             env_vars = None
-            if k1 == "start_ray_commands" and k2 == "worker":
+            if k1 == "ray_restart_commands" and k2 == "worker":
                 env_vars = ["RAY_HEAD_IP"]
 
             config[k1][k2] = maybe_docker_exec(
@@ -53,7 +53,8 @@ def dockerize_if_needed(config):
 
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
-        common_setup_cmds = config["setup_commands"].setdefault("common", [])
+        common_setup_cmds = config["node_setup_commands"].setdefault(
+            "common", [])
         common_setup_cmds.append(docker_pull_cmd)
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
@@ -64,13 +65,14 @@ def dockerize_if_needed(config):
                                             docker_mounts, cname,
                                             run_options + worker_run_options)
 
-    config["boot_commands"]["head"] = (
-        head_docker_start + config["boot_commands"]["head"])
-    config["start_ray_commands"]["head"] = (
-        docker_autoscaler_setup(cname) + config["boot_commands"]["head"])
+    config["node_restart_commands"]["head"] = (
+        head_docker_start + config["node_restart_commands"]["head"])
+    config["ray_restart_commands"]["head"] = (
+        docker_autoscaler_setup(cname) +
+        config["node_restart_commands"]["head"])
 
-    config["boot_commands"]["worker"] = (
-        worker_docker_start + config["boot_commands"]["worker"])
+    config["node_restart_commands"]["worker"] = (
+        worker_docker_start + config["node_restart_commands"]["worker"])
 
     return config
 

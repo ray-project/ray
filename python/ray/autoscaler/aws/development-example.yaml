@@ -80,7 +80,7 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-setup_commands:
+node_setup_commands:
     common:
         # Consider uncommenting these if you run into dpkg locking issues
         # - sudo pkill -9 apt-get || true
@@ -104,7 +104,7 @@ setup_commands:
         - cd ray/python; pip install -e . --verbose
 
 # Commands to start Ray on the nodes. You do not need to change this.
-start_ray_commands:
+ray_restart_commands:
     common:
         - ray stop
     head:

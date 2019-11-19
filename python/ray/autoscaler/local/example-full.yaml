@@ -58,17 +58,17 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-setup_commands:
+node_setup_commands:
     common: []
 
 # List of commands that will be run each time the node is booted.
-# On the first boot, these will run after `setup_commands`.
-boot_commands:
+# On the first boot, these will run after `node_setup_commands`.
+node_restart_commands:
     common:
         - pip install -U ray
 
 # Commands to start Ray on the nodes. You do not need to change this.
-start_ray_commands:
+ray_restart_commands:
     common:
         - ray stop
     head:

@@ -177,17 +177,17 @@ SMALL_CLUSTER = {
         "TestProp": 2,
     },
     "file_mounts": {},
-    "setup_commands": {
+    "node_setup_commands": {
         "common": ["setup_cmd"],
         "head": ["head_setup_cmd"],
         "worker": ["worker_setup_cmd"],
     },
-    "boot_commands": {
+    "node_restart_commands": {
         "common": ["boot_cmd"],
         "head": ["head_boot_cmd"],
         "worker": ["worker_boot_cmd"],
     },
-    "start_ray_commands": {
+    "ray_restart_commands": {
         "common": ["start_ray"],
         "head": ["head_start_ray"],
         "worker": ["worker_start_ray"],
@@ -803,8 +803,9 @@ class AutoscalingTest(unittest.TestCase):
             2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         runner.calls = []
         new_config = SMALL_CLUSTER.copy()
-        new_config["setup_commands"] = new_config["setup_commands"].copy()
-        new_config["setup_commands"]["worker"] = ["cmdX", "cmdY"]
+        new_config["node_setup_commands"] = new_config[
+            "node_setup_commands"].copy()
+        new_config["node_setup_commands"]["worker"] = ["cmdX", "cmdY"]
         self.write_config(new_config)
         autoscaler.update()
         autoscaler.update()

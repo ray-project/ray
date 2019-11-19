@@ -104,7 +104,7 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-boot_commands:
+node_restart_commands:
     common:
         # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp27-cp27mu-manylinux1_x86_64.whl
         - IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp35-cp35m-manylinux1_x86_64.whl
@@ -113,7 +113,7 @@ boot_commands:
         - IN_DOCKER pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 
 # Commands to start Ray on the nodes. You do not need to change this.
-start_ray_commands:
+ray_restart_commands:
     common:
         - IN_DOCKER ray stop
     head:

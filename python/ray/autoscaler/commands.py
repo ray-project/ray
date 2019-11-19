@@ -137,9 +137,9 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 auth_config=config["auth"],
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
-                setup_commands=[],
-                boot_commands=[],
-                start_ray_commands=[],
+                node_setup_commands=[],
+                node_restart_commands=[],
+                ray_restart_commands=[],
                 runtime_hash="")
 
             _exec(updater, "ray stop", False, False)
@@ -234,15 +234,17 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
                 remote_key_path: config["auth"]["ssh_private_key"],
             })
 
-        setup_commands = get_commands(config, "setup_commands", head=True)
-        boot_commands = get_commands(config, "boot_commands", head=True)
-        start_ray_commands = get_commands(
-            config, "start_ray_commands", head=True)
+        node_setup_commands = get_commands(
+            config, "node_setup_commands", head=True)
+        node_restart_commands = get_commands(
+            config, "node_restart_commands", head=True)
+        ray_restart_commands = get_commands(
+            config, "ray_restart_commands", head=True)
         if restart_only:
-            setup_commands = []
-            boot_commands = []
+            node_setup_commands = []
+            node_restart_commands = []
         elif no_restart:
-            start_ray_commands = []
+            ray_restart_commands = []
 
         updater = NodeUpdaterThread(
             node_id=head_node,
@@ -251,9 +253,9 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            setup_commands=setup_commands,
-            boot_commands=boot_commands,
-            start_ray_commands=start_ray_commands,
+            node_setup_commands=node_setup_commands,
+            node_restart_commands=node_restart_commands,
+            ray_restart_commands=ray_restart_commands,
             runtime_hash=runtime_hash,
         )
         updater.start()
@@ -363,9 +365,9 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            setup_commands=[],
-            boot_commands=[],
-            start_ray_commands=[],
+            node_setup_commands=[],
+            node_restart_commands=[],
+            ray_restart_commands=[],
             runtime_hash="",
         )
 
@@ -457,9 +459,9 @@ def rsync(config_file, source, target, override_cluster_name, down):
             auth_config=config["auth"],
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
-            setup_commands=[],
-            boot_commands=[],
-            start_ray_commands=[],
+            node_setup_commands=[],
+            node_restart_commands=[],
+            ray_restart_commands=[],
             runtime_hash="",
         )
         if down:

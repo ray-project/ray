@@ -46,27 +46,20 @@ worker_nodes:
     #     InstanceMarketOptions:
     #         MarketType: spot
 
-setup_commands:
-    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
-    - pip install -U ipdb ray[rllib] torch torchvision
+node_setup_commands:
+    common:
+        - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
+        - pip install -U ipdb ray[rllib] torch torchvision
 
 
 file_mounts: {
 }
 
-# Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
-
-# Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
-
-# # Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
-    - ray stop
-    - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
-
-# Command to start ray on worker nodes. You don't need to change this.
-worker_start_ray_commands:
-    - ray stop
-    - ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --object-store-memory=1000000000
-
+# Commands to start Ray on the nodes. You do not need to change this.
+ray_restart_commands:
+    common:
+        - ray stop
+    head:
+        - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
+    worker:
+        - ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --object-store-memory=1000000000

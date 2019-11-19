@@ -123,7 +123,7 @@ file_mounts: {
 #    "/path2/on/remote/machine": "/path2/on/local/machine",
 }
 
-setup_commands:
+node_setup_commands:
     common:
         # Wait until nvidia drivers are installed
         - >-
@@ -134,7 +134,7 @@ setup_commands:
               done"
 
 # List of shell commands to run to set up nodes.
-boot_commands:
+node_restart_commands:
     common:
         # Note: if you're developing Ray, you probably want to create an AMI that
         # has your Ray repo pre-cloned. Then, you can replace the pip installs
@@ -149,7 +149,7 @@ boot_commands:
         - pip install google-api-python-client==1.7.8
 
 # Commands to start Ray on the nodes. You do not need to change this.
-start_ray_commands:
+ray_restart_commands:
     common:
         - IN_DOCKER ray stop
     head:

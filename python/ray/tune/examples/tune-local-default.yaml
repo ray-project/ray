@@ -7,6 +7,6 @@ auth: {ssh_user: YOUR_USERNAME, ssh_private_key: ~/.ssh/id_rsa}
 ## Typically for local clusters, min_workers == max_workers.
 min_workers: 3
 max_workers: 3
-setup_commands:  # Set up each node.
+node_setup_commands:  # Set up each node.
     common:
         - pip install ray torch torchvision tabulate tensorboard
