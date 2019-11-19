@@ -59,6 +59,37 @@ def log(**kwargs):
     return _session.log(**kwargs)
 
 
+def save(checkpoint):
+    """Saves a checkpoint.
+
+    Args:
+        checkpoint (str|dict): checkpoint to save.
+    """
+    _session = get_session()
+    checkpoint_dir = current_iter_checkpoint_dir()
+    if isinstance(checkpoint, str):
+        if not checkpoint.startswith(checkpoint_dir):
+            raise ValueError(
+                "The returned checkpoint path must be within the given "
+                "checkpoint dir {}: {}".format(checkpoint_dir, checkpoint))
+    _session.save(checkpoint)
+
+
+def restore():
+    _session = get_session()
+    return _session.restore()
+
+
+def can_restore():
+    _session = get_session()
+    return _session.can_restore()
+
+
+def current_iter_checkpoint_dir():
+    _session = get_session()
+    return _session.logdir
+
+
 def trial_dir():
     """Returns the directory where trial results are saved.
 

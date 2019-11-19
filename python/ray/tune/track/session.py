@@ -17,6 +17,9 @@ class _ReporterHook(Logger):
     def on_result(self, metrics):
         return self.tune_reporter(**metrics)
 
+    def on_checkpoint(self, checkpoint):
+        return self.tune_reporter.on_checkpoint(checkpoint)
+
 
 class TrackSession(object):
     """Manages results for a single session.
@@ -97,6 +100,9 @@ class TrackSession(object):
         # TODO: Move Trainable autopopulation to a util function
         metrics_dict.setdefault(TRAINING_ITERATION, self._iteration)
         self._logger.on_result(metrics_dict)
+
+    def save(self, checkpoint):
+        self._logger.on_checkpoint(checkpoint)
 
     def close(self):
         self.trial_config["trial_completed"] = True

@@ -14,7 +14,8 @@ else:
     from mock import patch
 
 
-class BasicCheckpointPolicyTest(unittest.TestCase):
+class BasicCheckpointPolicySuite(unittest.TestCase):
+
     def testShouldCheckpoint(self):
         pass
 

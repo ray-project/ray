@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class CheckpointPolicy(object):
-    """Interface for a trial checkpoint policy."""
+    """Interface for Trainable checkpoint policy."""
 
     def should_checkpoint(self, result):
         """Determines whether to trigger checkpoint based on the result.

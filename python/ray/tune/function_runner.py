@@ -17,11 +17,29 @@ from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
 logger = logging.getLogger(__name__)
 
 # Time between FunctionRunner checks when fetching
-# new results after signaling the reporter to continue
-RESULT_FETCH_TIMEOUT = 0.2
+# new events after signaling the reporter to continue
+EVENT_FETCH_TIMEOUT = 0.2
 
 ERROR_REPORT_TIMEOUT = 10
 ERROR_FETCH_TIMEOUT = 1
+
+
+class Event(object):
+
+    RESULT = "result"
+    CHECKPOINT = "checkpoint"
+
+    def __init__(self, event_type, value):
+        self.type = event_type
+        self.value = value
+
+    @property
+    def is_result(self):
+        return self.type == self.RESULT
+
+    @property
+    def is_checkpoint(self):
+        return self.type == self.CHECKPOINT
 
 
 class StatusReporter(object):
@@ -33,8 +51,8 @@ class StatusReporter(object):
         >>>     reporter(timesteps_this_iter=1)
     """
 
-    def __init__(self, result_queue, continue_semaphore, logdir=None):
-        self._queue = result_queue
+    def __init__(self, event_queue, continue_semaphore, logdir=None):
+        self._queue = event_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
         self._logdir = logdir
@@ -55,32 +73,43 @@ class StatusReporter(object):
             StopIteration: A StopIteration exception is raised if the trial has
                 been signaled to stop.
         """
-
         assert self._last_report_time is not None, (
             "StatusReporter._start() must be called before the first "
             "report __call__ is made to ensure correct runtime metrics.")
 
-        # time per iteration is recorded directly in the reporter to ensure
+        # Time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
         report_time = time.time()
         if TIME_THIS_ITER_S not in kwargs:
             kwargs[TIME_THIS_ITER_S] = report_time - self._last_report_time
         self._last_report_time = report_time
 
-        # add results to a thread-safe queue
-        self._queue.put(kwargs.copy(), block=True)
+        # Add results to a thread-safe queue
+        event = Event(Event.RESULT, kwargs.copy())
+        self._queue.put(event, block=True)
+        self._wait_for_notification()
 
-        # This blocks until notification from the FunctionRunner that the last
-        # result has been returned to Tune and that the function is safe to
-        # resume training.
-        self._continue_semaphore.acquire()
+    def save(self, checkpoint):
+        # Add checkpoint to a thread-safe queue
+        event = Event(Event.CHECKPOINT, checkpoint)
+        self._queue.put(event, block=True)
+        self._wait_for_notification()
 
-    def _start(self):
+    def start(self):
         self._last_report_time = time.time()
 
     @property
     def logdir(self):
         return self._logdir
+
+    def _wait_for_notification(self):
+        """Blocks until notification from FunctionRunner received.
+
+        This blocks until notification from the FunctionRunner that the last
+        event has been received by Tune and that the function is safe to
+        resume training.
+        """
+        self._continue_semaphore.acquire()
 
 
 class _RunnerThread(threading.Thread):
@@ -117,19 +146,17 @@ class _RunnerThread(threading.Thread):
 
 
 class FunctionRunner(Trainable):
-    """Trainable that runs a user function reporting results.
-
-    This mode of execution does not support checkpoint/restore."""
+    """Trainable that runs a user function reporting results."""
 
     _name = "func"
 
     def _setup(self, config):
         # Semaphore for notifying the reporter to continue with the computation
-        # and to generate the next result.
+        # and to generate the next event.
         self._continue_semaphore = threading.Semaphore(0)
 
-        # Queue for passing results between threads
-        self._results_queue = queue.Queue(1)
+        # Queue for passing events between threads
+        self._event_queue = queue.Queue(1)
 
         # Queue for passing errors back from the thread runner. The error queue
         # has a max size of one to prevent stacking error and force error
@@ -137,7 +164,7 @@ class FunctionRunner(Trainable):
         self._error_queue = queue.Queue(1)
 
         self._status_reporter = StatusReporter(
-            self._results_queue, self._continue_semaphore, self.logdir)
+            self._event_queue, self._continue_semaphore, self.logdir)
         self._last_result = {}
         config = config.copy()
 
@@ -149,88 +176,103 @@ class FunctionRunner(Trainable):
 
     def _trainable_func(self):
         """Subclasses can override this to set the trainable func."""
-
         raise NotImplementedError
 
     def _train(self):
         """Implements train() for a Function API.
+
+        Monitors for result and checkpoint events.
 
         If the RunnerThread finishes without reporting "done",
         Tune will automatically provide a magic keyword __duplicate__
         along with a result with "done=True". The TrialRunner will handle the
         result accordingly (see tune/trial_runner.py).
         """
-        if self._runner.is_alive():
-            # if started and alive, inform the reporter to continue and
-            # generate the next result
-            self._continue_semaphore.release()
-        else:
-            # if not alive, try to start
-            self._status_reporter._start()
-            try:
-                self._runner.start()
-            except RuntimeError:
-                # If this is reached, it means the thread was started and is
-                # now done or has raised an exception.
-                pass
+        for event_index in range(2):
 
-        result = None
-        while result is None and self._runner.is_alive():
-            # fetch the next produced result
-            try:
-                result = self._results_queue.get(
-                    block=True, timeout=RESULT_FETCH_TIMEOUT)
-            except queue.Empty:
-                pass
+            if self._runner.is_alive():
+                # If started and alive, inform the reporter to continue and
+                # generate the next event.
+                self._continue_semaphore.release()
+            else:
+                # If not alive, try to start
+                self._status_reporter.start()
+                try:
+                    self._runner.start()
+                except RuntimeError:
+                    # If this is reached, it means the thread was started and
+                    # is now done or has raised an exception.
+                    pass
 
-        # if no result were found, then the runner must no longer be alive
-        if result is None:
-            # Try one last time to fetch results in case results were reported
-            # in between the time of the last check and the termination of the
-            # thread runner.
-            try:
-                result = self._results_queue.get(block=False)
-            except queue.Empty:
-                pass
+            event = None
+            while event is None and self._runner.is_alive():
+                # Fetch the next event
+                try:
+                    event = self._event_queue.get(
+                        block=True, timeout=EVENT_FETCH_TIMEOUT)
+                except queue.Empty:
+                    pass
 
-        # check if error occured inside the thread runner
-        if result is None:
-            # only raise an error from the runner if all results are consumed
-            self._report_thread_runner_error(block=True)
+            # If no events were found, then the runner must no longer be alive.
+            if event is None:
+                # Try one last time to fetch events in case events were
+                # reported in between the time of the last check and the
+                # termination of the thread runner.
+                try:
+                    event = self._event_queue.get(block=False)
+                except queue.Empty:
+                    pass
 
-            # Under normal conditions, this code should never be reached since
-            # this branch should only be visited if the runner thread raised
-            # an exception. If no exception were raised, it means that the
-            # runner thread never reported any results which should not be
-            # possible when wrapping functions with `wrap_function`.
-            raise TuneError(
-                ("Wrapped function ran until completion without reporting "
-                 "results or raising an exception."))
+            # Check if error occurred inside the thread runner
+            if event is None:
+                # Only raise an error from the runner if all events consumed.
+                self._report_thread_runner_error(block=True)
+                # Under normal conditions, this code should never be reached
+                # since this branch should only be visited if the runner thread
+                # raised an exception. If no exception were raised, it means
+                # that the runner thread never reported any results or
+                # checkpoints which should not be possible when wrapping
+                # functions with `wrap_function`.
+                raise TuneError(
+                    "Wrapped function ran until completion without reporting "
+                    "results, checkpoints or raising an exception.")
+            else:
+                if not self._error_queue.empty():
+                    logger.warning(
+                        "Runner error waiting to be raised in main thread. "
+                        "Logging all available results first.")
 
-        else:
-            if not self._error_queue.empty():
-                logger.warning(
-                    ("Runner error waiting to be raised in main thread. "
-                     "Logging all available results first."))
-
-        # This keyword appears if the train_func using the Function API
-        # finishes without "done=True". This duplicates the last result, but
-        # the TrialRunner will not log this result again.
-        if "__duplicate__" in result:
-            new_result = self._last_result.copy()
-            new_result.update(result)
-            result = new_result
-
-        self._last_result = result
-        return result
+            if event.is_checkpoint:
+                if event_index == 1:
+                    raise TuneError(
+                        "Checkpoint taken twice in a single iteration. Only "
+                        "a single call to tune.track.checkpoint is allowed "
+                        "for every reporter or log call.")
+                else:
+                    checkpoint = event.value
+                    self.save(checkpoint)
+            else:
+                result = event.value
+                # This keyword appears if the train_func using the Function API
+                # finishes without "done=True". This duplicates the last
+                # result, but the TrialRunner will not log this result again.
+                if "__duplicate__" in result:
+                    new_result = self._last_result.copy()
+                    new_result.update(result)
+                    result = new_result
+                self._last_result = result
+                return result
 
     def _stop(self):
         # If everything stayed in synch properly, this should never happen.
-        if not self._results_queue.empty():
+        if not self._event_queue.empty():
+            if self._event_queue.get().event_type == Event.RESULT:
+                event_type = "results"
+            else:
+                event_type = "checkpoints"
             logger.warning(
-                ("Some results were added after the trial stop condition. "
-                 "These results won't be logged."))
-
+                "Some %s were added after the trial stop condition. "
+                "These %s won't be logged.", event_type, event_type)
         # Check for any errors that might have been missed.
         self._report_thread_runner_error()
 

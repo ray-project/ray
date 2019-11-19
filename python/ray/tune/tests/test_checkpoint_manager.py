@@ -16,7 +16,7 @@ else:
     from mock import patch
 
 
-class CheckpointManagerTest(unittest.TestCase):
+class CheckpointManagerSuite(unittest.TestCase):
     @staticmethod
     def mock_result(i):
         return {"i": i}

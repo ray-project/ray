@@ -133,9 +133,9 @@ class Experiment(object):
         config = config or {}
         self._run_identifier = Experiment.register_if_needed(run)
 
-        if not checkpoint_policy:
+        if not checkpoint_policy and any(soft_deprecated_params):
             # TODO(ujvl): Remove this conversion when params hard-deprecated.
-            if checkpoint_score_attr:
+            if not checkpoint_score_attr:
                 score_desc = checkpoint_score_attr.startswith("min-")
                 if score_desc:
                     checkpoint_score_attr = checkpoint_score_attr[4:]
