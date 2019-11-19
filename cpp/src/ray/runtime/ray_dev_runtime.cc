@@ -3,8 +3,8 @@
 
 #include <ray/api.h>
 #include "../agent.h"
-#include "../spi/task_interface_mock.h"
 #include "../spi/object_interface_mock.h"
+#include "../spi/task_interface_mock.h"
 #include "../util/blob_util.h"
 
 namespace ray {
@@ -17,8 +17,7 @@ RayDevRuntime::RayDevRuntime(std::shared_ptr<RayConfig> params) {
   _worker = std::move(work_ptr);
 
   std::unique_ptr<TaskInterface> sch_client_ptr(new TaskInterfaceMock());
-  std::unique_ptr<TaskProxy> sch_proxy_ptr(
-      new TaskProxy(std::move(sch_client_ptr)));
+  std::unique_ptr<TaskProxy> sch_proxy_ptr(new TaskProxy(std::move(sch_client_ptr)));
   _taskProxy = std::move(sch_proxy_ptr);
 
   std::unique_ptr<ObjectInterface> store_client_ptr(new ObjectInterfaceMock());

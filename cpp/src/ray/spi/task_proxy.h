@@ -32,4 +32,4 @@ class TaskProxy {
   std::list<std::unique_ptr<UniqueId> > buildReturnIds(const UniqueId &taskId,
                                                        int returnCount);
 };
-}
+}  // namespace ray

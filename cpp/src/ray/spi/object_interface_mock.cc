@@ -4,7 +4,8 @@
 
 namespace ray {
 
-void ObjectInterfaceMock::put(const UniqueId &objectId, std::vector< ::ray::blob> &&data) {
+void ObjectInterfaceMock::put(const UniqueId &objectId,
+                              std::vector< ::ray::blob> &&data) {
   if (_data.find(objectId) != _data.end()) {
     // TODO: throw an exception
   }
@@ -21,7 +22,7 @@ del_unique_ptr< ::ray::blob> ObjectInterfaceMock::get(const UniqueId &objectId,
   if (_data.find(objectId) != _data.end()) {
     ret = new ::ray::blob(_data.at(objectId));
   }
-  
+
   del_unique_ptr< ::ray::blob> pRet(
       ret, [](::ray::blob *p) { std::default_delete< ::ray::blob>()(p); });
 
@@ -29,9 +30,9 @@ del_unique_ptr< ::ray::blob> ObjectInterfaceMock::get(const UniqueId &objectId,
 }
 
 WaitResult ObjectInterfaceMock::wait(const UniqueId *ids, int count, int minNumReturns,
-                                      int timeoutMs) {
+                                     int timeoutMs) {
   return WaitResult();
 }
 
 void ObjectInterfaceMock::fetch(const UniqueId &objectId) {}
-}
+}  // namespace ray

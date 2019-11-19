@@ -3,9 +3,9 @@
 
 #include <cassert>
 
-#include "../agent.h"
 #include <ray/api.h>
 #include <ray/api/ray_mode.h>
+#include "../agent.h"
 #include "invocation_executor.h"
 #include "ray_dev_runtime.h"
 #include "ray_native_runtime.h"
@@ -42,8 +42,8 @@ RayRuntime &RayRuntime::getInstance() {
   return *_ins;
 }
 
-void RayRuntime::put(std::vector< ::ray::blob> &&data,
-                     const UniqueId &objectId, const UniqueId &taskId) {
+void RayRuntime::put(std::vector< ::ray::blob> &&data, const UniqueId &objectId,
+                     const UniqueId &taskId) {
   _taskProxy->markTaskPutDependency(taskId, objectId);
   _objectProxy->put(objectId, std::forward<std::vector< ::ray::blob> >(data));
 }

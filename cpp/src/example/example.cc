@@ -1,18 +1,12 @@
-#include <ray/api.h>
 #include "example.h"
+#include <ray/api.h>
 
 using namespace ray;
 
-int foo0() {
-  return 1;
-}
-int foo(int x) {
-  return x + 1;
-}
+int foo0() { return 1; }
+int foo(int x) { return x + 1; }
 
-int bar(int x, int y) {
-  return x + y;
-}
+int bar(int x, int y) { return x + y; }
 
 int main() {
   Ray::init();

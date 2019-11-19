@@ -25,7 +25,7 @@ class Arguments {
   static void unwrap(::ray::binary_reader &reader, Arg1Type &arg1,
                      OtherArgTypes &... args);
 };
-}
+}  // namespace ray
 
 #include <ray/api/serialization.h>
 namespace ray {
@@ -63,4 +63,4 @@ inline void Arguments::unwrap(::ray::binary_reader &reader, Arg1Type &arg1,
   unwrap(reader, args...);
   return;
 }
-}
+}  // namespace ray

@@ -19,4 +19,4 @@ class InvocationSpec {
   std::vector< ::ray::blob> args;
   int returnCount;
 };
-}
+}  // namespace ray

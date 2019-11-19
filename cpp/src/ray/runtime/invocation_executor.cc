@@ -1,6 +1,6 @@
 #include "invocation_executor.h"
-#include "ray_runtime.h"
 #include "../util/blob_util.h"
+#include "ray_runtime.h"
 
 namespace ray {
 
@@ -29,4 +29,4 @@ void InvocationExecutor::execute(const TaskSpec &taskSpec, uintptr_t dylib_base_
     rayRuntime.put(std::move(data), *taskSpec.returnIds.front(), taskSpec.taskId);
   }
 }
-}
+}  // namespace ray

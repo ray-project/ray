@@ -10,4 +10,4 @@ namespace ray {
 std::unique_ptr< ::ray::blob> blob_merge_to_ptr(const std::vector< ::ray::blob> &&blobs);
 
 std::unique_ptr< ::ray::blob> blob_merge_to_ptr(const std::vector< ::ray::blob> &blobs);
-}
+}  // namespace ray

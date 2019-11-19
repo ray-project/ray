@@ -3,9 +3,9 @@
 
 #include <memory>
 
-#include "api/ray_api.h"
 #include "api/blob.h"
 #include "api/impl/function_argument.h"
+#include "api/ray_api.h"
 #include "ray/util/type_util.h"
 
 /**
@@ -53,22 +53,22 @@ class Ray {
 
 // --------- inline implementation ------------
 #include "api/execute.h"
+#include "api/impl/arguments.h"
 #include "api/ray_actor.h"
 #include "api/ray_function.h"
 #include "api/ray_object.h"
-#include "api/impl/arguments.h"
 
 namespace ray {
 class Arguments;
 
 template <typename T>
-inline std::unique_ptr<RayObject<T> > Ray::put(const T &obj) {
+inline std::unique_ptr<RayObject<T>> Ray::put(const T &obj) {
   ::ray::binary_writer writer;
   Arguments::wrap(writer, obj);
-  std::vector< ::ray::blob> data;
+  std::vector<::ray::blob> data;
   writer.get_buffers(data);
   auto id = _impl->put(std::move(data));
-  std::unique_ptr<RayObject<T> > ptr(new RayObject<T>(*id));
+  std::unique_ptr<RayObject<T>> ptr(new RayObject<T>(*id));
   return ptr;
 }
 

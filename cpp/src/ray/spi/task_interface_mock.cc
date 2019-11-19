@@ -18,7 +18,7 @@ std::unique_ptr<TaskSpec> TaskInterfaceMock::getTask() {
 }
 
 void TaskInterfaceMock::markTaskPutDependency(const UniqueId &taskId,
-                                                    const UniqueId &objectId) {}
+                                              const UniqueId &objectId) {}
 
 void TaskInterfaceMock::reconstructObject(const UniqueId &objectId) {}
 

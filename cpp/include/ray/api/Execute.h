@@ -4,7 +4,7 @@
 
 namespace ray {
 
-//class Arguments;
+// class Arguments;
 
 // 0 args
 template <typename RT>
@@ -180,4 +180,4 @@ std::vector< ::ray::blob> actor_exec_function(uintptr_t base_addr, int32_t func_
   writer.get_buffers(blobs);
   return blobs;
 }
-}
+}  // namespace ray

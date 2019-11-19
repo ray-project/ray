@@ -8,4 +8,4 @@ namespace ray {
 extern uintptr_t dylib_base_addr;
 
 extern "C" void Ray_agent_init();
-}
+}  // namespace ray

@@ -32,4 +32,4 @@ void TaskSpec::set_exec_func_offset(int32_t offset) {
   memcpy((void *)(functionId.data() + sizeof(int32_t)), (void *)&offset, sizeof(int32_t));
   return;
 }
-}
+}  // namespace ray

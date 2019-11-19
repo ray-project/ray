@@ -1,8 +1,8 @@
 
 #include <utility>
 
-#include "task_proxy.h"
 #include "../runtime/ray_runtime.h"
+#include "task_proxy.h"
 
 namespace ray {
 
@@ -32,8 +32,7 @@ std::unique_ptr<UniqueId> TaskProxy::submit(const InvocationSpec &invocation) {
 
 std::unique_ptr<TaskSpec> TaskProxy::getTask() { return _taskInterface->getTask(); }
 
-void TaskProxy::markTaskPutDependency(const UniqueId &taskId,
-                                                const UniqueId &objectId) {
+void TaskProxy::markTaskPutDependency(const UniqueId &taskId, const UniqueId &objectId) {
   _taskInterface->markTaskPutDependency(taskId, objectId);
 }
 
@@ -43,17 +42,14 @@ void TaskProxy::reconstructObject(const UniqueId &objectId) {
 
 void TaskProxy::notifyUnblocked() { _taskInterface->notifyUnblocked(); }
 
-const UniqueId &TaskProxy::getSchedulerId() {
-  return _taskInterface->getSchedulerId();
-}
+const UniqueId &TaskProxy::getSchedulerId() { return _taskInterface->getSchedulerId(); }
 
-std::unique_ptr<UniqueId> TaskProxy::buildReturnId(const UniqueId &taskId,
-                                                             int index) {
+std::unique_ptr<UniqueId> TaskProxy::buildReturnId(const UniqueId &taskId, int index) {
   return taskId.taskComputeReturnId(index);
 }
 
-std::list<std::unique_ptr<UniqueId> > TaskProxy::buildReturnIds(
-    const UniqueId &taskId, int returnCount) {
+std::list<std::unique_ptr<UniqueId> > TaskProxy::buildReturnIds(const UniqueId &taskId,
+                                                                int returnCount) {
   std::list<std::unique_ptr<UniqueId> > returnIds;
   for (int i = 0; i < returnCount; i++) {
     returnIds.push_back(taskId.taskComputeReturnId(i));

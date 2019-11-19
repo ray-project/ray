@@ -73,7 +73,7 @@ inline void marshall(::ray::binary_writer &writer, Foo *const &foo) {
 inline void unmarshall(::ray::binary_reader &reader, Foo *&foo) {
   reader.read((char *)&foo, sizeof(Foo *));
 }
-}
+}  // namespace ray
 
 TEST(ray_api_test_case, put_test) {
   Ray::init();

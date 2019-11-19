@@ -29,4 +29,4 @@ FunctionArgument<T>::FunctionArgument(bool flag, T &&arg) {
   rayObjectFlag = flag;
   argument = std::move(arg);
 }
-}
+}  // namespace ray

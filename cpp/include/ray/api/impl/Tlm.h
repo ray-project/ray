@@ -13,4 +13,4 @@ class Tlm {
   static Blob end();
   static void write(const char *ptr, uint32_t sz);
 };
-}
+}  // namespace ray

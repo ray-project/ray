@@ -22,7 +22,6 @@ struct remote_function_ptr_holder {
 
 class RayApi {
  public:
- 
   virtual std::unique_ptr<UniqueId> put(std::vector< ::ray::blob> &&data) = 0;
   virtual del_unique_ptr< ::ray::blob> get(const UniqueId &id) = 0;
 
@@ -34,4 +33,4 @@ class RayApi {
                                          const UniqueId &actor,
                                          std::vector< ::ray::blob> &&args) = 0;
 };
-}
+}  // namespace ray

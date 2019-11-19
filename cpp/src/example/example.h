@@ -1,7 +1,7 @@
 #pragma once
 
-#include <iostream>
 #include <ray/api.h>
+#include <iostream>
 
 class Foo {
  public:
@@ -58,4 +58,4 @@ inline void marshall(::ray::binary_writer &writer, Foo *const &foo) {
 inline void unmarshall(::ray::binary_reader &reader, Foo *&foo) {
   reader.read((char *)&foo, sizeof(Foo *));
 }
-}
+}  // namespace ray

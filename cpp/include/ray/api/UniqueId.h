@@ -27,4 +27,4 @@ struct hash< ::ray::UniqueId> {
     return *(reinterpret_cast<const size_t *>(id.data()));
   }
 };
-}
+}  // namespace std

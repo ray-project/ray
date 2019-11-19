@@ -26,4 +26,4 @@ class TaskInterface {
 
   virtual ~TaskInterface(){};
 };
-}
+}  // namespace ray

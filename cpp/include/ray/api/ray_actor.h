@@ -10,4 +10,4 @@ class RayActor : public RayObject<T> {
  public:
   RayActor(UniqueId id) : RayObject<T>(id) {}
 };
-}
+}  // namespace ray

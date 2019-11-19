@@ -3,12 +3,12 @@
 
 #include <mutex>
 
+#include <ray/api/blob.h>
 #include <ray/api/ray_api.h>
 #include <ray/api/ray_config.h>
-#include <ray/api/blob.h>
 #include <ray/util/type_util.h>
-#include "../spi/task_proxy.h"
 #include "../spi/object_proxy.h"
+#include "../spi/task_proxy.h"
 #include "../spi/worker.h"
 
 namespace ray {
@@ -68,4 +68,4 @@ class RayRuntime : public RayApi {
 
   void execute(const TaskSpec &taskSpec);
 };
-}
+}  // namespace ray

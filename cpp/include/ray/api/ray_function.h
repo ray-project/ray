@@ -11,4 +11,4 @@ class RayFunction : public RayObject<F> {
   RayFunction(UniqueId &&id);
   RayFunction(UniqueId &id);
 };
-}
+}  // namespace ray

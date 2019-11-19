@@ -22,8 +22,7 @@ class ObjectInterface {
 
   virtual void release(const UniqueId &objectId) = 0;
 
-  virtual del_unique_ptr< ::ray::blob> get(const UniqueId &objectId,
-                                           int timeoutMs) = 0;
+  virtual del_unique_ptr< ::ray::blob> get(const UniqueId &objectId, int timeoutMs) = 0;
 
   virtual WaitResult wait(const UniqueId *ids, int count, int minNumReturns,
                           int timeoutMs) = 0;

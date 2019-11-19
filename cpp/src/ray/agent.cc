@@ -12,4 +12,4 @@ extern "C" void Ray_agent_init() {
   dylib_base_addr = (uintptr_t)info.dli_fbase;
   return;
 }
-}
+}  // namespace ray

@@ -66,4 +66,4 @@ std::unique_ptr< ::ray::blob> blob_merge_to_ptr(const std::vector< ::ray::blob> 
   }
   return bb;
 }
-}
+}  // namespace ray

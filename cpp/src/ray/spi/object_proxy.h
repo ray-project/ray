@@ -30,4 +30,4 @@ class ObjectProxy {
 
   void fetch(const UniqueId &objectId);
 };
-}
+}  // namespace ray
