@@ -14,14 +14,14 @@ services:
             example.py: example.py
         #     # A packaged python environment using `conda-pack`. Note that Skein
         #     # doesn't require any specific way of distributing files, but this
-        #     # is a good one for python projects.
+        #     # is a good one for python projects. This is optional.
         #     # See https://jcrist.github.io/skein/distributing-files.html
         #     environment: environment.tar.gz
         script: |
             # Activate the packaged conda environment
             #  - source environment/bin/activate
 
-            # This register the Ray head addresses needed by the workers with the Skein key-value store.
+            # This stores the Ray head address in the Skein key-value store so that the workers can retrieve it later.
             skein kv put current --key=RAY_HEAD_ADDRESS --value=$(hostname -i)
 
             # This command starts all the processes needed on the ray head node.

@@ -83,7 +83,7 @@ Use the ``files`` option to specify files that will be copied into the YARN cont
                 example.py: example.py
             #     # A packaged python environment using `conda-pack`. Note that Skein
             #     # doesn't require any specific way of distributing files, but this
-            #     # is a good one for python projects.
+            #     # is a good one for python projects. This is optional.
             #     # See https://jcrist.github.io/skein/distributing-files.html
             #     environment: environment.tar.gz
 
@@ -101,7 +101,7 @@ Start by activating a pre-existing environment for dependency management.
 
     source environment/bin/activate
 
-Register the Ray head addresses needed by the workers in the Skein key-value store.
+Register the Ray head address needed by the workers in the Skein key-value store.
 
 .. code-block:: bash
 
