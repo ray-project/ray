@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: 
-      - master
-      - github-action-* # Just for this PR
+  check_suite: 
+    types: [completed]
 
 jobs:
   build:
@@ -19,3 +17,6 @@ jobs:
       run: |
         echo Add other actions to build,
         echo test, and deploy your project.
+        echo $GITHUB_SHA
+        echo $GITHUB_REF
+        cat $GITHUB_EVENT_PATH
