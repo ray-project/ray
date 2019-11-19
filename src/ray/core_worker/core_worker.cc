@@ -619,7 +619,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   TaskSpecBuilder builder;
   BuildCommonTaskSpec(
       builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
-      next_task_index, GetCallerId(), function, args, 1, actor_creation_options.resources,
+      next_task_index, GetCallerId(), rpc_address_, function, args, 1, actor_creation_options.resources,
       actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
