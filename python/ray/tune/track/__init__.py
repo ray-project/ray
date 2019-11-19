@@ -46,7 +46,6 @@ def init(ignore_reinit_error=True, **session_kwargs):
 
 def shutdown():
     """Cleans up the trial and removes it from the global context."""
-
     global _session
     if _session:
         _session.close()
@@ -55,8 +54,7 @@ def shutdown():
 
 def log(**kwargs):
     """Applies TrackSession.log to the trial in the current context."""
-    _session = get_session()
-    return _session.log(**kwargs)
+    return get_session().log(**kwargs)
 
 
 def save(checkpoint):
@@ -65,29 +63,22 @@ def save(checkpoint):
     Args:
         checkpoint (str|dict): checkpoint to save.
     """
-    _session = get_session()
-    checkpoint_dir = current_iter_checkpoint_dir()
-    if isinstance(checkpoint, str):
-        if not checkpoint.startswith(checkpoint_dir):
-            raise ValueError(
-                "The returned checkpoint path must be within the given "
-                "checkpoint dir {}: {}".format(checkpoint_dir, checkpoint))
-    _session.save(checkpoint)
+    get_session().save(checkpoint)
 
 
 def restore():
-    _session = get_session()
-    return _session.restore()
+    """Returns a checkpoint to restore from, if restorable."""
+    return get_session().restore()
 
 
-def can_restore():
-    _session = get_session()
-    return _session.can_restore()
+def is_restorable():
+    """Returns whether the trial is restorable."""
+    return get_session().is_restorable
 
 
 def current_iter_checkpoint_dir():
-    _session = get_session()
-    return _session.logdir
+    """Current iteration's directory in which to save checkpoint."""
+    return get_session().current_iter_checkpoint_dir
 
 
 def trial_dir():
@@ -95,8 +86,9 @@ def trial_dir():
 
     This includes json data containing the session's parameters and metrics.
     """
-    _session = get_session()
-    return _session.logdir
+    return get_session().logdir
 
 
-__all__ = ["TrackSession", "session", "log", "trial_dir", "init", "shutdown"]
+__all__ = ["TrackSession", "session", "init", "shutdown", "log", "save",
+           "restore", "is_restorable", "current_iter_checkpoint_dir",
+           "trial_dir"]

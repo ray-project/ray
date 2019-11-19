@@ -27,6 +27,7 @@ from ray.tune.util import UtilMonitor
 logger = logging.getLogger(__name__)
 
 SETUP_TIME_THRESHOLD = 10
+CHECKPOINT_DIR_FORMAT = os.path.join("{root_dir}", "checkpoint_{iter}")
 
 
 class Trainable(object):
@@ -251,8 +252,8 @@ class Trainable(object):
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
-                                      "checkpoint_{}".format(self._iteration))
+        checkpoint_dir = CHECKPOINT_DIR_FORMAT.format(
+            root_dir=checkpoint_dir or self.logdir, iteration=self._iteration)
 
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)

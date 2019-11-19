@@ -51,11 +51,16 @@ class StatusReporter(object):
         >>>     reporter(timesteps_this_iter=1)
     """
 
-    def __init__(self, event_queue, continue_semaphore, logdir=None):
+    def __init__(self,
+                 event_queue,
+                 continue_semaphore,
+                 logdir=None,
+                 checkpoint_to_restore=None):
         self._queue = event_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
         self._logdir = logdir
+        self.checkpoint_to_restore = checkpoint_to_restore
 
     def __call__(self, **kwargs):
         """Report updated training status.
@@ -154,40 +159,43 @@ class FunctionRunner(Trainable):
         # Semaphore for notifying the reporter to continue with the computation
         # and to generate the next event.
         self._continue_semaphore = threading.Semaphore(0)
-
         # Queue for passing events between threads
         self._event_queue = queue.Queue(1)
-
         # Queue for passing errors back from the thread runner. The error queue
         # has a max size of one to prevent stacking error and force error
         # reporting to block until finished.
         self._error_queue = queue.Queue(1)
-
-        self._status_reporter = StatusReporter(
-            self._event_queue, self._continue_semaphore, self.logdir)
+        self._status_reporter = StatusReporter(self._event_queue,
+                                               self._continue_semaphore,
+                                               self.logdir)
         self._last_result = {}
+        self._last_checkpoint = None
         config = config.copy()
 
         def entrypoint():
             return self._trainable_func(config, self._status_reporter)
-
-        # the runner thread is not started until the first call to _train
+        # The runner thread is not started until the first call to _train
         self._runner = _RunnerThread(entrypoint, self._error_queue)
 
-    def _trainable_func(self):
+    def _trainable_func(self, config, reporter):
         """Subclasses can override this to set the trainable func."""
         raise NotImplementedError
 
     def _train(self):
         """Implements train() for a Function API.
 
-        Monitors for result and checkpoint events.
+        Monitors for result and checkpoint events. Only returns after a
+        result event.
 
         If the RunnerThread finishes without reporting "done",
         Tune will automatically provide a magic keyword __duplicate__
         along with a result with "done=True". The TrialRunner will handle the
         result accordingly (see tune/trial_runner.py).
+
+        Raises:
+            TuneError: This is raised if the trainable ends up in a bad state.
         """
+        result = None
         for event_index in range(2):
 
             if self._runner.is_alive():
@@ -243,28 +251,47 @@ class FunctionRunner(Trainable):
                         "Logging all available results first.")
 
             if event.is_checkpoint:
-                if event_index == 1:
+                if event_index == 0:
+                    # First event consumed in this step is a checkpoint. The
+                    # next one must be a result, so continue.
+                    self._last_checkpoint = event.value
+                    self.save()
+                else:
+                    # If the 2nd event is a checkpoint, that implies the 1st
+                    # was also a checkpoint, since if it wasn't we would've
+                    # broken out of the loop.
                     raise TuneError(
                         "Checkpoint taken twice in a single iteration. Only "
                         "a single call to tune.track.checkpoint is allowed "
                         "for every reporter or log call.")
-                else:
-                    checkpoint = event.value
-                    self.save(checkpoint)
             else:
                 result = event.value
-                # This keyword appears if the train_func using the Function API
-                # finishes without "done=True". This duplicates the last
-                # result, but the TrialRunner will not log this result again.
-                if "__duplicate__" in result:
-                    new_result = self._last_result.copy()
-                    new_result.update(result)
-                    result = new_result
-                self._last_result = result
-                return result
+                break
+        # This keyword appears if the train_func using the Function API
+        # finishes without "done=True". This duplicates the last
+        # result, but the TrialRunner will not log this result again.
+        if "__duplicate__" in result:
+            new_result = self._last_result.copy()
+            new_result.update(result)
+            result = new_result
+        self._last_result = result
+        return result
+
+    def _save(self, checkpoint_dir):
+        # write any FunctionRunner metadata necessary here? TODO
+
+        # Since the checkpoint has already been taken by the user we simply
+        # return the value set prior to the local save() call. The assumption
+        # here is that the checkpoint was taken in the correct directory, or
+        # is a dictionary.
+        return self._last_checkpoint
+
+    def _restore(self, checkpoint):
+        # restore any FunctionRunner metadata here? TODO
+        self._status_reporter.checkpoint_to_restore = checkpoint
 
     def _stop(self):
-        # If everything stayed in synch properly, this should never happen.
+        # If everything stayed in sync properly, this should never happen.
         if not self._event_queue.empty():
             if self._event_queue.get().event_type == Event.RESULT:
                 event_type = "results"

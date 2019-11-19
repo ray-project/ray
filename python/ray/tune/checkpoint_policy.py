@@ -17,8 +17,7 @@ class CheckpointPolicy(object):
         """Determines whether to trigger checkpoint based on the result.
 
         Args:
-            result (Optional[dict]): result from last training step. None for
-                first call.
+            result (dict): result from last training step.
 
         Returns:
             True if should take checkpoint, False otherwise.
@@ -66,8 +65,6 @@ class BasicCheckpointPolicy(CheckpointPolicy):
         return result.get(TRAINING_ITERATION, 0) % self._frequency == 0
 
     def checkpoint_score(self, result):
-        if result is None:
-            return float("inf") if self._score_desc else float("-inf")
         try:
             score = result[self._scoring_attribute]
             return -score if self._score_desc else score

@@ -5,8 +5,10 @@ from __future__ import print_function
 import os
 from datetime import datetime
 
+from ray.tune import TuneError
 from ray.tune.trial import Trial
 from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
+from ray.tune.trainable import CHECKPOINT_DIR_FORMAT
 from ray.tune.logger import UnifiedLogger, Logger
 
 
@@ -43,6 +45,7 @@ class TrackSession(object):
                  upload_dir=None,
                  trial_config=None,
                  _tune_reporter=None):
+        # TODO fix TrackSession restoration
         self._experiment_dir = None
         self._logdir = None
         self._upload_dir = None
@@ -91,6 +94,9 @@ class TrackSession(object):
         Arguments:
             metrics: named arguments with corresponding values to log.
         """
+        if self.is_restorable():
+            raise TuneError("Trial must be restored before calling log.")
+
         self._iteration += 1
         # TODO: Implement a batching mechanism for multiple calls to `log`
         #     within the same iteration.
@@ -101,9 +107,6 @@ class TrackSession(object):
         metrics_dict.setdefault(TRAINING_ITERATION, self._iteration)
         self._logger.on_result(metrics_dict)
 
-    def save(self, checkpoint):
-        self._logger.on_checkpoint(checkpoint)
-
     def close(self):
         self.trial_config["trial_completed"] = True
         self.trial_config["end_time"] = datetime.now().isoformat()
@@ -112,7 +115,26 @@ class TrackSession(object):
         self._logger.flush()
         self._logger.close()
 
+    def save(self, checkpoint):
+        self._logger.on_checkpoint(checkpoint)
+
+    def restore(self):
+        if not self.is_restorable:
+            raise TuneError("Trial is not restorable.")
+        checkpoint = self._logger.tune_reporter.checkpoint_to_restore
+        self._logger.tune_reporter.checkpoint_to_restore = None
+        return checkpoint
+
+    @property
+    def is_restorable(self):
+        return self._logger.tune_reporter.checkpoint_to_restore is not None
+
     @property
     def logdir(self):
         """Trial logdir (subdir of given experiment directory)"""
         return self._logdir
+
+    @property
+    def current_iter_checkpoint_dir(self):
+        """Current iteration's directory in which to save checkpoint."""
+        return CHECKPOINT_DIR_FORMAT.format(self.logdir, self._iteration)
