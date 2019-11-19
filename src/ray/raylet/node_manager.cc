@@ -1864,49 +1864,45 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
-  if (!worker || worker->GetAssignedTaskId().IsNil()) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
     return;  // The worker may have died or is no longer processing the task.
   }
-  if (!worker->IsBlocked()) {
-    auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
-    local_available_resources_.Release(cpu_resource_ids);
-    cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
-        cpu_resource_ids.ToResourceSet());
-    worker->MarkBlocked();
-    DispatchTasks(local_queues_.GetReadyTasksByClass());
-  }
+  auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
+  local_available_resources_.Release(cpu_resource_ids);
+  cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      cpu_resource_ids.ToResourceSet());
+  worker->MarkBlocked();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker) {
-  if (!worker || worker->GetAssignedTaskId().IsNil()) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || !worker->IsBlocked()) {
     return;  // The worker may have died or is no longer processing the task.
   }
-  if (worker->IsBlocked()) {
-    TaskID task_id = worker->GetAssignedTaskId();
-    Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
-    const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
-    const ResourceSet cpu_resources = required_resources.GetNumCpus();
-    bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
-    if (!oversubscribed) {
-      // Reacquire the CPU resources for the worker. Note that care needs to be
-      // taken if the user is using the specific CPU IDs since the IDs that we
-      // reacquire here may be different from the ones that the task started with.
-      auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
-      worker->AcquireTaskCpuResources(resource_ids);
-      cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
-          cpu_resources);
-    } else {
-      // In this case, we simply don't reacquire the CPU resources for the worker.
-      // The worker can keep running and when the task finishes, it will simply
-      // not have any CPU resources to release.
-      RAY_LOG(WARNING)
-          << "Resources oversubscribed: "
-          << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
-                 .GetAvailableResources()
-                 .ToString();
-    }
-    worker->MarkUnblocked();
+  TaskID task_id = worker->GetAssignedTaskId();
+  Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
+  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+  const ResourceSet cpu_resources = required_resources.GetNumCpus();
+  bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
+  if (!oversubscribed) {
+    // Reacquire the CPU resources for the worker. Note that care needs to be
+    // taken if the user is using the specific CPU IDs since the IDs that we
+    // reacquire here may be different from the ones that the task started with.
+    auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
+    worker->AcquireTaskCpuResources(resource_ids);
+    cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+        cpu_resources);
+  } else {
+    // In this case, we simply don't reacquire the CPU resources for the worker.
+    // The worker can keep running and when the task finishes, it will simply
+    // not have any CPU resources to release.
+    RAY_LOG(WARNING)
+        << "Resources oversubscribed: "
+        << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+               .GetAvailableResources()
+               .ToString();
   }
+  worker->MarkUnblocked();
 }
 
 void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
