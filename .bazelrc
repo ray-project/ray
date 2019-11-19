@@ -1,13 +1,23 @@
 # build config
 build --compilation_mode=opt
+build --action_env=BAZEL_LLVM
+build --action_env=BAZEL_SH
 build --action_env=PATH
 build --action_env=PYTHON2_BIN_PATH
 build --action_env=PYTHON3_BIN_PATH
+# Use Clang-Cl (Clang front-end with Visual C++ backend) on Windows
+build --action_env=USE_CLANG_CL=1
+# Enable build:windows, build:linux, build:macos, build:freebsd
+build --enable_platform_specific_config
 # Warnings should be errors
 build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc@-Werror
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt='\\.pb\\.cc$@-w'
-build --per_file_copt='external*@-w'
+build --per_file_copt='external/.*@-w'
+# Ignore minor warnings for host tools, which we generally can't control
+build --host_copt="-Wno-builtin-macro-redefined"
+build --host_copt="-Wno-inconsistent-missing-override"
+build --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
 build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0
