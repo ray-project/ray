@@ -13,8 +13,6 @@ try:
 except NameError:
     FileNotFoundError = IOError
 
-logger = logging.getLogger(__name__)
-
 
 class Checkpoint(object):
     """Describes a checkpoint of trial state.
@@ -72,26 +70,21 @@ class QueueItem(object):
 class CheckpointManager(object):
     """Manages checkpoints on the driver for a trial."""
 
-    def __init__(self, keep_checkpoints_num, checkpoint_score_attr):
+    def __init__(self, keep_checkpoints_num, checkpoint_policy):
         """Initializes a new CheckpointManager.
 
         Args:
             keep_checkpoints_num (int): Keep at least this many checkpoints.
-            checkpoint_score_attr (str): Attribute to use to determine which
-                checkpoints to keep.
+            checkpoint_policy (CheckpointPolicy): Checkpoint policy.
         """
-        self.keep_checkpoints_num = keep_checkpoints_num or float("inf")
-        assert self.keep_checkpoints_num > 0, (
-            "keep_checkpoints_num must be greater than 0.")
-        self._checkpoint_score_desc = checkpoint_score_attr.startswith("min-")
-        if self._checkpoint_score_desc:
-            self._checkpoint_score_attr = checkpoint_score_attr[4:]
-        else:
-            self._checkpoint_score_attr = checkpoint_score_attr
-
-        self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
-        self._best_checkpoints = []
+        self._keep_checkpoints_num = keep_checkpoints_num or float("inf")
+        self.policy = checkpoint_policy
         self._membership = set()
+        self._best_checkpoints = []
+        self.newest_checkpoint = Checkpoint(Checkpoint.MEMORY, None)
+
+        assert self._keep_checkpoints_num > 0, (
+            "keep_checkpoints_num must be greater than 0.")
 
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
@@ -101,24 +94,18 @@ class CheckpointManager(object):
 
         Args:
             checkpoint (Checkpoint): Trial state checkpoint.
-
-        Raises:
-            KeyError if checkpoint_score_attr not in result of checkpoint.
         """
         old_checkpoint = self.newest_checkpoint
         self.newest_checkpoint = checkpoint
 
-        try:
-            queue_item = QueueItem(self._priority(checkpoint), checkpoint)
-        except KeyError:
+        score = self.policy.checkpoint_score(checkpoint.result)
+        if score is None:
             if old_checkpoint not in self._membership:
                 old_checkpoint.delete()
-            logger.error("Result dict has no key: {}. "
-                         "checkpoint_score_attr must be set to a key in the "
-                         "result dict.".format(self._checkpoint_score_attr))
             return
 
-        if len(self._best_checkpoints) < self.keep_checkpoints_num:
+        queue_item = QueueItem(score, checkpoint)
+        if len(self._best_checkpoints) < self._keep_checkpoints_num:
             heapq.heappush(self._best_checkpoints, queue_item)
             self._membership.add(checkpoint)
         elif queue_item.priority >= self._best_checkpoints[0].priority:
@@ -136,7 +123,3 @@ class CheckpointManager(object):
         """Returns best checkpoints, sorted by score."""
         checkpoints = sorted(self._best_checkpoints, key=lambda c: c.priority)
         return [queue_item.value for queue_item in checkpoints]
-
-    def _priority(self, checkpoint):
-        priority = checkpoint.result[self._checkpoint_score_attr]
-        return -priority if self._checkpoint_score_desc else priority

@@ -7,7 +7,8 @@ import random
 import sys
 import unittest
 
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager, logger
+from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_policy import BasicCheckpointPolicy
 
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
@@ -26,7 +27,8 @@ class CheckpointManagerTest(unittest.TestCase):
         are deleted when necessary.
         """
         keep_checkpoints_num = 2
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        policy = BasicCheckpointPolicy(scoring_attribute="i")
+        checkpoint_manager = CheckpointManager(keep_checkpoints_num, policy)
         checkpoints = [
             Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
             for i in range(3)
@@ -51,7 +53,8 @@ class CheckpointManagerTest(unittest.TestCase):
         that the worst checkpoints are deleted when necessary.
         """
         keep_checkpoints_num = 2
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        policy = BasicCheckpointPolicy(scoring_attribute="i")
+        checkpoint_manager = CheckpointManager(keep_checkpoints_num, policy)
         checkpoints = [
             Checkpoint(Checkpoint.DISK, {i}, self.mock_result(i))
             for i in range(3, -1, -1)
@@ -75,7 +78,8 @@ class CheckpointManagerTest(unittest.TestCase):
         Tests that the best checkpoints are tracked and ordered correctly.
         """
         keep_checkpoints_num = 4
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        policy = BasicCheckpointPolicy(scoring_attribute="i")
+        checkpoint_manager = CheckpointManager(keep_checkpoints_num, policy)
         checkpoints = [
             Checkpoint(Checkpoint.MEMORY, i, self.mock_result(i))
             for i in range(16)
@@ -92,15 +96,14 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testOnCheckpointUnavailableAttribute(self):
         """
-        Tests that an error is logged when the associated result of the
-        checkpoint has no checkpoint score attribute.
+        Tests that the newest checkpoint is updated even if it can't be scored.
         """
         keep_checkpoints_num = 1
-        checkpoint_manager = CheckpointManager(keep_checkpoints_num, "i")
+        policy = BasicCheckpointPolicy(scoring_attribute="i")
+        checkpoint_manager = CheckpointManager(keep_checkpoints_num,
+                                               checkpoint_policy=policy)
 
         no_attr_checkpoint = Checkpoint(Checkpoint.MEMORY, 0, {})
-        with patch.object(logger, "error") as log_error_mock:
-            checkpoint_manager.on_checkpoint(no_attr_checkpoint)
-            log_error_mock.assert_called_once()
-            # The newest checkpoint should still be set despite this error.
-            assert checkpoint_manager.newest_checkpoint == no_attr_checkpoint
+        checkpoint_manager.on_checkpoint(no_attr_checkpoint)
+        # The newest checkpoint should still be set despite this error.
+        assert checkpoint_manager.newest_checkpoint == no_attr_checkpoint

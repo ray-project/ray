@@ -67,6 +67,7 @@ def run(run_or_experiment,
         loggers=None,
         sync_to_cloud=None,
         sync_to_driver=None,
+        checkpoint_policy=None,
         checkpoint_freq=0,
         checkpoint_at_end=False,
         sync_on_checkpoint=True,
@@ -135,10 +136,13 @@ def run(run_or_experiment,
             remote node to local. If string, then it must be a string template
             that includes `{source}` and `{target}` for the syncer to run.
             If not provided, defaults to using rsync.
-        checkpoint_freq (int): How many training iterations between
-            checkpoints. A value of 0 (default) disables checkpointing.
-        checkpoint_at_end (bool): Whether to checkpoint at the end of the
-            experiment regardless of the checkpoint_freq. Default is False.
+        checkpoint_policy (CheckpointPolicy): yolo.
+        checkpoint_freq (int): Deprecated, see `checkpoint_policy`. How many
+            training iterations between checkpoints. A value of 0 (default)
+            disables checkpointing.
+        checkpoint_at_end (bool): Deprecated, see `checkpoint_policy`. Whether
+            to checkpoint at the end of the experiment regardless of the
+            checkpoint_freq. Default is False.
         sync_on_checkpoint (bool): Force sync-down of trial checkpoint, to
             guarantee recoverability. If set to False, checkpoint syncing from
             worker to driver is asynchronous. Set this to False only if
@@ -147,10 +151,10 @@ def run(run_or_experiment,
         keep_checkpoints_num (int): Number of checkpoints to keep. A value of
             `None` keeps all checkpoints. Defaults to `None`. If set, need
             to provide `checkpoint_score_attr`.
-        checkpoint_score_attr (str): Specifies by which attribute to rank the
-            best checkpoint. Default is increasing order. If attribute starts
-            with `min-` it will rank attribute in decreasing order, i.e.
-            `min-validation_loss`.
+        checkpoint_score_attr (str): Deprecated, see `checkpoint_policy`.
+            Specifies by which attribute to rank the best checkpoint. Default
+            is increasing order. If attribute starts with `min-` it will rank
+            attribute in decreasing order, i.e. `min-validation_loss`.
         global_checkpoint_period (int): Seconds between global checkpointing.
             This does not affect `checkpoint_freq`, which specifies frequency
             for individual trials.
@@ -214,6 +218,9 @@ def run(run_or_experiment,
         >>>         "lr": tune.sample_from(lambda _: np.random.rand())
         >>>     }
         >>> )
+
+        >>> tune.run(mytrainable,
+        >>>          checkpoint_policy=BasicCheckpointPolicy(frequency=4))
     """
     trial_executor = trial_executor or RayTrialExecutor(
         queue_trials=queue_trials,
@@ -242,6 +249,7 @@ def run(run_or_experiment,
                 sync_to_driver=sync_to_driver,
                 trial_name_creator=trial_name_creator,
                 loggers=loggers,
+                checkpoint_policy=checkpoint_policy,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
                 sync_on_checkpoint=sync_on_checkpoint,

@@ -9,6 +9,7 @@ import os
 import six
 import types
 
+from ray.tune.checkpoint_policy import BasicCheckpointPolicy
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -70,6 +71,7 @@ class Experiment(object):
                  trial_name_creator=None,
                  loggers=None,
                  sync_to_driver=None,
+                 checkpoint_policy=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -94,6 +96,20 @@ class Experiment(object):
         if sync_function:
             _raise_deprecation_note(
                 "sync_function", "sync_to_driver", soft=False)
+        if checkpoint_freq:
+            _raise_deprecation_note(
+                "checkpoint_freq", "checkpoint_policy", soft=True)
+        if checkpoint_at_end:
+            _raise_deprecation_note(
+                "checkpoint_at_end", "checkpoint_policy", soft=True)
+        if checkpoint_score_attr:
+            _raise_deprecation_note(
+                "checkpoint_score_attr", "checkpoint_policy", soft=True)
+        if checkpoint_policy and any([checkpoint_freq, checkpoint_score_attr,
+                                      checkpoint_at_end]):
+            raise ValueError("Use checkpoint_policy instead of "
+                             "{checkpoint_freq, checkpoint_at_end, "
+                             "checkpoint_score_attr}.")
 
         stop = stop or {}
         if not isinstance(stop, dict) and not callable(stop):
@@ -109,6 +125,24 @@ class Experiment(object):
 
         config = config or {}
         self._run_identifier = Experiment.register_if_needed(run)
+
+        if not checkpoint_policy:
+            # TODO(ujvl): Remove this conversion when params hard-deprecated.
+            if checkpoint_score_attr:
+                score_desc = checkpoint_score_attr.startswith("min-")
+                if score_desc:
+                    checkpoint_score_attr = checkpoint_score_attr[4:]
+                else:
+                    checkpoint_score_attr = checkpoint_score_attr
+            else:
+                score_desc = False
+            checkpoint_policy = BasicCheckpointPolicy(
+                frequency=checkpoint_freq,
+                checkpoint_at_end=checkpoint_at_end,
+                scoring_attribute=checkpoint_score_attr,
+                score_desc=score_desc,
+            )
+
         spec = {
             "run": self._run_identifier,
             "stop": stop,
@@ -121,11 +155,9 @@ class Experiment(object):
             "trial_name_creator": trial_name_creator,
             "loggers": loggers,
             "sync_to_driver": sync_to_driver,
-            "checkpoint_freq": checkpoint_freq,
-            "checkpoint_at_end": checkpoint_at_end,
+            "checkpoint_policy": checkpoint_policy,
             "sync_on_checkpoint": sync_on_checkpoint,
             "keep_checkpoints_num": keep_checkpoints_num,
-            "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
             "max_failures": max_failures,
             "restore": os.path.abspath(os.path.expanduser(restore))

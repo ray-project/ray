@@ -13,13 +13,14 @@ import os
 from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_policy import BasicCheckpointPolicy
 from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_RESULTS_DIR, DONE
 from ray.utils import binary_to_hex, hex_to_binary
 from ray.tune.resources import Resources, json_to_resources, resources_to_json
 
@@ -98,11 +99,9 @@ class Trial(object):
                  experiment_tag="",
                  resources=None,
                  stopping_criterion=None,
-                 checkpoint_freq=0,
-                 checkpoint_at_end=False,
+                 checkpoint_policy=None,
                  sync_on_checkpoint=True,
                  keep_checkpoints_num=None,
-                 checkpoint_score_attr=TRAINING_ITERATION,
                  export_formats=None,
                  restore_path=None,
                  trial_name_creator=None,
@@ -148,16 +147,15 @@ class Trial(object):
         # Local trial state that is updated during the run
         self.last_result = {}
         self.last_update_time = -float("inf")
-        self.checkpoint_freq = checkpoint_freq
-        self.checkpoint_at_end = checkpoint_at_end
 
         # stores in memory max/min/last result for each metric by trial
         self.metric_analysis = {}
 
         self.sync_on_checkpoint = sync_on_checkpoint
         newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
+        checkpoint_policy = checkpoint_policy or BasicCheckpointPolicy()
         self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
-                                                    checkpoint_score_attr)
+                                                    checkpoint_policy)
         self.checkpoint_manager.newest_checkpoint = newest_checkpoint
 
         self.export_formats = export_formats
@@ -292,11 +290,8 @@ class Trial(object):
 
     def should_checkpoint(self):
         """Whether this trial is due for checkpointing."""
-        result = self.last_result or {}
-        if result.get(DONE) and self.checkpoint_at_end:
-            return True
-        return (self.checkpoint_freq and
-                result.get(TRAINING_ITERATION, 0) % self.checkpoint_freq == 0)
+        policy = self.checkpoint_manager.policy
+        return policy.should_checkpoint(self.last_result)
 
     def has_checkpoint(self):
         return self.checkpoint.value is not None
