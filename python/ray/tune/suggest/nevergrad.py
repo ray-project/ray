@@ -35,6 +35,8 @@ class NevergradSearch(SuggestionAlgorithm):
         metric (str): The training result objective value attribute.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        use_early_stopped_trials (bool): Whether to use early terminated
+            trial results in the optimization process.
 
     Example:
         >>> from nevergrad.optimization import optimizerlib
@@ -133,16 +135,23 @@ class NevergradSearch(SuggestionAlgorithm):
                           result=None,
                           error=False,
                           early_terminated=False):
-        """Passes the result to Nevergrad unless early terminated or errored.
+        """Notification for the completion of trial.
 
         The result is internally negated when interacting with Nevergrad
         so that Nevergrad Optimizers can "maximize" this value,
         as it minimizes on default.
         """
-        ng_trial_info = self._live_trial_mapping.pop(trial_id)
         if result:
-            self._nevergrad_opt.tell(ng_trial_info,
-                                     self._metric_op * result[self._metric])
+            self._process_result(trial_id, result, early_terminated)
+
+        self._live_trial_mapping.pop(trial_id)
+
+    def _process_result(self, trial_id, result, early_terminated=False):
+        if early_terminated and self._use_early_stopped is False:
+            return
+        ng_trial_info = self._live_trial_mapping[trial_id]
+        self._nevergrad_opt.tell(ng_trial_info,
+                                 self._metric_op * result[self._metric])
 
     def _num_live_trials(self):
         return len(self._live_trial_mapping)

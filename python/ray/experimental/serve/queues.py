@@ -3,24 +3,28 @@ from collections import defaultdict, deque
 import numpy as np
 
 import ray
-from ray.experimental.serve.utils import get_custom_object_id, logger
+from ray.experimental.serve.utils import logger
 
 
 class Query:
-    def __init__(self, request_body, result_object_id=None):
-        self.request_body = request_body
+    def __init__(self,
+                 request_args,
+                 request_kwargs,
+                 request_context,
+                 result_object_id=None):
+        self.request_args = request_args
+        self.request_kwargs = request_kwargs
+        self.request_context = request_context
+
         if result_object_id is None:
-            self.result_object_id = get_custom_object_id()
+            self.result_object_id = ray.ObjectID.from_random()
         else:
             self.result_object_id = result_object_id
 
 
 class WorkIntent:
-    def __init__(self, work_object_id=None):
-        if work_object_id is None:
-            self.work_object_id = get_custom_object_id()
-        else:
-            self.work_object_id = work_object_id
+    def __init__(self, replica_handle):
+        self.replica_handle = replica_handle
 
 
 class CentralizedQueues:
@@ -34,18 +38,19 @@ class CentralizedQueues:
     Behavior:
         >>> # psuedo-code
         >>> queue = CentralizedQueues()
-        >>> queue.enqueue_request('service-name', data)
+        >>> queue.enqueue_request(
+            "service-name", request_args, request_kwargs, request_context)
         # nothing happens, request is queued.
         # returns result ObjectID, which will contains the final result
-        >>> queue.dequeue_request('backend-1')
+        >>> queue.dequeue_request('backend-1', replica_handle)
         # nothing happens, work intention is queued.
         # return work ObjectID, which will contains the future request payload
         >>> queue.link('service-name', 'backend-1')
-        # here the enqueue_requester is matched with worker, request
-        # data is put into work ObjectID, and the worker processes the request
+        # here the enqueue_requester is matched with replica, request
+        # data is put into work ObjectID, and the replica processes the request
         # and store the result into result ObjectID
 
-    Traffic policy splits the traffic among different workers
+    Traffic policy splits the traffic among different replicas
     probabilistically:
 
     1. When all backends are ready to receive traffic, we will randomly
@@ -65,20 +70,48 @@ class CentralizedQueues:
         # service_name -> traffic_policy
         self.traffic = defaultdict(dict)
 
-        # backend_name -> worker queue
+        # backend_name -> worker request queue
         self.workers = defaultdict(deque)
 
-    def enqueue_request(self, service, request_data):
-        query = Query(request_data)
+        # backend_name -> worker payload queue
+        self.buffer_queues = defaultdict(deque)
+
+    def is_ready(self):
+        return True
+
+    def _serve_metric(self):
+        return {
+            "backend_{}_queue_size".format(backend_name): {
+                "value": len(queue),
+                "type": "counter",
+            }
+            for backend_name, queue in self.buffer_queues.items()
+        }
+
+    def enqueue_request(self, service, request_args, request_kwargs,
+                        request_context):
+        query = Query(request_args, request_kwargs, request_context)
         self.queues[service].append(query)
         self.flush()
         return query.result_object_id.binary()
 
-    def dequeue_request(self, backend):
-        intention = WorkIntent()
+    def dequeue_request(self, backend, replica_handle):
+        intention = WorkIntent(replica_handle)
         self.workers[backend].append(intention)
         self.flush()
-        return intention.work_object_id.binary()
+
+    def remove_and_destory_replica(self, backend, replica_handle):
+        # NOTE: this function scale by O(#replicas for the backend)
+        new_queue = deque()
+        target_id = replica_handle._actor_id
+
+        for work_intent in self.workers[backend]:
+            if work_intent.replica_handle._actor_id != target_id:
+                new_queue.append(work_intent)
+
+        self.workers[backend] = new_queue
+
+        replica_handle.__ray_terminate__.remote()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
@@ -108,38 +141,34 @@ class CentralizedQueues:
         return list(backends_in_policy.intersection(available_workers))
 
     def _flush(self):
+        # perform traffic splitting for requests
         for service, queue in self.queues.items():
+            # while there are incoming requests and there are backends
+            while len(queue) and len(self.traffic[service]):
+                backend_names = list(self.traffic[service].keys())
+                backend_weights = list(self.traffic[service].values())
+                chosen_backend = np.random.choice(
+                    backend_names, p=backend_weights).squeeze()
+
+                request = queue.popleft()
+                self.buffer_queues[chosen_backend].append(request)
+
+        # distach buffer queues to work queues
+        for service in self.queues.keys():
             ready_backends = self._get_available_backends(service)
+            for backend in ready_backends:
+                # no work available
+                if len(self.buffer_queues[backend]) == 0:
+                    continue
 
-            while len(queue) and len(ready_backends):
-                # Fast path, only one backend available.
-                if len(ready_backends) == 1:
-                    backend = ready_backends[0]
-                    request, work = (queue.popleft(),
-                                     self.workers[backend].popleft())
-                    ray.worker.global_worker.put_object(
-                        work.work_object_id, request)
-
-                # We have more than one backend available.
-                # We will roll a dice among the multiple backends.
-                else:
-                    backend_weights = np.array([
-                        self.traffic[service][backend_name]
-                        for backend_name in ready_backends
-                    ])
-                    # Normalize the weights to 1.
-                    backend_weights /= backend_weights.sum()
-                    chosen_backend = np.random.choice(
-                        ready_backends, p=backend_weights).squeeze()
-
+                buffer_queue = self.buffer_queues[backend]
+                work_queue = self.workers[backend]
+                while len(buffer_queue) and len(work_queue):
                     request, work = (
-                        queue.popleft(),
-                        self.workers[chosen_backend].popleft(),
+                        buffer_queue.popleft(),
+                        work_queue.popleft(),
                     )
-                    ray.worker.global_worker.put_object(
-                        work.work_object_id, request)
-
-                ready_backends = self._get_available_backends(service)
+                    work.replica_handle._ray_serve_call.remote(request)
 
 
 @ray.remote

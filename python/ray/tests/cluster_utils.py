@@ -81,6 +81,7 @@ class Cluster(object):
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
         }
         ray_params = ray.parameter.RayParams(**node_args)
+        ray_params.use_pickle = ray.cloudpickle.FAST_CLOUDPICKLE_USED
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
@@ -91,6 +92,8 @@ class Cluster(object):
             self.webui_url = self.head_node.webui_url
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
+            # Let grpc pick a port.
+            ray_params.update(node_manager_port=0)
             node = ray.node.Node(
                 ray_params,
                 head=False,
@@ -106,7 +109,7 @@ class Cluster(object):
 
         return node
 
-    def remove_node(self, node, allow_graceful=False):
+    def remove_node(self, node, allow_graceful=True):
         """Kills all processes associated with worker node.
 
         Args:

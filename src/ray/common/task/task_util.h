@@ -26,7 +26,8 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetCommonTaskSpec(
       const TaskID &task_id, const Language &language,
       const std::vector<std::string> &function_descriptor, const JobID &job_id,
-      const TaskID &parent_task_id, uint64_t parent_counter, uint64_t num_returns,
+      const TaskID &parent_task_id, uint64_t parent_counter, const TaskID &caller_id,
+      const rpc::Address &caller_address, uint64_t num_returns, bool is_direct_call,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources) {
     message_->set_type(TaskType::NORMAL_TASK);
@@ -38,7 +39,10 @@ class TaskSpecBuilder {
     message_->set_task_id(task_id.Binary());
     message_->set_parent_task_id(parent_task_id.Binary());
     message_->set_parent_counter(parent_counter);
+    message_->set_caller_id(caller_id.Binary());
+    message_->mutable_caller_address()->CopyFrom(caller_address);
     message_->set_num_returns(num_returns);
+    message_->set_is_direct_call(is_direct_call);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
@@ -91,7 +95,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id, uint64_t max_reconstructions = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
-      bool is_direct_call = false) {
+      bool is_direct_call = false, int max_concurrency = 1, bool is_detached = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -100,6 +104,8 @@ class TaskSpecBuilder {
       actor_creation_spec->add_dynamic_worker_options(option);
     }
     actor_creation_spec->set_is_direct_call(is_direct_call);
+    actor_creation_spec->set_max_concurrency(max_concurrency);
+    actor_creation_spec->set_is_detached(is_detached);
     return *this;
   }
 
@@ -107,23 +113,18 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetActorTaskSpec(
-      const ActorID &actor_id, const ActorHandleID &actor_handle_id,
-      const ObjectID &actor_creation_dummy_object_id,
-      const ObjectID &previous_actor_task_dummy_object_id, uint64_t actor_counter,
-      const std::vector<ActorHandleID> &new_handle_ids = {}) {
+  TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
+                                    const ObjectID &actor_creation_dummy_object_id,
+                                    const ObjectID &previous_actor_task_dummy_object_id,
+                                    uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
-    actor_spec->set_actor_handle_id(actor_handle_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(
         actor_creation_dummy_object_id.Binary());
     actor_spec->set_previous_actor_task_dummy_object_id(
         previous_actor_task_dummy_object_id.Binary());
     actor_spec->set_actor_counter(actor_counter);
-    for (const auto &id : new_handle_ids) {
-      actor_spec->add_new_actor_handles(id.Binary());
-    }
     return *this;
   }
 

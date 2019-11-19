@@ -1,10 +1,11 @@
 #include "ray/gcs/tables.h"
 
+#include "absl/time/clock.h"
+
 #include "ray/common/common_protocol.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_gcs_client.h"
-#include "ray/util/util.h"
 
 namespace {
 
@@ -678,14 +679,14 @@ ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id) {
   return Append(JobID::Nil(), client_log_key_, node_info, nullptr);
 }
 
-void ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo &node_info) const {
+bool ClientTable::GetClient(const ClientID &node_id, GcsNodeInfo *node_info) const {
   RAY_CHECK(!node_id.IsNil());
   auto entry = node_cache_.find(node_id);
-  if (entry != node_cache_.end()) {
-    node_info = entry->second;
-  } else {
-    node_info.set_node_id(ClientID::Nil().Binary());
+  auto found = (entry != node_cache_.end());
+  if (found) {
+    *node_info = entry->second;
   }
+  return found;
 }
 
 const std::unordered_map<ClientID, GcsNodeInfo> &ClientTable::GetAllClients() const {
@@ -713,7 +714,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
                              const ActorCheckpointIdData &data) {
     std::shared_ptr<ActorCheckpointIdData> copy =
         std::make_shared<ActorCheckpointIdData>(data);
-    copy->add_timestamps(current_sys_time_ms());
+    copy->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
     copy->add_checkpoint_ids(checkpoint_id.Binary());
     auto num_to_keep = RayConfig::instance().num_actor_checkpoints_to_keep();
     while (copy->timestamps().size() > num_to_keep) {
@@ -730,7 +731,7 @@ Status ActorCheckpointIdTable::AddCheckpointId(const JobID &job_id,
     std::shared_ptr<ActorCheckpointIdData> data =
         std::make_shared<ActorCheckpointIdData>();
     data->set_actor_id(id.Binary());
-    data->add_timestamps(current_sys_time_ms());
+    data->add_timestamps(absl::GetCurrentTimeNanos() / 1000000);
     *data->add_checkpoint_ids() = checkpoint_id.Binary();
     RAY_CHECK_OK(Add(job_id, actor_id, data, nullptr));
   };

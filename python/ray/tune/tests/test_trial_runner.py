@@ -21,11 +21,12 @@ from ray.tune import register_env, register_trainable, run_experiments
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
-from ray.tune.result import (DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE,
-                             HOSTNAME, NODE_IP, PID, EPISODES_TOTAL,
-                             TRAINING_ITERATION, TIMESTEPS_THIS_ITER,
-                             TIME_THIS_ITER_S, TIME_TOTAL_S, TRIAL_ID)
+from ray.tune.result import (
+    DEFAULT_RESULTS_DIR, TIMESTEPS_TOTAL, DONE, HOSTNAME, NODE_IP, PID,
+    EPISODES_TOTAL, TRAINING_ITERATION, TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
+    TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
+from ray.tune.syncer import CommandBasedClient
 from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
@@ -117,6 +118,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             HOSTNAME,
             NODE_IP,
             TRIAL_ID,
+            EXPERIMENT_TAG,
             PID,
             TIME_THIS_ITER_S,
             TIME_TOTAL_S,
@@ -268,9 +270,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
         self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
         self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
-
-        # Infeasible even with queueing enabled (no gpus)
-        self.assertRaises(TuneError, lambda: f(1, 1, True))
 
         # Too large resource request
         self.assertRaises(TuneError, lambda: f(100, 100, False))
@@ -463,6 +462,35 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         [trial] = tune.run(train, stop=stop).trials
         self.assertEqual(trial.last_result["training_iteration"], 8)
+
+    def testStoppingMemberFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class Stopper:
+            def stop(self, trial_id, result):
+                return result["test"] > 6
+
+        [trial] = tune.run(train, stop=Stopper().stop).trials
+        self.assertEqual(trial.last_result["training_iteration"], 8)
+
+    def testBadStoppingFunction(self):
+        def train(config, reporter):
+            for i in range(10):
+                reporter(test=i)
+
+        class Stopper:
+            def stop(self, result):
+                return result["test"] > 6
+
+        def stop(result):
+            return result["test"] > 6
+
+        with self.assertRaises(ValueError):
+            tune.run(train, stop=Stopper().stop)
+        with self.assertRaises(ValueError):
+            tune.run(train, stop=stop)
 
     def testEarlyReturn(self):
         def train(config, reporter):
@@ -1097,21 +1125,20 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 }).trials
 
-        with patch("ray.tune.syncer.CommandSyncer.sync_function"
-                   ) as mock_fn, patch(
-                       "ray.services.get_node_ip_address") as mock_sync:
-            mock_sync.return_value = "0.0.0.0"
-            [trial] = tune.run(
-                "__fake",
-                name="foo",
-                max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_driver": "echo {source} {target}"
-                }).trials
-            self.assertGreater(mock_fn.call_count, 0)
+        with patch.object(CommandBasedClient, "execute") as mock_fn:
+            with patch("ray.services.get_node_ip_address") as mock_sync:
+                mock_sync.return_value = "0.0.0.0"
+                [trial] = tune.run(
+                    "__fake",
+                    name="foo",
+                    max_failures=0,
+                    **{
+                        "stop": {
+                            "training_iteration": 1
+                        },
+                        "sync_to_driver": "echo {source} {target}"
+                    }).trials
+                self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
         tmpdir = tempfile.mkdtemp()
@@ -1139,7 +1166,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterSyncFunction(self):
         def sync_func_driver(source, target):
-            assert ":" in source, "Source not a remote path."
+            assert ":" in source, "Source {} not a remote path.".format(source)
             assert ":" not in target, "Target is supposed to be local."
             with open(os.path.join(target, "test.log2"), "w") as f:
                 print("writing to", f.name)
@@ -1176,7 +1203,7 @@ class TestSyncFunctionality(unittest.TestCase):
         def sync_func(source, target):
             pass
 
-        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_sync:
+        with patch.object(CommandBasedClient, "execute") as mock_sync:
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -1215,7 +1242,7 @@ class VariantGeneratorTest(unittest.TestCase):
         }, "tune-pong")
         trials = list(trials)
         self.assertEqual(len(trials), 2)
-        self.assertEqual(str(trials[0]), "PPO_Pong-v0_0")
+        self.assertTrue("PPO_Pong-v0" in str(trials[0]))
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
         self.assertEqual(trials[0].trainable_name, "PPO")
         self.assertEqual(trials[0].experiment_tag, "0")
@@ -2054,12 +2081,12 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         runner = TrialRunner()
 
-        def on_step_begin(self):
+        def on_step_begin(self, trialrunner):
             self._update_avail_resources()
             cnt = self.pre_step if hasattr(self, "pre_step") else 0
             setattr(self, "pre_step", cnt + 1)
 
-        def on_step_end(self):
+        def on_step_end(self, trialrunner):
             cnt = self.pre_step if hasattr(self, "post_step") else 0
             setattr(self, "post_step", 1 + cnt)
 
@@ -2188,6 +2215,30 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(len(searcher.live_trials), 0)
         self.assertTrue(searcher.is_finished())
         self.assertTrue(runner.is_finished())
+
+    def testSearchAlgSchedulerEarlyStop(self):
+        """Early termination notif to Searcher can be turned off."""
+
+        class _MockScheduler(FIFOScheduler):
+            def on_trial_result(self, *args, **kwargs):
+                return TrialScheduler.STOP
+
+        ray.init(num_cpus=4, num_gpus=2)
+        experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+        experiments = [Experiment.from_json("test", experiment_spec)]
+        searcher = _MockSuggestionAlgorithm(use_early_stopped_trials=True)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
+        runner.step()
+        runner.step()
+        self.assertEqual(len(searcher.final_results), 1)
+
+        searcher = _MockSuggestionAlgorithm(use_early_stopped_trials=False)
+        searcher.add_configurations(experiments)
+        runner = TrialRunner(search_alg=searcher, scheduler=_MockScheduler())
+        runner.step()
+        runner.step()
+        self.assertEqual(len(searcher.final_results), 0)
 
     def testSearchAlgStalled(self):
         """Checks that runner and searcher state is maintained when stalled."""

@@ -1,6 +1,12 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
-COPTS = ["-DARROW_USE_GLOG"]
+COPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+    ],
+    "//conditions:default": [
+        "-DARROW_USE_GLOG",
+    ],
+})
 
 cc_library(
     name = "arrow",
@@ -9,19 +15,29 @@ cc_library(
         "cpp/src/arrow/io/interfaces.cc",
         "cpp/src/arrow/memory_pool.cc",
         "cpp/src/arrow/status.cc",
-        "cpp/src/arrow/util/io-util.cc",
+        "cpp/src/arrow/util/io_util.cc",
         "cpp/src/arrow/util/logging.cc",
         "cpp/src/arrow/util/memory.cc",
+        "cpp/src/arrow/util/string.cc",
         "cpp/src/arrow/util/string_builder.cc",
-        "cpp/src/arrow/util/thread-pool.cc",
+        "cpp/src/arrow/util/thread_pool.cc",
     ],
     hdrs = [
         "cpp/src/arrow/buffer.h",
+        "cpp/src/arrow/io/concurrency.h",
         "cpp/src/arrow/io/interfaces.h",
+        "cpp/src/arrow/io/mman.h",
+        "cpp/src/arrow/io/util_internal.h",
         "cpp/src/arrow/memory_pool.h",
+        "cpp/src/arrow/result.h",
         "cpp/src/arrow/status.h",
-        "cpp/src/arrow/util/bit-util.h",
-        "cpp/src/arrow/util/io-util.h",
+        "cpp/src/arrow/type_fwd.h",
+        "cpp/src/arrow/util/bit_util.h",
+        "cpp/src/arrow/util/checked_cast.h",
+        "cpp/src/arrow/util/compare.h",
+        "cpp/src/arrow/util/functional.h",
+        "cpp/src/arrow/util/io_util.h",
+        "cpp/src/arrow/util/iterator.h",
         "cpp/src/arrow/util/logging.h",
         "cpp/src/arrow/util/macros.h",
         "cpp/src/arrow/util/memory.h",
@@ -29,12 +45,17 @@ cc_library(
         "cpp/src/arrow/util/string.h",
         "cpp/src/arrow/util/string_builder.h",
         "cpp/src/arrow/util/string_view.h",
-        "cpp/src/arrow/util/thread-pool.h",
+        "cpp/src/arrow/util/thread_pool.h",
         "cpp/src/arrow/util/type_traits.h",
         "cpp/src/arrow/util/ubsan.h",
+        "cpp/src/arrow/util/utf8.h",
+        "cpp/src/arrow/util/variant.h",
         "cpp/src/arrow/util/visibility.h",
         "cpp/src/arrow/util/windows_compatibility.h",
         "cpp/src/arrow/vendored/string_view.hpp",
+        "cpp/src/arrow/vendored/variant.hpp",
+        "cpp/src/arrow/vendored/xxhash.h",
+        "cpp/src/arrow/vendored/xxhash/xxh3.h",
         "cpp/src/arrow/vendored/xxhash/xxhash.c",
         "cpp/src/arrow/vendored/xxhash/xxhash.h",
     ],
@@ -176,17 +197,17 @@ FLATC_ARGS = [
 
 flatbuffer_cc_library(
     name = "common_fbs",
-    srcs = ["cpp/src/plasma/format/common.fbs"],
+    srcs = ["cpp/src/plasma/common.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "cpp/src/plasma/",
 )
 
 flatbuffer_cc_library(
     name = "plasma_fbs",
-    srcs = ["cpp/src/plasma/format/plasma.fbs"],
+    srcs = ["cpp/src/plasma/plasma.fbs"],
     flatc_args = FLATC_ARGS,
-    includes = ["cpp/src/plasma/format/common.fbs"],
+    includes = ["cpp/src/plasma/common.fbs"],
     out_prefix = "cpp/src/plasma/",
 )
 
-exports_files(["cpp/src/plasma/format/common.fbs"])
+exports_files(["cpp/src/plasma/common.fbs"])

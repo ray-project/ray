@@ -5,12 +5,9 @@
 namespace ray.protocol;
 
 enum MessageType:int {
-  // Task is submitted to the raylet. This is sent from a worker to a
-  // raylet.
-  SubmitTask = 1,
   // Notify the raylet that a task has finished. This is sent from a
   // worker to a raylet.
-  TaskDone,
+  TaskDone = 1,
   // Log a message to the event table. This is sent from a worker to a raylet.
   EventLogMessage,
   // Send an initial connection message to the raylet. This is sent
@@ -25,9 +22,6 @@ enum MessageType:int {
   // Notify the raylet that this client is disconnecting gracefully.
   // This is sent from a worker to a raylet.
   IntentionalDisconnectClient,
-  // Get a new task from the raylet. This is sent from a worker to a
-  // raylet.
-  GetTask,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -58,6 +52,8 @@ enum MessageType:int {
   // The response message to WaitRequest; replies with the objects found and objects
   // remaining.
   WaitReply,
+  // Wait for objects asynchronously. The reply will be sent back via gRPC push.
+  WaitForDirectActorCallArgsRequest,
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
@@ -74,8 +70,10 @@ enum MessageType:int {
   NotifyActorResumedFromCheckpoint,
   // A node manager requests to connect to another node manager.
   ConnectClient,
-  // Set dynamic custom resource
+  // Set dynamic custom resource.
   SetResourceRequest,
+  // Update the active set of object IDs in use on this worker.
+  ReportActiveObjectIDs,
 }
 
 table TaskExecutionSpecification {
@@ -91,10 +89,6 @@ table TaskExecutionSpecification {
 table Task {
   task_specification: string;
   task_execution_spec: TaskExecutionSpecification;
-}
-
-table SubmitTaskRequest {
-  task_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.
@@ -113,12 +107,8 @@ table ResourceIdSetInfo {
 table DisconnectClient {
 }
 
-// This message is sent from the raylet to a worker.
-table GetTaskReply {
-  // A string of bytes representing the task specification.
-  task_spec: string;
-  // A list of the resources reserved for this worker.
-  fractional_resource_ids: [ResourceIdSetInfo];
+table ResourceIdSetInfos {
+  resource_infos: [ResourceIdSetInfo];
 }
 
 // This struct is used to register a new worker with the raylet.
@@ -136,14 +126,12 @@ table RegisterClientRequest {
   // TODO(hchen): Use `Language` in `common.proto`.
   language: int;
   // Port that this worker is listening on.
-  // If port > 0, then worker will listen to this port and wait for
-  // raylet to push tasks, instead of invoking GetTask().
   port: int;
 }
 
 table RegisterClientReply {
-  // The IDs of the GPUs that are reserved for this worker.
-  gpu_ids: [int];
+  // GCS ClientID of the local node manager.
+  raylet_id: string;
 }
 
 table RegisterNodeManagerRequest {
@@ -194,6 +182,14 @@ table WaitReply {
   remaining: [string];
 }
 
+table WaitForDirectActorCallArgsRequest {
+  // List of object ids we'll be waiting on.
+  object_ids: [string];
+  // Id used to uniquely identify this request. This is sent back to the core
+  // worker to notify the wait has completed.
+  tag: int;
+}
+
 // This struct is the same as ErrorTableData.
 table PushErrorRequest {
   // The ID of the job that the error is for.
@@ -238,11 +234,16 @@ table ConnectClient {
   client_id: string;
 }
 
-table SetResourceRequest{
-  // Name of the resource to be set
+table SetResourceRequest {
+  // Name of the resource to be set.
   resource_name: string;
-  // Capacity of the resource to be set
+  // Capacity of the resource to be set.
   capacity: double;
-  // Client ID where this resource will be set
+  // Client ID where this resource will be set.
   client_id: string;
+}
+
+table ReportActiveObjectIDs {
+  // Object IDs that are active in the worker.
+  object_ids: [string];
 }

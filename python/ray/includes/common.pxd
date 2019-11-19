@@ -1,19 +1,37 @@
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr
+from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.string cimport string as c_string
 
-from libc.stdint cimport uint8_t, uint64_t, int64_t
+from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.unique_ids cimport (
     CActorID,
-    CActorHandleID,
     CJobID,
     CWorkerID,
     CObjectID,
     CTaskID,
 )
+
+
+cdef extern from * namespace "polyfill":
+    """
+    namespace polyfill {
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T& t) {
+        return std::move(t);
+    }
+
+    template <typename T>
+    inline typename std::remove_reference<T>::type&& move(T&& t) {
+        return std::move(t);
+    }
+
+    }  // namespace polyfill
+    """
+    cdef T move[T](T)
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
@@ -29,31 +47,40 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus OK()
 
         @staticmethod
-        CRayStatus OutOfMemory()
+        CRayStatus OutOfMemory(const c_string &msg)
 
         @staticmethod
-        CRayStatus KeyError()
+        CRayStatus KeyError(const c_string &msg)
 
         @staticmethod
-        CRayStatus Invalid()
+        CRayStatus Invalid(const c_string &msg)
 
         @staticmethod
-        CRayStatus IOError()
+        CRayStatus IOError(const c_string &msg)
 
         @staticmethod
-        CRayStatus TypeError()
+        CRayStatus TypeError(const c_string &msg)
 
         @staticmethod
-        CRayStatus UnknownError()
+        CRayStatus UnknownError(const c_string &msg)
 
         @staticmethod
-        CRayStatus NotImplemented()
+        CRayStatus NotImplemented(const c_string &msg)
 
         @staticmethod
-        CRayStatus RedisError()
+        CRayStatus ObjectStoreFull(const c_string &msg)
 
         @staticmethod
-        CRayStatus ObjectStoreFull()
+        CRayStatus RedisError(const c_string &msg)
+
+        @staticmethod
+        CRayStatus TimedOut(const c_string &msg)
+
+        @staticmethod
+        CRayStatus Interrupted(const c_string &msg)
+
+        @staticmethod
+        CRayStatus SystemExit()
 
         c_bool ok()
         c_bool IsOutOfMemory()
@@ -63,8 +90,11 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsTypeError()
         c_bool IsUnknownError()
         c_bool IsNotImplemented()
-        c_bool IsRedisError()
         c_bool IsObjectStoreFull()
+        c_bool IsRedisError()
+        c_bool IsTimedOut()
+        c_bool IsInterrupted()
+        c_bool IsSystemExit()
 
         c_string ToString()
         c_string CodeAsString()
@@ -74,6 +104,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     # We can later add more of the common status factory methods as needed
     cdef CRayStatus RayStatus_OK "Status::OK"()
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
+    cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
 
 cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
@@ -99,6 +130,8 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CWorkerType "ray::WorkerType":
         pass
+    cdef cppclass CTaskType "ray::TaskType":
+        pass
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
@@ -111,6 +144,11 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
 cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_WORKER "ray::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::WorkerType::DRIVER"
+
+cdef extern from "ray/protobuf/common.pb.h" nogil:
+    cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
+    cdef CTaskType TASK_TYPE_ACTOR_CREATION_TASK "ray::TaskType::ACTOR_CREATION_TASK"  # noqa: E501
+    cdef CTaskType TASK_TYPE_ACTOR_TASK "ray::TaskType::ACTOR_TASK"
 
 
 cdef extern from "ray/common/task/scheduling_resources.h" nogil:
@@ -141,6 +179,7 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
 
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
+        LocalMemoryBuffer(size_t size)
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
@@ -156,7 +195,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CRayFunction(CLanguage language,
                      const c_vector[c_string] function_descriptor)
         CLanguage GetLanguage()
-        c_vector[c_string] GetFunctionDescriptor()
+        const c_vector[c_string]& GetFunctionDescriptor()
 
     cdef cppclass CTaskArg "ray::TaskArg":
         @staticmethod
@@ -165,32 +204,20 @@ cdef extern from "ray/core_worker/common.h" nogil:
         @staticmethod
         CTaskArg PassByValue(const shared_ptr[CRayObject] &data)
 
-cdef extern from "ray/core_worker/task_interface.h" nogil:
     cdef cppclass CTaskOptions "ray::TaskOptions":
         CTaskOptions()
-        CTaskOptions(int num_returns,
+        CTaskOptions(int num_returns, c_bool is_direct_call,
                      unordered_map[c_string, double] &resources)
 
     cdef cppclass CActorCreationOptions "ray::ActorCreationOptions":
-        CActorCreationOptions(uint64_t max_reconstructions,
-                              const unordered_map[c_string, double] &resources)
-
-    cdef cppclass CActorHandle "ray::ActorHandle":
-        CActorHandle(
-            const CActorID &actor_id, const CActorHandleID &actor_handle_id,
-            const CLanguage actor_language,
-            const c_vector[c_string] &actor_creation_task_function_descriptor)
-
-        CActorHandle(const CActorHandle &other)
-        CActorID ActorID() const
-        CActorHandleID ActorHandleID() const
-        c_vector[c_string] ActorCreationTaskFunctionDescriptor() const
-        CObjectID ActorCursor() const
-        int64_t TaskCursor() const
-        int64_t NumForks() const
-        CActorHandle Fork()
-        void Serialize(c_string *output)
-        CActorHandle Deserialize(const c_string &data)
+        CActorCreationOptions()
+        CActorCreationOptions(
+            uint64_t max_reconstructions, c_bool is_direct_call,
+            int32_t max_concurrency,
+            const unordered_map[c_string, double] &resources,
+            const unordered_map[c_string, double] &placement_resources,
+            const c_vector[c_string] &dynamic_worker_options,
+            c_bool is_detached)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":

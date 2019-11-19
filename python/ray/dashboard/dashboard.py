@@ -10,11 +10,14 @@ except ImportError:
     sys.exit(1)
 
 import argparse
+import copy
 import datetime
 import json
 import logging
 import os
+import re
 import threading
+import time
 import traceback
 import yaml
 
@@ -24,7 +27,11 @@ from collections import defaultdict
 from operator import itemgetter
 from typing import Dict
 
+import grpc
+from google.protobuf.json_format import MessageToDict
 import ray
+from ray.core.generated import node_manager_pb2
+from ray.core.generated import node_manager_pb2_grpc
 import ray.ray_constants as ray_constants
 import ray.utils
 
@@ -50,57 +57,29 @@ class Dashboard(object):
     """
 
     def __init__(self,
+                 host,
+                 port,
                  redis_address,
-                 http_port,
-                 token,
                  temp_dir,
                  redis_password=None):
         """Initialize the dashboard object."""
-        self.ip = ray.services.get_node_ip_address()
-        self.port = http_port
-        self.token = token
+        self.host = host
+        self.port = port
+        self.redis_client = ray.services.create_redis_client(
+            redis_address, password=redis_password)
         self.temp_dir = temp_dir
+
         self.node_stats = NodeStats(redis_address, redis_password)
+        self.raylet_stats = RayletStats(redis_address, redis_password)
 
         # Setting the environment variable RAY_DASHBOARD_DEV=1 disables some
         # security checks in the dashboard server to ease development while
         # using the React dev server. Specifically, when this option is set, we
-        # disable the token-based authentication mechanism and allow
-        # cross-origin requests to be made.
+        # allow cross-origin requests to be made.
         self.is_dev = os.environ.get("RAY_DASHBOARD_DEV") == "1"
 
-        self.app = aiohttp.web.Application(
-            middlewares=[] if self.is_dev else [self.auth_middleware])
+        self.app = aiohttp.web.Application()
         self.setup_routes()
-
-    @aiohttp.web.middleware
-    async def auth_middleware(self, req, handler):
-        def valid_token(req):
-            # If the cookie token is correct, accept that.
-            try:
-                if req.cookies["token"] == self.token:
-                    return True
-            except KeyError:
-                pass
-
-            # If the query token is correct, accept that.
-            try:
-                if req.query["token"] == self.token:
-                    return True
-            except KeyError:
-                pass
-
-            # Reject.
-            logger.warning("Dashboard: rejected an invalid token")
-            return False
-
-        # Check that the token is present, either in query or as cookie.
-        if not valid_token(req):
-            return aiohttp.web.Response(status=401, text="401 Unauthorized")
-
-        resp = await handler(req)
-        resp.cookies["token"] = self.token
-        return resp
 
     def setup_routes(self):
         def forbidden() -> aiohttp.web.Response:
@@ -165,6 +144,22 @@ class Dashboard(object):
             D = self.node_stats.get_node_stats()
             return await json_response(result=D, ts=now)
 
+        async def raylet_info(req) -> aiohttp.web.Response:
+            D = self.raylet_stats.get_raylet_stats()
+            return await json_response(result=D)
+
+        async def logs(req) -> aiohttp.web.Response:
+            hostname = req.query.get("hostname")
+            pid = req.query.get("pid")
+            result = self.node_stats.get_logs(hostname, pid)
+            return await json_response(result=result)
+
+        async def errors(req) -> aiohttp.web.Response:
+            hostname = req.query.get("hostname")
+            pid = req.query.get("pid")
+            result = self.node_stats.get_errors(hostname, pid)
+            return await json_response(result=result)
+
         self.app.router.add_get("/", get_index)
 
         static_dir = os.path.join(
@@ -173,16 +168,21 @@ class Dashboard(object):
             raise ValueError(
                 "Dashboard static asset directory not found at '{}'. If "
                 "installing from source, please follow the additional steps "
-                "required to build the dashboard.".format(static_dir))
+                "required to build the dashboard: "
+                "cd python/ray/dashboard/client && npm ci && "
+                "npm run build".format(static_dir))
         self.app.router.add_static("/static", static_dir)
 
-        self.app.router.add_get("/api/node_info", node_info)
         self.app.router.add_get("/api/ray_config", ray_config)
+        self.app.router.add_get("/api/node_info", node_info)
+        self.app.router.add_get("/api/raylet_info", raylet_info)
+        self.app.router.add_get("/api/logs", logs)
+        self.app.router.add_get("/api/errors", errors)
 
         self.app.router.add_get("/{_}", get_forbidden)
 
     def log_dashboard_url(self):
-        url = "http://{}:{}?token={}".format(self.ip, self.port, self.token)
+        url = ray.services.get_webui_url_from_redis(self.redis_client)
         with open(os.path.join(self.temp_dir, "dashboard_url"), "w") as f:
             f.write(url)
         logger.info("Dashboard running on {}".format(url))
@@ -190,7 +190,8 @@ class Dashboard(object):
     def run(self):
         self.log_dashboard_url()
         self.node_stats.start()
-        aiohttp.web.run_app(self.app, host="0.0.0.0", port=self.port)
+        self.raylet_stats.start()
+        aiohttp.web.run_app(self.app, host=self.host, port=self.port)
 
 
 class NodeStats(threading.Thread):
@@ -204,6 +205,9 @@ class NodeStats(threading.Thread):
 
         # Mapping from IP address to PID to list of log lines
         self._logs = defaultdict(lambda: defaultdict(list))
+
+        # Mapping from IP address to PID to list of error messages
+        self._errors = defaultdict(lambda: defaultdict(list))
 
         ray.init(redis_address=redis_address, redis_password=redis_password)
 
@@ -254,6 +258,24 @@ class NodeStats(threading.Thread):
              for y in (v["workers"] for v in self._node_stats.values())
              for x in y))
 
+    def calculate_log_counts(self):
+        return {
+            ip: {
+                pid: len(logs_for_pid)
+                for pid, logs_for_pid in logs_for_ip.items()
+            }
+            for ip, logs_for_ip in self._logs.items()
+        }
+
+    def calculate_error_counts(self):
+        return {
+            ip: {
+                pid: len(errors_for_pid)
+                for pid, errors_for_pid in errors_for_ip.items()
+            }
+            for ip, errors_for_ip in self._errors.items()
+        }
+
     def purge_outdated_stats(self):
         def current(then, now):
             if (now - then) > 5:
@@ -277,9 +299,23 @@ class NodeStats(threading.Thread):
                 "totals": self.calculate_totals(),
                 "tasks": self.calculate_tasks(),
                 "clients": node_stats,
-                "logs": self._logs,
-                "errors": ray.errors(all_jobs=True),
+                "log_counts": self.calculate_log_counts(),
+                "error_counts": self.calculate_error_counts(),
             }
+
+    def get_logs(self, hostname, pid):
+        ip = self._node_stats.get(hostname, {"ip": None})["ip"]
+        logs = self._logs.get(ip, {})
+        if pid:
+            logs = {pid: logs.get(pid, [])}
+        return logs
+
+    def get_errors(self, hostname, pid):
+        ip = self._node_stats.get(hostname, {"ip": None})["ip"]
+        errors = self._errors.get(ip, {})
+        if pid:
+            errors = {pid: errors.get(pid, [])}
+        return errors
 
     def run(self):
         p = self.redis_client.pubsub(ignore_subscribe_messages=True)
@@ -291,19 +327,99 @@ class NodeStats(threading.Thread):
         p.subscribe(log_channel)
         logger.info("NodeStats: subscribed to {}".format(log_channel))
 
+        error_channel = ray.gcs_utils.TablePubsub.Value("ERROR_INFO_PUBSUB")
+        p.subscribe(error_channel)
+        logger.info("NodeStats: subscribed to {}".format(error_channel))
+
         for x in p.listen():
             try:
                 with self._node_stats_lock:
                     channel = ray.utils.decode(x["channel"])
+                    data = x["data"]
                     if channel == log_channel:
-                        D = json.loads(ray.utils.decode(x["data"]))
-                        self._logs[D["ip"]][D["pid"]].extend(D["lines"])
+                        data = json.loads(ray.utils.decode(data))
+                        ip = data["ip"]
+                        pid = str(data["pid"])
+                        self._logs[ip][pid].extend(data["lines"])
+                    elif channel == str(error_channel):
+                        gcs_entry = ray.gcs_utils.GcsEntry.FromString(data)
+                        error_data = ray.gcs_utils.ErrorTableData.FromString(
+                            gcs_entry.entries[0])
+                        message = error_data.error_message
+                        message = re.sub(r"\x1b\[\d+m", "", message)
+                        match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
+                        if match:
+                            pid = match.group(1)
+                            ip = match.group(2)
+                            self._errors[ip][pid].append({
+                                "message": message,
+                                "timestamp": error_data.timestamp,
+                                "type": error_data.type
+                            })
                     else:
-                        D = json.loads(ray.utils.decode(x["data"]))
-                        self._node_stats[D["hostname"]] = D
+                        data = json.loads(ray.utils.decode(data))
+                        self._node_stats[data["hostname"]] = data
             except Exception:
                 logger.exception(traceback.format_exc())
                 continue
+
+
+class RayletStats(threading.Thread):
+    def __init__(self, redis_address, redis_password=None):
+        self.nodes_lock = threading.Lock()
+        self.nodes = []
+        self.stubs = {}
+
+        self._raylet_stats_lock = threading.Lock()
+        self._raylet_stats = {}
+
+        self.update_nodes()
+
+        super().__init__()
+
+    def update_nodes(self):
+        with self.nodes_lock:
+            self.nodes = ray.nodes()
+            node_ids = [node["NodeID"] for node in self.nodes]
+
+            # First remove node connections of disconnected nodes.
+            for node_id in self.stubs.keys():
+                if node_id not in node_ids:
+                    stub = self.stubs.pop(node_id)
+                    stub.close()
+
+            # Now add node connections of new nodes.
+            for node in self.nodes:
+                node_id = node["NodeID"]
+                if node_id not in self.stubs:
+                    channel = grpc.insecure_channel("{}:{}".format(
+                        node["NodeManagerAddress"], node["NodeManagerPort"]))
+                    stub = node_manager_pb2_grpc.NodeManagerServiceStub(
+                        channel)
+                    self.stubs[node_id] = stub
+
+    def get_raylet_stats(self) -> Dict:
+        with self._raylet_stats_lock:
+            return copy.deepcopy(self._raylet_stats)
+
+    def run(self):
+        counter = 0
+        while True:
+            time.sleep(1.0)
+            replies = {}
+            for node in self.nodes:
+                node_id = node["NodeID"]
+                stub = self.stubs[node_id]
+                reply = stub.GetNodeStats(node_manager_pb2.NodeStatsRequest())
+                replies[node["NodeManagerAddress"]] = reply
+            with self._raylet_stats_lock:
+                for address, reply in replies.items():
+                    self._raylet_stats[address] = MessageToDict(reply)
+            counter += 1
+            # From time to time, check if new nodes have joined the cluster
+            # and update self.nodes
+            if counter % 10:
+                self.update_nodes()
 
 
 if __name__ == "__main__":
@@ -311,15 +427,16 @@ if __name__ == "__main__":
         description=("Parse Redis server for the "
                      "dashboard to connect to."))
     parser.add_argument(
-        "--http-port",
+        "--host",
+        required=True,
+        type=str,
+        choices=["127.0.0.1", "0.0.0.0"],
+        help="The host to use for the HTTP server.")
+    parser.add_argument(
+        "--port",
         required=True,
         type=int,
         help="The port to use for the HTTP server.")
-    parser.add_argument(
-        "--token",
-        required=True,
-        type=str,
-        help="The token to use for the HTTP server.")
     parser.add_argument(
         "--redis-address",
         required=True,
@@ -355,9 +472,9 @@ if __name__ == "__main__":
 
     try:
         dashboard = Dashboard(
+            args.host,
+            args.port,
             args.redis_address,
-            args.http_port,
-            args.token,
             args.temp_dir,
             redis_password=args.redis_password,
         )
