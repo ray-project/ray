@@ -4,7 +4,7 @@
 #include <memory>
 #include <queue>
 
-#include "TaskInterface.h"
+#include "task_interface.h"
 
 namespace ray {
 

@@ -3,10 +3,10 @@
 
 #include <memory>
 
-#include "api/RayApi.h"
-#include "api/Blob.h"
-#include "api/impl/FunctionArgument.h"
-#include "ray/util/type-util.h"
+#include "api/ray_api.h"
+#include "api/blob.h"
+#include "api/impl/function_argument.h"
+#include "ray/util/type_util.h"
 
 /**
  * ray api definition
@@ -42,21 +42,21 @@ class Ray {
   static uint64_t wait(const UniqueId *pids, int count, int minNumReturns,
                        int timeoutMilliseconds);
 
-#include "api/impl/CallFuncs.generated.h"
+#include "api/impl/call_funcs.generated.h"
 
-#include "api/impl/CreateActors.generated.h"
+#include "api/impl/create_actors.generated.h"
 
-#include "api/impl/CallActors.generated.h"
+#include "api/impl/call_actors.generated.h"
 };
 
 }  // namespace ray
 
 // --------- inline implementation ------------
-#include "api/Execute.h"
-#include "api/RayActor.h"
-#include "api/RayFunction.h"
-#include "api/RayObject.h"
-#include "api/impl/Arguments.h"
+#include "api/execute.h"
+#include "api/ray_actor.h"
+#include "api/ray_function.h"
+#include "api/ray_object.h"
+#include "api/impl/arguments.h"
 
 namespace ray {
 class Arguments;
@@ -80,10 +80,10 @@ inline bool Ray::get(const UniqueId &id, T &obj) {
   return true;
 }
 
-#include "api/impl/CallFuncsImpl.generated.h"
+#include "api/impl/call_funcs_impl.generated.h"
 
-#include "api/impl/CreateActorsImpl.generated.h"
+#include "api/impl/create_actors_impl.generated.h"
 
-#include "api/impl/CallActorsImpl.generated.h"
+#include "api/impl/call_actors_impl.generated.h"
 
 }  // namespace ray

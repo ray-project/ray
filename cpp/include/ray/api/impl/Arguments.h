@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <ray/api/Blob.h>
+#include <ray/api/blob.h>
 
 namespace ray {
 
@@ -27,7 +27,7 @@ class Arguments {
 };
 }
 
-#include <ray/api/Serialization.h>
+#include <ray/api/serialization.h>
 namespace ray {
 
 using namespace ::ray;

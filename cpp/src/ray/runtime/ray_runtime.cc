@@ -1,14 +1,14 @@
 
-#include "RayRuntime.h"
+#include "ray_runtime.h"
 
 #include <cassert>
 
 #include "../agent.h"
 #include <ray/api.h>
-#include <ray/api/RayMode.h>
-#include "InvocationExecutor.h"
-#include "RayDevRuntime.h"
-#include "RayNativeRuntime.h"
+#include <ray/api/ray_mode.h>
+#include "invocation_executor.h"
+#include "ray_dev_runtime.h"
+#include "ray_native_runtime.h"
 
 namespace ray {
 

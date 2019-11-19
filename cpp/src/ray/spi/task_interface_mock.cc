@@ -1,9 +1,9 @@
 
-#include "TaskInterfaceMock.h"
+#include "task_interface_mock.h"
 
 #include <utility>
 
-#include <ray/api/UniqueId.h>
+#include <ray/api/uniqueId.h>
 
 namespace ray {
 

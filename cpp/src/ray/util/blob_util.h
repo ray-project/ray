@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ray/api/Blob.h>
+#include <ray/api/blob.h>
 
 namespace ray {
 ::ray::blob blob_merge(std::vector< ::ray::blob> &&blobs);

@@ -1,6 +1,6 @@
 
-#include "ObjectInterfaceMock.h"
-#include "../util/BlobUtil.h"
+#include "object_interface_mock.h"
+#include "../util/blob_util.h"
 
 namespace ray {
 

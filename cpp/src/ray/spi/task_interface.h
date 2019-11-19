@@ -1,11 +1,11 @@
 
 #pragma once
 
-#include <ray/api/Blob.h>
-#include <ray/api/UniqueId.h>
+#include <ray/api/blob.h>
+#include <ray/api/uniqueId.h>
 #include <vector>
 
-#include "TaskSpec.h"
+#include "task_spec.h"
 
 namespace ray {
 

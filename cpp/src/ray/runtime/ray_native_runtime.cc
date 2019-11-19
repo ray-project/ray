@@ -1,5 +1,5 @@
 
-#include "RayNativeRuntime.h"
+#include "ray_native_runtime.h"
 
 namespace ray {
 

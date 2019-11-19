@@ -57,10 +57,10 @@ cc_binary(
 )
 
 cc_binary(
-    name = "apiTest",
+    name = "api_test",
     testonly = 1,
     srcs = [
-        "src/ray/test/apiTest.cc"
+        "src/ray/test/api_test.cc"
         ],
     deps = [
         "ray_api",
@@ -70,10 +70,10 @@ cc_binary(
 )
 
 cc_binary(
-    name = "wrapTest",
+    name = "wrap_test",
     testonly = 1,
     srcs = [
-        "src/ray/test/wrapTest.cc"
+        "src/ray/test/wrap_test.cc"
         ],
     deps = [
         "ray_api",

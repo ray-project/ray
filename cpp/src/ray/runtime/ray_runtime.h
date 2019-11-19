@@ -3,13 +3,13 @@
 
 #include <mutex>
 
-#include <ray/api/RayApi.h>
-#include <ray/api/RayConfig.h>
-#include <ray/api/Blob.h>
-#include <ray/util/type-util.h>
-#include "../spi/TaskProxy.h"
-#include "../spi/ObjectProxy.h"
-#include "../spi/Worker.h"
+#include <ray/api/ray_api.h>
+#include <ray/api/ray_config.h>
+#include <ray/api/blob.h>
+#include <ray/util/type_util.h>
+#include "../spi/task_proxy.h"
+#include "../spi/object_proxy.h"
+#include "../spi/worker.h"
 
 namespace ray {
 

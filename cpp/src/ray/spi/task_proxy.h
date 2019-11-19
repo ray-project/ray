@@ -3,8 +3,8 @@
 
 #include <memory>
 
-#include "InvocationSpec.h"
-#include "TaskInterface.h"
+#include "invocation_spec.h"
+#include "task_interface.h"
 
 namespace ray {
 

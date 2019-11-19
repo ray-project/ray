@@ -3,11 +3,11 @@
 
 #include <unordered_map>
 
-#include <ray/api/UniqueId.h>
+#include <ray/api/uniqueId.h>
 #include <ray/core.h>
-#include <ray/util/type-util.h>
+#include <ray/util/type_util.h>
 
-#include "ObjectInterface.h"
+#include "object_interface.h"
 
 namespace ray {
 

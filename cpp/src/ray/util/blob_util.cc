@@ -1,5 +1,5 @@
 
-#include "BlobUtil.h"
+#include "blob_util.h"
 
 namespace ray {
 ::ray::blob blob_merge(std::vector< ::ray::blob> &&blobs) {

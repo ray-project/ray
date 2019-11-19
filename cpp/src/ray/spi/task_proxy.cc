@@ -1,8 +1,8 @@
 
 #include <utility>
 
-#include "TaskProxy.h"
-#include "../runtime/RayRuntime.h"
+#include "task_proxy.h"
+#include "../runtime/ray_runtime.h"
 
 namespace ray {
 

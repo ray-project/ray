@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <ray/api/Blob.h>
+#include <ray/api/blob.h>
 #include <cstdint>
 
 namespace ray {

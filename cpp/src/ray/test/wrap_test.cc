@@ -1,7 +1,7 @@
 
-#include <ray/api/Blob.h>
+#include <ray/api/blob.h>
 #include <gtest/gtest.h>
-#include <ray/api/impl/Arguments.h>
+#include <ray/api/impl/arguments.h>
 
 using namespace ray;
 

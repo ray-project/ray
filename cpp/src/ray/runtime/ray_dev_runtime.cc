@@ -1,11 +1,11 @@
 
-#include "RayDevRuntime.h"
+#include "ray_dev_runtime.h"
 
 #include <ray/api.h>
 #include "../agent.h"
-#include "../spi/TaskInterfaceMock.h"
-#include "../spi/ObjectInterfaceMock.h"
-#include "../util/BlobUtil.h"
+#include "../spi/task_interface_mock.h"
+#include "../spi/object_interface_mock.h"
+#include "../util/blob_util.h"
 
 namespace ray {
 

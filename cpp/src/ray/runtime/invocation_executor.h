@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../spi/TaskSpec.h"
+#include "../spi/task_spec.h"
 
 namespace ray {
 

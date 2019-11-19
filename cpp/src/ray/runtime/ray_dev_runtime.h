@@ -1,10 +1,10 @@
 
 #pragma once
 
-#include <ray/api/UniqueId.h>
+#include <ray/api/uniqueId.h>
 #include <ray/core.h>
 #include <unordered_map>
-#include "RayRuntime.h"
+#include "ray_runtime.h"
 
 namespace ray {
 

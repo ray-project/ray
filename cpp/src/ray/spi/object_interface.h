@@ -3,9 +3,9 @@
 
 #include <vector>
 
-#include <ray/api/Blob.h>
-#include <ray/api/UniqueId.h>
-#include <ray/util/type-util.h>
+#include <ray/api/blob.h>
+#include <ray/api/uniqueId.h>
+#include <ray/util/type_util.h>
 
 namespace ray {
 

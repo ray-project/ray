@@ -1,10 +1,10 @@
 
 #pragma once
 
-#include <ray/api/RayObject.h>
-#include <ray/api/UniqueId.h>
-#include <ray/api/impl/FunctionArgument.h>
-#include <ray/api/Blob.h>
+#include <ray/api/ray_object.h>
+#include <ray/api/uniqueId.h>
+#include <ray/api/impl/function_argument.h>
+#include <ray/api/blob.h>
 
 namespace ray {
 

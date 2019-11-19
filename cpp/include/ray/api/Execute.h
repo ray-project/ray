@@ -1,6 +1,6 @@
 #pragma once
-#include <ray/api/RayObject.h>
-#include "impl/Arguments.h"
+#include <ray/api/ray_object.h>
+#include "impl/arguments.h"
 
 namespace ray {
 

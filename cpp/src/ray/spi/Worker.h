@@ -1,9 +1,9 @@
 
 #pragma once
 
-#include <ray/api/RayConfig.h>
-#include <ray/api/UniqueId.h>
-#include "TaskSpec.h"
+#include <ray/api/ray_config.h>
+#include <ray/api/uniqueId.h>
+#include "task_spec.h"
 
 namespace ray {
 

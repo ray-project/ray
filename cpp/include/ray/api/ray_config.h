@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <ray/api/RayMode.h>
+#include <ray/api/ray_mode.h>
 
 namespace ray {
 

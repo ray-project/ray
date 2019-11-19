@@ -3,8 +3,8 @@
 
 #include <list>
 
-#include <ray/api/Blob.h>
-#include <ray/api/UniqueId.h>
+#include <ray/api/blob.h>
+#include <ray/api/uniqueId.h>
 
 namespace ray {
 
