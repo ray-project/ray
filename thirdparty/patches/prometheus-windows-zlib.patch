@@ -1,0 +1,60 @@
+From 78ac107937ee3b94f0b011f9ef0c12b912a222e7 Mon Sep 17 00:00:00 2001
+From: easy <g-easy@users.noreply.github.com>
+Date: Wed, 14 Nov 2018 16:49:24 +1100
+Subject: [PATCH] Rename net_zlib_zlib to com_github_madler_zlib to match gRPC.
+
+---
+ README.md        | 2 +-
+ pull/BUILD.bazel | 2 +-
+ repositories.bzl | 7 ++++---
+ 3 files changed, 6 insertions(+), 5 deletions(-)
+
+diff --git README.md README.md
+index 8cded0b..ef63c97 100644
+--- README.md
++++ README.md
+@@ -130,7 +130,7 @@ you introduce the following dependencies, if they do not exist yet, to your proj
+ * `load_com_google_googletest()` to load `com_google_googletest` rules for Google gtest
+ * `load_com_google_googlebenchmark()` to load `com_github_google_benchmark` rules for Googlebenchmark
+ * `load_com_github_curl()` to load `com_github_curl` rules for curl
+-* `load_net_zlib_zlib()` to load `net_zlib_zlib` rules for zlib
++* `load_com_github_madler_zlib()` to load `com_github_madler_zlib` rules for zlib
+ 
+ The list of dependencies is also available from file `repositories.bzl`.
+ 
+diff --git pull/BUILD.bazel pull/BUILD.bazel
+index a5ae5df..8bb2dbe 100644
+--- pull/BUILD.bazel
++++ pull/BUILD.bazel
+@@ -15,6 +15,6 @@ cc_library(
+     deps = [
+         "//core",
+         "@civetweb",
+-        "@net_zlib_zlib//:z",
++        "@com_github_madler_zlib//:z",
+     ],
+ )
+diff --git repositories.bzl repositories.bzl
+index 8696657..9924383 100644
+--- repositories.bzl
++++ repositories.bzl
+@@ -43,9 +43,10 @@ def load_com_github_google_benchmark():
+         ],
+     )
+ 
+-def load_net_zlib_zlib():
++def load_com_github_madler_zlib():
++    # Named "com_github_madler_zlib" to match gRPC's import of zlib.
+     http_archive(
+-        name = "net_zlib_zlib",
++        name = "com_github_madler_zlib",
+         sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+         strip_prefix = "zlib-1.2.11",
+         urls = [
+@@ -60,4 +61,4 @@ def prometheus_cpp_repositories():
+     if "com_google_googletest" not in native.existing_rules(): load_com_google_googletest()
+     if "com_github_google_benchmark" not in native.existing_rules(): load_com_github_google_benchmark()
+     if "com_github_curl" not in native.existing_rules(): load_com_github_curl()
+-    if "net_zlib_zlib" not in native.existing_rules(): load_net_zlib_zlib()
++    if "com_github_madler_zlib" not in native.existing_rules(): load_com_github_madler_zlib()
+-- 
