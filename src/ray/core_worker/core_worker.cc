@@ -196,7 +196,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr));
+      ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
   memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
@@ -379,8 +379,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
-                                                  worker_context_.GetCurrentTaskID(),
-                                                  &result_map, &got_exception));
+                                                  worker_context_, &result_map,
+                                                  &got_exception));
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
@@ -486,7 +486,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
     // consider waiting on them in plasma as well to ensure they are local.
     RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
         memory_object_ids, num_objects - static_cast<int>(ready.size()),
-        /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
+        /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -509,7 +509,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
     if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
       RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
           memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
-          worker_context_.GetCurrentTaskID(), &ready));
+          worker_context_, &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }

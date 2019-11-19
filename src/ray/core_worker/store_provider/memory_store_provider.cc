@@ -25,13 +25,13 @@ Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
 
 Status CoreWorkerMemoryStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-    const TaskID &task_id,
+    const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_RETURN_NOT_OK(
-      store_->Get(id_vector, id_vector.size(), timeout_ms, true, &result_objects));
+      store_->Get(id_vector, id_vector.size(), timeout_ms, ctx, true, &result_objects));
 
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
@@ -52,11 +52,12 @@ Status CoreWorkerMemoryStoreProvider::Contains(const ObjectID &object_id,
 
 Status CoreWorkerMemoryStoreProvider::Wait(
     const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-    const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
+    const WorkerContext &ctx, absl::flat_hash_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
-  auto status = store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects);
+  auto status =
+      store_->Get(id_vector, num_objects, timeout_ms, ctx, false, &result_objects);
   // Ignore TimedOut statuses since we return ready objects explicitly.
   if (!status.IsTimedOut()) {
     RAY_RETURN_NOT_OK(status);

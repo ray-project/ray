@@ -7,6 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
 
 namespace ray {
@@ -24,9 +25,11 @@ class CoreWorkerMemoryStore {
   /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
+  /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
-      std::shared_ptr<ReferenceCounter> counter = nullptr);
+      std::shared_ptr<ReferenceCounter> counter = nullptr,
+      std::shared_ptr<RayletClient> raylet_client = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -41,12 +44,14 @@ class CoreWorkerMemoryStore {
   /// \param[in] object_ids IDs of the objects to get. Duplicates are not allowed.
   /// \param[in] num_objects Number of objects that should appear.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
+  /// \param[in] ctx The current worker context.
   /// \param[in] remove_after_get When to remove the objects from store after `Get`
   /// finishes. This has no effect if ref counting is enabled.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-             bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
+             const WorkerContext &ctx, bool remove_after_get,
+             std::vector<std::shared_ptr<RayObject>> *results);
 
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
@@ -92,6 +97,9 @@ class CoreWorkerMemoryStore {
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
   std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
+
+  // If set, this will be used to notify worker blocked / unblocked on get calls.
+  std::shared_ptr<RayletClient> raylet_client_ = nullptr;
 
   /// Protects the data structures below.
   absl::Mutex mu_;
