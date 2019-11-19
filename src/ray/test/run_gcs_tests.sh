@@ -15,7 +15,7 @@ bazel build "//:redis_gcs_client_test" "//:actor_state_accessor_test"  "//:subsc
     --port 6379 &
 sleep 1s
 
-while ./bazel-bin/actor_state_accessor_test; do :; done
+while ./bazel-bin/actor_state_accessor_test; do sleep 0.1; done && false
 
 ./bazel-bin/redis-cli -p 6379 shutdown
 sleep 1s
