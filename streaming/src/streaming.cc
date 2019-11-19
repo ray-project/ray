@@ -47,14 +47,14 @@ void StreamingCommon::SetConfig(const uint8_t *buffer_pointer, uint32_t buffer_l
     config_.ReloadProperty(key, value);
   }
 
-  config_.SetStreaming_role(conf_fb_instance->role());
+  config_.SetStreamingRole(conf_fb_instance->role());
 
   ray::JobID task_job_id = ray::JobID::FromInt(-1);
   if (conf_fb_instance->task_job_id() &&
       conf_fb_instance->task_job_id()->size() == 2 * JobID::Size()) {
-    config_.SetStreaming_task_job_id(conf_fb_instance->task_job_id()->str());
+    config_.SetStreamingTaskJobId(conf_fb_instance->task_job_id()->str());
     task_job_id = ray::JobID::FromBinary(
-        StreamingUtility::Hexqid2str(config_.GetStreaming_task_job_id()));
+        StreamingUtility::Hexqid2str(config_.GetStreamingTaskJobId()));
     STREAMING_LOG(INFO) << "str = > " << task_job_id << ", hex " << task_job_id.Hex();
   }
 }

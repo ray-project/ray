@@ -41,43 +41,43 @@ class StreamingConfig {
   std::string queue_type = "streaming_queue";
 
  public:
-  const std::string &GetStreaming_task_job_id() const;
+  const std::string &GetStreamingTaskJobId() const;
 
-  void SetStreaming_task_job_id(const std::string &streaming_task_job_id);
+  void SetStreamingTaskJobId(const std::string &streaming_task_job_id);
 
   const std::string &GetStreaming_worker_name() const;
 
-  void SetStreaming_worker_name(const std::string &streaming_worker_name);
+  void SetStreamingWorkerName(const std::string &streaming_worker_name);
 
-  const std::string &GetStreaming_op_name() const;
+  const std::string &GetStreamingOpName() const;
 
-  void SetStreaming_op_name(const std::string &streaming_op_name);
+  void SetStreamingOpName(const std::string &streaming_op_name);
 
-  uint32_t GetStreaming_empty_message_time_interval() const;
+  uint32_t GetStreamingEmptyMessageTimeInterval() const;
 
-  void SetStreaming_empty_message_time_interval(
+  void SetStreamingEmptyMessageTimeInterval(
       uint32_t streaming_empty_message_time_interval);
 
-  uint32_t GetStreaming_ring_buffer_capacity() const;
+  uint32_t GetStreamingRingBufferCapacity() const;
 
-  void SetStreaming_ring_buffer_capacity(uint32_t streaming_ring_buffer_capacity);
+  void SetStreamingRingBufferCapacity(uint32_t streaming_ring_buffer_capacity);
 
   void ReloadProperty(const streaming::fbs::StreamingConfigKey &key, uint32_t value);
 
   void ReloadProperty(const streaming::fbs::StreamingConfigKey &key,
                       const std::string &value);
 
-  streaming::fbs::StreamingRole GetStreaming_role() const;
+  streaming::fbs::StreamingRole GetStreamingRole() const;
 
-  void SetStreaming_role(streaming::fbs::StreamingRole streaming_role);
+  void SetStreamingRole(streaming::fbs::StreamingRole streaming_role);
 
-  const std::string &GetStreaming_job_name() const;
+  const std::string &GetStreamingJobName() const;
 
-  void SetStreaming_job_name(const std::string &streaming_job_name);
+  void SetStreamingJobName(const std::string &streaming_job_name);
 
-  const std::string &GetQueue_type() const;
+  const std::string &GetQueueType() const;
 
-  void SetQueue_type(const std::string &queue_type);
+  void SetQueueType(const std::string &queue_type);
 };
 }  // namespace streaming
 }  // namespace ray
