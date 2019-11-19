@@ -213,6 +213,9 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    includes = [
+        "@boost//:asio",
+    ],
     deps = [
         ":common_cc_proto",
         ":gcs_cc_proto",
