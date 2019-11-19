@@ -1,0 +1,10 @@
+cc_library(
+    name = "ray",
+    srcs = ["lib.cpp"],
+    hdrs = glob([
+        "ray.h",
+    ]),
+    deps = [
+        "//:core_worker_lib",
+    ],
+)

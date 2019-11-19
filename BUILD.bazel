@@ -347,6 +347,7 @@ cc_library(
         "src/ray/core_worker/transport/*.h",
     ]),
     copts = COPTS,
+    visibility = ["//clib:__subpackages__"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
