@@ -42,13 +42,12 @@ class extended_priority_queue : public std::priority_queue<T, Container, Compare
 
 namespace ray {
 
+/// PushTaskRequest comparator to order requests for the same actor by the
+/// order of submission.
 class ComparePushTaskRequest {
  public:
   bool operator()(const std::unique_ptr<rpc::PushTaskRequest> &a,
-                  const std::unique_ptr<rpc::PushTaskRequest> &b) const {
-    return b->task_spec().actor_task_spec().actor_counter() <
-           a->task_spec().actor_task_spec().actor_counter();
-  }
+                  const std::unique_ptr<rpc::PushTaskRequest> &b) const;
 };
 
 /// The max time to wait for out-of-order tasks.
@@ -123,16 +122,13 @@ class CoreWorkerDirectActorTaskSubmitter {
                      std::unique_ptr<rpc::PushTaskRequest> request,
                      const ActorID &actor_id, const TaskID &task_id, int num_returns);
 
-  /// Create connection to actor and send all pending tasks.
+  /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
   /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
-  /// \param[in] ip_address The ip address of the node that the actor is running on.
-  /// \param[in] port The port that the actor is listening on.
   /// \return Void.
-  void ConnectAndSendPendingTasks(const ActorID &actor_id, std::string ip_address,
-                                  int port);
+  void SendPendingTasks(const ActorID &actor_id);
 
   /// Whether the specified actor is alive.
   ///

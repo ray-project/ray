@@ -5,6 +5,16 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
+int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
+  return request->task_spec().actor_task_spec().actor_counter();
+}
+
+bool ComparePushTaskRequest::operator()(
+    const std::unique_ptr<rpc::PushTaskRequest> &a,
+    const std::unique_ptr<rpc::PushTaskRequest> &b) const {
+  return GetRequestNumber(b) < GetRequestNumber(a);
+}
+
 void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                        const rpc::ErrorType &error_type,
                        std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store) {
@@ -91,8 +101,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
       pending_requests_[actor_id].emplace(std::move(request));
-      ConnectAndSendPendingTasks(actor_id, iter->second.location_.first,
-                                 iter->second.location_.second);
+      SendPendingTasks(actor_id);
     } else {
       // Actor is dead, treat the task as failure.
       RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
@@ -115,12 +124,16 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
                                actor_data.address().port()));
 
   if (actor_data.state() == ActorTableData::ALIVE) {
-    // Check if this actor is the one that we're interested, if we already have
-    // a connection to the actor, or have pending requests for it, we should
-    // create a new connection.
+    // Create a new connection to the actor.
+    if (rpc_clients_.count(actor_id) == 0) {
+      std::shared_ptr<rpc::CoreWorkerClient> grpc_client =
+          std::make_shared<rpc::CoreWorkerClient>(actor_data.address().ip_address(),
+                                                  actor_data.address().port(),
+                                                  client_call_manager_);
+      rpc_clients_.emplace(actor_id, std::move(grpc_client));
+    }
     if (pending_requests_.count(actor_id) > 0) {
-      ConnectAndSendPendingTasks(actor_id, actor_data.address().ip_address(),
-                                 actor_data.address().port());
+      SendPendingTasks(actor_id);
     }
   } else {
     // Remove rpc client if it's dead or being reconstructed.
@@ -156,24 +169,17 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
-    const ActorID &actor_id, std::string ip_address, int port) {
-  auto it = rpc_clients_.find(actor_id);
-  if (it == rpc_clients_.end()) {
-    std::shared_ptr<rpc::CoreWorkerClient> grpc_client =
-        std::make_shared<rpc::CoreWorkerClient>(ip_address, port, client_call_manager_);
-    it = rpc_clients_.emplace(actor_id, std::move(grpc_client)).first;
-  }
-
+void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
+  auto &client = rpc_clients_[actor_id];
+  RAY_CHECK(client);
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   while (!requests.empty() &&
-         requests.top()->task_spec().actor_task_spec().actor_counter() ==
-             next_sequence_number_[actor_id]) {
+         GetRequestNumber(requests.top()) == next_sequence_number_[actor_id]) {
     auto request = requests.top_and_pop();
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-    PushActorTask(*it->second, std::move(request), actor_id, task_id, num_returns);
+    PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);
   }
 }
 
@@ -183,7 +189,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
-  auto task_number = request->task_spec().actor_task_spec().actor_counter();
+  auto task_number = GetRequestNumber(request);
   RAY_CHECK(next_sequence_number_[actor_id] == task_number)
       << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
   next_sequence_number_[actor_id]++;
