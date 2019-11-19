@@ -167,7 +167,7 @@ cdef class QueueLink:
         cdef:
             uint32_t length = value.nbytes
             shared_ptr[CLocalMemoryBuffer] buffer =\
-                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), length)
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), length, True)
         with nogil:
             self.queue_client.OnMessage(buffer)
 
@@ -175,7 +175,7 @@ cdef class QueueLink:
         cdef:
             uint32_t length = value.nbytes
             shared_ptr[CLocalMemoryBuffer] buffer =\
-                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), length)
+                make_shared[CLocalMemoryBuffer](<uint8_t *>(&value[0]), length, True)
             shared_ptr[CLocalMemoryBuffer] result_buffer
         with nogil:
             result_buffer = self.queue_client.OnMessageSync(buffer)
