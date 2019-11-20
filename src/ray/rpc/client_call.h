@@ -188,7 +188,7 @@ class ClientCallManager {
   void PollEventsFromCompletionQueue(int index) {
     void *got_tag;
     bool ok = false;
-    auto deadline = gpr_time_from_millis(100, GPR_CLOCK_REALTIME);
+    auto deadline = gpr_time_from_millis(250, GPR_CLOCK_REALTIME);
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
     // synchronous cq_.Next blocks indefinitely in the case that the process
