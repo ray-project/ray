@@ -141,7 +141,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// The store provider.
   std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
 
-  /// Resolve local and remote dependencies;
+  /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
 
   friend class CoreWorkerTest;
