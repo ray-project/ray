@@ -222,7 +222,7 @@ class ClientCallManager {
   /// The number of polling threads.
   int num_threads_;
 
-  /// The number of polling threads.
+  /// Whether the client has shutdown.
   std::atomic<bool> shutdown_;
 
   /// The index to send RPCs in a round-robin fashion
