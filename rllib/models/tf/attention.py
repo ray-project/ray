@@ -33,7 +33,9 @@ def rel_shift(x):
 
 class MultiHeadAttention(tf.keras.layers.Layer):
 
-    def __init__(self, out_dim, num_heads, head_dim):
+    def __init__(self, out_dim, num_heads, head_dim, **kwargs):
+        super(MultiHeadAttention, self).__init__(**kwargs)
+
         # no bias or non-linearity
         self._num_heads = num_heads
         self._head_dim = head_dim
@@ -45,11 +47,11 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self._layer_norm = tf.keras.layers.LayerNormalization(axis=-1)
 
     def call(self, inputs):
-        L = inputs.shape[0]  # length of segment
+        L = tf.shape(inputs)[0]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
 
-        qkv = self._qkv_encoder(inputs)
+        qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
         queries = queries[-L:]  # only query based on the segment
@@ -76,7 +78,9 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
 class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
-    def __init__(self, out_dim, num_heads, head_dim, rel_pos_encoder):
+    def __init__(self, out_dim, num_heads, head_dim, rel_pos_encoder, **kwargs):
+        super(RelativeMultiHeadAttention, self).__init__(**kwargs)
+
         # no bias or non-linearity
         self._num_heads = num_heads
         self._head_dim = head_dim
@@ -95,22 +99,24 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         self._rel_pos_encoder = rel_pos_encoder
 
     def call(self, inputs, memory=None):
-        L = inputs.shape[0]  # length of segment
+        L = tf.shape(inputs)[0]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
-        M = memory.shape[0]  # length of the memory segment
+
+        # length of the memory segment
+        M = memory.shape[0] if memory is not None else 0
 
         if memory is not None:
             inputs = np.concatenate((memory, inputs), axis=-1)
 
-        qkv = self._qkv_encoder(inputs)
+        qkv = self._qkv_layer(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
         queries = queries[-L:]  # only query based on the segment
 
         queries = tf.reshape(queries, [L, -1, H, D])
-        keys = tf.reshape(keys, [L + memory.shape[0], -1, H, D])
-        values = tf.reshape(values, [L + memory.shape[0], -1, H, D])
+        keys = tf.reshape(keys, [L + M, -1, H, D])
+        values = tf.reshape(values, [L + M, -1, H, D])
 
         rel = self._pos_proj(self._rel_pos_encoder)
         rel = tf.reshape(rel, [-1, H, D])
@@ -128,6 +134,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         wmat = tf.nn.softmax(masked_score, axis=1)
 
         out = tf.einsum("ijbn,jbnd->ibnd", wmat, values)
+        out = tf.reshape(out, [out.shape[0], out.shape[1], H * D])
         out = inputs + self._linear_layer(out)
 
         return self._layer_norm(out)
@@ -135,7 +142,9 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
 
-    def __init__(self, out_dim, hidden_dim):
+    def __init__(self, out_dim, hidden_dim, **kwargs):
+        super(PositionwiseFeedforward, self).__init__(**kwargs)
+
         self._hidden_layer = tf.keras.layers.Dense(
             hidden_dim,
             activation=tf.nn.relu,
