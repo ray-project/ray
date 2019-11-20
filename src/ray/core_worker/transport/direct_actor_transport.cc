@@ -9,12 +9,6 @@ int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
   return request->task_spec().actor_task_spec().actor_counter();
 }
 
-bool ComparePushTaskRequest::operator()(
-    const std::unique_ptr<rpc::PushTaskRequest> &a,
-    const std::unique_ptr<rpc::PushTaskRequest> &b) const {
-  return GetRequestNumber(b) < GetRequestNumber(a);
-}
-
 void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                        const rpc::ErrorType &error_type,
                        std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store) {
@@ -97,10 +91,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // actor handle (e.g. from unpickling), in that case it might be desirable
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
-      pending_requests_[actor_id].emplace(std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
+                                                          std::move(request));
+      RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
-      pending_requests_[actor_id].emplace(std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
+                                                          std::move(request));
+      RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
     } else {
       // Actor is dead, treat the task as failure.
@@ -155,12 +153,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
-      while (!pending_it->second.empty()) {
-        auto request = pending_it->second.top_and_pop();
+      auto head = pending_it->second.begin();
+      while (head != pending_it->second.end()) {
+        auto request = std::move(head->second);
+        head = pending_it->second.erase(head);
+
         TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
                           request->task_spec().num_returns(), rpc::ErrorType::ACTOR_DIED,
                           in_memory_store_);
-        pending_it->second.pop();
       }
       pending_requests_.erase(pending_it);
     }
@@ -174,9 +174,11 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   RAY_CHECK(client);
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
-  while (!requests.empty() &&
-         GetRequestNumber(requests.top()) == next_sequence_number_[actor_id]) {
-    auto request = requests.top_and_pop();
+  auto head = requests.begin();
+  while (head != requests.end() && head->first == next_sequence_number_[actor_id]) {
+    auto request = std::move(head->second);
+    head = requests.erase(head);
+
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
     PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);

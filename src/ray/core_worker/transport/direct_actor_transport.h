@@ -7,6 +7,7 @@
 #include <queue>
 #include <set>
 #include <utility>
+#include "absl/container/flat_hash_map.h"
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -19,36 +20,9 @@
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
-namespace {
-
-/// Extend std::priority_queue to allow std::move out of the priority queue.
-template <class T, class Container = std::vector<T>,
-          class Compare = std::less<typename Container::value_type>>
-class extended_priority_queue : public std::priority_queue<T, Container, Compare> {
- public:
-  T top_and_pop() {
-    std::pop_heap(c.begin(), c.end(), comp);
-    T value = std::move(c.back());
-    c.pop_back();
-    return value;
-  }
-
- protected:
-  using std::priority_queue<T, Container, Compare>::c;
-  using std::priority_queue<T, Container, Compare>::comp;
-};
-
-}  // namespace
+namespace {}  // namespace
 
 namespace ray {
-
-/// PushTaskRequest comparator to order requests for the same actor by the
-/// order of submission.
-class ComparePushTaskRequest {
- public:
-  bool operator()(const std::unique_ptr<rpc::PushTaskRequest> &a,
-                  const std::unique_ptr<rpc::PushTaskRequest> &b) const;
-};
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
@@ -154,10 +128,7 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
-  std::unordered_map<
-      ActorID, extended_priority_queue<std::unique_ptr<rpc::PushTaskRequest>,
-                                       std::vector<std::unique_ptr<rpc::PushTaskRequest>>,
-                                       ComparePushTaskRequest>>
+  absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_;
 
   /// Map from actor id to the sequence number of the next task to send to that
