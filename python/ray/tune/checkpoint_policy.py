@@ -58,7 +58,7 @@ class BasicCheckpointPolicy(CheckpointPolicy):
         self._score_desc = score_desc
 
     def should_checkpoint(self, result):
-        if not result:
+        if result.get(TRAINING_ITERATION) == 0:
             return self._checkpoint_at_beginning
         if result.get(DONE) and self._checkpoint_at_end:
             return True

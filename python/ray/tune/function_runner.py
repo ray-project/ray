@@ -12,7 +12,7 @@ from six.moves import queue
 from ray.tune import track
 from ray.tune import TuneError
 from ray.tune.trainable import Trainable
-from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE
+from ray.tune.result import TIME_THIS_ITER_S, RESULT_DUPLICATE, FUNCTION_CHECKPOINT_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -193,9 +193,10 @@ class FunctionRunner(Trainable):
         result accordingly (see tune/trial_runner.py).
 
         Raises:
-            TuneError: This is raised if the trainable ends up in a bad state.
+            TuneError: This is raised if the Trainable ends up in a bad state.
         """
         result = None
+        checkpoint_path = None
         for event_index in range(2):
 
             if self._runner.is_alive():
@@ -252,14 +253,13 @@ class FunctionRunner(Trainable):
 
             if event.is_checkpoint:
                 if event_index == 0:
-                    # First event consumed in this step is a checkpoint. The
-                    # next one must be a result, so continue.
+                    # First event consumed in this step is a checkpoint.
                     self._last_checkpoint = event.value
-                    self.save()
+                    checkpoint_path = self.save()
                 else:
-                    # If the 2nd event is a checkpoint, that implies the 1st
-                    # was also a checkpoint, since if it wasn't we would've
-                    # broken out of the loop.
+                    # If the 2nd event is a checkpoint, the 1st must also be a
+                    # checkpoint, since if it wasn't we would've broken out of
+                    # the loop.
                     raise TuneError(
                         "Checkpoint taken twice in a single iteration. Only "
                         "a single call to tune.track.checkpoint is allowed "
@@ -267,6 +267,9 @@ class FunctionRunner(Trainable):
             else:
                 result = event.value
                 break
+
+        if checkpoint_path:
+            result[FUNCTION_CHECKPOINT_PATH] = checkpoint_path
         # This keyword appears if the train_func using the Function API
         # finishes without "done=True". This duplicates the last
         # result, but the TrialRunner will not log this result again.

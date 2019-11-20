@@ -94,7 +94,7 @@ class TrackSession(object):
         Arguments:
             metrics: named arguments with corresponding values to log.
         """
-        if self.is_restorable():
+        if self.is_restorable:
             raise TuneError("Trial must be restored before calling log.")
 
         self._iteration += 1

@@ -16,7 +16,7 @@ import ray.cloudpickle as cloudpickle
 from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+                             SHOULD_CHECKPOINT, FUNCTION_CHECKPOINT_PATH)
 from ray.tune.syncer import get_cloud_syncer
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -461,6 +461,9 @@ class TrialRunner(object):
             # the global checkpoint state.
             self._checkpoint_trial_if_needed(
                 trial, force=result.get(SHOULD_CHECKPOINT, False))
+            # Syncs down checkpoints triggered locally by the Function API.
+            self._sync_down_checkpoint_if_needed(
+                trial, result.get(FUNCTION_CHECKPOINT_PATH))
 
             if decision == TrialScheduler.CONTINUE:
                 self.trial_executor.continue_training(trial)
@@ -501,6 +504,12 @@ class TrialRunner(object):
             if hasattr(trial, "runner") and trial.runner:
                 self.trial_executor.save(trial, storage=Checkpoint.DISK)
             self.trial_executor.try_checkpoint_metadata(trial)
+
+    def _sync_down_checkpoint_if_needed(self, trial, path=None):
+        """Syncs down locally triggered checkpoints."""
+        if path is not None:
+            checkpoint = Checkpoint(Checkpoint.DISK, path, trial.last_result)
+            trial.on_checkpoint(checkpoint)
 
     def _try_recover(self, trial, error_msg):
         """Tries to recover trial.
