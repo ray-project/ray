@@ -1,59 +1,28 @@
 load("@//bazel:cython_library.bzl", "pyx_library")
-load("//:streaming/streaming.bzl", "flatbuffer_py_library")
+load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
 
-cc_flatbuffers_pkg = "ray/streaming/fbs/"
-
-flatbuffers_generated_files = [
-    "StreamingConfigKey.py",
-    "StreamingRole.py",
-    "StreamingStringPair.py",
-    "StreamingUintPair.py",
-    "StreamingConfig.py",
-]
-
-flatbuffer_py_library(
-    name = "streaming_py_fbs",
-    srcs = ["//streaming/src:streaming_fbs_file"],
-    outs = [cc_flatbuffers_pkg + f for f in flatbuffers_generated_files],
+python_proto_compile(
+    name = "streaming_py_proto",
+    deps = ["//streaming/src:streaming_proto"],
 )
 
 genrule(
-    name = "generate_streaming_py_fbs",
+    name = "cp_streaming_py_proto_generated",
     srcs = [
-        ":streaming_py_fbs",
+        ":streaming_py_proto",
     ],
     outs = [
-        "ray/streaming/generated/" + file
-        for file in flatbuffers_generated_files
-    ],
-    cmd = """
-        for f in $(locations //streaming/python:streaming_py_fbs); do
-            chmod +w $$f
-            mv -f $$f $(@D)/ray/streaming/generated/
-        done
-    """,
-    local = 1,
-    visibility = ["//visibility:public"],
-)
-
-genrule(
-    name = "cp_streaming_py_fbs_generated",
-    srcs = [
-        ":generate_streaming_py_fbs",
-    ],
-    outs = [
-        "cp_streaming_py_fbs_generated.out",
+        "cp_streaming_py_proto_generated.out",
     ],
     cmd = """
         set -e
         set -x
         WORK_DIR=$$(pwd)
-        # Copy flatbuffer-generated files.
+        # Copy generated files.
         GENERATED_DIR=$$WORK_DIR/streaming/python/ray/streaming/generated
         rm -rf $$GENERATED_DIR
         mkdir -p $$GENERATED_DIR
-        # Copy flatbuffers-generated files
-        for f in $(locations //streaming/python:generate_streaming_py_fbs); do
+        for f in $(locations //streaming/python:streaming_py_proto); do
             cp $$f $$GENERATED_DIR
         done
         echo $$(date) > $@

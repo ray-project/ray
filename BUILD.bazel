@@ -892,6 +892,7 @@ genrule(
         "//:raylet",
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
+        "//streaming/python:cp_streaming_py_proto_generated",
     ],
     outs = ["ray_pkg.out"],
     cmd = """
