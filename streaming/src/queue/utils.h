@@ -44,6 +44,7 @@ class PromiseWrapper {
   std::promise<bool> promise_;
   Status status_;
 };
+
 }  // namespace streaming
 }  // namespace ray
 #endif

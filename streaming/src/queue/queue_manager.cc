@@ -14,7 +14,7 @@ QueueWriter::~QueueWriter() {
 void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
                               const ActorID &peer_actor_id, uint64_t size) {
   STREAMING_LOG(INFO) << "QueueWriter::CreateQueue";
-  auto queue = manager_->CreateUpQueue(queue_id, actor_id, peer_actor_id, size);
+  auto queue = manager_->CreateUpstreamQueue(queue_id, actor_id, peer_actor_id, size);
   STREAMING_CHECK(queue != nullptr);
 
   manager_->UpdateUpActor(queue_id, actor_id);
@@ -23,11 +23,6 @@ void QueueWriter::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
   std::vector<ObjectID> queue_ids, failed_queues;
   queue_ids.push_back(queue_id);
   WaitQueues(queue_ids, 10*1000, failed_queues);
-  STREAMING_LOG(INFO) << "QueueWriter::CreateQueue done";
-}
-
-bool QueueWriter::IsQueueExist(const ObjectID &queue_id) {
-  return nullptr != manager_->GetUpQueue(queue_id);
 }
 
 void QueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t limit) {
@@ -83,13 +78,12 @@ bool QueueReader::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
                               const ActorID &peer_actor_id, uint64_t start_seq_id) {
   STREAMING_LOG(INFO) << "Create ReaderQueue " << queue_id
                       << " pull from start_seq_id: " << start_seq_id;
-  auto queue = manager_->CreateDownQueue(queue_id, actor_id, peer_actor_id);
+  auto queue = manager_->CreateDownstreamQueue(queue_id, actor_id, peer_actor_id);
   STREAMING_CHECK(queue != nullptr);
 
   std::vector<ObjectID> queue_ids;
   queue_ids.push_back(queue_id);
 
-  STREAMING_LOG(INFO) << "No need pull data from upstream";
   return true;
 }
 
@@ -129,11 +123,11 @@ void QueueManager::Init() {
   queue_thread_ = std::thread(&QueueManager::QueueThreadCallback, this);
 }
 
-std::shared_ptr<WriterQueue> QueueManager::CreateUpQueue(const ObjectID &queue_id,
+std::shared_ptr<WriterQueue> QueueManager::CreateUpstreamQueue(const ObjectID &queue_id,
                                                          const ActorID &actor_id,
                                                          const ActorID &peer_actor_id,
                                                          uint64_t size) {
-  STREAMING_LOG(INFO) << "CreateUpQueue: " << queue_id
+  STREAMING_LOG(INFO) << "CreateUpstreamQueue: " << queue_id
                       << " " << actor_id << "->" << peer_actor_id;
   auto it = upstream_queues_.find(queue_id);
   // RAY_CHECK(it == upstream_queues_.end()) << "duplicate to create queue: " << queue_id;
@@ -150,20 +144,18 @@ std::shared_ptr<WriterQueue> QueueManager::CreateUpQueue(const ObjectID &queue_i
   return queue;
 }
 
-bool QueueManager::IsUpQueueExist(const ObjectID &queue_id) {
-  auto it = upstream_queues_.find(queue_id);
-  return it != upstream_queues_.end();
+bool QueueManager::UpstreamQueueExists(const ObjectID &queue_id) {
+  return nullptr != GetUpQueue(queue_id);
 }
 
-bool QueueManager::IsDownQueueExist(const ObjectID &queue_id) {
-  auto it = downstream_queues_.find(queue_id);
-  return it != downstream_queues_.end();
+bool QueueManager::DownstreamQueueExists(const ObjectID &queue_id) {
+  return nullptr != GetDownQueue(queue_id);
 }
 
-std::shared_ptr<ReaderQueue> QueueManager::CreateDownQueue(const ObjectID &queue_id,
+std::shared_ptr<ReaderQueue> QueueManager::CreateDownstreamQueue(const ObjectID &queue_id,
                                                            const ActorID &actor_id,
                                                            const ActorID &peer_actor_id) {
-  STREAMING_LOG(INFO) << "CreateDownQueue: " << queue_id
+  STREAMING_LOG(INFO) << "CreateDownstreamQueue: " << queue_id
                       << " " << peer_actor_id << "->" << actor_id;
   auto it = downstream_queues_.find(queue_id);
   if (it != downstream_queues_.end()) {
@@ -199,7 +191,7 @@ std::shared_ptr<Message> QueueManager::ParseMessage(
   uint8_t *bytes = buffer->Data();
   uint8_t *p_cur = bytes;
   uint32_t *magic_num = (uint32_t *)p_cur;
-  STREAMING_CHECK(*magic_num == Message::MagicNum);
+  STREAMING_CHECK(*magic_num == Message::MagicNum) << *magic_num << " " << Message::MagicNum;
 
   p_cur += sizeof(Message::MagicNum);
   queue::flatbuf::MessageType *type = (queue::flatbuf::MessageType *)p_cur;
@@ -238,7 +230,6 @@ void QueueManager::DispatchMessageInternal(
 
   if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueNotificationMsg) {
     auto queue = upstream_queues_.find(msg->QueueId());
-    // STREAMING_CHECK(queue != upstream_queues_.end());
     if (queue == upstream_queues_.end()) {
         std::shared_ptr<NotificationMessage> notify_msg = 
           std::dynamic_pointer_cast<NotificationMessage>(msg);
@@ -253,7 +244,6 @@ void QueueManager::DispatchMessageInternal(
     queue->second->OnNotify(notify_msg);
   } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueDataMsg) {
     auto queue = downstream_queues_.find(msg->QueueId());
-    // STREAMING_CHECK(queue != downstream_queues_.end());
     if (queue == downstream_queues_.end()) {
       std::shared_ptr<DataMessage> data_msg = std::dynamic_pointer_cast<DataMessage>(msg);
       STREAMING_LOG(WARNING) << "Can not find queue for " << queue::flatbuf::EnumNameMessageType(msg->Type())
@@ -415,18 +405,12 @@ void QueueManager::AddOutTransport(const ObjectID &queue_id,
   out_transports_.emplace(queue_id, transport);
 }
 
-void QueueManager::SetInTransport(std::shared_ptr<Transport> transport) {
-  in_transport_ = transport;
-}
-
 std::shared_ptr<Transport> QueueManager::GetOutTransport(const ObjectID &queue_id) {
   auto it = out_transports_.find(queue_id);
   if (it == out_transports_.end()) return nullptr;
 
   return it->second;
 }
-
-std::shared_ptr<Transport> QueueManager::GetInTransport() { return in_transport_; }
 
 void QueueManager::Stop() {
   STREAMING_LOG(INFO) << "QueueManager Stop.";
@@ -451,8 +435,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueManager::OnCheckQueue(
   CheckRspMessage msg(check_msg->PeerActorId(), check_msg->ActorId(),
                       check_msg->QueueId(), err_code);
   std::shared_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
-
-  STREAMING_LOG(INFO) << "OnCheckQueue actor_id: " << check_msg->ActorId();
 
   return buffer;
 }

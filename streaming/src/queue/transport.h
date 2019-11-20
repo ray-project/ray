@@ -121,9 +121,9 @@ class CheckRspMessage : public Message {
       queue::flatbuf::MessageType::StreamingQueueCheckRspMsg;
 };
 
-class TestInitMsg : public Message {
+class TestInitMessage : public Message {
  public:
-  TestInitMsg(const queue::flatbuf::StreamingQueueTestRole role,
+  TestInitMessage(const queue::flatbuf::StreamingQueueTestRole role,
               const ActorID &actor_id, const ActorID &peer_actor_id,
               const std::string actor_handle_serialized, 
               const std::vector<ObjectID> &queue_ids, const std::vector<ObjectID> &rescale_queue_ids,
@@ -132,9 +132,9 @@ class TestInitMsg : public Message {
       : Message(actor_id, peer_actor_id, queue_ids[0]),
   actor_handle_serialized_(actor_handle_serialized), queue_ids_(queue_ids), rescale_queue_ids_(rescale_queue_ids),
   role_(role), test_suite_name_(test_suite_name), test_name_(test_name), param_(param) {}
-  virtual ~TestInitMsg() {}
+  virtual ~TestInitMessage() {}
 
-  static std::shared_ptr<TestInitMsg> FromBytes(uint8_t *bytes);
+  static std::shared_ptr<TestInitMessage> FromBytes(uint8_t *bytes);
   virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
   queue::flatbuf::MessageType Type() { return type_; }
   std::string ActorHandleSerialized() { return actor_handle_serialized_; }
@@ -167,7 +167,7 @@ class TestInitMsg : public Message {
   }
  private:
   const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueTestInitMsg;
+      queue::flatbuf::MessageType::StreamingQueueTestInitMessage;
   std::string actor_handle_serialized_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
@@ -196,25 +196,9 @@ class TestCheckStatusRspMsg : public Message {
   bool status_;
 };
 
-/// duplex
 class Transport {
  public:
-  virtual void WriterSend(std::unique_ptr<LocalMemoryBuffer> buffer) = 0;
-  virtual void ReaderSend(std::unique_ptr<LocalMemoryBuffer> buffer) = 0;
-  virtual std::shared_ptr<LocalMemoryBuffer> WriterRecv() = 0;
-  virtual std::shared_ptr<LocalMemoryBuffer> ReaderRecv() = 0;
-  virtual void Send(std::unique_ptr<LocalMemoryBuffer> buffer) = 0;
-  virtual std::shared_ptr<LocalMemoryBuffer> SendForResult(
-      std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) = 0;
-  virtual std::shared_ptr<LocalMemoryBuffer> SendForResultWithRetry(
-      std::unique_ptr<LocalMemoryBuffer> buffer, int retry_cnt, int64_t timeout_ms) = 0;
-  virtual std::shared_ptr<LocalMemoryBuffer> Recv() = 0;
-  virtual void Destroy() = 0;
-};
-
-class DirectCallTransport : public Transport {
- public:
-  DirectCallTransport(CoreWorker* worker,
+  Transport(CoreWorker* worker,
                       ActorID &actor_id, RayFunction &async_func,
                       RayFunction &sync_func)
       : core_worker_(worker),
@@ -222,7 +206,7 @@ class DirectCallTransport : public Transport {
         async_func_(async_func),
         sync_func_(sync_func) {
   }
-  virtual ~DirectCallTransport() = default;
+  virtual ~Transport() = default;
 
   virtual void WriterSend(std::unique_ptr<LocalMemoryBuffer> buffer) {
     Send(std::move(buffer));

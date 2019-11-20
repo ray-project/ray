@@ -47,13 +47,13 @@ StreamingQueueWriter::StreamingQueueWriter(CoreWorker *core_worker,
 Status StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_size,
                                          ActorID &actor_id) {
   STREAMING_LOG(INFO) << "CreateQueue qid: " << queue_id << " data_size: " << data_size;
-  if (queue_manager_->IsUpQueueExist(queue_id)) {
+  if (queue_manager_->UpstreamQueueExists(queue_id)) {
     RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
     return Status::OK();
   }
   // ActorHandle *actor_handle_ptr = reinterpret_cast<ActorHandle *>(actor_handle);
   queue_manager_->AddOutTransport(
-      queue_id, std::make_shared<ray::streaming::DirectCallTransport>(
+      queue_id, std::make_shared<ray::streaming::Transport>(
                     core_worker_, actor_id, async_func_, sync_func_));
   STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue "
                       << (queue_writer_ == nullptr);
@@ -65,7 +65,7 @@ Status StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_
 
 bool StreamingQueueWriter::IsQueueFoundInLocal(const ObjectID &queue_id,
                                                const int64_t timeout_ms) {
-  return queue_writer_->IsQueueExist(queue_id);
+  return queue_manager_->UpstreamQueueExists(queue_id);
 }
 
 Status StreamingQueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id,
@@ -112,13 +112,13 @@ StreamingQueueReader::StreamingQueueReader(CoreWorker *core_worker,
 bool StreamingQueueReader::GetQueue(const ObjectID &queue_id, int64_t timeout_ms,
                                     uint64_t start_seq_id, ActorID &actor_id) {
   STREAMING_LOG(INFO) << "GetQueue qid: " << queue_id << " start_seq_id: " << start_seq_id;
-  if (queue_manager_->IsDownQueueExist(queue_id)) {
+  if (queue_manager_->DownstreamQueueExists(queue_id)) {
     RAY_LOG(INFO) << "StreamingQueueReader::GetQueue duplicate!!!";
     return true;
   }
   // ActorHandle *actor_handle_ptr = reinterpret_cast<ActorHandle *>(actor_handle);
   queue_manager_->AddOutTransport(
-      queue_id, std::make_shared<ray::streaming::DirectCallTransport>(
+      queue_id, std::make_shared<ray::streaming::Transport>(
                     core_worker_, actor_id, async_func_, sync_func_));
   queue_manager_->UpdateUpActor(queue_id, actor_id);
   queue_manager_->UpdateDownActor(queue_id, actor_id_);

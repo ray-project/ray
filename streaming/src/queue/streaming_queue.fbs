@@ -9,7 +9,7 @@ enum MessageType:long {
   // Message
   StreamingQueueDataMsg,
   // For test
-  StreamingQueueTestInitMsg,
+  StreamingQueueTestInitMessage,
   StreamingQueueTestCheckStatusRspMsg,
 }
 
@@ -54,7 +54,7 @@ enum StreamingQueueTestRole:int {
   READER,
 }
 
-table StreamingQueueTestInitMsg {
+table StreamingQueueTestInitMessage {
   role: StreamingQueueTestRole;
   src_actor_id: string;
   dst_actor_id: string;

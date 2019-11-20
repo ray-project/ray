@@ -57,6 +57,7 @@ class WriterWorker(Worker):
     def run(self, msg_nums):
         for i in range(msg_nums):
             self.producer.produce(self.output_queue_id, pickle.dumps(i))
+        print("WriterWorker done.")
 
 
 @ray.remote
@@ -92,6 +93,7 @@ class ReaderWorker(Worker):
                 msg = pickle.loads(queue_item.body())
                 count += 1
         assert msg == msg_nums - 1
+        print("ReaderWorker done.")
 
 
 def test_queue():
@@ -101,7 +103,7 @@ def test_queue():
     inits = [writer.init.remote(queue_str, pickle.dumps(reader)),
              reader.init.remote(queue_str, pickle.dumps(writer))]
     ray.get(inits)
-    msg_nums = 10
+    msg_nums = 1000
     print("start read/write")
     reader.start_read.remote(msg_nums)
     writer.start_write.remote(msg_nums)

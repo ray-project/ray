@@ -128,10 +128,6 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
 
   void StreamingWriterExactlyOnceTest() {
     StreamingConfig config;
-    // Close empty message to avoid send item to downstream when downstream has destroy
-    config.SetStreaming_empty_message_time_interval(50);
-    config.SetQueue_type("streaming_queue");
-
     StreamingWriterStrategyTest(config);
 
     STREAMING_LOG(INFO)
@@ -247,8 +243,6 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     STREAMING_LOG(INFO)
         << "StreamingQueueReaderTestSuite::StreamingWriterExactlyOnceTest";
     StreamingConfig config;
-    config.SetStreaming_empty_message_time_interval(50);
-    config.SetQueue_type("streaming_queue");
 
     StreamingReaderStrategyTest(config);
     status_ = true;
@@ -258,7 +252,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
 class TestSuiteFactory {
  public:
   static std::shared_ptr<StreamingQueueTestSuite> CreateTestSuite(
-      std::shared_ptr<CoreWorker> worker, std::shared_ptr<TestInitMsg> message) {
+      std::shared_ptr<CoreWorker> worker, std::shared_ptr<TestInitMessage> message) {
     std::shared_ptr<StreamingQueueTestSuite> test_suite = nullptr;
     std::string suite_name = message->TestSuiteName();
     queue::flatbuf::StreamingQueueTestRole role = message->Role();
@@ -366,8 +360,8 @@ class StreamingWorker {
 
     p_cur += sizeof(Message::MagicNum);
     queue::flatbuf::MessageType *type = (queue::flatbuf::MessageType *)p_cur;
-    STREAMING_CHECK(*type == queue::flatbuf::MessageType::StreamingQueueTestInitMsg);
-    std::shared_ptr<TestInitMsg> message = TestInitMsg::FromBytes(bytes);
+    STREAMING_CHECK(*type == queue::flatbuf::MessageType::StreamingQueueTestInitMessage);
+    std::shared_ptr<TestInitMessage> message = TestInitMessage::FromBytes(bytes);
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();
     std::string actor_handle_serialized = message->ActorHandleSerialized();

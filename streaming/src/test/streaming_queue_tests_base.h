@@ -121,7 +121,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str);
     STREAMING_CHECK(st.ok());
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;
-    TestInitMsg msg(role, self_actor_id, peer_actor_id, forked_serialized_str, queue_ids,
+    TestInitMessage msg(role, self_actor_id, peer_actor_id, forked_serialized_str, queue_ids,
                     rescale_queue_ids, suite_name, test_name, param);
 
     std::vector<TaskArg> args;

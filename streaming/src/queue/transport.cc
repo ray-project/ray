@@ -157,7 +157,7 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
   return check_rsp_msg;
 }
 
-void TestInitMsg::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
+void TestInitMessage::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
   std::vector<flatbuffers::Offset<flatbuffers::String>> queue_id_strs;
   for (auto &queue_id : queue_ids_) {
     queue_id_strs.push_back(builder.CreateString(queue_id.Binary()));
@@ -166,7 +166,7 @@ void TestInitMsg::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
   for (auto &queue_id : rescale_queue_ids_) {
     rescale_queue_id_strs.push_back(builder.CreateString(queue_id.Binary()));
   }
-  auto message = queue::flatbuf::CreateStreamingQueueTestInitMsg(
+  auto message = queue::flatbuf::CreateStreamingQueueTestInitMessage(
       builder, role_, builder.CreateString(actor_id_.Binary()),
       builder.CreateString(peer_actor_id_.Binary()),
       builder.CreateString(actor_handle_serialized_),
@@ -176,14 +176,14 @@ void TestInitMsg::ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) {
   builder.Finish(message);
 }
 
-std::shared_ptr<TestInitMsg> TestInitMsg::FromBytes(
+std::shared_ptr<TestInitMessage> TestInitMessage::FromBytes(
     uint8_t *bytes) {
   bytes += sizeof(uint32_t) + sizeof(queue::flatbuf::MessageType);
   bytes += sizeof(uint64_t);
 
   /// TODO: Verify buffer
   auto message =
-      flatbuffers::GetRoot<queue::flatbuf::StreamingQueueTestInitMsg>(bytes);
+      flatbuffers::GetRoot<queue::flatbuf::StreamingQueueTestInitMessage>(bytes);
   queue::flatbuf::StreamingQueueTestRole role = message->role();
   ActorID src_actor_id = ActorID::FromBinary(message->src_actor_id()->str());
   ActorID dst_actor_id = ActorID::FromBinary(message->dst_actor_id()->str());
@@ -202,8 +202,8 @@ std::shared_ptr<TestInitMsg> TestInitMsg::FromBytes(
   std::string test_name = message->test_name()->str();
   uint64_t param = message->param();
 
-  std::shared_ptr<TestInitMsg> test_init_msg =
-      std::make_shared<TestInitMsg>(role, src_actor_id, dst_actor_id, actor_handle_serialized, queue_ids, rescale_queue_ids, test_suite_name, test_name, param);
+  std::shared_ptr<TestInitMessage> test_init_msg =
+      std::make_shared<TestInitMessage>(role, src_actor_id, dst_actor_id, actor_handle_serialized, queue_ids, rescale_queue_ids, test_suite_name, test_name, param);
 
   return test_init_msg;
 }
@@ -231,8 +231,8 @@ std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(
   return test_check_msg;
 }
 
-void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
-  STREAMING_LOG(INFO) << "DirectCallTransport::Send buffer size: " << buffer->Size();
+void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
+  STREAMING_LOG(INFO) << "Transport::Send buffer size: " << buffer->Size();
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_0, resources};
 
@@ -253,7 +253,7 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
   }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
-
+  
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<ObjectID> return_ids;
   std::vector<std::shared_ptr<RayObject>> results;
@@ -269,7 +269,7 @@ void DirectCallTransport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
   }
 }
 
-std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
+std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms) {
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_1, resources};
@@ -338,7 +338,7 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResult(
   return return_buffer;
 }
 
-std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResultWithRetry(
+std::shared_ptr<LocalMemoryBuffer> Transport::SendForResultWithRetry(
     std::unique_ptr<LocalMemoryBuffer> buffer, int retry_cnt, int64_t timeout_ms) {
   STREAMING_LOG(INFO) << "SendForResultWithRetry retry_cnt: " << retry_cnt
                       << " timeout_ms: " << timeout_ms;
@@ -354,7 +354,7 @@ std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::SendForResultWithRetry(
   return nullptr;
 }
 
-std::shared_ptr<LocalMemoryBuffer> DirectCallTransport::Recv() {
+std::shared_ptr<LocalMemoryBuffer> Transport::Recv() {
   STREAMING_CHECK(false) << "Should not be called.";
   return nullptr;
 }

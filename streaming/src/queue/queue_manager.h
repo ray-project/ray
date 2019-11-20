@@ -23,7 +23,6 @@ class QueueWriter {
 
   void CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
                    const ActorID &peer_actor_id, uint64_t size);
-  bool IsQueueExist(const ObjectID &queue_id);
   void SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t limit);
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                   std::vector<ObjectID> &failed_queues);
@@ -63,8 +62,7 @@ class QueueReader {
 class QueueManager {
  public:
   QueueManager(const ActorID &actor_id)
-      : actor_id_(actor_id),
-      in_transport_(nullptr), queue_dummy_work_(queue_service_) {
+      : actor_id_(actor_id), queue_dummy_work_(queue_service_) {
     Init();
   }
 
@@ -81,19 +79,14 @@ class QueueManager {
     return queue_manager_;
   }
 
-  /// Queue thread callback function.
-  void QueueThreadCallback() { queue_service_.run(); }
-
-  std::shared_ptr<WriterQueue> CreateUpQueue(const ObjectID &queue_id,
+  std::shared_ptr<WriterQueue> CreateUpstreamQueue(const ObjectID &queue_id,
                                              const ActorID &actor_id,
                                              const ActorID &peer_actor_id, uint64_t size);
-  std::shared_ptr<ReaderQueue> CreateDownQueue(const ObjectID &queue_id,
+  std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                const ActorID &actor_id,
                                                const ActorID &peer_actor_id);
-  bool IsUpQueueExist(const ObjectID &queue_id);
-  bool IsDownQueueExist(const ObjectID &queue_id);
-  std::shared_ptr<streaming::WriterQueue> GetUpQueue(const ObjectID &queue_id);
-  std::shared_ptr<streaming::ReaderQueue> GetDownQueue(const ObjectID &queue_id);
+  bool UpstreamQueueExists(const ObjectID &queue_id);
+  bool DownstreamQueueExists(const ObjectID &queue_id);
 
   /// Wait all queues in queue_ids vector ready, until timeout.
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
@@ -103,24 +96,15 @@ class QueueManager {
   void UpdateDownActor(const ObjectID &queue_id, const ActorID &actor_id);
 
   void AddOutTransport(const ObjectID &actor_id, std::shared_ptr<Transport> transport);
-  void SetInTransport(std::shared_ptr<Transport> transport);
   std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
-  std::shared_ptr<Transport> GetInTransport();
-
-  void Stop();
 
   std::shared_ptr<LocalMemoryBuffer> OnCheckQueue(
       std::shared_ptr<CheckMessage> check_msg);
   void OnCheckQueueRsp(std::shared_ptr<CheckRspMessage> check_rsp_msg);
-
   void DispatchMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   std::shared_ptr<LocalMemoryBuffer> DispatchMessageSync(
       std::shared_ptr<LocalMemoryBuffer> buffer);
 
-  void ReleaseAllUpQueues();
-
-  void ReleaseAllDownQueues();
- public:
   /// Used to support synchronize check queue request
   using SendMsgCallback = std::function<void(bool success)>;
   struct CheckQueueRequest {
@@ -132,9 +116,16 @@ class QueueManager {
     ObjectID queue_id_;
     SendMsgCallback callback_;
   };
+  std::shared_ptr<streaming::WriterQueue> GetUpQueue(const ObjectID &queue_id);
+  std::shared_ptr<streaming::ReaderQueue> GetDownQueue(const ObjectID &queue_id);
+  void ReleaseAllUpQueues();
+  void ReleaseAllDownQueues();
 
  private:
   void Init();
+  void Stop();
+  /// Queue thread callback function.
+  void QueueThreadCallback() { queue_service_.run(); }
   std::shared_ptr<Message> ParseMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   void DispatchMessageInternal(
       std::shared_ptr<LocalMemoryBuffer> buffer,
@@ -146,22 +137,14 @@ class QueueManager {
   ActorID actor_id_;
   std::unordered_map<ObjectID, std::shared_ptr<streaming::WriterQueue>> upstream_queues_;
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>> downstream_queues_;
-
   std::unordered_map<ObjectID, std::pair<ActorID, ActorID>> actors_;
-
   std::unordered_map<ObjectID, std::shared_ptr<Transport>> out_transports_;
-
-  /// Only used when execute test cases.
-  std::shared_ptr<Transport> in_transport_;
-
   std::unordered_map<ObjectID, CheckQueueRequest> check_queue_requests_;
-
   std::thread queue_thread_;
   boost::asio::io_service queue_service_;
   // keep queue_service_ alive
   boost::asio::io_service::work queue_dummy_work_;
   // std::shared_ptr<Transport> transport_;
-
   static std::shared_ptr<QueueManager> queue_manager_;
 };
 
