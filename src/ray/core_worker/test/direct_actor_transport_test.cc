@@ -22,7 +22,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
-  int64_t counter = 0;
+  uint64_t counter = 0;
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
