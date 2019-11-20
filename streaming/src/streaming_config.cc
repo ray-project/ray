@@ -2,6 +2,7 @@
 
 #include "streaming_config.h"
 #include "streaming_logging.h"
+#include "streaming.pb.h"
 
 namespace ray {
 namespace streaming {
@@ -11,6 +12,33 @@ uint32_t StreamingConfig::DEFAULT_STREAMING_RING_BUFFER_CAPACITY = 500;
 uint32_t StreamingConfig::DEFAULT_STREAMING_EMPTY_MESSAGE_TIME_INTERVAL = 20;
 // Time to force clean if barrier in queue, default 0ms
 const uint32_t StreamingConfig::STRAMING_MESSGAE_BUNDLE_MAX_SIZE = 2048;
+
+void StreamingConfig::FromProto(const uint8_t * data, uint32_t size) {
+  proto::StreamingConfig config;
+  STREAMING_CHECK(config.ParseFromArray(data, size)) << "Parse streaming conf failed";
+  if (!config.job_name().empty()) {
+    SetStreamingJobName(config.job_name());
+  }
+  if (!config.task_job_id().empty()) {
+    STREAMING_CHECK(config.task_job_id().size() == 2 * JobID::Size());
+    SetStreamingTaskJobId(config.task_job_id());
+  }
+  if (!config.worker_name().empty()) {
+    SetStreamingWorkerName(config.worker_name());
+  }
+  if (!config.op_name().empty()) {
+    SetStreamingOpName(config.op_name());
+  }
+  if (config.role() != proto::StreamingRole::UNKNOWN) {
+    SetStreamingRole(config.role());
+  }
+  if (config.ring_buffer_capacity() != 0) {
+    SetStreamingRingBufferCapacity(config.ring_buffer_capacity());
+  }
+  if (config.empty_message_interval() != 0) {
+    SetStreamingEmptyMessageTimeInterval(config.empty_message_interval());
+  }
+}
 
 uint32_t StreamingConfig::GetStreamingRingBufferCapacity() const {
   return streaming_ring_buffer_capacity;
@@ -32,47 +60,11 @@ void StreamingConfig::SetStreamingEmptyMessageTimeInterval(
       streaming_empty_message_time_interval;
 }
 
-void StreamingConfig::ReloadProperty(const streaming::fbs::StreamingConfigKey &key,
-                                     uint32_t value) {
-  switch (key) {
-  case streaming::fbs::StreamingConfigKey::StreamingEmptyMessageTimeInterval:
-    SetStreamingEmptyMessageTimeInterval(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingRingBufferCapacity:
-    SetStreamingRingBufferCapacity(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingDefault:
-    STREAMING_LOG(INFO) << "skip default key";
-    break;
-  default:
-    STREAMING_LOG(WARNING) << "no such type in uint32";
-  }
-}
-void StreamingConfig::ReloadProperty(const streaming::fbs::StreamingConfigKey &key,
-                                     const std::string &value) {
-  switch (key) {
-  case streaming::fbs::StreamingConfigKey::StreamingJobName:
-    SetStreamingJobName(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingOpName:
-    SetStreamingOpName(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingWorkerName:
-    SetStreamingWorkerName(value);
-    break;
-  case streaming::fbs::StreamingConfigKey::StreamingDefault:
-    STREAMING_LOG(INFO) << "skip default key";
-    break;
-  default:
-    STREAMING_LOG(WARNING) << "no such type in string => " << static_cast<uint32_t>(key);
-  }
-}
-
-streaming::fbs::StreamingRole StreamingConfig::GetStreamingRole() const {
+streaming::proto::StreamingRole StreamingConfig::GetStreamingRole() const {
   return streaming_role;
 }
 
-void StreamingConfig::SetStreamingRole(streaming::fbs::StreamingRole streaming_role) {
+void StreamingConfig::SetStreamingRole(streaming::proto::StreamingRole streaming_role) {
   StreamingConfig::streaming_role = streaming_role;
 }
 
@@ -107,10 +99,5 @@ void StreamingConfig::SetStreamingTaskJobId(const std::string &streaming_task_jo
   StreamingConfig::streaming_task_job_id = streaming_task_job_id;
 }
 
-const std::string &StreamingConfig::GetQueueType() const { return queue_type; }
-
-void StreamingConfig::SetQueueType(const std::string &queue_type) {
-  StreamingConfig::queue_type = queue_type;
-}
 }  // namespace streaming
 }  // namespace ray

@@ -70,8 +70,6 @@ class StreamingCommon {
   virtual void SetConfig(const uint8_t *, uint32_t buffer_len);
   StreamingChannelState GetChannelState();
 
-  friend std::ostream &operator<<(std::ostream &os, const StreamingCommon &common);
-
  protected:
   StreamingConfig config_;
   StreamingChannelState channel_state_;

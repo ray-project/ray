@@ -4,7 +4,8 @@
 #include <cstdint>
 #include <string>
 
-#include "format/streaming_generated.h"
+#include "streaming.pb.h"
+#include "ray/common/id.h"
 
 namespace ray {
 namespace streaming {
@@ -28,7 +29,7 @@ class StreamingConfig {
   uint32_t streaming_empty_message_time_interval =
       DEFAULT_STREAMING_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  streaming::fbs::StreamingRole streaming_role = streaming::fbs::StreamingRole::Operator;
+  streaming::proto::StreamingRole streaming_role = streaming::proto::StreamingRole::OPERATOR;
 
   std::string streaming_job_name = "DEFAULT_JOB_NAME";
 
@@ -38,9 +39,10 @@ class StreamingConfig {
 
   std::string streaming_task_job_id = "ffffffff";
 
-  std::string queue_type = "streaming_queue";
 
  public:
+  void FromProto(const uint8_t *, uint32_t size);
+
   const std::string &GetStreamingTaskJobId() const;
 
   void SetStreamingTaskJobId(const std::string &streaming_task_job_id);
@@ -62,22 +64,13 @@ class StreamingConfig {
 
   void SetStreamingRingBufferCapacity(uint32_t streaming_ring_buffer_capacity);
 
-  void ReloadProperty(const streaming::fbs::StreamingConfigKey &key, uint32_t value);
+  streaming::proto::StreamingRole GetStreamingRole() const;
 
-  void ReloadProperty(const streaming::fbs::StreamingConfigKey &key,
-                      const std::string &value);
-
-  streaming::fbs::StreamingRole GetStreamingRole() const;
-
-  void SetStreamingRole(streaming::fbs::StreamingRole streaming_role);
+  void SetStreamingRole(streaming::proto::StreamingRole streaming_role);
 
   const std::string &GetStreamingJobName() const;
 
   void SetStreamingJobName(const std::string &streaming_job_name);
-
-  const std::string &GetQueueType() const;
-
-  void SetQueueType(const std::string &queue_type);
 };
 }  // namespace streaming
 }  // namespace ray

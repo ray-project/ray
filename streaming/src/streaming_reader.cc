@@ -10,7 +10,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-#include "format/streaming_generated.h"
 #include "streaming_message_bundle.h"
 #include "streaming_reader.h"
 

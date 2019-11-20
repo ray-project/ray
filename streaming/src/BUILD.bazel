@@ -11,17 +11,15 @@ FLATC_ARGS = [
     "--scoped-enums",
 ]
 
-filegroup(
-    name = "streaming_fbs_file",
-    srcs = ["streaming.fbs"],
+proto_library(
+    name = "streaming_proto",
+    srcs = ["streaming.proto"],
     visibility = ["//visibility:public"],
 )
 
-flatbuffer_cc_library(
-    name = "streaming_fbs",
-    srcs = ["streaming.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "format/",
+cc_proto_library(
+    name = "streaming_cc_proto",
+    deps = [":streaming_proto"],
 )
 
 flatbuffer_cc_library(
@@ -44,7 +42,7 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        ":streaming_fbs",
+        ":streaming_cc_proto",
         ":streaming_queue_fbs",
         "//:core_worker_lib",
         "//:ray_common",

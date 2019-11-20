@@ -791,7 +791,6 @@ cc_binary(
     linkstatic = 1,
     deps = [
         "//:core_worker_lib",
-        "//streaming/src:streaming_jni_lib",
     ],
 )
 
