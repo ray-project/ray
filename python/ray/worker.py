@@ -852,8 +852,8 @@ def sigterm_handler(signum, frame):
 try:
     signal.signal(signal.SIGTERM, sigterm_handler)
 except ValueError:
-    logger.warning("Processes might not be terminated properly if SIGTERM is sent"
-                   "(tried to set signal from outside the main thread).")
+    logger.warning("Failed to set SIGTERM handler, processes might"
+                   "not be cleaned up properly on exit.")
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
