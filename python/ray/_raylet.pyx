@@ -5,15 +5,19 @@
 
 from cpython.exc cimport PyErr_CheckSignals
 
+try:
+    import asyncio
+except ImportError:
+    # Python2 doesn't have asyncio
+    asyncio = None
 import numpy
 import gc
+import inspect
 import threading
 import time
 import logging
 import os
 import sys
-import inspect
-import asyncio
 
 from libc.stdint cimport (
     int32_t,
@@ -73,6 +77,7 @@ from ray.includes.libcoreworker cimport (
     CCoreWorker,
     CTaskOptions,
     ResourceMappingType,
+    CFiberEvent
 )
 from ray.includes.task cimport CTaskSpec
 from ray.includes.ray_config cimport RayConfig
@@ -122,6 +127,7 @@ include "includes/libcoreworker.pxi"
 logger = logging.getLogger(__name__)
 
 MEMCOPY_THREADS = 12
+PY3 = cpython.PY_MAJOR_VERSION >= 3
 
 
 if cpython.PY_MAJOR_VERSION >= 3:
@@ -495,6 +501,7 @@ cdef execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         CTaskID task_id = core_worker.core_worker.get().GetCurrentTaskId()
+        CFiberEvent fiber_event
 
     # Automatically restrict the GPUs available to this task.
     ray.utils.set_cuda_visible_devices(ray.get_gpu_ids())
@@ -551,17 +558,18 @@ cdef execute_task(
             function = execution_info.function
             result_or_coroutine = function(actor, *arguments, **kwarguments)
 
-            if inspect.iscoroutine(result_or_coroutine):
-                loop = core_worker.create_or_get_event_loop()
+            if PY3 and inspect.iscoroutine(result_or_coroutine):
                 coroutine = result_or_coroutine
+                loop = core_worker.create_or_get_event_loop()
+
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
-                fiber_event = (core_worker.core_worker.get()
-                               .PrepareYieldCurrentFiber())
                 future.add_done_callback(
-                    lambda future: fiber_event.get().Notify())
+                    lambda future: fiber_event.Notify())
+
                 with nogil:
                     (core_worker.core_worker.get()
                         .YieldCurrentFiber(fiber_event))
+
                 return future.result()
 
             return result_or_coroutine
@@ -1085,6 +1093,7 @@ cdef class CoreWorker:
     def create_or_get_event_loop(self):
         if self.async_event_loop is None:
             self.async_event_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.async_event_loop)
         if self.async_thread is None:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()

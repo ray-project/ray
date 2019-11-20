@@ -243,7 +243,7 @@ class FiberEvent {
     {
       std::unique_lock<boost::fibers::mutex> lock(mutex_);
       ready_ = true;
-    }  // release mutex
+    }
     cond_.notify_one();
   }
 
@@ -388,6 +388,11 @@ class CoreWorkerDirectTaskReceiver {
                                const TaskHandler &task_handler,
                                const std::function<void()> &exit_handler);
 
+  ~CoreWorkerDirectTaskReceiver() {
+    fiber_shutdown_event_.Notify();
+    fiber_runner_thread_.join();
+  }
+
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
 
@@ -435,10 +440,10 @@ class CoreWorkerDirectTaskReceiver {
   /// Whether this actor use asyncio for concurrency.
   bool is_async_ = false;
   /// The thread that runs all asyncio fibers. is_async_ must be true.
-  std::shared_ptr<std::thread> fiber_runner_thread_;
+  std::thread fiber_runner_thread_;
   /// The fiber event used to block fiber_runner_thread_ from shutdown.
   /// is_async_ must be true.
-  std::shared_ptr<FiberEvent> fiber_shutdown_event_;
+  FiberEvent fiber_shutdown_event_;
 };
 
 }  // namespace ray

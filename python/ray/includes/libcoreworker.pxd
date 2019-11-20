@@ -50,6 +50,7 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
 
 cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
     cdef cppclass CFiberEvent "ray::FiberEvent":
+        CFiberEvent()
         void Wait()
         void Notify()
 
@@ -131,5 +132,4 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                           c_bool local_only, c_bool delete_creating_tasks)
         c_string MemoryUsageString()
 
-        shared_ptr[CFiberEvent] PrepareYieldCurrentFiber()
-        void YieldCurrentFiber(shared_ptr[CFiberEvent])
+        void YieldCurrentFiber(CFiberEvent &coroutine_done)

@@ -356,14 +356,11 @@ class CoreWorker {
 
   ///
   /// Public methods related to async actor call. This should only be used when
-  /// the actor is (1) direct actor (2) using asyncio mode.
+  /// the actor is (1) direct actor and (2) using asyncio mode.
   ///
 
-  /// Prepare to yield by returning event for synchronization.
-  std::shared_ptr<FiberEvent> PrepareYieldCurrentFiber();
-
   /// Block current fiber until event is triggered.
-  void YieldCurrentFiber(std::shared_ptr<FiberEvent> event);
+  void YieldCurrentFiber(FiberEvent &event);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.

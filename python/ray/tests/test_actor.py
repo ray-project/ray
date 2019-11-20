@@ -3,7 +3,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import itertools
 import json
 import random
 import numpy as np
@@ -18,8 +17,8 @@ import sys
 import time
 try:
     import asyncio
-except ImportError:
-    asyncio = None
+except ImportError:  # Python2 doesn't have asyncio
+    pass
 
 import ray
 import ray.ray_constants as ray_constants
@@ -2863,15 +2862,29 @@ ray.get(actor.ping.remote())
     sys.version_info < (3, 0), reason="This test requires Python 3.")
 def test_asyncio_actor(ray_start_regular):
     @ray.remote
-    class AsyncActor:
-        async def sleep(self):
-            start = time.time()
-            await asyncio.sleep(1)
-            end = time.time()
-            return (start, end)
+    class AsyncBatcher(object):
+        def __init__(self):
+            self.batch = []
+            # The event currently need to be created from the same thread.
+            # We currently run async coroutines from a different thread.
+            self.event = None
 
-    actor = AsyncActor.options(is_direct_call=True, is_async=True).remote()
-    result = ray.get([actor.sleep.remote() for _ in range(50)])
-    flatten_result = list(itertools.chain.from_iterable(result))
-    start, end = min(flatten_result), max(flatten_result)
-    assert end - start < 25
+        async def add(self, x):
+            if self.event is None:
+                self.event = asyncio.Event()
+            self.batch.append(x)
+            if len(self.batch) >= 3:
+                self.event.set()
+            else:
+                await self.event.wait()
+            return sorted(self.batch)
+
+    a = AsyncBatcher.options(is_direct_call=True, is_async=True).remote()
+    x1 = a.add.remote(1)
+    x2 = a.add.remote(2)
+    x3 = a.add.remote(3)
+    r1 = ray.get(x1)
+    r2 = ray.get(x2)
+    r3 = ray.get(x3)
+    assert r1 == [1, 2, 3]
+    assert r1 == r2 == r3

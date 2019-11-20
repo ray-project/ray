@@ -404,9 +404,9 @@ class ActorClass(object):
             raise ValueError("max_concurrency must be >= 1")
 
         if is_async and not is_direct_call:
-            raise ValueError("setting is_async requires is_direct_call=True")
+            raise ValueError("Setting is_async requires is_direct_call=True.")
         if is_async and max_concurrency != 1:
-            raise ValueError("setting is_async requires max_concurrency=1")
+            raise ValueError("Setting is_async requires max_concurrency=1.")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:

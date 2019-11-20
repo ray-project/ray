@@ -617,10 +617,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
-      next_task_index, GetCallerId(), rpc_address_, function, args, 1, actor_creation_options.resources,
-      actor_creation_options.placement_resources, TaskTransportType::RAYLET, &return_ids);
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, 1, actor_creation_options.resources,
+                      actor_creation_options.placement_resources,
+                      TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
@@ -938,15 +939,10 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   });
 }
 
-std::shared_ptr<FiberEvent> CoreWorker::PrepareYieldCurrentFiber() {
-  RAY_CHECK(worker_context_.CurrentActorIsAsync());
-  return std::make_shared<FiberEvent>();
-}
-
-void CoreWorker::YieldCurrentFiber(std::shared_ptr<FiberEvent> event) {
+void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
-  event->Wait();
+  event.Wait();
 }
 
 }  // namespace ray
