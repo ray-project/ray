@@ -255,12 +255,12 @@ class TestSuiteFactory {
       std::shared_ptr<CoreWorker> worker, std::shared_ptr<TestInitMessage> message) {
     std::shared_ptr<StreamingQueueTestSuite> test_suite = nullptr;
     std::string suite_name = message->TestSuiteName();
-    queue::flatbuf::StreamingQueueTestRole role = message->Role();
+    ray::streaming::queue::protobuf::StreamingQueueTestRole role = message->Role();
     const std::vector<ObjectID> &queue_ids = message->QueueIds();
     const std::vector<ObjectID> &rescale_queue_ids = message->RescaleQueueIds();
     ActorID peer_actor_id = message->PeerActorId();
 
-    if (role == queue::flatbuf::StreamingQueueTestRole::WRITER) {
+    if (role == ray::streaming::queue::protobuf::StreamingQueueTestRole::WRITER) {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueWriterTestSuite>(
             worker, peer_actor_id, queue_ids, rescale_queue_ids);
@@ -359,8 +359,8 @@ class StreamingWorker {
     STREAMING_CHECK(*magic_num == Message::MagicNum);
 
     p_cur += sizeof(Message::MagicNum);
-    queue::flatbuf::MessageType *type = (queue::flatbuf::MessageType *)p_cur;
-    STREAMING_CHECK(*type == queue::flatbuf::MessageType::StreamingQueueTestInitMessage);
+    queue::protobuf::StreamingQueueMessageType *type = (queue::protobuf::StreamingQueueMessageType *)p_cur;
+    STREAMING_CHECK(*type == queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType);
     std::shared_ptr<TestInitMessage> message = TestInitMessage::FromBytes(bytes);
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();

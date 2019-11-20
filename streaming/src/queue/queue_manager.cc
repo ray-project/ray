@@ -194,25 +194,25 @@ std::shared_ptr<Message> QueueManager::ParseMessage(
   STREAMING_CHECK(*magic_num == Message::MagicNum) << *magic_num << " " << Message::MagicNum;
 
   p_cur += sizeof(Message::MagicNum);
-  queue::flatbuf::MessageType *type = (queue::flatbuf::MessageType *)p_cur;
+  ray::streaming::queue::protobuf::StreamingQueueMessageType *type = (ray::streaming::queue::protobuf::StreamingQueueMessageType *)p_cur;
 
   std::shared_ptr<Message> message = nullptr;
   switch (*type) {
-  case queue::flatbuf::MessageType::StreamingQueueNotificationMsg:
+  case ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType:
     message = NotificationMessage::FromBytes(bytes);
     break;
-  case queue::flatbuf::MessageType::StreamingQueueDataMsg:
+  case ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType:
     message = DataMessage::FromBytes(bytes);
     break;
-  case queue::flatbuf::MessageType::StreamingQueueCheckMsg:
+  case ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType:
     message = CheckMessage::FromBytes(bytes);
     break;
-  case queue::flatbuf::MessageType::StreamingQueueCheckRspMsg:
+  case ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType:
     message = CheckRspMessage::FromBytes(bytes);
     break;
   default:
     STREAMING_CHECK(false) << "nonsupport message type: "
-                           << queue::flatbuf::EnumNameMessageType(*type);
+                           << ray::streaming::queue::protobuf::StreamingQueueMessageType_Name(*type);
     break;
   }
 
@@ -226,14 +226,14 @@ void QueueManager::DispatchMessageInternal(
   STREAMING_LOG(DEBUG) << "QueueManager::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
                        << " peer actorid: " << msg->PeerActorId()
-                       << " type: " << queue::flatbuf::EnumNameMessageType(msg->Type());
+                       << " type: " << ray::streaming::queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
 
-  if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueNotificationMsg) {
+  if (msg->Type() == ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType) {
     auto queue = upstream_queues_.find(msg->QueueId());
     if (queue == upstream_queues_.end()) {
         std::shared_ptr<NotificationMessage> notify_msg = 
           std::dynamic_pointer_cast<NotificationMessage>(msg);
-      STREAMING_LOG(WARNING) << "Can not find queue for " << queue::flatbuf::EnumNameMessageType(msg->Type())
+      STREAMING_LOG(WARNING) << "Can not find queue for " << ray::streaming::queue::protobuf::StreamingQueueMessageType_Name(msg->Type())
                              << ", maybe queue has been destroyed, ignore it."
                              << " seq id: " << notify_msg->SeqId();
       return;
@@ -242,11 +242,11 @@ void QueueManager::DispatchMessageInternal(
         std::dynamic_pointer_cast<NotificationMessage>(msg);
 
     queue->second->OnNotify(notify_msg);
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueDataMsg) {
+  } else if (msg->Type() == ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType) {
     auto queue = downstream_queues_.find(msg->QueueId());
     if (queue == downstream_queues_.end()) {
       std::shared_ptr<DataMessage> data_msg = std::dynamic_pointer_cast<DataMessage>(msg);
-      STREAMING_LOG(WARNING) << "Can not find queue for " << queue::flatbuf::EnumNameMessageType(msg->Type())
+      STREAMING_LOG(WARNING) << "Can not find queue for " << ray::streaming::queue::protobuf::StreamingQueueMessageType_Name(msg->Type())
                              << ", maybe queue has been destroyed, ignore it."
                              << " seq id: " << data_msg->SeqId();
       return;
@@ -255,18 +255,18 @@ void QueueManager::DispatchMessageInternal(
 
     QueueItem item(data_msg);
     queue->second->OnData(item);
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueCheckMsg) {
+  } else if (msg->Type() == ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType) {
     std::shared_ptr<LocalMemoryBuffer> check_result =
         this->OnCheckQueue(std::dynamic_pointer_cast<CheckMessage>(msg));
     if (callback != nullptr) {
       callback(check_result);
     }
-  } else if (msg->Type() == queue::flatbuf::MessageType::StreamingQueueCheckRspMsg) {
+  } else if (msg->Type() == ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType) {
     this->OnCheckQueueRsp(std::dynamic_pointer_cast<CheckRspMessage>(msg));
     STREAMING_CHECK(false) << "Should not receive StreamingQueueCheckRspMsg";
   } else {
     STREAMING_CHECK(false) << "message type should be added: "
-                           << queue::flatbuf::EnumNameMessageType(msg->Type());
+                           << ray::streaming::queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
   }
 }
 
@@ -350,13 +350,13 @@ bool QueueManager::CheckQueueSync(const ObjectID &queue_id, QueueType type) {
 
   std::shared_ptr<Message> result_msg = ParseMessage(result_buffer);
   STREAMING_CHECK(result_msg->Type() ==
-                  queue::flatbuf::MessageType::StreamingQueueCheckRspMsg);
+                  ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType);
   std::shared_ptr<CheckRspMessage> check_rsp_msg =
       std::dynamic_pointer_cast<CheckRspMessage>(result_msg);
   STREAMING_LOG(INFO) << "CheckQueueSync return queue_id: " << check_rsp_msg->QueueId();
   STREAMING_CHECK(check_rsp_msg->PeerActorId() == actor_id_);
 
-  return queue::flatbuf::StreamingQueueError::OK == check_rsp_msg->Error();
+  return ray::streaming::queue::protobuf::StreamingQueueError::OK == check_rsp_msg->Error();
 }
 
 void QueueManager::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
@@ -422,13 +422,13 @@ void QueueManager::Stop() {
 
 std::shared_ptr<LocalMemoryBuffer> QueueManager::OnCheckQueue(
     std::shared_ptr<CheckMessage> check_msg) {
-  queue::flatbuf::StreamingQueueError err_code = queue::flatbuf::StreamingQueueError::OK;
+  ray::streaming::queue::protobuf::StreamingQueueError err_code = ray::streaming::queue::protobuf::StreamingQueueError::OK;
   auto up_queue = upstream_queues_.find(check_msg->QueueId());
   if (up_queue == upstream_queues_.end()) {
     auto down_queue = downstream_queues_.find(check_msg->QueueId());
     if (down_queue == downstream_queues_.end()) {
       STREAMING_LOG(WARNING) << "OnCheckQueue " << check_msg->QueueId() << " not found.";
-      err_code = queue::flatbuf::StreamingQueueError::QUEUE_NOT_EXIST;
+      err_code = ray::streaming::queue::protobuf::StreamingQueueError::QUEUE_NOT_EXIST;
     }
   }
 
@@ -445,7 +445,7 @@ void QueueManager::OnCheckQueueRsp(std::shared_ptr<CheckRspMessage> check_rsp_ms
   auto it = check_queue_requests_.find(check_rsp_msg->QueueId());
   STREAMING_CHECK(it != check_queue_requests_.end());
 
-  it->second.callback_(queue::flatbuf::StreamingQueueError::OK == check_rsp_msg->Error());
+  it->second.callback_(ray::streaming::queue::protobuf::StreamingQueueError::OK == check_rsp_msg->Error());
 }
 
 void QueueManager::ReleaseAllUpQueues() {

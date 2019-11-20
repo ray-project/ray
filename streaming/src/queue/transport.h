@@ -9,7 +9,7 @@
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
 #include "streaming_logging.h"
-#include "queue/streaming_queue_generated.h"
+#include "queue/streaming_queue.pb.h"
 
 namespace ray {
 namespace streaming {
@@ -28,11 +28,11 @@ class Message {
   virtual ActorID ActorId() { return actor_id_; }
   virtual ActorID PeerActorId() { return peer_actor_id_; }
   virtual ObjectID QueueId() { return queue_id_; }
-  virtual queue::flatbuf::MessageType Type() = 0;
+  virtual queue::protobuf::StreamingQueueMessageType Type() = 0;
   std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
   virtual std::unique_ptr<LocalMemoryBuffer> ToBytes();
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder) = 0;
+  virtual void ConstructProtoBuf(std::string *output) = 0;
 
  protected:
   ActorID actor_id_;
@@ -52,18 +52,18 @@ class DataMessage : public Message {
   virtual ~DataMessage() {}
 
   static std::shared_ptr<DataMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
+  virtual void ConstructProtoBuf(std::string *output);
 
   uint64_t SeqId() { return seq_id_; }
   bool IsRaw() { return raw_; }
-  queue::flatbuf::MessageType Type() { return type_; }
+  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   uint64_t seq_id_;
   bool raw_;
 
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueDataMsg;
+  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
+      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType;
 };
 
 class NotificationMessage : public Message {
@@ -75,15 +75,15 @@ class NotificationMessage : public Message {
   virtual ~NotificationMessage() {}
 
   static std::shared_ptr<NotificationMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
+  virtual void ConstructProtoBuf(std::string *output);
 
   uint64_t SeqId() { return seq_id_; }
-  queue::flatbuf::MessageType Type() { return type_; }
+  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
   uint64_t seq_id_;
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueNotificationMsg;
+  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
+      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };
 
 class CheckMessage : public Message {
@@ -94,36 +94,36 @@ class CheckMessage : public Message {
   virtual ~CheckMessage() {}
 
   static std::shared_ptr<CheckMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
+  virtual void ConstructProtoBuf(std::string *output);
 
-  queue::flatbuf::MessageType Type() { return type_; }
+  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueCheckMsg;
+  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
+      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType;
 };
 
 class CheckRspMessage : public Message {
  public:
   CheckRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                  const ObjectID &queue_id, queue::flatbuf::StreamingQueueError err_code)
+                  const ObjectID &queue_id, queue::protobuf::StreamingQueueError err_code)
       : Message(actor_id, peer_actor_id, queue_id), err_code_(err_code) {}
   virtual ~CheckRspMessage() {}
 
   static std::shared_ptr<CheckRspMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
-  queue::flatbuf::MessageType Type() { return type_; }
-  queue::flatbuf::StreamingQueueError Error() { return err_code_; }
+  virtual void ConstructProtoBuf(std::string *output);
+  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
+  queue::protobuf::StreamingQueueError Error() { return err_code_; }
 
  private:
-  queue::flatbuf::StreamingQueueError err_code_;
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueCheckRspMsg;
+  queue::protobuf::StreamingQueueError err_code_;
+  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
+      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType;
 };
 
 class TestInitMessage : public Message {
  public:
-  TestInitMessage(const queue::flatbuf::StreamingQueueTestRole role,
+  TestInitMessage(const queue::protobuf::StreamingQueueTestRole role,
               const ActorID &actor_id, const ActorID &peer_actor_id,
               const std::string actor_handle_serialized, 
               const std::vector<ObjectID> &queue_ids, const std::vector<ObjectID> &rescale_queue_ids,
@@ -135,10 +135,10 @@ class TestInitMessage : public Message {
   virtual ~TestInitMessage() {}
 
   static std::shared_ptr<TestInitMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
-  queue::flatbuf::MessageType Type() { return type_; }
+  virtual void ConstructProtoBuf(std::string *output);
+  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   std::string ActorHandleSerialized() { return actor_handle_serialized_; }
-  queue::flatbuf::StreamingQueueTestRole Role() { return role_; }
+  queue::protobuf::StreamingQueueTestRole Role() { return role_; }
   std::vector<ObjectID> QueueIds() { return queue_ids_; }
   std::vector<ObjectID> RescaleQueueIds() { return rescale_queue_ids_; }
   std::string TestSuiteName() { return test_suite_name_; }
@@ -159,19 +159,19 @@ class TestInitMessage : public Message {
       os << qid << ",";
     }
     os << "],";
-    os << " role:" << queue::flatbuf::EnumNameStreamingQueueTestRole(role_);
+    os << " role:" << queue::protobuf::StreamingQueueTestRole_Name(role_);
     os << " suite_name: " << test_suite_name_;
     os << " test_name: " << test_name_;
     os << " param: " << param_;
     return os.str();
   }
  private:
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueTestInitMessage;
+  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
+      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType;
   std::string actor_handle_serialized_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
-  queue::flatbuf::StreamingQueueTestRole role_;
+  queue::protobuf::StreamingQueueTestRole role_;
   std::string test_suite_name_;
   std::string test_name_;
   uint64_t param_;
@@ -184,14 +184,14 @@ class TestCheckStatusRspMsg : public Message {
   virtual ~TestCheckStatusRspMsg() {}
 
   static std::shared_ptr<TestCheckStatusRspMsg> FromBytes(uint8_t *bytes);
-  virtual void ConstructFlatBuf(flatbuffers::FlatBufferBuilder &builder);
-  queue::flatbuf::MessageType Type() { return type_; }
+  virtual void ConstructProtoBuf(std::string *output);
+  queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   std::string TestName() { return test_name_; }
   bool Status() { return status_; }
 
  private:
-  const queue::flatbuf::MessageType type_ =
-      queue::flatbuf::MessageType::StreamingQueueTestCheckStatusRspMsg;
+  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
+      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueTestCheckStatusRspMsgType;
   std::string test_name_;
   bool status_;
 };

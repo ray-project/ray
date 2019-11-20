@@ -113,7 +113,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   void InitWorker(CoreWorker &driver, ActorID &self_actor_id, ActorID &peer_actor_id,
-                  const queue::flatbuf::StreamingQueueTestRole role,
+                  const queue::protobuf::StreamingQueueTestRole role,
                   const std::vector<ObjectID> &queue_ids,
                   const std::vector<ObjectID> &rescale_queue_ids, std::string suite_name,
                   std::string test_name, uint64_t param) {
@@ -199,9 +199,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_CHECK(*magic_num == Message::MagicNum);
 
     p_cur += sizeof(Message::MagicNum);
-    queue::flatbuf::MessageType *type = (queue::flatbuf::MessageType *)p_cur;
+    queue::protobuf::StreamingQueueMessageType *type = (queue::protobuf::StreamingQueueMessageType *)p_cur;
     STREAMING_CHECK(*type ==
-                    queue::flatbuf::MessageType::StreamingQueueTestCheckStatusRspMsg);
+                    queue::protobuf::StreamingQueueMessageType::StreamingQueueTestCheckStatusRspMsgType);
     std::shared_ptr<TestCheckStatusRspMsg> message =
         TestCheckStatusRspMsg::FromBytes(bytes);
     STREAMING_CHECK(message->TestName() == test_name);
@@ -265,10 +265,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     auto actor_id_reader = CreateActorHelper(driver, resources, true, 0);
 
     InitWorker(driver, actor_id_writer, actor_id_reader,
-               queue::flatbuf::StreamingQueueTestRole::WRITER, queue_id_vec,
+               queue::protobuf::StreamingQueueTestRole::WRITER, queue_id_vec,
                rescale_queue_id_vec, suite_name, test_name, GetParam());
     InitWorker(driver, actor_id_reader, actor_id_writer,
-               queue::flatbuf::StreamingQueueTestRole::READER, queue_id_vec,
+               queue::protobuf::StreamingQueueTestRole::READER, queue_id_vec,
                rescale_queue_id_vec, suite_name, test_name, GetParam());
 
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));

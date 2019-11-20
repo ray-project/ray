@@ -22,11 +22,14 @@ cc_proto_library(
     deps = [":streaming_proto"],
 )
 
-flatbuffer_cc_library(
-    name = "streaming_queue_fbs",
-    srcs = ["queue/streaming_queue.fbs"],
-    flatc_args = FLATC_ARGS,
-    out_prefix = "queue/",
+proto_library(
+    name = "streaming_queue_proto",
+    srcs = ["queue/streaming_queue.proto"],
+)
+
+cc_proto_library(
+    name = "streaming_queue_cc_proto",
+    deps = ["streaming_queue_proto"],
 )
 
 cc_library(
@@ -43,7 +46,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":streaming_cc_proto",
-        ":streaming_queue_fbs",
+        ":streaming_queue_cc_proto",
         "//:core_worker_lib",
         "//:ray_common",
         "//:ray_util",
