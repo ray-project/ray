@@ -76,7 +76,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
 class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
-    def __init__(self, out_dim, num_heads, head_dim):
+    def __init__(self, out_dim, num_heads, head_dim, rel_pos_encoder):
         # no bias or non-linearity
         self._num_heads = num_heads
         self._head_dim = head_dim
@@ -87,19 +87,22 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
                                   use_bias=False))
         self._layer_norm = tf.keras.layers.LayerNormalization(axis=-1)
 
-        self._pos_proj = tf.keras.layers.Dense(num_heads * head_dim,
-                                               use_bias=False)
-
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
 
-    def call(self, inputs, memory, rel_pos_encoder):
+        self._pos_proj = tf.keras.layers.Dense(num_heads * head_dim,
+                                               use_bias=False)
+        self._rel_pos_encoder = rel_pos_encoder
+
+    def call(self, inputs, memory=None):
         L = inputs.shape[0]  # length of segment
         H = self._num_heads  # number of attention heads
         D = self._head_dim  # attention head dimension
         M = memory.shape[0]  # length of the memory segment
 
-        inputs = np.concatenate((memory, inputs), axis=-1)
+        if memory is not None:
+            inputs = np.concatenate((memory, inputs), axis=-1)
+
         qkv = self._qkv_encoder(inputs)
 
         queries, keys, values = tf.split(qkv, 3, -1)
@@ -109,7 +112,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         keys = tf.reshape(keys, [L + memory.shape[0], -1, H, D])
         values = tf.reshape(values, [L + memory.shape[0], -1, H, D])
 
-        rel = self._pos_proj(rel_pos_encoder)
+        rel = self._pos_proj(self._rel_pos_encoder)
         rel = tf.reshape(rel, [-1, H, D])
 
         score = tf.einsum("ibhd,jbhd->ijbh", queries + self._uvar, keys)
@@ -128,6 +131,22 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         out = inputs + self._linear_layer(out)
 
         return self._layer_norm(out)
+
+
+class PositionwiseFeedforward(tf.keras.layers.Layer):
+
+    def __init__(self, out_dim, hidden_dim):
+        self._hidden_layer = tf.keras.layers.Dense(
+            hidden_dim,
+            activation=tf.nn.relu,
+        )
+        self._output_layer = tf.keras.layers.Dense(out_dim)
+        self._layer_norm = tf.keras.layers.LayerNormalization(axis=-1)
+
+    def call(self, inputs, **kwargs):
+        output = self._hidden_layer(inputs)
+        output = self._output_layer(output)
+        return self._layer_norm(output + inputs)
 
 
 class TransformerXL(TFModelV2):
