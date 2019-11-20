@@ -392,6 +392,8 @@ class CoreWorkerDirectTaskReceiver {
   std::unordered_map<TaskID, std::unique_ptr<SchedulingQueue>> scheduling_queue_;
   /// The max number of concurrent calls to allow.
   int max_concurrency_ = 1;
+  /// Whether we are shutting down and not running further tasks.
+  bool exiting_ = false;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
 };
