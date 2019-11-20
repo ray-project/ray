@@ -1459,7 +1459,11 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   leased_workers_.erase(worker_port);
   Status status;
   if (worker) {
-    HandleWorkerAvailable(worker);
+    if (request.disconnect_worker()) {
+      ProcessDisconnectClientMessage(worker->Connection());
+    } else {
+      HandleWorkerAvailable(worker);
+    }
   } else {
     status = Status::Invalid("Returned worker does not exist");
   }
