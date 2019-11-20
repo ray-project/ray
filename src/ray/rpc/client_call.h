@@ -188,21 +188,20 @@ class ClientCallManager {
   void PollEventsFromCompletionQueue(int index) {
     void *got_tag;
     bool ok = false;
-    auto deadline = gpr_time_from_millis(250, GPR_CLOCK_REALTIME);
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
     // synchronous cq_.Next blocks indefinitely in the case that the process
     // received a SIGTERM.
     while (true) {
+      auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                                   gpr_time_from_millis(250, GPR_TIMESPAN));
       auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
-      // Don't run handlers once shutdown. Note that we only get SHUTDOWN after
-      // all existing events have drained after initial shutdown.
-      if (shutdown_ || status == grpc::CompletionQueue::SHUTDOWN) {
+      if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       }
       if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-        if (ok && !main_service_.stopped()) {
+        if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post([tag]() {
             tag->GetCall()->OnReplyReceived();
