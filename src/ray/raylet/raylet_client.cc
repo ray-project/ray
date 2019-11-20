@@ -392,6 +392,10 @@ ray::Status RayletClient::ReturnWorker(int worker_port) {
   request.set_worker_port(worker_port);
   return grpc_client_->ReturnWorker(
       request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
-        RAY_CHECK_OK(status);
+        if (status.IsInvalid()) {
+          RAY_LOG(ERROR) << "A worker died before we could return it to the scheduler";
+        } else {
+          RAY_CHECK_OK(status);
+        }
       });
 }

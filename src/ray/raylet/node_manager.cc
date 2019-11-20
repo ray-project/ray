@@ -1169,6 +1169,10 @@ void NodeManager::ProcessDisconnectClientMessage(
 
     // Since some resources may have been released, we can try to dispatch more tasks.
     DispatchTasks(local_queues_.GetReadyTasksByClass());
+
+    // Remove the worker's lease. If the lessee tries to return it, it will get
+    // an error status.
+    leased_workers_.erase(worker->Port());
   } else if (is_driver) {
     // The client is a driver.
     const auto job_id = worker->GetAssignedJobId();

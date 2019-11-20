@@ -54,10 +54,12 @@ class MessageWrapper {
 
 /// Helper function that converts a ray status to gRPC status.
 inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
+  // TODO(hchen): Cover all ray <> grpc error code translations.
   if (ray_status.ok()) {
     return grpc::Status::OK;
+  } else if (ray_status.IsInvalid()) {
+    return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, ray_status.message());
   } else {
-    // TODO(hchen): Use more specific error code.
     return grpc::Status(grpc::StatusCode::UNKNOWN, ray_status.message());
   }
 }
@@ -66,6 +68,8 @@ inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
 inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   if (grpc_status.ok()) {
     return Status::OK();
+  } else if (grpc_status.error_code() == grpc::StatusCode::FAILED_PRECONDITION) {
+    return Status::Invalid(grpc_status.error_message());
   } else {
     std::stringstream msg;
     msg << grpc_status.error_code();
