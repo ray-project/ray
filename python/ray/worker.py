@@ -849,6 +849,7 @@ atexit.register(shutdown, True)
 def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
+
 try:
     signal.signal(signal.SIGTERM, sigterm_handler)
 except ValueError:
