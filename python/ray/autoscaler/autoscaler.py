@@ -45,7 +45,7 @@ COMMANDS_SCHEMA = (
         "common": (list, OPTIONAL),
         # Head node only.
         "head": (list, OPTIONAL),
-        # Worker nodes only
+        # Worker nodes only.
         "worker": (list, OPTIONAL),
     },
     OPTIONAL)
