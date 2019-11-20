@@ -13,7 +13,6 @@ StreamingMessageBundle::StreamingMessageBundle(uint64_t last_offset_seq_id,
                                                uint64_t message_bundle_ts)
     : StreamingMessageBundleMeta(message_bundle_ts, last_offset_seq_id, 0,
                                  StreamingMessageBundleType::Empty) {
-  // empty message
   this->raw_bundle_size_ = 0;
 }
 

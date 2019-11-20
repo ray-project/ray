@@ -73,10 +73,6 @@ STREAMING_SERIALIZATION_IMP(StreamingMessage, serlizable_data) {
   std::memcpy(serlizable_data + byte_offset,
               reinterpret_cast<char *>(message_data_.get()), data_size_);
 
-  // STREAMING_LOG(DEBUG) << "serialization, seq id => " << seq_id_
-  //                << " seralization raw data => " << byte2hex(serlizable_data +
-  //                byte_offset,data_size_);
-
   byte_offset += data_size_;
 
   STREAMING_CHECK(byte_offset == this->ClassBytesSize());
