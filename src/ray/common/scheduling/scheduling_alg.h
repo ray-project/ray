@@ -6,38 +6,33 @@
 #include <unordered_map>
 #include <unordered_set>
 
-/// Maximum number of predefined resources.
-#define NUM_PREDIFINED_RESOURCES 4
 /// List of predefined resources.
-/// The number of elements in enum should be equal to NUM_PREDIFINED_RESOURCES.
-enum PredefinedResources {CPU = 0, MEM = 1, GPU = 2, TPU = 3};
+enum PredefinedResources {CPU, MEM, GPU, TPU, PredefinedResources_MAX};
 
-/// Total and available capacity of a resource instance.
 struct ResourceCapacity {
   int64_t total;
   int64_t available;
 };
 
-/// Resource request.
-struct ResourceReq {
+struct ResourceRequest {
   /// Amount of resource being requested.
   int64_t demand;
   /// Specify whether the request is soft or hard.
   /// If hard, the entire request is denied if the demand exceeds the resource
   /// availability. Otherwise, the request can be still be granted.
+  /// Prefernces are given to the nodes with the lowest number of violations.
   bool soft;
 };
 
 /// Resource request, including resource ID. This is used for custom resources.
-struct ResourceReqWithId {
+struct ResourceRequestWithId {
   /// Resource ID.
   int64_t id;
   /// Resource request.
-  ResourceReq req;
+  ResourceRequest req;
 };
 
 
-/// All resources associated with a node.
 struct NodeResources {
   /// Available and total capacities for predefined resources.
   std::vector<ResourceCapacity> capacities;
@@ -46,12 +41,11 @@ struct NodeResources {
   std::unordered_map<int64_t, ResourceCapacity> custom_resources;
 };
 
-/// Task request.
-struct TaskReq {
-  /// List of predefined resources.
-  std::vector<ResourceReq> predefined_resources;
-  /// List of custom resources.
-  std::vector<ResourceReqWithId> custom_resources;
+struct TaskRequest {
+  /// List of predefined resources required by the task.
+  std::vector<ResourceRequest> predefined_resources;
+  /// List of custom resources required by the tasl.
+  std::vector<ResourceRequestWithId> custom_resources;
   /// List of placement hints. A placement hint is a node on which
   /// we desire to run this task. This is a soft constraint in that
   /// the task will run on a different node in the cluster, if none of the
@@ -62,24 +56,40 @@ struct TaskReq {
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
-class ClusterResources {
+class ClusterResourceScheduler {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   std::unordered_map<int64_t, NodeResources> nodes_;
   /// ID of local node.
   int64_t local_node_id_;
 
+  /// Update predefined resources.
+  ///
+  /// \param old_resources: Predefined resources to be updated.
+  /// \parame new_resources: New predefined resources.
+  void UpdatePredefinedResources(NodeResources& old_resources,
+    const NodeResources& new_resources);
+
+  /// Update custom resources.
+  ///
+  /// \param old_resources: Custom resources to be updated.
+  /// \parame new_resources: New custom resources.
+  void UpdateCustomResources(
+    std::unordered_map<int64_t, ResourceCapacity>& old_custom_resources,
+    const std::unordered_map<int64_t, ResourceCapacity>& new_custom_resources);
+
+
 public:
-  ClusterResources(void) {};
+  ClusterResourceScheduler(void) {};
 
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
   /// \param node_resources: The total and the available resources associated
   /// with the local node.
-  ClusterResources(int64_t local_node_id, const NodeResources &node_resources);
+  ClusterResourceScheduler(int64_t local_node_id, const NodeResources &node_resources);
 
-  /// Add a new node, or update the resources of an existing node.
+  /// Add a new node or overwrite the resources of an existing node.
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
@@ -91,16 +101,18 @@ public:
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
 
-   /// Check whether a task request can be scheduled given a node's resources.
+   /// Check whether a task request can be scheduled given a node.
    ///
    ///  \param task_req: Task request to be scheduled.
-   ///  \param nr: Node's resources.
+   ///  \param node_id: ID of the node.
+   ///  \param resources: Node's resources.
    ///
    ///  \return: -1, if the request cannot be scheduled. This happens when at
    ///           least a hard constraints is violated.
    ///           >= 0, the number soft constraint violations. If 0, no
-   ///           constraint is violatede.
-  int64_t IsSchedulable(const TaskReq &task_req, const NodeResources &nr);
+   ///           constraint is violated.
+  int64_t IsSchedulable(const TaskRequest &task_req,
+    int64_t node_id, const NodeResources &resources);
 
    ///  Find a node in the cluster on which we can schedule a given task request.
    ///
@@ -125,7 +137,7 @@ public:
    ///
    ///  \return -1, if no node can schedule the current request; otherwise,
    ///          return the ID of a node that can schedule the task request.
-  int64_t GetSchedulableNode(const TaskReq &task_req, int64_t *violations);
+  int64_t GetBestSchedulableNode(const TaskRequest &task_req, int64_t *violations);
 
   /// Update the available resources of a node when a task request is
   /// scheduled on the given node.
@@ -135,13 +147,13 @@ public:
   ///
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
-  bool UpdateNodeAvailableResources(int64_t node_id, const TaskReq &task_req);
+  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
 
   /// Return a pointer to the resources associated to the given node.
   NodeResources* GetNodeResources(int64_t node_id);
 
   /// Get number of nodes in the cluster.
-  int64_t Count();
+  int64_t NumNodes();
 };
 
 #endif // RAY_COMMON_SCHEDULING_SCHEDULING_H
