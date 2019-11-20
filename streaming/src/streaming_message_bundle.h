@@ -25,23 +25,30 @@ class StreamingMessageBundle;
 typedef std::shared_ptr<StreamingMessageBundle> StreamingMessageBundlePtr;
 typedef std::shared_ptr<StreamingMessageBundleMeta> StreamingMessageBundleMetaPtr;
 
-/*
-        +--------------------+
-        | MagicNum=U32       |
-        +--------------------+
-        | BundleTs=U64       |
-        +--------------------+
-        | LastMessageId=U64  |
-        +--------------------+
-        | MessageListSize=U32|
-        +--------------------+
-        | BundleType=U32     |
-        +--------------------+
-        | RawBundleSize=U32  |
-        +--------------------+
-        | RawData=var(N*Msg) |
-        +--------------------+
-*/
+///  Message bundle protocol:
+///  MagicNum = 0xcafebaba
+///  Timestamp 64bits timestamp (milliseconds from 1970)
+///  LastMessageId( the last id of bundle) (0,INF]
+///  MessageListSize(bundle len of message)
+///  BundleType(a. bundle = 3 , b. barrier =2, c. empty = 1)
+///  RawBundleSize（binary length of data)
+///  RawData ( binary data)
+///
+///   +--------------------+
+///   | MagicNum=U32       |
+///   +--------------------+
+///   | BundleTs=U64       |
+///   +--------------------+
+///   | LastMessageId=U64  |
+///   +--------------------+
+///   | MessageListSize=U32|
+///   +--------------------+
+///   | BundleType=U32     |
+///   +--------------------+
+///   | RawBundleSize=U32  |
+///   +--------------------+
+///   | RawData=var(N*Msg) |
+///   +--------------------+
 
 constexpr uint32_t kMessageBundleMetaHeaderSize = sizeof(uint32_t) + sizeof(uint32_t) +
                                                   sizeof(uint64_t) + sizeof(uint64_t) +
@@ -107,26 +114,31 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
   std::list<StreamingMessagePtr> message_list_;
 
  public:
-  explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &&, uint64_t, uint64_t,
-                                  StreamingMessageBundleType, uint32_t raw_data_size = 0);
+  explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &&message_list,
+                                  uint64_t bundle_ts, uint64_t offset,
+                                  StreamingMessageBundleType bundle_type,
+                                  uint32_t raw_data_size = 0);
 
   // Duplicated copy if left reference in constructor.
-  explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &, uint64_t, uint64_t,
-                                  StreamingMessageBundleType, uint32_t raw_data_size = 0);
+  explicit StreamingMessageBundle(std::list<StreamingMessagePtr> &message_list,
+                                  uint64_t bundle_ts, uint64_t offset,
+                                  StreamingMessageBundleType bundle_type,
+                                  uint32_t raw_data_size = 0);
 
+  // New a empty bundle by passing last message id and timestamp.
   explicit StreamingMessageBundle(uint64_t, uint64_t);
 
-  explicit StreamingMessageBundle(StreamingMessageBundle &);
+  explicit StreamingMessageBundle(StreamingMessageBundle &bundle);
 
   virtual ~StreamingMessageBundle() = default;
 
   inline uint32_t GetRawBundleSize() const { return raw_bundle_size_; }
 
-  bool operator==(StreamingMessageBundle &) const;
+  bool operator==(StreamingMessageBundle &bundle) const;
 
-  bool operator==(StreamingMessageBundle *) const;
+  bool operator==(StreamingMessageBundle *bundle_ptr) const;
 
-  void GetMessageList(std::list<StreamingMessagePtr> &);
+  void GetMessageList(std::list<StreamingMessagePtr> &message_list);
 
   const std::list<StreamingMessagePtr> &GetMessageList() const { return message_list_; }
 
@@ -135,10 +147,12 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 
   STREAMING_SERIALIZATION_LENGTH { return kMessageBundleHeaderSize + raw_bundle_size_; };
 
-  static void GetMessageListFromRawData(const uint8_t *, uint32_t, uint32_t,
-                                        std::list<StreamingMessagePtr> &);
-  static void ConvertMessageListToRawData(const std::list<StreamingMessagePtr> &,
-                                          uint32_t, uint8_t *);
+  static void GetMessageListFromRawData(const uint8_t *bytes, uint32_t bytes_size,
+                                        uint32_t message_list_size,
+                                        std::list<StreamingMessagePtr> &message_list);
+  static void ConvertMessageListToRawData(
+      const std::list<StreamingMessagePtr> &message_list, uint32_t raw_data_size,
+      uint8_t *raw_data);
 };
 }  // namespace streaming
 }  // namespace ray

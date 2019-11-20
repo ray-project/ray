@@ -22,19 +22,18 @@ enum class StreamingMessageType : uint32_t {
 constexpr uint32_t kMessageHeaderSize =
     sizeof(uint32_t) + sizeof(uint64_t) + sizeof(StreamingMessageType);
 
-/*
-        +----------------+
-        | DataSize=U32   |
-        +----------------+
-        | MessageId=U64  |
-        +----------------+
-        | MessageType=U32|
-        +----------------+
-        | Data=var       |
-        +----------------+
-  Data contains barrier header and carried buffer if message type is
-  global/partial barrier.
-*/
+/// All messages should be wrapped by this protocol.
+//  DataSize means length of raw data, message id is increasing from [1, +INF].
+//  MessageType will be used for barrier transporting and checkpoint.
+///      +----------------+
+///      | DataSize=U32   |
+///      +----------------+
+///      | MessageId=U64  |
+///      +----------------+
+///      | MessageType=U32|
+///      +----------------+
+///      | Data=var       |
+///      +----------------+
 
 class StreamingMessage : public StreamingSerializable {
  private:
@@ -44,19 +43,27 @@ class StreamingMessage : public StreamingSerializable {
   uint64_t message_id_;
 
  public:
-  /*!
-   * @brief
-   * @param data raw data from user buffer
-   * @param data_size raw data size
-   * @param seq_id message id
-   * @param message_type
-   */
+  /// Copy raw data from outside shared buffer.
+  /// \param data raw data from user buffer
+  /// \param data_size raw data size
+  /// \param seq_id message id
+  /// \param message_type
   StreamingMessage(std::shared_ptr<uint8_t> &data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 
+  /// Move outsite raw data to message data.
+  /// \param data raw data from user buffer
+  /// \param data_size raw data size
+  /// \param seq_id message id
+  /// \param message_type
   StreamingMessage(std::shared_ptr<uint8_t> &&data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 
+  /// Copy raw data from outside buffer.
+  /// \param data raw data from user buffer
+  /// \param data_size raw data size
+  /// \param seq_id message id
+  /// \param message_type
   StreamingMessage(const uint8_t *data, uint32_t data_size, uint64_t seq_id,
                    StreamingMessageType message_type);
 

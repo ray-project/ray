@@ -13,13 +13,13 @@ FLATC_ARGS = [
 
 filegroup(
     name = "streaming_fbs_file",
-    srcs = ["format/streaming.fbs"],
+    srcs = ["streaming.fbs"],
     visibility = ["//visibility:public"],
 )
 
 flatbuffer_cc_library(
     name = "streaming_fbs",
-    srcs = ["format/streaming.fbs"],
+    srcs = ["streaming.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "format/",
 )
