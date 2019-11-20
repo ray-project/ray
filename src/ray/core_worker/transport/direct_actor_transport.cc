@@ -260,60 +260,71 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
                                   task_main_io_service_, *waiter_, pool_)));
     it = result.first;
   }
+
+  auto accept_callback = [this, reply, send_reply_callback, task_spec]() {
+    // We have posted an exit task onto the main event loop,
+    // so shouldn't bother executing any further work.
+    if (exiting_) return;
+
+    auto num_returns = task_spec.NumReturns();
+    RAY_CHECK(num_returns > 0);
+    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
+      // Decrease to account for the dummy object id.
+      num_returns--;
+    }
+
+    // TODO(edoakes): resource IDs are currently kept track of in the
+    // raylet, need to come up with a solution for this.
+    ResourceMappingType resource_ids;
+    std::vector<std::shared_ptr<RayObject>> return_objects;
+    auto status = task_handler_(task_spec, resource_ids, &return_objects);
+    bool objects_valid = return_objects.size() == num_returns;
+    if (objects_valid) {
+      for (size_t i = 0; i < return_objects.size(); i++) {
+        auto return_object = reply->add_return_objects();
+        ObjectID id = ObjectID::ForTaskReturn(
+            task_spec.TaskId(), /*index=*/i + 1,
+            /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
+        return_object->set_object_id(id.Binary());
+
+        // The object is nullptr if it already existed in the object store.
+        const auto &result = return_objects[i];
+        if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
+          return_object->set_in_plasma(true);
+        } else {
+          if (result->GetData() != nullptr) {
+            return_object->set_data(result->GetData()->Data(), result->GetData()->Size());
+          }
+          if (result->GetMetadata() != nullptr) {
+            return_object->set_metadata(result->GetMetadata()->Data(),
+                                        result->GetMetadata()->Size());
+          }
+        }
+      }
+    }
+    if (status.IsSystemExit()) {
+      // In Python, SystemExit can only be raised on the main thread. To
+      // work around this when we are executing tasks on worker threads,
+      // we re-post the exit event explicitly on the main thread.
+      exiting_ = true;
+      if (objects_valid) {
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      } else {
+        send_reply_callback(Status::SystemExit(), nullptr, nullptr);
+      }
+      task_main_io_service_.post([this]() { exit_handler_(); });
+    } else {
+      RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
+      send_reply_callback(status, nullptr, nullptr);
+    }
+  };
+
+  auto reject_callback = [send_reply_callback]() {
+    send_reply_callback(Status::Invalid("client cancelled stale rpc"), nullptr, nullptr);
+  };
+
   it->second->Add(request.sequence_number(), request.client_processed_up_to(),
-                  [this, reply, send_reply_callback, task_spec]() {
-                    auto num_returns = task_spec.NumReturns();
-                    RAY_CHECK(num_returns > 0);
-                    if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
-                      // Decrease to account for the dummy object id.
-                      num_returns--;
-                    }
-
-                    // TODO(edoakes): resource IDs are currently kept track of in the
-                    // raylet, need to come up with a solution for this.
-                    ResourceMappingType resource_ids;
-                    std::vector<std::shared_ptr<RayObject>> return_objects;
-                    auto status = task_handler_(task_spec, resource_ids, &return_objects);
-                    if (status.IsSystemExit()) {
-                      // In Python, SystemExit can only be raised on the main thread. To
-                      // work around this when we are executing tasks on worker threads,
-                      // we re-post the exit event explicitly on the main thread.
-                      task_main_io_service_.post([this]() { exit_handler_(); });
-                      return;
-                    }
-                    RAY_CHECK(return_objects.size() == num_returns)
-                        << return_objects.size() << "  " << num_returns;
-
-                    for (size_t i = 0; i < return_objects.size(); i++) {
-                      auto return_object = reply->add_return_objects();
-                      ObjectID id = ObjectID::ForTaskReturn(
-                          task_spec.TaskId(), /*index=*/i + 1,
-                          /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
-                      return_object->set_object_id(id.Binary());
-
-                      // The object is nullptr if it already existed in the object store.
-                      const auto &result = return_objects[i];
-                      if (result == nullptr || result->GetData()->IsPlasmaBuffer()) {
-                        return_object->set_in_plasma(true);
-                      } else {
-                        if (result->GetData() != nullptr) {
-                          return_object->set_data(result->GetData()->Data(),
-                                                  result->GetData()->Size());
-                        }
-                        if (result->GetMetadata() != nullptr) {
-                          return_object->set_metadata(result->GetMetadata()->Data(),
-                                                      result->GetMetadata()->Size());
-                        }
-                      }
-                    }
-
-                    send_reply_callback(status, nullptr, nullptr);
-                  },
-                  [send_reply_callback]() {
-                    send_reply_callback(Status::Invalid("client cancelled stale rpc"),
-                                        nullptr, nullptr);
-                  },
-                  dependencies);
+                  accept_callback, reject_callback, dependencies);
 }
 
 void CoreWorkerDirectTaskReceiver::HandleDirectActorCallArgWaitComplete(
