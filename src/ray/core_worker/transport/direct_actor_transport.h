@@ -66,8 +66,11 @@ struct ActorStateData {
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      rpc::ClientCallManager &client_call_manager,
-      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider);
+      rpc::ClientFactoryFn client_factory,
+      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
+      : client_factory_(client_factory),
+        in_memory_store_(store_provider),
+        resolver_(in_memory_store_) {}
 
   /// Submit a task to an actor for execution.
   ///
@@ -92,7 +95,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushActorTask(rpc::CoreWorkerClient &client,
+  void PushActorTask(rpc::CoreWorkerClientInterface &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
                      const ActorID &actor_id, const TaskID &task_id, int num_returns);
 
@@ -110,8 +113,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// The shared `ClientCallManager` object.
-  rpc::ClientCallManager &client_call_manager_;
+  /// Factory for producing new core worker clients.
+  rpc::ClientFactoryFn client_factory_;
 
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
@@ -124,7 +127,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClient>> rpc_clients_;
+  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      rpc_clients_;
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.

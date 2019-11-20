@@ -190,17 +190,16 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
+  auto client_factory = [this](const rpc::WorkerAddress &addr) {
+    return std::shared_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
+  };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(*client_call_manager_,
-                                             memory_store_provider_));
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_provider_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          raylet_client_,
-          [this](WorkerAddress addr) {
-            return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
-                addr.first, addr.second, *client_call_manager_));
-          },
+          raylet_client_, client_factory,
           [this](const rpc::Address &address) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(
                 address.ip_address(), address.port(), *client_call_manager_);

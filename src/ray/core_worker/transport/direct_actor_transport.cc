@@ -61,13 +61,6 @@ void WriteObjectsToMemoryStore(
   }
 }
 
-CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
-    rpc::ClientCallManager &client_call_manager,
-    std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-    : client_call_manager_(client_call_manager),
-      in_memory_store_(store_provider),
-      resolver_(in_memory_store_) {}
-
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
@@ -124,11 +117,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
   if (actor_data.state() == ActorTableData::ALIVE) {
     // Create a new connection to the actor.
     if (rpc_clients_.count(actor_id) == 0) {
-      std::shared_ptr<rpc::CoreWorkerClient> grpc_client =
-          std::make_shared<rpc::CoreWorkerClient>(actor_data.address().ip_address(),
-                                                  actor_data.address().port(),
-                                                  client_call_manager_);
-      rpc_clients_.emplace(actor_id, std::move(grpc_client));
+      rpc::WorkerAddress addr = {actor_data.address().ip_address(),
+                                 actor_data.address().port()};
+      rpc_clients_[actor_id] =
+          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
     }
     if (pending_requests_.count(actor_id) > 0) {
       SendPendingTasks(actor_id);
@@ -186,7 +178,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
-    rpc::CoreWorkerClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));

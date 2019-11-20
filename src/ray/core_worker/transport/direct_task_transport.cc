@@ -15,7 +15,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 }
 
 void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
-    const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
+    const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   // Setup client state for this worker.
   {
     absl::MutexLock lock(&mu_);
@@ -34,7 +34,7 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
   OnWorkerIdle(addr, /*error=*/false);
 }
 
-void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
+void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
                                                  bool was_error) {
   absl::MutexLock lock(&mu_);
   if (queued_tasks_.empty() || was_error) {
@@ -123,7 +123,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   worker_request_pending_ = true;
 }
 
-void CoreWorkerDirectTaskSubmitter::PushNormalTask(const WorkerAddress &addr,
+void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &addr,
                                                    rpc::CoreWorkerClientInterface &client,
                                                    TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
