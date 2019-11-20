@@ -23,7 +23,7 @@ commands:
         curl -o cifar-100-binary.tar.gz https://www.cs.toronto.edu/~kriz/cifar-100-binary.tar.gz;
         tar -xvf cifar-100-binary.tar.gz;
       fi
-      python resnet_main.py --dataset {{dataset}} --train_data_path {{train_data_path}} --eval_data_path {{eval_data_path}} --eval_dir {{eval_data_path}} --eval_batch_count {{eval_batch_count}} --num_gpus {{num_gpus}}
+      python resnet_main.py --dataset {{dataset}} --train-data-path {{train-data-path}} --eval-data-path {{eval-data-path}} --eval-dir {{eval-data-path}} --eval-batch-count {{eval-batch-count}} --num-gpus {{num-gpus}}
     params:
       - name: dataset
         help: "The dataset to train on."
