@@ -144,7 +144,8 @@ CLUSTER_CONFIG_SCHEMA = {
     # Commands that will be run when the cluster is first created.
     "node_setup_commands": COMMANDS_SCHEMA,
 
-    # Commands that will be run whenever a node is booted.
+    # Commands that will be run whenever a node is booted, including after
+    # `node_setup_commands` when the cluster is created.
     "node_restart_commands": COMMANDS_SCHEMA,
 
     # Commands that will be run whenever Ray is (re)started.
@@ -156,9 +157,13 @@ CLUSTER_CONFIG_SCHEMA = {
 }
 
 
-def get_commands(config, key, head):
-    """Get commands for a head or worker node under key `key`."""
-    kind_specific = "head" if head else "worker"
+def get_commands(config, key, is_head=False):
+    """Get commands for a head or worker node under key `key`.
+
+    This prepends `"common"` commands, that should run on head and worker,
+    to the head/worker specific config.
+    """
+    kind_specific = "head" if is_head else "worker"
     return config[key].get("common", []) + config[key].get(kind_specific, [])
 
 
@@ -566,9 +571,8 @@ class StandardAutoscaler(object):
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id in nodes:
-            item = self.should_update(node_id)
             (node_id, node_setup_commands, node_restart_commands,
-             ray_start) = item
+             ray_start) = self.should_update(node_id)
             if node_id is not None:
                 T.append(
                     threading.Thread(
@@ -677,7 +681,8 @@ class StandardAutoscaler(object):
             node_setup_commands=[],
             node_restart_commands=[],
             ray_restart_commands=with_head_node_ip(
-                get_commands(self.config, "ray_restart_commands", head=False)),
+                get_commands(
+                    self.config, "ray_restart_commands", is_head=False)),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
@@ -694,11 +699,11 @@ class StandardAutoscaler(object):
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         node_setup_commands = get_commands(
-            self.config, "node_setup_commands", head=False)
+            self.config, "node_setup_commands", is_head=False)
         node_restart_commands = get_commands(
-            self.config, "node_restart_commands", head=False)
+            self.config, "node_restart_commands", is_head=False)
         ray_restart_commands = get_commands(
-            self.config, "ray_restart_commands", head=False)
+            self.config, "ray_restart_commands", is_head=False)
         if successful_updated and self.config.get("restart_only", False):
             node_setup_commands = []
             node_restart_commands = []

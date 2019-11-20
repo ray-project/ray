@@ -235,11 +235,11 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             })
 
         node_setup_commands = get_commands(
-            config, "node_setup_commands", head=True)
+            config, "node_setup_commands", is_head=True)
         node_restart_commands = get_commands(
-            config, "node_restart_commands", head=True)
+            config, "node_restart_commands", is_head=True)
         ray_restart_commands = get_commands(
-            config, "ray_restart_commands", head=True)
+            config, "ray_restart_commands", is_head=True)
         if restart_only:
             node_setup_commands = []
             node_restart_commands = []
