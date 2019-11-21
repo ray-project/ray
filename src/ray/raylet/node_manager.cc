@@ -1135,9 +1135,9 @@ void NodeManager::ProcessDisconnectClientMessage(
     }
 
     const TaskID &task_id = worker->GetAssignedTaskId();
-    // If the worker was running a task, clean up the task and push an error to
-    // the driver, unless the worker is already dead.
-    if (!task_id.IsNil() && !worker->IsDead()) {
+    // If the worker was running a task or actor, clean up the task and push an
+    // error to the driver, unless the worker is already dead.
+    if ((!task_id.IsNil() || !actor_id.IsNil()) && !worker->IsDead()) {
       // If the worker was an actor, the task was already cleaned up in
       // `HandleDisconnectedActor`.
       if (actor_id.IsNil()) {
@@ -1473,12 +1473,16 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   leased_workers_.erase(worker_port);
   Status status;
   if (worker) {
-    // Handle the edge case where the worker was returned before we got the
-    // unblock RPC by unblocking it immediately (unblock is idempotent).
-    if (worker->IsBlocked()) {
-      HandleDirectCallTaskUnblocked(worker);
+    if (request.disconnect_worker()) {
+      ProcessDisconnectClientMessage(worker->Connection());
+    } else {
+      // Handle the edge case where the worker was returned before we got the
+      // unblock RPC by unblocking it immediately (unblock is idempotent).
+      if (worker->IsBlocked()) {
+        HandleDirectCallTaskUnblocked(worker);
+      }
+      HandleWorkerAvailable(worker);
     }
-    HandleWorkerAvailable(worker);
   } else {
     status = Status::Invalid("Returned worker does not exist any more");
   }
