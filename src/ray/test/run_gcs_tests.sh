@@ -28,5 +28,7 @@ sleep 1s
 ./bazel-bin/subscription_executor_test
 ./bazel-bin/asio_test
 
+while ./bazel-bin/actor_state_accessor_test; do sleep 0.1; done && false
+
 ./bazel-genfiles/redis-cli -p 6379 shutdown
 sleep 1s
