@@ -93,7 +93,7 @@ class RedisCallbackManager {
 
     void Dispatch(std::unique_ptr<CallbackReply> reply) {
       if (callback_ != nullptr) {
-        io_service_.post([callback_, &reply]() { callback_(std::move(reply)); });
+        io_service_.post([this, &reply]() { callback_(std::move(reply)); });
       }
     }
 
@@ -106,7 +106,7 @@ class RedisCallbackManager {
   int64_t add(const RedisCallback &function, bool is_subscription,
               boost::asio::io_service &io_service);
 
-  CallbackItem &get(int64_t callback_index);
+  std::shared_ptr<CallbackItem> get(int64_t callback_index);
 
   /// Remove a callback.
   void remove(int64_t callback_index);
@@ -119,7 +119,7 @@ class RedisCallbackManager {
   std::mutex mutex_;
 
   int64_t num_callbacks_ = 0;
-  std::unordered_map<int64_t, CallbackItem> callback_items_;
+  std::unordered_map<int64_t, std::shared_ptr<CallbackItem>> callback_items_;
 };
 
 class RedisContext {

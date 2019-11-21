@@ -25,15 +25,15 @@ void ProcessCallback(int64_t callback_index,
   RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
                                  << "but it actually is " << callback_index;
   auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
-  if (!callback_item.is_subscription_) {
+  if (!callback_item->is_subscription_) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
-    ray::stats::RedisLatency().Record(end_time - callback_item.start_time_);
+    ray::stats::RedisLatency().Record(end_time - callback_item->start_time_);
     // Delete the callback if it's not a subscription callback.
     ray::gcs::RedisCallbackManager::instance().remove(callback_index);
   }
   // Dispatch the callback.
-  callback_item.Dispatch(std::move(callback_reply));
+  callback_item->Dispatch(std::move(callback_reply));
 }
 
 }  // namespace
@@ -144,11 +144,13 @@ int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscri
 
   std::lock_guard<std::mutex> lock(mutex_);
   callback_items_.emplace(
-      num_callbacks_, CallbackItem(function, is_subscription, start_time, io_service));
+      num_callbacks_,
+      std::make_shared<CallbackItem>(function, is_subscription, start_time, io_service));
   return num_callbacks_++;
 }
 
-RedisCallbackManager::CallbackItem &RedisCallbackManager::get(int64_t callback_index) {
+std::shared_ptr<RedisCallbackManager::CallbackItem> RedisCallbackManager::get(
+    int64_t callback_index) {
   std::lock_guard<std::mutex> lock(mutex_);
   RAY_CHECK(callback_items_.find(callback_index) != callback_items_.end());
   return callback_items_[callback_index];
