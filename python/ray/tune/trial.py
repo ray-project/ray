@@ -260,12 +260,11 @@ class Trial(object):
     def write_error_log(self, error_msg):
         if error_msg and self.logdir:
             self.num_failures += 1  # may be moved to outer scope?
-            error_file = os.path.join(self.logdir,
-                                      "error_{}.txt".format(date_str()))
-            with open(error_file, "a+") as f:
-                f.write("Failure # {}".format(self.num_failures) + "\n")
+            self.error_file = os.path.join(self.logdir, "error.txt")
+            with open(self.error_file, "a+") as f:
+                f.write("Failure # {} (occurred at {})\n".format(
+                    self.num_failures, date_str()))
                 f.write(error_msg + "\n")
-            self.error_file = error_file
             self.error_msg = error_msg
 
     def should_stop(self, result):

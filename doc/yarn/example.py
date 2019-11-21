@@ -47,6 +47,7 @@ def main():
 
 
 if __name__ == "__main__":
+    DRIVER_MEMORY = 100 * 1024 * 1024
     ray.init(
-        address="localhost:6379", driver_object_store_memory=100 * 1024 * 1024)
+        address="localhost:6379", driver_object_store_memory=DRIVER_MEMORY)
     main()
