@@ -595,6 +595,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   PinObjectReferences(task_spec, TaskTransportType::RAYLET);
+  // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
+  // need to manually resolve direct call args here.
   resolver_->ResolveDependencies(
       task_spec, [this, task_spec]() { raylet_client_->SubmitTask(task_spec); });
   return Status::OK();
