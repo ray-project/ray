@@ -10,7 +10,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
-#include "ray/core_worker/store_provider/memory_store.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 #include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -679,7 +679,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // clear the reference held.
   results.clear();
 
-  RAY_CHECK_OK(provider.Delete(ids_set));
+  provider.Delete(ids_set);
 
   usleep(200 * 1000);
   ASSERT_TRUE(
