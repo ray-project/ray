@@ -1349,6 +1349,31 @@ def test_direct_actor_enabled(ray_start_regular):
     assert ray.get(obj_id) == 2
 
 
+def test_direct_actor_order(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    def small_value():
+        time.sleep(0.01 * np.random.randint(0, 10))
+        return 0
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            self.count = 0
+
+        def inc(self, count, dependency):
+            assert count == self.count
+            self.count += 1
+            return count
+
+    a = Actor._remote(is_direct_call=True)
+    assert ray.get([
+        a.inc.remote(i, small_value.options(is_direct_call=True).remote())
+        for i in range(100)
+    ]) == list(range(100))
+
+
 def test_direct_actor_large_objects(ray_start_regular):
     @ray.remote
     class Actor(object):

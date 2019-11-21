@@ -568,7 +568,7 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
 
-    cluster_schedres.UpdateResource(resource_label, new_resource_capacity);
+    cluster_schedres.UpdateResourceCapacity(resource_label, new_resource_capacity);
     if (client_id == local_client_id) {
       local_available_resources_.AddOrUpdateResource(resource_label,
                                                      new_resource_capacity);

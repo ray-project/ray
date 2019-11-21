@@ -1,84 +1,8 @@
 #include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
 namespace ray {
-
-void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> value,
-                         TaskSpecification &task) {
-  auto &msg = task.GetMutableMessage();
-  bool found = false;
-  for (size_t i = 0; i < task.NumArgs(); i++) {
-    auto count = task.ArgIdCount(i);
-    if (count > 0) {
-      const auto &id = task.ArgId(i, 0);
-      if (id == obj_id) {
-        auto *mutable_arg = msg.mutable_args(i);
-        mutable_arg->clear_object_ids();
-        if (value->IsInPlasmaError()) {
-          // Promote the object id to plasma.
-          mutable_arg->add_object_ids(
-              obj_id.WithTransportType(TaskTransportType::RAYLET).Binary());
-        } else {
-          // Inline the object value.
-          if (value->HasData()) {
-            const auto &data = value->GetData();
-            mutable_arg->set_data(data->Data(), data->Size());
-          }
-          if (value->HasMetadata()) {
-            const auto &metadata = value->GetMetadata();
-            mutable_arg->set_metadata(metadata->Data(), metadata->Size());
-          }
-        }
-        found = true;
-      }
-    }
-  }
-  RAY_CHECK(found) << "obj id " << obj_id << " not found";
-}
-
-void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
-                                                  std::function<void()> on_complete) {
-  absl::flat_hash_set<ObjectID> local_dependencies;
-  for (size_t i = 0; i < task.NumArgs(); i++) {
-    auto count = task.ArgIdCount(i);
-    if (count > 0) {
-      RAY_CHECK(count <= 1) << "multi args not implemented";
-      const auto &id = task.ArgId(i, 0);
-      if (id.IsDirectCallType()) {
-        local_dependencies.insert(id);
-      }
-    }
-  }
-  if (local_dependencies.empty()) {
-    on_complete();
-    return;
-  }
-
-  // This is deleted when the last dependency fetch callback finishes.
-  std::shared_ptr<TaskState> state =
-      std::shared_ptr<TaskState>(new TaskState{task, std::move(local_dependencies)});
-  num_pending_ += 1;
-
-  for (const auto &obj_id : state->local_dependencies) {
-    in_memory_store_->GetAsync(
-        obj_id, [this, state, obj_id, on_complete](std::shared_ptr<RayObject> obj) {
-          RAY_CHECK(obj != nullptr);
-          bool complete = false;
-          {
-            absl::MutexLock lock(&mu_);
-            state->local_dependencies.erase(obj_id);
-            DoInlineObjectValue(obj_id, obj, state->task);
-            if (state->local_dependencies.empty()) {
-              complete = true;
-              num_pending_ -= 1;
-            }
-          }
-          if (complete) {
-            on_complete();
-          }
-        });
-  }
-}
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
@@ -91,7 +15,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 }
 
 void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
-    const WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
+    const rpc::WorkerAddress &addr, std::shared_ptr<WorkerLeaseInterface> lease_client) {
   // Setup client state for this worker.
   {
     absl::MutexLock lock(&mu_);
@@ -110,7 +34,7 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
   OnWorkerIdle(addr, /*error=*/false);
 }
 
-void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const WorkerAddress &addr,
+void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
                                                  bool was_error) {
   absl::MutexLock lock(&mu_);
   if (queued_tasks_.empty() || was_error) {
@@ -199,7 +123,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   worker_request_pending_ = true;
 }
 
-void CoreWorkerDirectTaskSubmitter::PushNormalTask(const WorkerAddress &addr,
+void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &addr,
                                                    rpc::CoreWorkerClientInterface &client,
                                                    TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();

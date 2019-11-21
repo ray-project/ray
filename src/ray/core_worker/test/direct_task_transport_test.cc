@@ -197,7 +197,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
@@ -220,7 +220,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
@@ -239,7 +239,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task1;
   TaskSpecification task2;
@@ -281,7 +281,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task1;
   TaskSpecification task2;
@@ -325,7 +325,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task1;
   TaskSpecification task2;
@@ -360,7 +360,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
 
   std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const rpc::Address &addr) {
