@@ -62,37 +62,6 @@ void GroupObjectIdsByStoreProvider(const std::vector<ObjectID> &object_ids,
 
 namespace ray {
 
-// Prepare direct call args for sending to a direct call *actor*. Direct call actors
-// always resolve their dependencies remotely, so we need some client-side preprocessing
-// to ensure they don't try to resolve a direct call object ID remotely (which is
-// impossible).
-//  - Direct call args that are local and small will be inlined.
-//  - Direct call args that are non-local or large will be promoted to plasma.
-// Note that args for direct call *tasks* are handled by LocalDependencyResolver.
-std::vector<TaskArg> PrepareDirectActorCallArgs(
-    const std::vector<TaskArg> &args,
-    std::shared_ptr<CoreWorkerMemoryStore> memory_store) {
-  std::vector<TaskArg> out;
-  for (const auto &arg : args) {
-    if (arg.IsPassedByReference() && arg.GetReference().IsDirectCallType()) {
-      const ObjectID &obj_id = arg.GetReference();
-      // TODO(ekl) we should consider resolving these dependencies on the client side
-      // for actor calls. It is a little tricky since we have to also preserve the
-      // task ordering so we can't simply use LocalDependencyResolver.
-      std::shared_ptr<RayObject> obj = memory_store->GetOrPromoteToPlasma(obj_id);
-      if (obj != nullptr) {
-        out.push_back(TaskArg::PassByValue(obj));
-      } else {
-        out.push_back(TaskArg::PassByReference(
-            obj_id.WithTransportType(TaskTransportType::RAYLET)));
-      }
-    } else {
-      out.push_back(arg);
-    }
-  }
-  return out;
-}
-
 CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                        const std::string &store_socket, const std::string &raylet_socket,
                        const JobID &job_id, const gcs::GcsClientOptions &gcs_options,
@@ -221,17 +190,16 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     SetCurrentTaskId(task_id);
   }
 
+  auto client_factory = [this](const rpc::WorkerAddress &addr) {
+    return std::shared_ptr<rpc::CoreWorkerClient>(
+        new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
+  };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(*client_call_manager_,
-                                             memory_store_provider_));
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_provider_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          raylet_client_,
-          [this](WorkerAddress addr) {
-            return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(
-                addr.first, addr.second, *client_call_manager_));
-          },
+          raylet_client_, client_factory,
           [this](const rpc::Address &address) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(
                 address.ip_address(), address.port(), *client_call_manager_);
@@ -657,11 +625,10 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   const TaskID actor_task_id = TaskID::ForActorTask(
       worker_context_.GetCurrentJobID(), worker_context_.GetCurrentTaskID(),
       next_task_index, actor_handle->GetActorID());
-  BuildCommonTaskSpec(
-      builder, actor_handle->CreationJobID(), actor_task_id,
-      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(), rpc_address_,
-      function, is_direct_call ? PrepareDirectActorCallArgs(args, memory_store_) : args,
-      num_returns, task_options.resources, {}, transport_type, return_ids);
+  BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, num_returns, task_options.resources,
+                      {}, transport_type, return_ids);
 
   const ObjectID new_cursor = return_ids->back();
   actor_handle->SetActorTaskSpec(builder, transport_type, new_cursor);

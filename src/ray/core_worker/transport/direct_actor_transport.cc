@@ -5,6 +5,10 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
+int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
+  return request->task_spec().actor_task_spec().actor_counter();
+}
+
 void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                        const rpc::ErrorType &error_type,
                        std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store) {
@@ -57,52 +61,45 @@ void WriteObjectsToMemoryStore(
   }
 }
 
-CoreWorkerDirectActorTaskSubmitter::CoreWorkerDirectActorTaskSubmitter(
-    rpc::ClientCallManager &client_call_manager,
-    std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
-    : client_call_manager_(client_call_manager), in_memory_store_(store_provider) {}
-
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
-
   RAY_CHECK(task_spec.IsActorTask());
-  const auto &actor_id = task_spec.ActorId();
 
-  const auto task_id = task_spec.TaskId();
-  const auto num_returns = task_spec.NumReturns();
+  resolver_.ResolveDependencies(task_spec, [this, task_spec]() mutable {
+    const auto &actor_id = task_spec.ActorId();
+    const auto task_id = task_spec.TaskId();
+    const auto num_returns = task_spec.NumReturns();
 
-  auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-  request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+    auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
 
-  std::unique_lock<std::mutex> guard(mutex_);
+    std::unique_lock<std::mutex> guard(mutex_);
 
-  auto iter = actor_states_.find(actor_id);
-  if (iter == actor_states_.end() ||
-      iter->second.state_ == ActorTableData::RECONSTRUCTING) {
-    // Actor is not yet created, or is being reconstructed, cache the request
-    // and submit after actor is alive.
-    // TODO(zhijunfu): it might be possible for a user to specify an invalid
-    // actor handle (e.g. from unpickling), in that case it might be desirable
-    // to have a timeout to mark it as invalid if it doesn't show up in the
-    // specified time.
-    pending_requests_[actor_id].emplace_back(std::move(request));
-    RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
-  } else if (iter->second.state_ == ActorTableData::ALIVE) {
-    // Actor is alive, submit the request.
-    if (rpc_clients_.count(actor_id) == 0) {
-      // If rpc client is not available, then create it.
-      ConnectAndSendPendingTasks(actor_id, iter->second.location_.first,
-                                 iter->second.location_.second);
+    auto iter = actor_states_.find(actor_id);
+    if (iter == actor_states_.end() ||
+        iter->second.state_ == ActorTableData::RECONSTRUCTING) {
+      // Actor is not yet created, or is being reconstructed, cache the request
+      // and submit after actor is alive.
+      // TODO(zhijunfu): it might be possible for a user to specify an invalid
+      // actor handle (e.g. from unpickling), in that case it might be desirable
+      // to have a timeout to mark it as invalid if it doesn't show up in the
+      // specified time.
+      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
+                                                          std::move(request));
+      RAY_CHECK(inserted.second);
+      RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
+    } else if (iter->second.state_ == ActorTableData::ALIVE) {
+      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
+                                                          std::move(request));
+      RAY_CHECK(inserted.second);
+      SendPendingTasks(actor_id);
+    } else {
+      // Actor is dead, treat the task as failure.
+      RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
+      TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED,
+                        in_memory_store_);
     }
-
-    // Submit request.
-    auto &client = rpc_clients_[actor_id];
-    PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);
-  } else {
-    // Actor is dead, treat the task as failure.
-    RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
-    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::ACTOR_DIED, in_memory_store_);
-  }
+  });
 
   // If the task submission subsequently fails, then the client will receive
   // the error in a callback.
@@ -118,12 +115,15 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
                                actor_data.address().port()));
 
   if (actor_data.state() == ActorTableData::ALIVE) {
-    // Check if this actor is the one that we're interested, if we already have
-    // a connection to the actor, or have pending requests for it, we should
-    // create a new connection.
-    if (pending_requests_.count(actor_id) > 0 && rpc_clients_.count(actor_id) == 0) {
-      ConnectAndSendPendingTasks(actor_id, actor_data.address().ip_address(),
-                                 actor_data.address().port());
+    // Create a new connection to the actor.
+    if (rpc_clients_.count(actor_id) == 0) {
+      rpc::WorkerAddress addr = {actor_data.address().ip_address(),
+                                 actor_data.address().port()};
+      rpc_clients_[actor_id] =
+          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+    }
+    if (pending_requests_.count(actor_id) > 0) {
+      SendPendingTasks(actor_id);
     }
   } else {
     // Remove rpc client if it's dead or being reconstructed.
@@ -145,39 +145,48 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
-      for (const auto &request : pending_it->second) {
+      auto head = pending_it->second.begin();
+      while (head != pending_it->second.end()) {
+        auto request = std::move(head->second);
+        head = pending_it->second.erase(head);
+
         TreatTaskAsFailed(TaskID::FromBinary(request->task_spec().task_id()),
                           request->task_spec().num_returns(), rpc::ErrorType::ACTOR_DIED,
                           in_memory_store_);
       }
       pending_requests_.erase(pending_it);
     }
+
+    next_sequence_number_.erase(actor_id);
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectAndSendPendingTasks(
-    const ActorID &actor_id, std::string ip_address, int port) {
-  std::shared_ptr<rpc::CoreWorkerClient> grpc_client =
-      std::make_shared<rpc::CoreWorkerClient>(ip_address, port, client_call_manager_);
-  RAY_CHECK(rpc_clients_.emplace(actor_id, std::move(grpc_client)).second);
-
-  // Submit all pending requests.
+void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
+  RAY_CHECK(client);
+  // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
-  while (!requests.empty()) {
-    auto request = std::move(requests.front());
+  auto head = requests.begin();
+  while (head != requests.end() && head->first == next_sequence_number_[actor_id]) {
+    auto request = std::move(head->second);
+    head = requests.erase(head);
+
     auto num_returns = request->task_spec().num_returns();
     auto task_id = TaskID::FromBinary(request->task_spec().task_id());
     PushActorTask(*client, std::move(request), actor_id, task_id, num_returns);
-    requests.pop_front();
   }
 }
 
 void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
-    rpc::CoreWorkerClient &client, std::unique_ptr<rpc::PushTaskRequest> request,
+    rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
   waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
+
+  auto task_number = GetRequestNumber(request);
+  RAY_CHECK(next_sequence_number_[actor_id] == task_number)
+      << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
+  next_sequence_number_[actor_id]++;
 
   auto status = client.PushActorTask(
       std::move(request), [this, actor_id, task_id, num_returns](
