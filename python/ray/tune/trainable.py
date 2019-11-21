@@ -3,12 +3,14 @@ from __future__ import division
 from __future__ import print_function
 
 from datetime import datetime
+from contextlib import contextmanager
 
 import copy
 import io
 import logging
 import os
 import pickle
+import re
 from six import string_types
 import shutil
 import tempfile
@@ -74,6 +76,17 @@ class Trainable(object):
         if logger_creator:
             self._result_logger = logger_creator(self.config)
             self._logdir = self._result_logger.logdir
+            self._switch_working_directory_mode = \
+                ray.worker._mode() == ray.worker.LOCAL_MODE and \
+                re.match(
+                    r"<function RayTrialExecutor\._setup_remote_runner"
+                    r"\.<locals>\.logger_creator at 0x[\da-f]+>",
+                    repr(logger_creator)
+                )
+            # currently only a function defined in
+            # ray.tune.ray_trial_executor.RayTrialExecutor._setup_remote_runner
+            # changes working directory.
+
         else:
             logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             if not os.path.exists(DEFAULT_RESULTS_DIR):
@@ -93,7 +106,8 @@ class Trainable(object):
         self._restored = False
 
         start_time = time.time()
-        self._setup(copy.deepcopy(self.config))
+        with self._switch_working_directory():
+            self._setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
             logger.info("_setup took {:.3f} seconds. If your trainable is "
@@ -173,7 +187,8 @@ class Trainable(object):
             A dict that describes training progress.
         """
         start = time.time()
-        result = self._train()
+        with self._switch_working_directory():
+            result = self._train()
         assert isinstance(result, dict), "_train() needs to return a dict."
 
         # We do not modify internal state nor update this result if duplicate.
@@ -235,7 +250,8 @@ class Trainable(object):
         if monitor_data:
             result.update(monitor_data)
 
-        self._log_result(result)
+        with self._switch_working_directory():
+            self._log_result(result)
 
         return result
 
@@ -251,40 +267,44 @@ class Trainable(object):
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
-                                      "checkpoint_{}".format(self._iteration))
 
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
-        checkpoint = self._save(checkpoint_dir)
-        saved_as_dict = False
-        if isinstance(checkpoint, string_types):
-            if not checkpoint.startswith(checkpoint_dir):
-                raise ValueError(
-                    "The returned checkpoint path must be within the "
-                    "given checkpoint dir {}: {}".format(
-                        checkpoint_dir, checkpoint))
-            checkpoint_path = checkpoint
-        elif isinstance(checkpoint, dict):
-            saved_as_dict = True
-            checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
-            with open(checkpoint_path, "wb") as f:
-                pickle.dump(checkpoint, f)
-        else:
-            raise ValueError("Returned unexpected type {}. "
-                             "Expected str or dict.".format(type(checkpoint)))
+        with self._switch_working_directory():
+            checkpoint_dir = os.path.join(
+                checkpoint_dir or self.logdir,
+                "checkpoint_{}".format(self._iteration))
 
-        with open(checkpoint_path + ".tune_metadata", "wb") as f:
-            pickle.dump({
-                "experiment_id": self._experiment_id,
-                "iteration": self._iteration,
-                "timesteps_total": self._timesteps_total,
-                "time_total": self._time_total,
-                "episodes_total": self._episodes_total,
-                "saved_as_dict": saved_as_dict,
-                "ray_version": ray.__version__,
-            }, f)
-        return checkpoint_path
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+            checkpoint = self._save(checkpoint_dir)
+            saved_as_dict = False
+            if isinstance(checkpoint, string_types):
+                if not checkpoint.startswith(checkpoint_dir):
+                    raise ValueError(
+                        "The returned checkpoint path must be within the "
+                        "given checkpoint dir {}: {}".format(
+                            checkpoint_dir, checkpoint))
+                checkpoint_path = checkpoint
+            elif isinstance(checkpoint, dict):
+                saved_as_dict = True
+                checkpoint_path = os.path.join(checkpoint_dir, "checkpoint")
+                with open(checkpoint_path, "wb") as f:
+                    pickle.dump(checkpoint, f)
+            else:
+                raise ValueError("Returned unexpected type {}. "
+                                 "Expected str or dict.".format(
+                                     type(checkpoint)))
+
+            with open(checkpoint_path + ".tune_metadata", "wb") as f:
+                pickle.dump({
+                    "experiment_id": self._experiment_id,
+                    "iteration": self._iteration,
+                    "timesteps_total": self._timesteps_total,
+                    "time_total": self._time_total,
+                    "episodes_total": self._episodes_total,
+                    "saved_as_dict": saved_as_dict,
+                    "ray_version": ray.__version__,
+                }, f)
+            return checkpoint_path
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -324,33 +344,34 @@ class Trainable(object):
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
-        with open(checkpoint_path + ".tune_metadata", "rb") as f:
-            metadata = pickle.load(f)
-        self._experiment_id = metadata["experiment_id"]
-        self._iteration = metadata["iteration"]
-        self._timesteps_total = metadata["timesteps_total"]
-        self._time_total = metadata["time_total"]
-        self._episodes_total = metadata["episodes_total"]
-        saved_as_dict = metadata["saved_as_dict"]
-        if saved_as_dict:
-            with open(checkpoint_path, "rb") as loaded_state:
-                checkpoint_dict = pickle.load(loaded_state)
-            checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
-            self._restore(checkpoint_dict)
-        else:
-            self._restore(checkpoint_path)
-        self._time_since_restore = 0.0
-        self._timesteps_since_restore = 0
-        self._iterations_since_restore = 0
-        self._restored = True
-        logger.info("Restored from checkpoint: %s", checkpoint_path)
-        state = {
-            "_iteration": self._iteration,
-            "_timesteps_total": self._timesteps_total,
-            "_time_total": self._time_total,
-            "_episodes_total": self._episodes_total,
-        }
-        logger.info("Current state after restoring: {}".format(state))
+        with self._switch_working_directory():
+            with open(checkpoint_path + ".tune_metadata", "rb") as f:
+                metadata = pickle.load(f)
+            self._experiment_id = metadata["experiment_id"]
+            self._iteration = metadata["iteration"]
+            self._timesteps_total = metadata["timesteps_total"]
+            self._time_total = metadata["time_total"]
+            self._episodes_total = metadata["episodes_total"]
+            saved_as_dict = metadata["saved_as_dict"]
+            if saved_as_dict:
+                with open(checkpoint_path, "rb") as loaded_state:
+                    checkpoint_dict = pickle.load(loaded_state)
+                checkpoint_dict.update(tune_checkpoint_path=checkpoint_path)
+                self._restore(checkpoint_dict)
+            else:
+                self._restore(checkpoint_path)
+            self._time_since_restore = 0.0
+            self._timesteps_since_restore = 0
+            self._iterations_since_restore = 0
+            self._restored = True
+            logger.info("Restored from checkpoint: %s", checkpoint_path)
+            state = {
+                "_iteration": self._iteration,
+                "_timesteps_total": self._timesteps_total,
+                "_time_total": self._time_total,
+                "_episodes_total": self._episodes_total,
+            }
+            logger.info("Current state after restoring: {}".format(state))
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.
@@ -389,7 +410,8 @@ class Trainable(object):
             A dict that maps ExportFormats to successfully exported models.
         """
         export_dir = export_dir or self.logdir
-        return self._export_model(export_formats, export_dir)
+        with self._switch_working_directory():
+            return self._export_model(export_formats, export_dir)
 
     def reset_config(self, new_config):
         """Resets configuration without restarting the trial.
@@ -411,7 +433,8 @@ class Trainable(object):
         """Releases all resources used by this trainable."""
         self._result_logger.flush()
         self._result_logger.close()
-        self._stop()
+        with self._switch_working_directory():
+            self._stop()
 
     @property
     def logdir(self):
@@ -573,3 +596,20 @@ class Trainable(object):
             A dict that maps ExportFormats to successfully exported models.
         """
         return {}
+
+    @contextmanager
+    def _switch_working_directory(self):
+        """Context manager changing working directory to logdir. Used in local mode.
+
+        For non-local mode it is no-op.
+        """
+
+        if self._switch_working_directory():
+            old_dir = os.getcwd()
+            try:
+                os.chdir(self.logdir)
+                yield
+            finally:
+                os.chdir(old_dir)
+        else:
+            yield
