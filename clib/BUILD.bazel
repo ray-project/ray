@@ -8,3 +8,11 @@ cc_library(
         "//:core_worker_lib",
     ],
 )
+
+cc_binary(
+    name = "test",
+    srcs = ["main.c"],
+    deps = [
+        ":ray",
+    ],
+)
