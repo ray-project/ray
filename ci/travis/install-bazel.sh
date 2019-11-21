@@ -26,8 +26,8 @@ rm -f install.sh
 
 if [[ "$TRAVIS" == "true"  ]]; then
   # Use bazel disk cache if this script is running in Travis.
-  mkdir -p $HOME/ray-bazel-cache
-  echo "build --disk_cache=$HOME/ray-bazel-cache" >> $HOME/.bazelrc
+  #mkdir -p $HOME/ray-bazel-cache
+  #echo "build --disk_cache=$HOME/ray-bazel-cache" >> $HOME/.bazelrc
 
   # Use ray google cloud cache
   echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> $HOME/.bazelrc
