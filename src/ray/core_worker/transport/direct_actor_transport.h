@@ -4,8 +4,10 @@
 #include <boost/asio/thread_pool.hpp>
 #include <boost/thread.hpp>
 #include <list>
+#include <queue>
 #include <set>
 #include <utility>
+#include "absl/container/flat_hash_map.h"
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -13,9 +15,12 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
+
+namespace {}  // namespace
 
 namespace ray {
 
@@ -61,8 +66,11 @@ struct ActorStateData {
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(
-      rpc::ClientCallManager &client_call_manager,
-      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider);
+      rpc::ClientFactoryFn client_factory,
+      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
+      : client_factory_(client_factory),
+        in_memory_store_(store_provider),
+        resolver_(in_memory_store_) {}
 
   /// Submit a task to an actor for execution.
   ///
@@ -87,20 +95,17 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \param[in] task_id The ID of a task.
   /// \param[in] num_returns Number of return objects.
   /// \return Void.
-  void PushActorTask(rpc::CoreWorkerClient &client,
+  void PushActorTask(rpc::CoreWorkerClientInterface &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
                      const ActorID &actor_id, const TaskID &task_id, int num_returns);
 
-  /// Create connection to actor and send all pending tasks.
+  /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
   /// `mutex_` before calling this function.
   ///
   /// \param[in] actor_id Actor ID.
-  /// \param[in] ip_address The ip address of the node that the actor is running on.
-  /// \param[in] port The port that the actor is listening on.
   /// \return Void.
-  void ConnectAndSendPendingTasks(const ActorID &actor_id, std::string ip_address,
-                                  int port);
+  void SendPendingTasks(const ActorID &actor_id);
 
   /// Whether the specified actor is alive.
   ///
@@ -108,8 +113,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// The shared `ClientCallManager` object.
-  rpc::ClientCallManager &client_call_manager_;
+  /// Factory for producing new core worker clients.
+  rpc::ClientFactoryFn client_factory_;
 
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
@@ -122,17 +127,26 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClient>> rpc_clients_;
+  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      rpc_clients_;
 
-  /// Map from actor id to the actor's pending requests.
-  std::unordered_map<ActorID, std::list<std::unique_ptr<rpc::PushTaskRequest>>>
+  /// Map from actor id to the actor's pending requests. Each actor's requests
+  /// are ordered by the task number in the request.
+  absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_;
+
+  /// Map from actor id to the sequence number of the next task to send to that
+  /// actor.
+  std::unordered_map<ActorID, int64_t> next_sequence_number_;
 
   /// Map from actor id to the tasks that are waiting for reply.
   std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
 
   /// The store provider.
   std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
+
+  /// Resolve direct call object dependencies;
+  LocalDependencyResolver resolver_;
 
   friend class CoreWorkerTest;
 };

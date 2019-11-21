@@ -33,6 +33,13 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
   return size;
 }
 
+// Shared between direct actor and task submitters.
+// TODO(swang): Remove and replace with rpc::Address.
+class CoreWorkerClientInterface;
+typedef std::pair<std::string, int> WorkerAddress;
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
+    ClientFactoryFn;
+
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
