@@ -96,34 +96,43 @@ pushd "$BUILD_DIR"
 # The following line installs pyarrow from S3, these wheels have been
 # generated from https://github.com/ray-project/arrow-build from
 # the commit listed in the command.
-if [ -z "$SKIP_PYARROW_INSTALL" ]; then
+if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
     "$PYTHON_EXECUTABLE" -m pip install -q \
         --target="$ROOT_DIR/python/ray/pyarrow_files" pyarrow==0.14.0.RAY \
         --find-links https://s3-us-west-2.amazonaws.com/arrow-wheels/3a11193d9530fe8ec7fdb98057f853b708f6f6ae/index.html
 fi
 
 PYTHON_VERSION=`"$PYTHON_EXECUTABLE" -c 'import sys; version=sys.version_info[:3]; print("{0}.{1}".format(*version))'`
-if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
-  WORK_DIR=`mktemp -d`
-  pushd $WORK_DIR
-    git clone https://github.com/pitrou/pickle5-backport
-    pushd pickle5-backport
-      git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
-      "$PYTHON_EXECUTABLE" setup.py bdist_wheel
-      unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+if [ -z "$SKIP_THIRDPARTY_INSTALL" ]; then
+  if [[ "$PYTHON_VERSION" == "3.6" || "$PYTHON_VERSION" == "3.7" ]]; then
+    WORK_DIR=`mktemp -d`
+    pushd $WORK_DIR
+      git clone https://github.com/pitrou/pickle5-backport
+      pushd pickle5-backport
+        git checkout 5186f9ca4ce55ae530027db196da51e08208a16b
+        "$PYTHON_EXECUTABLE" setup.py bdist_wheel
+        unzip -o dist/*.whl -d "$ROOT_DIR/python/ray/pickle5_files"
+      popd
     popd
-  popd
+  fi
+fi
+
+if [ -z "$RAY_DEBUG" ]; then
+  BUILD_OPTIONS=""
+else
+  # This enables building with line numbers.
+  BUILD_OPTIONS="--copt -g"
 fi
 
 export PYTHON3_BIN_PATH="$PYTHON_EXECUTABLE"
 export PYTHON2_BIN_PATH="$PYTHON_EXECUTABLE"
 
 if [ "$RAY_BUILD_JAVA" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //java:all --verbose_failures
+  "$BAZEL_EXECUTABLE" build $BUILD_OPTIONS //java:all --verbose_failures
 fi
 
 if [ "$RAY_BUILD_PYTHON" == "YES" ]; then
-  "$BAZEL_EXECUTABLE" build //:ray_pkg --verbose_failures
+  "$BAZEL_EXECUTABLE" build $BUILD_OPTIONS //:ray_pkg --verbose_failures
 fi
 
 popd

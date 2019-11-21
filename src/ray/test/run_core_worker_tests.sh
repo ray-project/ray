@@ -22,7 +22,7 @@ fi
 set -e
 set -x
 
-bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
+bazel build --copt -g "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
 
 # Get the directory in which this script is executing.
 SCRIPT_DIR="`dirname \"$0\"`"
