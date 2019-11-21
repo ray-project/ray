@@ -2,10 +2,15 @@
 #include "gtest/gtest.h"
 
 #include <string>
-#include <thread>
 
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/scheduling/scheduling_alg.h"
+
+#ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
+#include "absl/container/flat_hash_map.h"
+#include <chrono>
+#endif // UNORDERED_VS_ABSL_MAPS_EVALUATION
+
 using namespace std;
 
 /// Used to path empty vector argiuments.
@@ -262,24 +267,22 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
     ASSERT_TRUE(node_id != -1);
     ASSERT_TRUE(violations > 0);
 
-    NodeResources *pnr1 = cluster_resources.GetNodeResources(node_id);
-    ASSERT_TRUE(pnr1 != NULL);
-    NodeResources nr1 = *pnr1;
+    NodeResources nr1, nr2;
+    ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, nr1));
     cluster_resources.SubtractNodeAvailableResources(node_id, task_req);
-    NodeResources *pnr2 = cluster_resources.GetNodeResources(node_id);
-    ASSERT_TRUE(pnr2 != NULL);
+    ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, nr2));
 
     for (int i = 0; i < PRED_CUSTOM_LEN; i++) {
       int64_t t = nr1.capacities[i].available - task_req.predefined_resources[i].demand;
       if (t < 0) t = 0;
-      ASSERT_EQ(pnr2->capacities[i].available, t);
+      ASSERT_EQ(nr2.capacities[i].available, t);
     }
 
     for (int i = 0; i < PRED_CUSTOM_LEN; i++) {
       auto it1 = nr1.custom_resources.find(task_req.custom_resources[i].id);
       if (it1 != nr1.custom_resources.end()) {
-        auto it2 = pnr2->custom_resources.find(task_req.custom_resources[i].id);
-        if (it2 != pnr2->custom_resources.end()) {
+        auto it2 = nr2.custom_resources.find(task_req.custom_resources[i].id);
+        if (it2 != nr2.custom_resources.end()) {
           int64_t t = it1->second.available - task_req.custom_resources[i].req.demand;
           if (t < 0) t = 0;
           ASSERT_EQ(it2->second.available, t);
@@ -289,10 +292,9 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
   }
 }
 
-
 TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   ClusterResourceScheduler cluster_resources;
-  NodeResources nr;
+  NodeResources nr, nr_out;
   int64_t node_id = 1;
 
   /// Add node.
@@ -308,8 +310,11 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   }
 
   /// Check whether node resources were correctly added.
-  NodeResources *pnr = cluster_resources.GetNodeResources(node_id);
-  ASSERT_TRUE(nodeResourcesEqual(*pnr, nr));
+  if (cluster_resources.GetNodeResources(node_id, nr_out)) {
+    ASSERT_TRUE(nodeResourcesEqual(nr, nr_out));
+  } else {
+    ASSERT_TRUE(false);
+  }
 
   /// Update node.
   {
@@ -322,9 +327,11 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
     cluster_resources.AddOrUpdateNode(node_id, node_resources);
     nr = node_resources;
   }
-  /// Check whether node resources were correctly updated.
-  pnr = cluster_resources.GetNodeResources(node_id);
-  ASSERT_TRUE(nodeResourcesEqual(*pnr, nr));
+  if (cluster_resources.GetNodeResources(node_id, nr_out)) {
+    ASSERT_TRUE(nodeResourcesEqual(nr, nr_out));
+  } else {
+    ASSERT_TRUE(false);
+  }
 }
 
 
@@ -489,6 +496,82 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     ASSERT_TRUE(violations == 0);
   }
 }
+
+#ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
+TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
+  int map_len = 1000000;
+  unordered_map<int64_t, int64_t> umap_int_key;
+  unordered_map<string, int64_t> umap_string_key;
+  absl::flat_hash_map<int64_t, int64_t> amap_int_key;
+  absl::flat_hash_map<string, int64_t> amap_string_key;
+  vector<string> search_key_strings;
+  vector<int64_t> search_key_ints;
+
+  for (int i = 0; i < map_len; i++) {
+    int id = rand() % map_len;
+    search_key_strings.push_back(to_string(id));
+    search_key_ints.push_back(id);
+    umap_int_key.emplace(i, i);
+    umap_string_key.emplace(to_string(i), i);
+    amap_int_key.emplace(i, i);
+    amap_string_key.emplace(to_string(i), i);
+  }
+
+  for (int i = 0; i < 25; i++) {
+    cout << "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" << endl;
+  }
+
+  int64_t sum;
+
+  auto t_start = std::chrono::high_resolution_clock::now();
+  sum = 0;
+  for (int i = 0; i < map_len; i++) {
+    auto it = umap_int_key.find(search_key_ints[i]);
+    if (it != umap_int_key.end()) {
+      sum += it->second;
+    }
+  }
+  auto t_end = std::chrono::high_resolution_clock::now();
+  double duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  cout << "sum = " << sum << " in " << duration << endl;
+
+  t_start = std::chrono::high_resolution_clock::now();
+  sum = 0;
+  for (int i = 0; i < map_len; i++) {
+    auto it = umap_string_key.find(search_key_strings[i]);
+    if (it != umap_string_key.end()) {
+      sum += it->second;
+    }
+  }
+  t_end = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  cout << "sum = " << sum << " in " << duration << endl;
+
+  t_start = std::chrono::high_resolution_clock::now();
+  sum = 0;
+  for (int i = 0; i < map_len; i++) {
+    auto it = amap_int_key.find(search_key_ints[i]);
+    if (it != amap_int_key.end()) {
+      sum += it->second;
+    }
+  }
+  t_end = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  cout << "sum = " << sum << " in " << duration << endl;
+
+  t_start = std::chrono::high_resolution_clock::now();
+  sum = 0;
+  for (int i = 0; i < map_len; i++) {
+    auto it = amap_string_key.find(search_key_strings[i]);
+    if (it != amap_string_key.end()) {
+      sum += it->second;
+    }
+  }
+  t_end = std::chrono::high_resolution_clock::now();
+  duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  cout << "sum = " << sum << " in " << duration << endl;
+}
+#endif // UNORDERED_VS_ABSL_MAPS_EVALUATION
 
 }  // namespace ray
 

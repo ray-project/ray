@@ -189,12 +189,13 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(int64_t node_id,
   return true;
 }
 
-NodeResources* ClusterResourceScheduler::GetNodeResources(int64_t node_id) {
+ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id, NodeResources& ret_resources) {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
-    return &it->second;
+    ret_resources = it->second;
+    return true;
   } else {
-    return NULL;
+    return false;
   }
 }
 

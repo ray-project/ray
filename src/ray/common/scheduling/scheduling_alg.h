@@ -105,7 +105,11 @@ public:
    ///
    ///  \param task_req: Task request to be scheduled.
    ///  \param node_id: ID of the node.
-   ///  \param resources: Node's resources.
+   ///  \param resources: Node's resources. (Note: Technically, this is
+   ///     redundant, as we can get the node's resources from nodes_
+   ///     using node_id. However, typically both node_id and resources
+   ///     are available when we call this function, and this way we avoid
+   ///     a map find call which could be expensive.)
    ///
    ///  \return: -1, if the request cannot be scheduled. This happens when at
    ///           least a hard constraints is violated.
@@ -150,7 +154,7 @@ public:
   bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
 
   /// Return a pointer to the resources associated to the given node.
-  NodeResources* GetNodeResources(int64_t node_id);
+  bool GetNodeResources(int64_t node_id, NodeResources& ret_resources);
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
