@@ -2,6 +2,7 @@ py_test(
     name = "test_actor_reuse",
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
+    tags = ["jenkins_only"],
 )
 
 py_test(
@@ -22,6 +23,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
+    tags = ["jenkins_only"],
 )
 
 py_test(
@@ -57,6 +59,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
+    tags = ["jenkins_only"],
 )
 
 py_test(
@@ -92,6 +95,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
+    tags = ["jenkins_only"],
 )
 
 py_test(
