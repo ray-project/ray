@@ -59,3 +59,7 @@ class ExperimentTest(unittest.TestCase):
 
     def testConvertExperimentIncorrect(self):
         self.assertRaises(TuneError, lambda: convert_to_experiment_list("hi"))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

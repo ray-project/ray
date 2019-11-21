@@ -406,3 +406,9 @@ def run_experiments(experiments,
                 raise_on_failed_trial=raise_on_failed_trial,
                 return_trials=True)
         return trials
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main([__file__]))

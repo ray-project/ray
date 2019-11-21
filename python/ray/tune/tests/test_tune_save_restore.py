@@ -139,8 +139,16 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         absolute_local_dir = os.path.abspath(os.path.expanduser(local_dir))
         self.absolute_local_dir = absolute_local_dir
         self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
+        try:
+            self._train(exp_name, local_dir, absolute_local_dir)
+            self._restore(exp_name, local_dir, absolute_local_dir)
+        except OSError as e:
+            msg = str(e)
+            # Ignore errors when running in bazel sandbox.
+            if "Read-only" in msg:
+                assert "/home" in msg, msg
+            else:
+                raise
 
     def testTempfile(self):
         local_dir = tempfile.mkdtemp()
