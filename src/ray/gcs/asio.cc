@@ -48,23 +48,29 @@ void RedisAsioClient::operate() {
 }
 
 void RedisAsioClient::handle_read(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
-  read_in_progress_ = false;
-  redis_async_context_.RedisAsyncHandleRead();
+  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  io_service_.dispatch([this]() {
+    RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
+    read_in_progress_ = false;
+    redis_async_context_.RedisAsyncHandleRead();
 
-  if (error_code == boost::asio::error::would_block) {
-    operate();
-  }
+    if (error_code == boost::asio::error::would_block) {
+      operate();
+    }
+  });
 }
 
 void RedisAsioClient::handle_write(boost::system::error_code error_code) {
-  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
-  write_in_progress_ = false;
-  redis_async_context_.RedisAsyncHandleWrite();
+  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  io_service_.dispatch([this]() {
+    RAY_CHECK(!error_code || error_code == boost::asio::error::would_block);
+    write_in_progress_ = false;
+    redis_async_context_.RedisAsyncHandleWrite();
 
-  if (error_code == boost::asio::error::would_block) {
-    operate();
-  }
+    if (error_code == boost::asio::error::would_block) {
+      operate();
+    }
+  });
 }
 
 void RedisAsioClient::add_read() {
@@ -75,7 +81,12 @@ void RedisAsioClient::add_read() {
   });
 }
 
-void RedisAsioClient::del_read() { read_requested_ = false; }
+void RedisAsioClient::del_read() {
+  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  io_service_.dispatch([this]() {
+    read_requested_ = false;
+  });
+}
 
 void RedisAsioClient::add_write() {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
@@ -85,7 +96,11 @@ void RedisAsioClient::add_write() {
   });
 }
 
-void RedisAsioClient::del_write() { write_requested_ = false; }
+void RedisAsioClient::del_write() {
+  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  io_service_.dispatch([this]() {
+    write_requested_ = false;
+  });
 
 void RedisAsioClient::cleanup() {}
 
