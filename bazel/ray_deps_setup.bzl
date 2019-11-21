@@ -78,6 +78,12 @@ def ray_deps_setup():
         sha256 = "8e5997b447b1afdd1efd33731968484d2fe71c271fa7f1cd6b2476367e964e0e",
         patches = [
             "//thirdparty/patches:hiredis-async-include-dict.patch",
+            "//thirdparty/patches:hiredis-casts.patch",
+            "//thirdparty/patches:hiredis-connect-rename.patch",
+            "//thirdparty/patches:hiredis-windows-sigpipe.patch",
+            "//thirdparty/patches:hiredis-windows-sockets.patch",
+            "//thirdparty/patches:hiredis-windows-strerror.patch",
+            "//thirdparty/patches:hiredis-windows-poll.patch",
             "//thirdparty/patches:redis-windows-poll.patch",
         ],
     )
