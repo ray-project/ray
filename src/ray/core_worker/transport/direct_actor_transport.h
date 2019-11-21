@@ -438,11 +438,11 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
-  bool is_async_ = false;
-  /// The thread that runs all asyncio fibers. is_async_ must be true.
+  bool is_asyncio_ = false;
+  /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
   /// The fiber event used to block fiber_runner_thread_ from shutdown.
-  /// is_async_ must be true.
+  /// is_asyncio_ must be true.
   FiberEvent fiber_shutdown_event_;
 };
 

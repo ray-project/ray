@@ -232,7 +232,7 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
 }
 
 void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
-  if (!is_async_) {
+  if (!is_asyncio_) {
     RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
 
     // The main thread will be used the creating new fibers.
@@ -249,7 +249,7 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
       // immediately start working on any ready fibers.
       fiber_shutdown_event_.Wait();
     });
-    is_async_ = true;
+    is_asyncio_ = true;
   }
 };
 
@@ -284,7 +284,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, pool_, is_async_)));
+                                  task_main_io_service_, *waiter_, pool_, is_asyncio_)));
     it = result.first;
   }
   it->second->Add(

@@ -150,7 +150,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   int MaxActorConcurrency() const;
 
-  bool IsAsyncActor() const;
+  bool IsAsyncioActor() const;
 
   bool IsDetachedActor() const;
 

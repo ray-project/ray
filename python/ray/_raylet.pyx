@@ -930,7 +930,7 @@ cdef class CoreWorker:
                      c_bool is_direct_call,
                      int32_t max_concurrency,
                      c_bool is_detached,
-                     c_bool is_async):
+                     c_bool is_asyncio):
         cdef:
             CRayFunction ray_function
             c_vector[CTaskArg] args_vector
@@ -952,7 +952,7 @@ cdef class CoreWorker:
                     CActorCreationOptions(
                         max_reconstructions, is_direct_call, max_concurrency,
                         c_resources, c_placement_resources,
-                        dynamic_worker_options, is_detached, is_async),
+                        dynamic_worker_options, is_detached, is_asyncio),
                     &c_actor_id))
 
             return ActorID(c_actor_id.Binary())

@@ -104,7 +104,7 @@ struct ActorCreationOptions {
                        const std::unordered_map<std::string, double> &resources,
                        const std::unordered_map<std::string, double> &placement_resources,
                        const std::vector<std::string> &dynamic_worker_options,
-                       bool is_detached, bool is_async)
+                       bool is_detached, bool is_asyncio)
       : max_reconstructions(max_reconstructions),
         is_direct_call(is_direct_call),
         max_concurrency(max_concurrency),
@@ -112,7 +112,7 @@ struct ActorCreationOptions {
         placement_resources(placement_resources),
         dynamic_worker_options(dynamic_worker_options),
         is_detached(is_detached),
-        is_async(is_async){};
+        is_asyncio(is_asyncio){};
 
   /// Maximum number of times that the actor should be reconstructed when it dies
   /// unexpectedly. It must be non-negative. If it's 0, the actor won't be reconstructed.
@@ -133,7 +133,7 @@ struct ActorCreationOptions {
   /// the worker to not be destroyed after the driver shutdown.
   const bool is_detached = false;
   /// Whether to use async mode of direct actor call. is_direct_call must be true.
-  const bool is_async = false;
+  const bool is_asyncio = false;
 };
 
 }  // namespace ray

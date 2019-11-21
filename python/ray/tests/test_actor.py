@@ -2879,7 +2879,7 @@ def test_asyncio_actor(ray_start_regular):
                 await self.event.wait()
             return sorted(self.batch)
 
-    a = AsyncBatcher.options(is_direct_call=True, is_async=True).remote()
+    a = AsyncBatcher.options(is_direct_call=True, is_asyncio=True).remote()
     x1 = a.add.remote(1)
     x2 = a.add.remote(2)
     x3 = a.add.remote(3)

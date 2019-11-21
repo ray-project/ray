@@ -626,7 +626,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, actor_creation_options.max_reconstructions,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.is_direct_call, actor_creation_options.max_concurrency,
-      actor_creation_options.is_detached, actor_creation_options.is_async);
+      actor_creation_options.is_detached, actor_creation_options.is_asyncio);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
