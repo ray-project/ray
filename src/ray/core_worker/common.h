@@ -10,6 +10,7 @@
 #include "ray/util/util.h"
 
 namespace ray {
+
 using WorkerType = rpc::WorkerType;
 
 // Return a string representation of the worker type.

@@ -7,7 +7,7 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, const std::unique_ptr<RayletClient> &raylet_client,
+    const std::string &store_socket, const std::shared_ptr<RayletClient> raylet_client,
     std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
@@ -27,7 +27,6 @@ Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  RAY_CHECK(!object_id.IsDirectCallType());
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
@@ -47,6 +46,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              std::shared_ptr<Buffer> *data) {
+  RAY_CHECK(!object_id.IsDirectCallType());
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {

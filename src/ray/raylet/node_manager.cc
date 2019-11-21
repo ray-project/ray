@@ -568,7 +568,7 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
     const std::string &resource_label = resource_pair.first;
     const double &new_resource_capacity = resource_pair.second;
 
-    cluster_schedres.UpdateResource(resource_label, new_resource_capacity);
+    cluster_schedres.UpdateResourceCapacity(resource_label, new_resource_capacity);
     if (client_id == local_client_id) {
       local_available_resources_.AddOrUpdateResource(resource_label,
                                                      new_resource_capacity);
@@ -833,6 +833,7 @@ void NodeManager::DispatchTasks(
           return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
+  std::vector<std::function<void()>> post_assign_callbacks;
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources =
@@ -845,7 +846,7 @@ void NodeManager::DispatchTasks(
         // once the first task is not feasible, we can break out of this loop
         break;
       }
-      if (AssignTask(task)) {
+      if (AssignTask(task, &post_assign_callbacks)) {
         removed_task_ids.insert(task_id);
       }
     }
@@ -854,6 +855,9 @@ void NodeManager::DispatchTasks(
   // it queued locally. Once the GetTaskReply has been sent, the task will get
   // re-queued, depending on whether the message succeeded or not.
   local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
+  for (auto func : post_assign_callbacks) {
+    func();
+  }
 }
 
 void NodeManager::ProcessClientMessage(
@@ -896,17 +900,19 @@ void NodeManager::ProcessClientMessage(
     // because it's already disconnected.
     return;
   } break;
-  case protocol::MessageType::RequestWorkerLease: {
-    ProcessRequestWorkerLeaseMessage(client, message_data);
-  } break;
-  case protocol::MessageType::ReturnWorker: {
-    ProcessReturnWorkerMessage(message_data);
-  } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
+  } break;
+  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    HandleDirectCallTaskBlocked(worker);
+  } break;
+  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    HandleDirectCallTaskUnblocked(worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
@@ -1109,6 +1115,8 @@ void NodeManager::ProcessDisconnectClientMessage(
       // Clean up any open ray.wait calls that the worker made.
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
     }
+    // Erase any lease metadata.
+    leased_workers_.erase(worker->Port());
   }
 
   if (is_worker) {
@@ -1195,43 +1203,6 @@ void NodeManager::ProcessDisconnectClientMessage(
   // TODO(rkn): Tell the object manager that this client has disconnected so
   // that it can clean up the wait requests for this client. Currently I think
   // these can be leaked.
-}
-
-void NodeManager::ProcessRequestWorkerLeaseMessage(
-    const std::shared_ptr<LocalClientConnection> &client, const uint8_t *message_data) {
-  // Read the resource spec submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::WorkerLeaseRequest>(message_data);
-  rpc::Task task_message;
-  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
-      fbs_message->resource_spec()->data(), fbs_message->resource_spec()->size()));
-
-  // Override the task dispatch to call back to the client instead of executing the
-  // task directly on the worker. TODO(ekl) handle spilling case
-  Task task(task_message);
-  task.OnDispatchInstead([this, client](const std::shared_ptr<void> granted,
-                                        const std::string &address, int port) {
-    std::shared_ptr<Worker> client_worker = worker_pool_.GetRegisteredWorker(client);
-    if (client_worker == nullptr) {
-      client_worker = worker_pool_.GetRegisteredDriver(client);
-    }
-    if (client_worker == nullptr) {
-      RAY_LOG(FATAL) << "TODO: Lost worker for lease request " << client;
-    } else {
-      client_worker->WorkerLeaseGranted(address, port);
-      leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
-    }
-  });
-  SubmitTask(task, Lineage());
-}
-
-void NodeManager::ProcessReturnWorkerMessage(const uint8_t *message_data) {
-  // Read the resource spec submitted by the client.
-  auto fbs_message = flatbuffers::GetRoot<protocol::ReturnWorkerRequest>(message_data);
-  auto worker_port = fbs_message->worker_port();
-  RAY_LOG(DEBUG) << "Return worker " << worker_port;
-  std::shared_ptr<Worker> worker = leased_workers_[worker_port];
-  leased_workers_.erase(worker_port);
-  HandleWorkerAvailable(worker);
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1442,11 +1413,76 @@ void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
                                    rpc::SendReplyCallback send_reply_callback) {
   rpc::Task task;
   task.mutable_task_spec()->CopyFrom(request.task_spec());
+  // Set the caller's node ID.
+  if (task.task_spec().caller_address().raylet_id() == "") {
+    task.mutable_task_spec()->mutable_caller_address()->set_raylet_id(
+        gcs_client_->client_table().GetLocalClientId().Binary());
+  }
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
   SubmitTask(Task(task), Lineage());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
+                                           rpc::WorkerLeaseReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  rpc::Task task_message;
+  task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
+
+  // Override the task dispatch to call back to the client instead of executing the
+  // task directly on the worker.
+  Task task(task_message);
+  RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
+  TaskID task_id = task.GetTaskSpecification().TaskId();
+  task.OnDispatchInstead(
+      [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
+                                                  const std::string &address, int port) {
+        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
+        reply->mutable_worker_address()->set_ip_address(address);
+        reply->mutable_worker_address()->set_port(port);
+        reply->mutable_worker_address()->set_raylet_id(
+            gcs_client_->client_table().GetLocalClientId().Binary());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+
+        // TODO(swang): Kill worker if other end hangs up.
+        // TODO(swang): Implement a lease term by which the owner needs to return the
+        // worker.
+        RAY_CHECK(leased_workers_.find(port) == leased_workers_.end());
+        leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
+      });
+  task.OnSpillbackInstead(
+      [reply, task_id, send_reply_callback](const ClientID &spillback_to,
+                                            const std::string &address, int port) {
+        RAY_LOG(DEBUG) << "Worker lease request SPILLBACK " << task_id;
+        reply->mutable_retry_at_raylet_address()->set_ip_address(address);
+        reply->mutable_retry_at_raylet_address()->set_port(port);
+        reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
+  SubmitTask(task, Lineage());
+}
+
+void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
+                                     rpc::ReturnWorkerReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
+  // Read the resource spec submitted by the client.
+  auto worker_port = request.worker_port();
+  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_port]);
+  leased_workers_.erase(worker_port);
+  Status status;
+  if (worker) {
+    // Handle the edge case where the worker was returned before we got the
+    // unblock RPC by unblocking it immediately (unblock is idempotent).
+    if (worker->IsBlocked()) {
+      HandleDirectCallTaskUnblocked(worker);
+    }
+    HandleWorkerAvailable(worker);
+  } else {
+    status = Status::Invalid("Returned worker does not exist any more");
+  }
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void NodeManager::HandleForwardTask(const rpc::ForwardTaskRequest &request,
@@ -1827,6 +1863,48 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
+void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
+    return;  // The worker may have died or is no longer processing the task.
+  }
+  auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
+  local_available_resources_.Release(cpu_resource_ids);
+  cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      cpu_resource_ids.ToResourceSet());
+  worker->MarkBlocked();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
+}
+
+void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || !worker->IsBlocked()) {
+    return;  // The worker may have died or is no longer processing the task.
+  }
+  TaskID task_id = worker->GetAssignedTaskId();
+  Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
+  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+  const ResourceSet cpu_resources = required_resources.GetNumCpus();
+  bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
+  if (!oversubscribed) {
+    // Reacquire the CPU resources for the worker. Note that care needs to be
+    // taken if the user is using the specific CPU IDs since the IDs that we
+    // reacquire here may be different from the ones that the task started with.
+    auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
+    worker->AcquireTaskCpuResources(resource_ids);
+    cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+        cpu_resources);
+  } else {
+    // In this case, we simply don't reacquire the CPU resources for the worker.
+    // The worker can keep running and when the task finishes, it will simply
+    // not have any CPU resources to release.
+    RAY_LOG(WARNING)
+        << "Resources oversubscribed: "
+        << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+               .GetAvailableResources()
+               .ToString();
+  }
+  worker->MarkUnblocked();
+}
+
 void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                                     const std::vector<ObjectID> &required_object_ids,
                                     const TaskID &current_task_id, bool ray_get) {
@@ -1867,12 +1945,14 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
   // Subscribe to the objects required by the task. These objects will be
   // fetched and/or reconstructed as necessary, until the objects become local
   // or are unsubscribed.
-  if (ray_get) {
-    task_dependency_manager_.SubscribeGetDependencies(current_task_id,
-                                                      required_object_ids);
-  } else {
-    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
-                                                       required_object_ids);
+  if (!required_object_ids.empty()) {
+    if (ray_get) {
+      task_dependency_manager_.SubscribeGetDependencies(current_task_id,
+                                                        required_object_ids);
+    } else {
+      task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
+                                                         required_object_ids);
+    }
   }
 }
 
@@ -1957,7 +2037,8 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-bool NodeManager::AssignTask(const Task &task) {
+bool NodeManager::AssignTask(const Task &task,
+                             std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // If this is an actor task, check that the new task has the correct counter.
@@ -2019,7 +2100,12 @@ bool NodeManager::AssignTask(const Task &task) {
 
   if (task.OnDispatch() != nullptr) {
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
-    finish_assign_task_callback(Status::OK());
+    if (post_assign_callbacks != nullptr) {
+      // Moves the tasks from SWAP to RUNNING state atomically. This avoids race
+      // conditions with ReturnLease requests.
+      post_assign_callbacks->push_back(
+          [this, worker, task_id]() { FinishAssignTask(task_id, *worker, true); });
+    }
   } else {
     worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
   }
@@ -2480,6 +2566,17 @@ void NodeManager::ForwardTaskOrResubmit(const Task &task,
 void NodeManager::ForwardTask(
     const Task &task, const ClientID &node_id,
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
+  // Override spillback for direct tasks.
+  if (task.OnSpillback() != nullptr) {
+    GcsNodeInfo node_info;
+    bool found = gcs_client_->client_table().GetClient(node_id, &node_info);
+    RAY_CHECK(found) << "Spilling back to a node manager, but no GCS info found for node "
+                     << node_id;
+    task.OnSpillback()(node_id, node_info.node_manager_address(),
+                       node_info.node_manager_port());
+    return;
+  }
+
   // Lookup node manager client for this node_id and use it to send the request.
   auto client_entry = remote_node_manager_clients_.find(node_id);
   if (client_entry == remote_node_manager_clients_.end()) {

@@ -9,7 +9,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
@@ -25,11 +25,10 @@
 /// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
 /// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
 /// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS                               \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
-  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(WorkerLeaseGranted, 5)
+#define RAY_CORE_WORKER_RPC_HANDLERS          \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)  \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999) \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
 
 namespace ray {
 
@@ -355,11 +354,6 @@ class CoreWorker {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
-  /// Implements gRPC server handler.
-  void HandleWorkerLeaseGranted(const rpc::WorkerLeaseGrantedRequest &request,
-                                rpc::WorkerLeaseGrantedReply *reply,
-                                rpc::SendReplyCallback send_reply_callback);
-
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -485,8 +479,11 @@ class CoreWorker {
   // Client to the GCS shared by core worker interfaces.
   std::shared_ptr<gcs::RedisGcsClient> gcs_client_;
 
-  // Client to the raylet shared by core worker interfaces.
-  std::unique_ptr<RayletClient> raylet_client_;
+  // Client to the raylet shared by core worker interfaces. This needs to be a
+  // shared_ptr for direct calls because we can lease multiple workers through
+  // one client, and we need to keep the connection alive until we return all
+  // of the workers.
+  std::shared_ptr<RayletClient> raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
@@ -498,14 +495,11 @@ class CoreWorker {
   /// Fields related to storing and retrieving objects.
   ///
 
-  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  /// In-memory store for return objects.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
-
-  /// In-memory store interface.
-  std::shared_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
 
   ///
   /// Fields related to task submission.
