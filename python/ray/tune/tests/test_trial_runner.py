@@ -334,23 +334,15 @@ class TrainableFunctionApiTest(unittest.TestCase):
             reporter(timesteps_total=1)
 
         register_trainable("f1", train)
-        try:
-            run_experiments({
-                "foo": {
-                    "run": "f1",
-                    "local_dir": local_dir,
-                    "config": {
-                        "a": "b"
-                    },
-                }
-            })
-        except OSError as e:
-            msg = str(e)
-            # Ignore errors when running in bazel sandbox.
-            if "Read-only" in msg:
-                assert "/home" in msg, msg
-            else:
-                raise
+        run_experiments({
+            "foo": {
+                "run": "f1",
+                "local_dir": local_dir,
+                "config": {
+                    "a": "b"
+                },
+            }
+        })
 
     def testLongFilename(self):
         def train(config, reporter):
@@ -1570,7 +1562,7 @@ class TrialRunnerTest(unittest.TestCase):
                 "run": "f1",
                 "config": {
                     "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                    "b" * 50: tune.sample_from(lambda spec: "long" * 100)
+                    "b" * 50: tune.sample_from(lambda spec: "long" * 40)
                 },
             }
         }
@@ -1580,7 +1572,7 @@ class TrialRunnerTest(unittest.TestCase):
             trial_generator.add_configurations({name: spec})
             for trial in trial_generator.next_trials():
                 trial_executor.start_trial(trial)
-                self.assertLessEqual(len(trial.logdir), 220)
+                self.assertLessEqual(len(trial.logdir), 200)
                 trial_executor.stop_trial(trial)
 
     def testExtraResources(self):
