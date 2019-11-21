@@ -29,7 +29,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
+        - ./ci/travis/install-ray.sh
       script:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./java/test.sh
@@ -85,7 +85,7 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-bazel.sh
         - ./ci/suppress_output ./ci/travis/install-dependencies.sh
         - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
+        - ./ci/travis/install-ray.sh
 
       script:
         - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
@@ -116,7 +116,7 @@ matrix:
         # For the linux wheel build, we use a shared cache between all
         # wheels, but not between different travis runs, because that
         # caused timeouts in the past. See the "cache: false" line below.
-        - export MOUNT_BAZEL_CACHE="-v $HOME/ray-bazel-cache:/root/ray-bazel-cache -e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST -e encrypted_1c30b31fe1ee_key=$encrypted_1c30b31fe1ee_key -e encrypted_1c30b31fe1ee_iv=$encrypted_1c30b31fe1ee_iv"
+        - export MOUNT_BAZEL_CACHE="-e TRAVIS=true -e TRAVIS_PULL_REQUEST=$TRAVIS_PULL_REQUEST -e encrypted_1c30b31fe1ee_key=$encrypted_1c30b31fe1ee_key -e encrypted_1c30b31fe1ee_iv=$encrypted_1c30b31fe1ee_iv"
 
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the `$MOUNT_BAZEL_CACHE` part.
@@ -151,7 +151,7 @@ install:
   - ./ci/suppress_output ./ci/travis/install-bazel.sh
   - ./ci/suppress_output ./ci/travis/install-dependencies.sh
   - export PATH="$HOME/miniconda/bin:$PATH"
-  - ./ci/suppress_output ./ci/travis/install-ray.sh
+  - ./ci/travis/install-ray.sh
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
@@ -219,6 +219,6 @@ deploy:
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
-cache:
-  directories:
-    - $HOME/ray-bazel-cache
+#cache:
+  #directories:
+    #- $HOME/ray-bazel-cache
