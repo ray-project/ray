@@ -255,12 +255,12 @@ class TestSuiteFactory {
       std::shared_ptr<CoreWorker> worker, std::shared_ptr<TestInitMessage> message) {
     std::shared_ptr<StreamingQueueTestSuite> test_suite = nullptr;
     std::string suite_name = message->TestSuiteName();
-    ray::streaming::queue::protobuf::StreamingQueueTestRole role = message->Role();
+    queue::protobuf::StreamingQueueTestRole role = message->Role();
     const std::vector<ObjectID> &queue_ids = message->QueueIds();
     const std::vector<ObjectID> &rescale_queue_ids = message->RescaleQueueIds();
     ActorID peer_actor_id = message->PeerActorId();
 
-    if (role == ray::streaming::queue::protobuf::StreamingQueueTestRole::WRITER) {
+    if (role == queue::protobuf::StreamingQueueTestRole::WRITER) {
       if (suite_name == "StreamingWriterTest") {
         test_suite = std::make_shared<StreamingQueueWriterTestSuite>(
             worker, peer_actor_id, queue_ids, rescale_queue_ids);

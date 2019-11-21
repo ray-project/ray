@@ -62,8 +62,8 @@ class DataMessage : public Message {
   uint64_t seq_id_;
   bool raw_;
 
-  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
-      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType;
+  const queue::protobuf::StreamingQueueMessageType type_ = 
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType;
 };
 
 class NotificationMessage : public Message {
@@ -82,8 +82,8 @@ class NotificationMessage : public Message {
 
  private:
   uint64_t seq_id_;
-  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
-      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
+  const queue::protobuf::StreamingQueueMessageType type_ = 
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };
 
 class CheckMessage : public Message {
@@ -99,8 +99,8 @@ class CheckMessage : public Message {
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
-  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
-      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType;
+  const queue::protobuf::StreamingQueueMessageType type_ = 
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType;
 };
 
 class CheckRspMessage : public Message {
@@ -117,8 +117,8 @@ class CheckRspMessage : public Message {
 
  private:
   queue::protobuf::StreamingQueueError err_code_;
-  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
-      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType;
+  const queue::protobuf::StreamingQueueMessageType type_ = 
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType;
 };
 
 class TestInitMessage : public Message {
@@ -166,8 +166,8 @@ class TestInitMessage : public Message {
     return os.str();
   }
  private:
-  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
-      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType;
+  const queue::protobuf::StreamingQueueMessageType type_ = 
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType;
   std::string actor_handle_serialized_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
@@ -190,8 +190,8 @@ class TestCheckStatusRspMsg : public Message {
   bool Status() { return status_; }
 
  private:
-  const ray::streaming::queue::protobuf::StreamingQueueMessageType type_ = 
-      ray::streaming::queue::protobuf::StreamingQueueMessageType::StreamingQueueTestCheckStatusRspMsgType;
+  const queue::protobuf::StreamingQueueMessageType type_ = 
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueTestCheckStatusRspMsgType;
   std::string test_name_;
   bool status_;
 };

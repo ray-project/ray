@@ -16,7 +16,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
   ConstructProtoBuf(&pboutput);
   int64_t fbs_length = pboutput.length();
 
-  ray::streaming::queue::protobuf::StreamingQueueMessageType type = Type();
+  queue::protobuf::StreamingQueueMessageType type = Type();
   size_t total_len =
       sizeof(Message::MagicNum) + sizeof(type) + sizeof(fbs_length) + fbs_length;
   if (buffer_ != nullptr) {
@@ -51,7 +51,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
 }
 
 void DataMessage::ConstructProtoBuf(std::string *output) {
-  ray::streaming::queue::protobuf::StreamingQueueDataMsg msg;
+  queue::protobuf::StreamingQueueDataMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
   msg.set_queue_id(queue_id_.Binary());
@@ -62,12 +62,12 @@ void DataMessage::ConstructProtoBuf(std::string *output) {
 }
 
 std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(ray::streaming::queue::protobuf::StreamingQueueMessageType);
+  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
   uint64_t *fbs_length = (uint64_t *)bytes;
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *fbs_length);
-  ray::streaming::queue::protobuf::StreamingQueueDataMsg message;
+  queue::protobuf::StreamingQueueDataMsg message;
   message.ParseFromString(inputpb);
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
   ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
@@ -87,7 +87,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
 }
 
 void NotificationMessage::ConstructProtoBuf(std::string *output) {
-  ray::streaming::queue::protobuf::StreamingQueueNotificationMsg msg;
+  queue::protobuf::StreamingQueueNotificationMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
   msg.set_queue_id(queue_id_.Binary());
@@ -96,12 +96,12 @@ void NotificationMessage::ConstructProtoBuf(std::string *output) {
 }
 
 std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(ray::streaming::queue::protobuf::StreamingQueueMessageType);
+  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
   uint64_t* length = (uint64_t*)bytes;
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *length);
-  ray::streaming::queue::protobuf::StreamingQueueNotificationMsg message;
+  queue::protobuf::StreamingQueueNotificationMsg message;
   message.ParseFromString(inputpb);
   STREAMING_LOG(INFO) << "message.src_actor_id: " << message.src_actor_id();
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
@@ -116,7 +116,7 @@ std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *byt
 }
 
 void CheckMessage::ConstructProtoBuf(std::string *output) {
-  ray::streaming::queue::protobuf::StreamingQueueCheckMsg msg;
+  queue::protobuf::StreamingQueueCheckMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
   msg.set_queue_id(queue_id_.Binary());
@@ -124,12 +124,12 @@ void CheckMessage::ConstructProtoBuf(std::string *output) {
 }
 
 std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(ray::streaming::queue::protobuf::StreamingQueueMessageType);
+  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
   uint64_t* length = (uint64_t*)bytes;
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *length);
-  ray::streaming::queue::protobuf::StreamingQueueCheckMsg message;
+  queue::protobuf::StreamingQueueCheckMsg message;
   message.ParseFromString(inputpb);
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
   ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
@@ -142,7 +142,7 @@ std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
 }
 
 void CheckRspMessage::ConstructProtoBuf(std::string *output) {
-  ray::streaming::queue::protobuf::StreamingQueueCheckRspMsg msg;
+  queue::protobuf::StreamingQueueCheckRspMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
   msg.set_queue_id(queue_id_.Binary());
@@ -151,17 +151,17 @@ void CheckRspMessage::ConstructProtoBuf(std::string *output) {
 }
 
 std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(ray::streaming::queue::protobuf::StreamingQueueMessageType);
+  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
   uint64_t* length = (uint64_t*)bytes;
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *length);
-  ray::streaming::queue::protobuf::StreamingQueueCheckRspMsg message;
+  queue::protobuf::StreamingQueueCheckRspMsg message;
   message.ParseFromString(inputpb);
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
   ActorID dst_actor_id = ActorID::FromBinary(message.dst_actor_id());
   ObjectID queue_id = ObjectID::FromBinary(message.queue_id());
-  ray::streaming::queue::protobuf::StreamingQueueError err_code = message.err_code();
+  queue::protobuf::StreamingQueueError err_code = message.err_code();
 
   std::shared_ptr<CheckRspMessage> check_rsp_msg =
       std::make_shared<CheckRspMessage>(src_actor_id, dst_actor_id, queue_id, err_code);
@@ -170,7 +170,7 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
 }
 
 void TestInitMessage::ConstructProtoBuf(std::string *output) {
-  ray::streaming::queue::protobuf::StreamingQueueTestInitMessage msg;
+  queue::protobuf::StreamingQueueTestInitMessage msg;
   msg.set_role(role_);
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
@@ -189,12 +189,12 @@ void TestInitMessage::ConstructProtoBuf(std::string *output) {
 
 std::shared_ptr<TestInitMessage> TestInitMessage::FromBytes(
     uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(ray::streaming::queue::protobuf::StreamingQueueMessageType);
+  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
   uint64_t* length = (uint64_t*)bytes;
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *length);
-  ray::streaming::queue::protobuf::StreamingQueueTestInitMessage message;
+  queue::protobuf::StreamingQueueTestInitMessage message;
   message.ParseFromString(inputpb);
   queue::protobuf::StreamingQueueTestRole role = message.role();
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
@@ -219,7 +219,7 @@ std::shared_ptr<TestInitMessage> TestInitMessage::FromBytes(
 }
 
 void TestCheckStatusRspMsg::ConstructProtoBuf(std::string *output) {
-  ray::streaming::queue::protobuf::StreamingQueueTestCheckStatusRspMsg msg;
+  queue::protobuf::StreamingQueueTestCheckStatusRspMsg msg;
   msg.set_test_name(test_name_);
   msg.set_status(status_);
   msg.SerializeToString(output);
@@ -227,12 +227,12 @@ void TestCheckStatusRspMsg::ConstructProtoBuf(std::string *output) {
 
 std::shared_ptr<TestCheckStatusRspMsg> TestCheckStatusRspMsg::FromBytes(
     uint8_t *bytes) {
-  bytes += sizeof(uint32_t) + sizeof(ray::streaming::queue::protobuf::StreamingQueueMessageType);
+  bytes += sizeof(uint32_t) + sizeof(queue::protobuf::StreamingQueueMessageType);
   uint64_t* length = (uint64_t*)bytes;
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *length);
-  ray::streaming::queue::protobuf::StreamingQueueTestCheckStatusRspMsg message;
+  queue::protobuf::StreamingQueueTestCheckStatusRspMsg message;
   message.ParseFromString(inputpb);
   std::string test_name = message.test_name();
   bool status = message.status();
