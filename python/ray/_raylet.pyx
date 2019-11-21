@@ -436,16 +436,17 @@ cdef deserialize_args(
     for i in range(c_args.size()):
         # Passed by value.
         if arg_reference_ids[i].IsNil():
-            data = Buffer.make(c_args[i].get().GetData())
             if (c_args[i].get().HasMetadata()
                 and Buffer.make(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == RAW_BUFFER_METADATA):
+                data = Buffer.make(c_args[i].get().GetData())
                 args.append(data)
             elif (c_args[i].get().HasMetadata() and Buffer.make(
                     c_args[i].get().GetMetadata()).to_pybytes()
                     == PICKLE_BUFFER_METADATA):
                 # This is a pickled "simple python value" argument.
+                data = Buffer.make(c_args[i].get().GetData())
                 args.append(pickle.loads(data.to_pybytes()))
             else:
                 # This is a Ray object inlined by the direct task submitter.
