@@ -70,7 +70,7 @@ class CallbackReply {
 
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
-using RedisCallback = std::function<void(std::unique_ptr<CallbackReply>)>;
+using RedisCallback = std::function<void(std::shared_ptr<CallbackReply>)>;
 
 void GlobalRedisCallback(void *c, void *r, void *privdata);
 
@@ -81,7 +81,7 @@ class RedisCallbackManager {
     return instance;
   }
 
-  struct CallbackItem {
+  struct CallbackItem : public std::enable_shared_from_this<CallbackItem> {
     CallbackItem() = default;
 
     CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
@@ -91,9 +91,10 @@ class RedisCallbackManager {
           start_time_(start_time),
           io_service_(io_service) {}
 
-    void Dispatch(std::unique_ptr<CallbackReply> reply) {
+    void Dispatch(std::shared_ptr<CallbackReply> &reply) {
+      std::shared_ptr<CallbackItem> self = shared_from_this();
       if (callback_ != nullptr) {
-        io_service_.post([this, &reply]() { callback_(std::move(reply)); });
+        io_service_.post([self, reply]() { self->callback_(std::move(reply)); });
       }
     }
 
