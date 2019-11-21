@@ -31,10 +31,10 @@ class CoreWorkerMemoryStore {
 
   /// Put an object with specified ID into object store.
   ///
-  /// \param[in] object_id Object ID specified by user.
   /// \param[in] object The ray object.
+  /// \param[in] object_id Object ID specified by user.
   /// \return Status.
-  Status Put(const ObjectID &object_id, const RayObject &object);
+  Status Put(const RayObject &object, const ObjectID &object_id);
 
   /// Get a list of objects from the object store.
   ///
@@ -47,6 +47,55 @@ class CoreWorkerMemoryStore {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
+
+  Status Get(
+      const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+      const TaskID &task_id,
+      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+      bool *got_exception) {
+    const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+    std::vector<std::shared_ptr<RayObject>> result_objects;
+    RAY_RETURN_NOT_OK(
+        Get(id_vector, id_vector.size(), timeout_ms, true, &result_objects));
+
+    for (size_t i = 0; i < id_vector.size(); i++) {
+      if (result_objects[i] != nullptr) {
+        (*results)[id_vector[i]] = result_objects[i];
+        if (result_objects[i]->IsException()) {
+          *got_exception = true;
+        }
+      }
+    }
+    return Status::OK();
+  }
+
+  Status Wait(
+      const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
+      const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
+    std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+    std::vector<std::shared_ptr<RayObject>> result_objects;
+    RAY_CHECK(object_ids.size() == id_vector.size());
+    auto status = Get(id_vector, num_objects, timeout_ms, false, &result_objects);
+    // Ignore TimedOut statuses since we return ready objects explicitly.
+    if (!status.IsTimedOut()) {
+      RAY_RETURN_NOT_OK(status);
+    }
+
+    for (size_t i = 0; i < id_vector.size(); i++) {
+      if (result_objects[i] != nullptr) {
+        ready->insert(id_vector[i]);
+      }
+    }
+
+    return Status::OK();
+  }
+
+  Status Delete(
+      const absl::flat_hash_set<ObjectID> &object_ids) {
+    std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
+    Delete(object_id_vector);
+    return Status::OK();
+  }
 
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).

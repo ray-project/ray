@@ -10,7 +10,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store.h"
 
 #include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -619,11 +619,8 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+  std::shared_ptr<CoreWorkerMemoryStore> provider_ptr =
       std::make_shared<CoreWorkerMemoryStore>();
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> provider_ptr =
-      std::unique_ptr<CoreWorkerMemoryStoreProvider>(
-          new CoreWorkerMemoryStoreProvider(memory_store));
 
   auto &provider = *provider_ptr;
 
