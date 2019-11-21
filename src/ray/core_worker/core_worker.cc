@@ -498,7 +498,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
-  RAY_RETURN_NOT_OK(memory_store_->Delete(memory_object_ids));
+  memory_store_->Delete(memory_object_ids);
 
   return Status::OK();
 }

@@ -112,7 +112,7 @@ class CoreWorkerMemoryStore {
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \return Void.
-  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids);
+  void Delete(const absl::flat_hash_set<ObjectID> &object_ids);
 
   /// Delete a list of objects from the object store.
   ///
