@@ -25,9 +25,8 @@ void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
   }
 }
 
-void WriteObjectsToMemoryStore(
-    const rpc::PushTaskReply &reply,
-    std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store) {
+void WriteObjectsToMemoryStore(const rpc::PushTaskReply &reply,
+                               std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store) {
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());

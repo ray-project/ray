@@ -43,9 +43,8 @@ void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
 /// \param[in] reply Proto response to a direct actor or task call.
 /// \param[in] in_memory_store The memory store to write to.
 /// \return Void.
-void WriteObjectsToMemoryStore(
-    const rpc::PushTaskReply &reply,
-    std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store);
+void WriteObjectsToMemoryStore(const rpc::PushTaskReply &reply,
+                               std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store);
 
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
@@ -65,9 +64,8 @@ struct ActorStateData {
 // This class is thread-safe.
 class CoreWorkerDirectActorTaskSubmitter {
  public:
-  CoreWorkerDirectActorTaskSubmitter(
-      rpc::ClientFactoryFn client_factory,
-      std::shared_ptr<CoreWorkerMemoryStore> store)
+  CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
+                                     std::shared_ptr<CoreWorkerMemoryStore> store)
       : client_factory_(client_factory),
         in_memory_store_(store),
         resolver_(in_memory_store_) {}

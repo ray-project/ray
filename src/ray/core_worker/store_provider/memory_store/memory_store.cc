@@ -297,6 +297,13 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   }
 }
 
+void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mu_);
+  for (const auto &object_id : object_ids) {
+    objects_.erase(object_id);
+  }
+}
+
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {

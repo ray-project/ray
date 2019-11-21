@@ -346,8 +346,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, local_timeout_ms,
-                                                  worker_context_.GetCurrentTaskID(),
-                                                  &result_map, &got_exception));
+                                         worker_context_.GetCurrentTaskID(), &result_map,
+                                         &got_exception));
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
@@ -400,7 +400,7 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   if (object_id.IsDirectCallType()) {
     // Note that the memory store returns false if the object value is
     // ErrorType::OBJECT_IN_PLASMA.
-    *found = memory_store_->Contains(object_id);
+    found = memory_store_->Contains(object_id);
   }
   if (!found) {
     // We check plasma as a fallback in all cases, since a direct call object

@@ -48,11 +48,11 @@ class CoreWorkerMemoryStore {
   Status Get(const std::vector<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
              bool remove_after_get, std::vector<std::shared_ptr<RayObject>> *results);
 
-  Status Get(
-      const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-      const TaskID &task_id,
-      absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
-      bool *got_exception) {
+  /// Convenience wrapper around Get() that stores results in a given result map.
+  Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+             const TaskID &task_id,
+             absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+             bool *got_exception) {
     const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
     std::vector<std::shared_ptr<RayObject>> result_objects;
     RAY_RETURN_NOT_OK(
@@ -69,9 +69,10 @@ class CoreWorkerMemoryStore {
     return Status::OK();
   }
 
-  Status Wait(
-      const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-      const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
+  /// Convenience wrapper around Get() that stores ready objects in a given result set.
+  Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
+              int64_t timeout_ms, const TaskID &task_id,
+              absl::flat_hash_set<ObjectID> *ready) {
     std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
     std::vector<std::shared_ptr<RayObject>> result_objects;
     RAY_CHECK(object_ids.size() == id_vector.size());
@@ -87,13 +88,6 @@ class CoreWorkerMemoryStore {
       }
     }
 
-    return Status::OK();
-  }
-
-  Status Delete(
-      const absl::flat_hash_set<ObjectID> &object_ids) {
-    std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
-    Delete(object_id_vector);
     return Status::OK();
   }
 
@@ -113,6 +107,12 @@ class CoreWorkerMemoryStore {
   /// \param[in] object_id The object id to get.
   /// \return pointer to the local object, or nullptr if promoted to plasma.
   std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
+
+  /// Delete a list of objects from the object store.
+  ///
+  /// \param[in] object_ids IDs of the objects to delete.
+  /// \return Void.
+  Status Delete(const absl::flat_hash_set<ObjectID> &object_ids);
 
   /// Delete a list of objects from the object store.
   ///

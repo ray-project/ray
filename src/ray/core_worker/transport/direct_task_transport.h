@@ -20,10 +20,10 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(
-      std::shared_ptr<WorkerLeaseInterface> lease_client,
-      rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
-      std::shared_ptr<CoreWorkerMemoryStore> store)
+  CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
+                                rpc::ClientFactoryFn client_factory,
+                                LeaseClientFactoryFn lease_client_factory,
+                                std::shared_ptr<CoreWorkerMemoryStore> store)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
