@@ -191,6 +191,7 @@ def ray_deps_setup():
         remote = "https://github.com/grpc/grpc",
         sha256 = "723853c36ea6d179d32a4f9f2f8691dbe0e28d5bbc521c954b34355a1c952ba5",
         patches = [
+            "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
         ],
     )
