@@ -36,7 +36,10 @@ Status CoreWorkerMemoryStoreProvider::Get(
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
       (*results)[id_vector[i]] = result_objects[i];
-      if (result_objects[i]->IsException()) {
+      if (result_objects[i]->IsException() && !result_objects[i]->IsInPlasmaError()) {
+        // Can return early if an object value contains an exception.
+        // InPlasmaError does not count as an exception because then the object
+        // value should then be found in plasma.
         *got_exception = true;
       }
     }
