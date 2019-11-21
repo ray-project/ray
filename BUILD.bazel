@@ -776,6 +776,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
+    copts = COPTS,
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
