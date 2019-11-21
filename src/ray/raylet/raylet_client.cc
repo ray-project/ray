@@ -258,6 +258,20 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
 }
 
+ray::Status RayletClient::NotifyDirectCallTaskBlocked() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
+}
+
+ray::Status RayletClient::NotifyDirectCallTaskUnblocked() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
+}
+
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
                                const TaskID &current_task_id, WaitResultPair *result) {
@@ -392,6 +406,8 @@ ray::Status RayletClient::ReturnWorker(int worker_port) {
   request.set_worker_port(worker_port);
   return grpc_client_->ReturnWorker(
       request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
-        RAY_CHECK_OK(status);
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Error returning worker: " << status;
+        }
       });
 }

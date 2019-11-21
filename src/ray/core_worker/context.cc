@@ -55,7 +55,8 @@ WorkerContext::WorkerContext(WorkerType worker_type, const JobID &job_id)
       worker_id_(worker_type_ == WorkerType::DRIVER ? ComputeDriverIdFromJob(job_id)
                                                     : WorkerID::FromRandom()),
       current_job_id_(worker_type_ == WorkerType::DRIVER ? job_id : JobID::Nil()),
-      current_actor_id_(ActorID::Nil()) {
+      current_actor_id_(ActorID::Nil()),
+      main_thread_id_(boost::this_thread::get_id()) {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
   // (For other threads it's set to random ID via GetThreadContext).
@@ -117,6 +118,10 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 }
 
 const ActorID &WorkerContext::GetCurrentActorID() const { return current_actor_id_; }
+
+bool WorkerContext::CurrentThreadIsMain() const {
+  return boost::this_thread::get_id() == main_thread_id_;
+}
 
 bool WorkerContext::CurrentActorIsDirectCall() const {
   return current_actor_is_direct_call_;
