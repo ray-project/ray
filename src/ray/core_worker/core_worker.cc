@@ -166,6 +166,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+  resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -579,12 +580,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
-  BuildCommonTaskSpec(
-      builder, job_id, actor_creation_task_id, worker_context_.GetCurrentTaskID(),
-      next_task_index, GetCallerId(), rpc_address_, function,
-      PrepareDirectActorCallArgs(args, memory_store_), 1,
-      actor_creation_options.resources, actor_creation_options.placement_resources,
-      TaskTransportType::RAYLET, &return_ids);
+  BuildCommonTaskSpec(builder, job_id, actor_creation_task_id,
+                      worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
+                      rpc_address_, function, args, 1, actor_creation_options.resources,
+                      actor_creation_options.placement_resources,
+                      TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
                                    actor_creation_options.dynamic_worker_options,
                                    actor_creation_options.is_direct_call,
@@ -600,7 +600,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-  return raylet_client_->SubmitTask(task_spec);
+  resolver_->ResolveDependencies(
+      task_spec, [this, task_spec]() { raylet_client_->SubmitTask(task_spec); });
+  return Status::OK();
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
