@@ -23,14 +23,15 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only"],
+    tags = ["jenkins_only", "exclusive"],
 )
 
 py_test(
     name = "test_commands",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -81,6 +82,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
@@ -92,10 +94,10 @@ py_test(
 
 py_test(
     name = "test_tune_restore",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["jenkins_only"],
+    tags = ["jenkins_only", "exclusive"],
 )
 
 py_test(
@@ -103,6 +105,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_save_restore.py"],
     deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
