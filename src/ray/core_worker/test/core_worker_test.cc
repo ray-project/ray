@@ -10,7 +10,7 @@
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 #include "ray/raylet/raylet_client.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -619,11 +619,8 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
 }
 
 TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
-  std::shared_ptr<CoreWorkerMemoryStore> memory_store =
+  std::shared_ptr<CoreWorkerMemoryStore> provider_ptr =
       std::make_shared<CoreWorkerMemoryStore>();
-  std::unique_ptr<CoreWorkerMemoryStoreProvider> provider_ptr =
-      std::unique_ptr<CoreWorkerMemoryStoreProvider>(
-          new CoreWorkerMemoryStoreProvider(memory_store));
 
   auto &provider = *provider_ptr;
 
@@ -682,7 +679,7 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // clear the reference held.
   results.clear();
 
-  RAY_CHECK_OK(provider.Delete(ids_set));
+  provider.Delete(ids_set);
 
   usleep(200 * 1000);
   ASSERT_TRUE(provider.Get(ids_set, 0, ctx, &results, &got_exception).IsTimedOut());

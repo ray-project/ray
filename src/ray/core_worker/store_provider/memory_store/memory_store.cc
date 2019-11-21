@@ -2,7 +2,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
 
 namespace ray {
 
@@ -150,7 +149,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   return nullptr;
 }
 
-Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
+Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
@@ -161,7 +160,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return Status::ObjectExists("object already exists in the memory store");
+      return Status::OK();  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -310,6 +309,13 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     return Status::OK();
   } else {
     return Status::TimedOut("Get timed out: some object(s) not ready.");
+  }
+}
+
+void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mu_);
+  for (const auto &object_id : object_ids) {
+    objects_.erase(object_id);
   }
 }
 
