@@ -15,10 +15,6 @@ except ImportError:
 import signal
 import sys
 import time
-try:
-    import asyncio
-except ImportError:  # Python2 doesn't have asyncio
-    pass
 
 import ray
 import ray.ray_constants as ray_constants
@@ -2857,34 +2853,3 @@ ray.get(actor.ping.remote())
     detached_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
 
-
-@pytest.mark.skipif(
-    sys.version_info < (3, 0), reason="This test requires Python 3.")
-def test_asyncio_actor(ray_start_regular):
-    @ray.remote
-    class AsyncBatcher(object):
-        def __init__(self):
-            self.batch = []
-            # The event currently need to be created from the same thread.
-            # We currently run async coroutines from a different thread.
-            self.event = None
-
-        async def add(self, x):
-            if self.event is None:
-                self.event = asyncio.Event()
-            self.batch.append(x)
-            if len(self.batch) >= 3:
-                self.event.set()
-            else:
-                await self.event.wait()
-            return sorted(self.batch)
-
-    a = AsyncBatcher.options(is_direct_call=True, is_asyncio=True).remote()
-    x1 = a.add.remote(1)
-    x2 = a.add.remote(2)
-    x3 = a.add.remote(3)
-    r1 = ray.get(x1)
-    r2 = ray.get(x2)
-    r3 = ray.get(x3)
-    assert r1 == [1, 2, 3]
-    assert r1 == r2 == r3
