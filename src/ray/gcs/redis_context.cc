@@ -21,23 +21,19 @@ namespace {
 /// A helper function to call the callback and delete it from the callback
 /// manager if necessary.
 void ProcessCallback(int64_t callback_index,
-                     const ray::gcs::CallbackReply &callback_reply) {
+                     std::unique_ptr<ray::gcs::CallbackReply> callback_reply) {
   RAY_CHECK(callback_index >= 0) << "The callback index must be greater than 0, "
                                  << "but it actually is " << callback_index;
   auto callback_item = ray::gcs::RedisCallbackManager::instance().get(callback_index);
-  if (!callback_item.is_subscription) {
+  if (!callback_item.is_subscription_) {
     // Record the redis latency for non-subscription redis operations.
     auto end_time = absl::GetCurrentTimeNanos() / 1000;
-    ray::stats::RedisLatency().Record(end_time - callback_item.start_time);
-  }
-  // Invoke the callback.
-  if (callback_item.callback != nullptr) {
-    callback_item.callback(callback_reply);
-  }
-  if (!callback_item.is_subscription) {
+    ray::stats::RedisLatency().Record(end_time - callback_item.start_time_);
     // Delete the callback if it's not a subscription callback.
     ray::gcs::RedisCallbackManager::instance().remove(callback_index);
   }
+  // Dispatch the callback.
+  callback_item.Dispatch(std::move(callback_reply));
 }
 
 }  // namespace
@@ -46,11 +42,18 @@ namespace ray {
 
 namespace gcs {
 
-CallbackReply::CallbackReply(redisReply *redis_reply) {
+CallbackReply::CallbackReply(redisReply *redis_reply, bool own_reply) {
   RAY_CHECK(nullptr != redis_reply);
   RAY_CHECK(redis_reply->type != REDIS_REPLY_ERROR)
       << "Got an error in redis reply: " << redis_reply->str;
-  this->redis_reply_ = redis_reply;
+  redis_reply_ = redis_reply;
+  own_reply_ = own_reply;
+}
+
+CallbackReply::~CallbackReply() {
+  if (own_reply_) {
+    freeReplyObject(redis_reply_);
+  }
 }
 
 bool CallbackReply::IsNil() const { return REDIS_REPLY_NIL == redis_reply_->type; }
@@ -130,15 +133,18 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
   redisReply *reply = reinterpret_cast<redisReply *>(r);
-  ProcessCallback(callback_index, CallbackReply(reply));
+  // TODO(micafan) Make a copy of redisReply.
+  std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(reply, true));
+  ProcessCallback(callback_index, std::move(callback_reply));
 }
 
-int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscription) {
+int64_t RedisCallbackManager::add(const RedisCallback &function, bool is_subscription,
+                                  boost::asio::io_service &io_service) {
   auto start_time = absl::GetCurrentTimeNanos() / 1000;
 
   std::lock_guard<std::mutex> lock(mutex_);
-  callback_items_.emplace(num_callbacks_,
-                          CallbackItem(function, is_subscription, start_time));
+  callback_items_.emplace(
+      num_callbacks_, CallbackItem(function, is_subscription, start_time, io_service));
   return num_callbacks_++;
 }
 
@@ -280,7 +286,8 @@ Status RedisContext::SubscribeAsync(const ClientID &client_id,
       << "Client requested subscribe on a table that does not support pubsub";
   RAY_CHECK(async_redis_subscribe_context_);
 
-  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, true);
+  int64_t callback_index =
+      RedisCallbackManager::instance().add(redisCallback, true, io_service_);
   RAY_CHECK(out_callback_index != nullptr);
   *out_callback_index = callback_index;
   Status status = Status::OK();

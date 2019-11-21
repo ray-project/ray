@@ -1,6 +1,8 @@
 #ifndef RAY_GCS_REDIS_CONTEXT_H
 #define RAY_GCS_REDIS_CONTEXT_H
 
+#include <boost/asio.hpp>
+#include <boost/bind.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -33,7 +35,9 @@ using rpc::TablePubsub;
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(redisReply *redis_reply);
+  explicit CallbackReply(redisReply *redis_reply, bool own_reply = true);
+
+  ~CallbackReply();
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
@@ -60,12 +64,13 @@ class CallbackReply {
   void ReadAsStringArray(std::vector<std::string> *array) const;
 
  private:
-  redisReply *redis_reply_;
+  redisReply *redis_reply_{nullptr};
+  bool own_reply_{false};
 };
 
 /// Every callback should take in a vector of the results from the Redis
 /// operation.
-using RedisCallback = std::function<void(const CallbackReply &)>;
+using RedisCallback = std::function<void(std::unique_ptr<CallbackReply>)>;
 
 void GlobalRedisCallback(void *c, void *r, void *privdata);
 
@@ -79,19 +84,27 @@ class RedisCallbackManager {
   struct CallbackItem {
     CallbackItem() = default;
 
-    CallbackItem(const RedisCallback &callback, bool is_subscription,
-                 int64_t start_time) {
-      this->callback = callback;
-      this->is_subscription = is_subscription;
-      this->start_time = start_time;
+    CallbackItem(const RedisCallback &callback, bool is_subscription, int64_t start_time,
+                 boost::asio::io_service &io_service)
+        : callback_(callback),
+          is_subscription_(is_subscription),
+          start_time_(start_time),
+          io_service_(io_service) {}
+
+    void Dispatch(std::unique_ptr<CallbackReply> reply) {
+      if (callback_ != nullptr) {
+        io_service_.post([callback_, &reply]() { callback_(std::move(reply)); });
+      }
     }
 
-    RedisCallback callback;
-    bool is_subscription;
-    int64_t start_time;
+    RedisCallback callback_;
+    bool is_subscription_;
+    int64_t start_time_;
+    boost::asio::io_service &io_service_;
   };
 
-  int64_t add(const RedisCallback &function, bool is_subscription);
+  int64_t add(const RedisCallback &function, bool is_subscription,
+              boost::asio::io_service &io_service);
 
   CallbackItem &get(int64_t callback_index);
 
@@ -111,7 +124,8 @@ class RedisCallbackManager {
 
 class RedisContext {
  public:
-  RedisContext() : context_(nullptr) {}
+  RedisContext(boost::asio::io_service &io_service)
+      : io_service_(io_service), context_(nullptr) {}
 
   ~RedisContext();
 
@@ -170,6 +184,7 @@ class RedisContext {
   }
 
  private:
+  boost::asio::io_service &io_service_;
   redisContext *context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
   std::unique_ptr<RedisAsyncContext> async_redis_subscribe_context_;
@@ -181,7 +196,8 @@ Status RedisContext::RunAsync(const std::string &command, const ID &id, const vo
                               const TablePubsub pubsub_channel,
                               RedisCallback redisCallback, int log_length) {
   RAY_CHECK(redis_async_context_);
-  int64_t callback_index = RedisCallbackManager::instance().add(redisCallback, false);
+  int64_t callback_index =
+      RedisCallbackManager::instance().add(redisCallback, false, io_service_);
   Status status = Status::OK();
   if (length > 0) {
     if (log_length >= 0) {
