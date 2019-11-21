@@ -224,6 +224,12 @@ def cli(logging_level, logging_format):
     type=str,
     help="Overwrite the options to start Java workers.")
 @click.option(
+    "--native-worker-path",
+    required=False,
+    default=None,
+    type=str,
+    help="Set the path for the executable to use for native workers")
+@click.option(
     "--internal-config",
     default=None,
     type=str,
@@ -245,8 +251,8 @@ def start(node_ip_address, redis_address, address, redis_port,
           head, include_webui, webui_host, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, use_pickle,
-          internal_config):
+          java_worker_options, native_worker_path, load_code_from_local,
+          use_pickle, internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -287,6 +293,7 @@ def start(node_ip_address, redis_address, address, redis_port,
         include_webui=include_webui,
         webui_host=webui_host,
         java_worker_options=java_worker_options,
+        native_worker_path=native_worker_path,
         load_code_from_local=load_code_from_local,
         use_pickle=use_pickle,
         _internal_config=internal_config)

@@ -53,6 +53,8 @@ class RayParams(object):
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
+        native_worker_path (str): The path of the executable that will be run
+            by the worker when the NATIVE ray::Language is used.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
@@ -118,6 +120,7 @@ class RayParams(object):
                  autoscaling_config=None,
                  include_java=False,
                  java_worker_options=None,
+                 native_worker_path=None,
                  load_code_from_local=False,
                  use_pickle=False,
                  _internal_config=None):
@@ -153,6 +156,7 @@ class RayParams(object):
         self.autoscaling_config = autoscaling_config
         self.include_java = include_java
         self.java_worker_options = java_worker_options
+        self.native_worker_path = native_worker_path
         self.load_code_from_local = load_code_from_local
         self.use_pickle = use_pickle
         self._internal_config = _internal_config

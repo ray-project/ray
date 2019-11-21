@@ -550,6 +550,7 @@ class Node(object):
             config=self._config,
             include_java=self._ray_params.include_java,
             java_worker_options=self._ray_params.java_worker_options,
+            native_worker_path=self._ray_params.native_worker_path,
             load_code_from_local=self._ray_params.load_code_from_local,
             use_pickle=self._ray_params.use_pickle)
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes

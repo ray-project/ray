@@ -62,6 +62,9 @@ WorkerPool::WorkerPool(int num_worker_processes, int maximum_startup_concurrency
       state.num_workers_per_process =
           RayConfig::instance().num_workers_per_process_java();
       break;
+    case Language::NATIVE:
+      state.num_workers_per_process = 1;
+      break;
     default:
       RAY_LOG(FATAL) << "The number of workers per process for "
                      << Language_Name(entry.first) << " worker is not set.";

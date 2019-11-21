@@ -553,6 +553,7 @@ def init(address=None,
          plasma_store_socket_name=None,
          raylet_socket_name=None,
          temp_dir=None,
+         native_worker_path=None,
          load_code_from_local=False,
          use_pickle=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
          _internal_config=None):
@@ -641,6 +642,8 @@ def init(address=None,
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        native_worker_path (str): If provided, the executable at this path will
+            be started to service native worker task.
         load_code_from_local: Whether code should be loaded from a local module
             or from the GCS.
         use_pickle: Whether data objects should be serialized with cloudpickle.
@@ -718,6 +721,7 @@ def init(address=None,
             plasma_store_socket_name=plasma_store_socket_name,
             raylet_socket_name=raylet_socket_name,
             temp_dir=temp_dir,
+            native_worker_path=native_worker_path,
             load_code_from_local=load_code_from_local,
             use_pickle=use_pickle,
             _internal_config=_internal_config,

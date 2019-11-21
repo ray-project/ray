@@ -1072,6 +1072,7 @@ def start_raylet(redis_address,
                  config=None,
                  include_java=False,
                  java_worker_options=None,
+                 native_worker_path=None,
                  load_code_from_local=False,
                  use_pickle=False):
     """Start a raylet, which is a combined local scheduler and object manager.
@@ -1105,6 +1106,8 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
+        native_worker_path (str): The path of the executable file that new
+            worker processes with lang == NATIVE will execute.
         use_pickle (bool): If True, use cloudpickle for serialization.
     Returns:
         ProcessInfo for the process that was started.
@@ -1149,18 +1152,16 @@ def start_raylet(redis_address,
         java_worker_command = ""
 
     # Create the command that the Raylet will use to start workers.
-    start_worker_command = ("{} {} "
-                            "--node-ip-address={} "
-                            "--node-manager-port={} "
-                            "--object-store-name={} "
-                            "--raylet-name={} "
-                            "--redis-address={} "
-                            "--temp-dir={}".format(
-                                sys.executable, worker_path, node_ip_address,
-                                node_manager_port, plasma_store_name,
-                                raylet_name, redis_address, temp_dir))
+    args = ("--node-ip-address={} "
+            "--node-manager-port={} "
+            "--object-store-name={} "
+            "--raylet-name={} "
+            "--redis-address={} "
+            "--temp-dir={}".format(
+                node_ip_address, node_manager_port, plasma_store_name,
+                raylet_name, redis_address, temp_dir))
     if redis_password:
-        start_worker_command += " --redis-password {}".format(redis_password)
+        args += " --redis-password {}".format(redis_password)
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.
@@ -1168,9 +1169,16 @@ def start_raylet(redis_address,
         object_manager_port = 0
 
     if load_code_from_local:
-        start_worker_command += " --load-code-from-local "
+        args += " --load-code-from-local "
     if use_pickle:
-        start_worker_command += " --use-pickle "
+        args += " --use-pickle "
+
+    if native_worker_path is not None:
+        native_worker_command = ("{} {}".format(native_worker_path, args))
+    else:
+        native_worker_command = ""
+
+    start_worker_command = ("{} {} {}".format(sys.executable, worker_path, args))
 
     command = [
         RAYLET_EXECUTABLE,
@@ -1187,6 +1195,7 @@ def start_raylet(redis_address,
         "--config_list={}".format(config_str),
         "--python_worker_command={}".format(start_worker_command),
         "--java_worker_command={}".format(java_worker_command),
+        "--native_worker_command={}".format(native_worker_command),
         "--redis_password={}".format(redis_password or ""),
         "--temp_dir={}".format(temp_dir),
         "--session_dir={}".format(session_dir),
