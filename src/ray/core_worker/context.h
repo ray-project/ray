@@ -48,6 +48,8 @@ class WorkerContext {
 
   int CurrentActorMaxConcurrency() const;
 
+  bool CurrentActorIsAsync() const;
+
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
@@ -60,6 +62,7 @@ class WorkerContext {
   bool current_actor_is_direct_call_ = false;
   bool current_task_is_direct_call_ = false;
   int current_actor_max_concurrency_ = 1;
+  bool current_actor_is_asyncio_ = false;
 
   /// The id of the (main) thread that constructed this worker context.
   boost::thread::id main_thread_id_;

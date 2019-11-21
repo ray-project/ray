@@ -2,6 +2,7 @@
 #define RAY_CORE_WORKER_DIRECT_ACTOR_TRANSPORT_H
 
 #include <boost/asio/thread_pool.hpp>
+#include <boost/fiber/all.hpp>
 #include <boost/thread.hpp>
 #include <list>
 #include <queue>
@@ -237,18 +238,47 @@ class BoundedExecutor {
   boost::asio::thread_pool pool_;
 };
 
+/// Used by async actor mode. The fiber event will be used
+/// from python to switch control among different coroutines.
+/// Taken from boost::fiber examples
+/// https://github.com/boostorg/fiber/blob/7be4f860e733a92d2fa80a848dd110df009a20e1/examples/wait_stuff.cpp#L115-L142
+class FiberEvent {
+ public:
+  // Block the fiber until the event is notified.
+  void Wait() {
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    cond_.wait(lock, [this]() { return ready_; });
+  }
+
+  // Notify the event and unblock all waiters.
+  void Notify() {
+    {
+      std::unique_lock<boost::fibers::mutex> lock(mutex_);
+      ready_ = true;
+    }
+    cond_.notify_one();
+  }
+
+ private:
+  boost::fibers::condition_variable cond_;
+  boost::fibers::mutex mutex_;
+  bool ready_ = false;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
  public:
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   std::shared_ptr<BoundedExecutor> pool = nullptr,
+                  bool use_asyncio = false,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()),
-        pool_(pool) {}
+        pool_(pool),
+        use_asyncio_(use_asyncio) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -295,7 +325,10 @@ class SchedulingQueue {
            pending_tasks_.begin()->second.CanExecute()) {
       auto head = pending_tasks_.begin();
       auto request = head->second;
-      if (pool_ != nullptr) {
+
+      if (use_asyncio_) {
+        boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();
+      } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
         request.Accept();
@@ -349,6 +382,9 @@ class SchedulingQueue {
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
+  /// Whether we should enqueue requests into asyncio pool. Setting this to true
+  /// will instantiate all tasks as fibers that can be yielded.
+  bool use_asyncio_;
 
   friend class SchedulingQueueTest;
 };
@@ -363,6 +399,11 @@ class CoreWorkerDirectTaskReceiver {
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
                                const std::function<void()> &exit_handler);
+
+  ~CoreWorkerDirectTaskReceiver() {
+    fiber_shutdown_event_.Notify();
+    fiber_runner_thread_.join();
+  }
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(RayletClient &client);
@@ -388,6 +429,8 @@ class CoreWorkerDirectTaskReceiver {
   /// Set the max concurrency at runtime. It cannot be changed once set.
   void SetMaxActorConcurrency(int max_concurrency);
 
+  void SetActorAsAsync();
+
  private:
   // Worker context.
   WorkerContext &worker_context_;
@@ -408,6 +451,13 @@ class CoreWorkerDirectTaskReceiver {
   bool exiting_ = false;
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
+  /// Whether this actor use asyncio for concurrency.
+  bool is_asyncio_ = false;
+  /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
+  std::thread fiber_runner_thread_;
+  /// The fiber event used to block fiber_runner_thread_ from shutdown.
+  /// is_asyncio_ must be true.
+  FiberEvent fiber_shutdown_event_;
 };
 
 }  // namespace ray

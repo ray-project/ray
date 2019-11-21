@@ -1,9 +1,12 @@
 #include <cstdlib>
 
+#include "boost/fiber/all.hpp"
+
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/raylet_transport.h"
 
 namespace {
@@ -584,11 +587,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
                       TaskTransportType::RAYLET, &return_ids);
-  builder.SetActorCreationTaskSpec(actor_id, actor_creation_options.max_reconstructions,
-                                   actor_creation_options.dynamic_worker_options,
-                                   actor_creation_options.is_direct_call,
-                                   actor_creation_options.max_concurrency,
-                                   actor_creation_options.is_detached);
+  builder.SetActorCreationTaskSpec(
+      actor_id, actor_creation_options.max_reconstructions,
+      actor_creation_options.dynamic_worker_options,
+      actor_creation_options.is_direct_call, actor_creation_options.max_concurrency,
+      actor_creation_options.is_detached, actor_creation_options.is_asyncio);
 
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(
       actor_id, job_id, /*actor_cursor=*/return_ids[0], function.GetLanguage(),
@@ -898,6 +901,12 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
                                                                 send_reply_callback);
   });
+}
+
+void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
+  RAY_CHECK(worker_context_.CurrentActorIsAsync());
+  boost::this_fiber::yield();
+  event.Wait();
 }
 
 }  // namespace ray
