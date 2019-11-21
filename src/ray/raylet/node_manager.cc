@@ -833,6 +833,7 @@ void NodeManager::DispatchTasks(
           return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
+  std::vector<std::function<void()>> post_assign_callbacks;
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources =
@@ -845,7 +846,7 @@ void NodeManager::DispatchTasks(
         // once the first task is not feasible, we can break out of this loop
         break;
       }
-      if (AssignTask(task)) {
+      if (AssignTask(task, &post_assign_callbacks)) {
         removed_task_ids.insert(task_id);
       }
     }
@@ -854,6 +855,9 @@ void NodeManager::DispatchTasks(
   // it queued locally. Once the GetTaskReply has been sent, the task will get
   // re-queued, depending on whether the message succeeded or not.
   local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
+  for (auto func : post_assign_callbacks) {
+    func();
+  }
 }
 
 void NodeManager::ProcessClientMessage(
@@ -901,6 +905,14 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::FetchOrReconstruct: {
     ProcessFetchOrReconstructMessage(client, message_data);
+  } break;
+  case protocol::MessageType::NotifyDirectCallTaskBlocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    HandleDirectCallTaskBlocked(worker);
+  } break;
+  case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
+    std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
+    HandleDirectCallTaskUnblocked(worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
@@ -1103,6 +1115,8 @@ void NodeManager::ProcessDisconnectClientMessage(
       // Clean up any open ray.wait calls that the worker made.
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
     }
+    // Erase any lease metadata.
+    leased_workers_.erase(worker->Port());
   }
 
   if (is_worker) {
@@ -1435,6 +1449,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         // TODO(swang): Kill worker if other end hangs up.
         // TODO(swang): Implement a lease term by which the owner needs to return the
         // worker.
+        RAY_CHECK(leased_workers_.find(port) == leased_workers_.end());
         leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
       });
   task.OnSpillbackInstead(
@@ -1454,14 +1469,18 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_port = request.worker_port();
-  RAY_LOG(DEBUG) << "Return worker " << worker_port;
   std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_port]);
   leased_workers_.erase(worker_port);
   Status status;
   if (worker) {
+    // Handle the edge case where the worker was returned before we got the
+    // unblock RPC by unblocking it immediately (unblock is idempotent).
+    if (worker->IsBlocked()) {
+      HandleDirectCallTaskUnblocked(worker);
+    }
     HandleWorkerAvailable(worker);
   } else {
-    status = Status::Invalid("Returned worker does not exist");
+    status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
 }
@@ -1844,6 +1863,48 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
   }
 }
 
+void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
+    return;  // The worker may have died or is no longer processing the task.
+  }
+  auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
+  local_available_resources_.Release(cpu_resource_ids);
+  cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
+      cpu_resource_ids.ToResourceSet());
+  worker->MarkBlocked();
+  DispatchTasks(local_queues_.GetReadyTasksByClass());
+}
+
+void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker) {
+  if (!worker || worker->GetAssignedTaskId().IsNil() || !worker->IsBlocked()) {
+    return;  // The worker may have died or is no longer processing the task.
+  }
+  TaskID task_id = worker->GetAssignedTaskId();
+  Task task = local_queues_.GetTaskOfState(task_id, TaskState::RUNNING);
+  const auto required_resources = task.GetTaskSpecification().GetRequiredResources();
+  const ResourceSet cpu_resources = required_resources.GetNumCpus();
+  bool oversubscribed = !local_available_resources_.Contains(cpu_resources);
+  if (!oversubscribed) {
+    // Reacquire the CPU resources for the worker. Note that care needs to be
+    // taken if the user is using the specific CPU IDs since the IDs that we
+    // reacquire here may be different from the ones that the task started with.
+    auto const resource_ids = local_available_resources_.Acquire(cpu_resources);
+    worker->AcquireTaskCpuResources(resource_ids);
+    cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
+        cpu_resources);
+  } else {
+    // In this case, we simply don't reacquire the CPU resources for the worker.
+    // The worker can keep running and when the task finishes, it will simply
+    // not have any CPU resources to release.
+    RAY_LOG(WARNING)
+        << "Resources oversubscribed: "
+        << cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()]
+               .GetAvailableResources()
+               .ToString();
+  }
+  worker->MarkUnblocked();
+}
+
 void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
                                     const std::vector<ObjectID> &required_object_ids,
                                     const TaskID &current_task_id, bool ray_get) {
@@ -1884,12 +1945,14 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
   // Subscribe to the objects required by the task. These objects will be
   // fetched and/or reconstructed as necessary, until the objects become local
   // or are unsubscribed.
-  if (ray_get) {
-    task_dependency_manager_.SubscribeGetDependencies(current_task_id,
-                                                      required_object_ids);
-  } else {
-    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
-                                                       required_object_ids);
+  if (!required_object_ids.empty()) {
+    if (ray_get) {
+      task_dependency_manager_.SubscribeGetDependencies(current_task_id,
+                                                        required_object_ids);
+    } else {
+      task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
+                                                         required_object_ids);
+    }
   }
 }
 
@@ -1974,7 +2037,8 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-bool NodeManager::AssignTask(const Task &task) {
+bool NodeManager::AssignTask(const Task &task,
+                             std::vector<std::function<void()>> *post_assign_callbacks) {
   const TaskSpecification &spec = task.GetTaskSpecification();
 
   // If this is an actor task, check that the new task has the correct counter.
@@ -2036,7 +2100,12 @@ bool NodeManager::AssignTask(const Task &task) {
 
   if (task.OnDispatch() != nullptr) {
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
-    finish_assign_task_callback(Status::OK());
+    if (post_assign_callbacks != nullptr) {
+      // Moves the tasks from SWAP to RUNNING state atomically. This avoids race
+      // conditions with ReturnLease requests.
+      post_assign_callbacks->push_back(
+          [this, worker, task_id]() { FinishAssignTask(task_id, *worker, true); });
+    }
   } else {
     worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
   }

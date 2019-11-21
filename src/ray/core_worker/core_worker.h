@@ -9,7 +9,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
@@ -495,14 +495,11 @@ class CoreWorker {
   /// Fields related to storing and retrieving objects.
   ///
 
-  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  /// In-memory store for return objects.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
-
-  /// In-memory store interface.
-  std::shared_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
 
   ///
   /// Fields related to task submission.

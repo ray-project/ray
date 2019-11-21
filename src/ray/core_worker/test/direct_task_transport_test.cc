@@ -2,7 +2,6 @@
 
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -74,7 +73,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(mem->Put(obj1, *data).ok());
+  ASSERT_TRUE(mem->Put(*data, obj1).ok());
 
   // Test getting an already existing object.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
@@ -83,7 +82,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   // Testing getting an object that doesn't exist yet causes promotion.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
   ASSERT_TRUE(num_plasma_puts == 0);
-  ASSERT_TRUE(mem->Put(obj2, *data).ok());
+  ASSERT_TRUE(mem->Put(*data, obj2).ok());
   ASSERT_TRUE(num_plasma_puts == 1);
 
   // The next time you get it, it's already there so no need to promote.
@@ -92,8 +91,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 }
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   TaskSpecification task;
   bool ok = false;
@@ -102,8 +100,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::RAYLET);
   TaskSpecification task;
@@ -116,8 +113,7 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
@@ -138,8 +134,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
@@ -162,8 +157,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
@@ -190,8 +184,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task;
@@ -212,8 +205,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task;
@@ -230,8 +222,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task1;
@@ -271,8 +262,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task1;
@@ -314,8 +304,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
   TaskSpecification task1;
@@ -347,8 +336,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
 TEST(DirectTaskTransportTest, TestSpillback) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
 
   std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;

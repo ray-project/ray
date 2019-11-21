@@ -211,8 +211,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Assign a task. The task is assumed to not be queued in local_queues_.
   ///
   /// \param task The task in question.
+  /// \param post_assign_callbacks Set of functions to run after assignments finish.
   /// \return true, if tasks was assigned to a worker, false otherwise.
-  bool AssignTask(const Task &task);
+  bool AssignTask(const Task &task,
+                  std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
@@ -327,6 +329,19 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
                            const TaskID &current_task_id);
+
+  /// Handle a direct call task that is blocked. Note that this callback may
+  /// arrive after the worker lease has been returned to the node manager.
+  ///
+  /// \param worker Shared ptr to the worker, or nullptr if lost.
+  void HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker);
+
+  /// Handle a direct call task that is unblocked. Note that this callback may
+  /// arrive after the worker lease has been returned to the node manager.
+  /// However, it is guaranteed to arrive after DirectCallTaskBlocked.
+  ///
+  /// \param worker Shared ptr to the worker, or nullptr if lost.
+  void HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &worker);
 
   /// Kill a worker.
   ///

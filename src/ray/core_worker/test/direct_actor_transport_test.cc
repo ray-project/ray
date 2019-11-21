@@ -2,7 +2,6 @@
 
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -38,14 +37,12 @@ class DirectActorTransportTest : public ::testing::Test {
  public:
   DirectActorTransportTest()
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        ptr_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        store_(std::make_shared<CoreWorkerMemoryStoreProvider>(ptr_)),
+        store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         submitter_([&](const rpc::WorkerAddress &addr) { return worker_client_; },
                    store_) {}
 
   std::shared_ptr<MockWorkerClient> worker_client_;
-  std::shared_ptr<CoreWorkerMemoryStore> ptr_;
-  std::shared_ptr<CoreWorkerMemoryStoreProvider> store_;
+  std::shared_ptr<CoreWorkerMemoryStore> store_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 };
 
