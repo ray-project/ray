@@ -12,8 +12,9 @@ import botocore
 from botocore.config import Config
 
 from ray.autoscaler.node_provider import NodeProvider
-from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME
-from ray.ray_constants import BOTO_MAX_RETRIES
+from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME, TAG_RAY_NODE_NAME, \
+    TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_TYPE
+from ray.ray_constants import BOTO_MAX_RETRIES, BOTO_CREATE_MAX_RETRIES
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,21 @@ def from_aws_format(tags):
     return tags
 
 
+def make_ec2_client(region, max_retries):
+    """Make client, retrying requests up to `max_retries`."""
+    config = Config(retries={"max_attempts": max_retries})
+    return boto3.resource("ec2", region_name=region, config=config)
+
+
 class AWSNodeProvider(NodeProvider):
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-        config = Config(retries={"max_attempts": BOTO_MAX_RETRIES})
-        self.ec2 = boto3.resource(
-            "ec2", region_name=provider_config["region"], config=config)
+        self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes",
+                                                       True)
+        self.ec2 = make_ec2_client(
+            region=provider_config["region"], max_retries=BOTO_MAX_RETRIES)
+        self.ec2_fail_fast = make_ec2_client(
+            region=provider_config["region"], max_retries=0)
 
         # Try availability zones round-robin, starting from random offset
         self.subnet_idx = random.randint(0, 100)
@@ -61,7 +71,7 @@ class AWSNodeProvider(NodeProvider):
         self.cached_nodes = {}
 
     def _node_tag_update_loop(self):
-        """ Update the AWS tags for a cluster periodically.
+        """Update the AWS tags for a cluster periodically.
 
         The purpose of this loop is to avoid excessive EC2 calls when a large
         number of nodes are being launched simultaneously.
@@ -171,6 +181,55 @@ class AWSNodeProvider(NodeProvider):
             self.tag_cache_update_event.set()
 
     def create_node(self, node_config, tags, count):
+        # Try to reuse previously stopped nodes with compatible configs
+        if self.cache_stopped_nodes:
+            filters = [
+                {
+                    "Name": "instance-state-name",
+                    "Values": ["stopped", "stopping"],
+                },
+                {
+                    "Name": "tag:{}".format(TAG_RAY_CLUSTER_NAME),
+                    "Values": [self.cluster_name],
+                },
+                {
+                    "Name": "tag:{}".format(TAG_RAY_NODE_TYPE),
+                    "Values": [tags[TAG_RAY_NODE_TYPE]],
+                },
+                {
+                    "Name": "tag:{}".format(TAG_RAY_LAUNCH_CONFIG),
+                    "Values": [tags[TAG_RAY_LAUNCH_CONFIG]],
+                },
+            ]
+
+            reuse_nodes = list(
+                self.ec2.instances.filter(Filters=filters))[:count]
+            reuse_node_ids = [n.id for n in reuse_nodes]
+            if reuse_nodes:
+                logger.info("AWSNodeProvider: reusing instances {}. "
+                            "To disable reuse, set "
+                            "'cache_stopped_nodes: False' in the provider "
+                            "config.".format(reuse_node_ids))
+
+                for node in reuse_nodes:
+                    self.tag_cache[node.id] = from_aws_format(
+                        {x["Key"]: x["Value"]
+                         for x in node.tags})
+                    if node.state["Name"] == "stopping":
+                        logger.info("AWSNodeProvider: waiting for instance "
+                                    "{} to fully stop...".format(node.id))
+                        node.wait_until_stopped()
+
+                self.ec2.meta.client.start_instances(
+                    InstanceIds=reuse_node_ids)
+                for node_id in reuse_node_ids:
+                    self.set_node_tags(node_id, tags)
+                count -= len(reuse_node_ids)
+
+        if count:
+            self._create_node(node_config, tags, count)
+
+    def _create_node(self, node_config, tags, count):
         tags = to_aws_format(tags)
         conf = node_config.copy()
 
@@ -216,8 +275,7 @@ class AWSNodeProvider(NodeProvider):
         # single SubnetId before invoking the AWS API.
         subnet_ids = conf.pop("SubnetIds")
 
-        max_retries = 5
-        for attempt in range(1, max_retries + 1):
+        for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
             try:
                 subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
                 logger.info("NodeProvider: calling create_instances "
@@ -229,7 +287,7 @@ class AWSNodeProvider(NodeProvider):
                     "SubnetId": subnet_id,
                     "TagSpecifications": tag_specs
                 })
-                created = self.ec2.create_instances(**conf)
+                created = self.ec2_fail_fast.create_instances(**conf)
                 for instance in created:
                     logger.info("NodeProvider: Created instance "
                                 "[id={}, name={}, info={}]".format(
@@ -238,23 +296,60 @@ class AWSNodeProvider(NodeProvider):
                                     instance.state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
-                if attempt == max_retries:
+                if attempt == BOTO_CREATE_MAX_RETRIES:
                     logger.error(
                         "create_instances: Max attempts ({}) exceeded.".format(
-                            max_retries))
+                            BOTO_CREATE_MAX_RETRIES))
                     raise exc
                 else:
                     logger.error(exc)
 
     def terminate_node(self, node_id):
         node = self._get_cached_node(node_id)
-        node.terminate()
+        if self.cache_stopped_nodes:
+            if node.spot_instance_request_id:
+                logger.info(
+                    "AWSNodeProvider: terminating node {} (spot nodes cannot "
+                    "be stopped, only terminated)".format(node_id))
+                node.terminate()
+            else:
+                logger.info(
+                    "AWSNodeProvider: stopping node {}. To terminate nodes "
+                    "on stop, set 'cache_stopped_nodes: False' in the "
+                    "provider config.".format(node_id))
+                node.stop()
+        else:
+            node.terminate()
 
         self.tag_cache.pop(node_id, None)
         self.tag_cache_pending.pop(node_id, None)
 
     def terminate_nodes(self, node_ids):
-        self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
+        if not node_ids:
+            return
+        if self.cache_stopped_nodes:
+            spot_ids = []
+            on_demand_ids = []
+
+            for node_id in node_ids:
+                if self._get_cached_node(node_id).spot_instance_request_id:
+                    spot_ids += [node_id]
+                else:
+                    on_demand_ids += [node_id]
+
+            if on_demand_ids:
+                logger.info(
+                    "AWSNodeProvider: stopping nodes {}. To terminate nodes "
+                    "on stop, set 'cache_stopped_nodes: False' in the "
+                    "provider config.".format(on_demand_ids))
+                self.ec2.meta.client.stop_instances(InstanceIds=on_demand_ids)
+            if spot_ids:
+                logger.info(
+                    "AWSNodeProvider: terminating nodes {} (spot nodes cannot "
+                    "be stopped, only terminated)".format(spot_ids))
+                self.ec2.meta.client.terminate_instances(InstanceIds=spot_ids)
+        else:
+            self.ec2.meta.client.terminate_instances(InstanceIds=node_ids)
 
         for node_id in node_ids:
             self.tag_cache.pop(node_id, None)

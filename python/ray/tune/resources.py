@@ -5,11 +5,11 @@ from __future__ import print_function
 from collections import namedtuple
 import logging
 import json
+from numbers import Number
 # For compatibility under py2 to consider unicode as str
 from six import string_types
 
-from numbers import Number
-
+import ray
 from ray.tune import TuneError
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,23 @@ class Resources(
             custom_resources.setdefault(value, 0)
             extra_custom_resources.setdefault(value, 0)
 
+        cpu = round(cpu, 2)
+        gpu = round(gpu, 2)
+        memory = round(memory, 2)
+        object_store_memory = round(object_store_memory, 2)
+        extra_cpu = round(extra_cpu, 2)
+        extra_gpu = round(extra_gpu, 2)
+        extra_memory = round(extra_memory, 2)
+        extra_object_store_memory = round(extra_object_store_memory, 2)
+        custom_resources = {
+            resource: round(value, 2)
+            for resource, value in custom_resources.items()
+        }
+        extra_custom_resources = {
+            resource: round(value, 2)
+            for resource, value in extra_custom_resources.items()
+        }
+
         all_values = [
             cpu, gpu, memory, object_store_memory, extra_cpu, extra_gpu,
             extra_memory, extra_object_store_memory
@@ -95,6 +112,7 @@ class Resources(
         custom_summary = ", ".join([
             "{} {}".format(self.get_res_total(res), res)
             for res in self.custom_resources
+            if not res.startswith(ray.resource_spec.NODE_ID_PREFIX)
         ])
         if custom_summary:
             summary += " ({})".format(custom_summary)

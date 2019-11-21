@@ -3,13 +3,9 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/object_interface.h"
 
 namespace ray {
 
-//
-// CoreWorkerMemoryStoreProvider functions
-//
 CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
     std::shared_ptr<CoreWorkerMemoryStore> store)
     : store_(store) {
@@ -18,19 +14,20 @@ CoreWorkerMemoryStoreProvider::CoreWorkerMemoryStoreProvider(
 
 Status CoreWorkerMemoryStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
-  auto status = store_->Put(object_id, object);
+  RAY_CHECK(object_id.IsDirectCallType());
+  Status status = store_->Put(object_id, object);
   if (status.IsObjectExists()) {
     // Object already exists in store, treat it as ok.
     return Status::OK();
-  } else {
-    return status;
   }
+  return status;
 }
 
 Status CoreWorkerMemoryStoreProvider::Get(
-    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
     const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results) {
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    bool *got_exception) {
   const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_RETURN_NOT_OK(
@@ -39,20 +36,31 @@ Status CoreWorkerMemoryStoreProvider::Get(
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
       (*results)[id_vector[i]] = result_objects[i];
+      if (result_objects[i]->IsException()) {
+        *got_exception = true;
+      }
     }
   }
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
-                                           int num_objects, int64_t timeout_ms,
-                                           const TaskID &task_id,
-                                           std::unordered_set<ObjectID> *ready) {
+Status CoreWorkerMemoryStoreProvider::Contains(const ObjectID &object_id,
+                                               bool *has_object) {
+  *has_object = store_->Contains(object_id);
+  return Status::OK();
+}
+
+Status CoreWorkerMemoryStoreProvider::Wait(
+    const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
+    const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
   std::vector<std::shared_ptr<RayObject>> result_objects;
   RAY_CHECK(object_ids.size() == id_vector.size());
-  RAY_RETURN_NOT_OK(
-      store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects));
+  auto status = store_->Get(id_vector, num_objects, timeout_ms, false, &result_objects);
+  // Ignore TimedOut statuses since we return ready objects explicitly.
+  if (!status.IsTimedOut()) {
+    RAY_RETURN_NOT_OK(status);
+  }
 
   for (size_t i = 0; i < id_vector.size(); i++) {
     if (result_objects[i] != nullptr) {
@@ -63,10 +71,10 @@ Status CoreWorkerMemoryStoreProvider::Wait(const std::unordered_set<ObjectID> &o
   return Status::OK();
 }
 
-Status CoreWorkerMemoryStoreProvider::Delete(const std::vector<ObjectID> &object_ids,
-                                             bool local_only,
-                                             bool delete_creating_tasks) {
-  store_->Delete(object_ids);
+Status CoreWorkerMemoryStoreProvider::Delete(
+    const absl::flat_hash_set<ObjectID> &object_ids) {
+  std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
+  store_->Delete(object_id_vector);
   return Status::OK();
 }
 

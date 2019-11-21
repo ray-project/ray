@@ -140,9 +140,6 @@ class ComputeTDErrorMixin(object):
         @make_tf_callable(self.get_session(), dynamic_shape=True)
         def compute_td_error(obs_t, act_t, rew_t, obs_tp1, done_mask,
                              importance_weights):
-            if not self.loss_initialized():
-                return tf.zeros_like(rew_t)
-
             # Do forward pass on loss to update td error attribute
             build_q_losses(
                 self, self.model, None, {

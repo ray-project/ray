@@ -103,6 +103,7 @@ class TrackSession(object):
         self.trial_config["end_time"] = datetime.now().isoformat()
         # TODO(rliaw): Have Tune support updated configs
         self._logger.update_config(self.trial_config)
+        self._logger.flush()
         self._logger.close()
 
     @property

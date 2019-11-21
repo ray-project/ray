@@ -71,10 +71,9 @@ def torch_optimizer(policy, config):
 
 class ValueNetworkMixin(object):
     def _value(self, obs):
-        with self.lock:
-            obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
-            _ = self.model({"obs": obs}, [], [1])
-            return self.model.value_function().detach().cpu().numpy().squeeze()
+        obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
+        _ = self.model({"obs": obs}, [], [1])
+        return self.model.value_function().detach().cpu().numpy().squeeze()
 
 
 A3CTorchPolicy = build_torch_policy(

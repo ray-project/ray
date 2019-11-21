@@ -9,6 +9,8 @@ import sys
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
+from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
 from ray.rllib.tests.test_multi_agent_env import (MultiCartpole,
                                                   MultiMountainCar)
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -31,6 +33,7 @@ ACTION_SPACES_TO_TEST = {
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
     "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
@@ -82,6 +85,12 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                     stat = "skip"  # speed up tests by avoiding full grid
                 else:
                     a = get_agent_class(alg)(config=config, env="stub_env")
+                    if alg not in ["DDPG", "ES", "ARS"]:
+                        if o_name in ["atari", "image"]:
+                            assert isinstance(a.get_policy().model,
+                                              VisionNetV2)
+                        elif o_name in ["vector", "vector2"]:
+                            assert isinstance(a.get_policy().model, FCNetV2)
                     a.train()
                     covered_a.add(a_name)
                     covered_o.add(o_name)
@@ -106,6 +115,7 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
 def check_support_multiagent(alg, config):
     register_env("multi_mountaincar", lambda _: MultiMountainCar(2))
     register_env("multi_cartpole", lambda _: MultiCartpole(2))
+    config["log_level"] = "ERROR"
     if "DDPG" in alg:
         a = get_agent_class(alg)(config=config, env="multi_mountaincar")
     else:

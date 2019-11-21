@@ -881,11 +881,11 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// information for clients that we've heard a notification for.
   ///
   /// \param client The client to get information about.
-  /// \param node_info A reference to the client information. If we have information
-  /// about the client in the cache, then the reference will be modified to
-  /// contain that information. Else, the reference will be updated to contain
+  /// \param node_info The client information will be copied here if
+  /// we have the client in the cache.
   /// a nil client ID.
-  void GetClient(const ClientID &client, GcsNodeInfo &node_info) const;
+  /// \return Whether teh client is in the cache.
+  bool GetClient(const ClientID &client, GcsNodeInfo *node_info) const;
 
   /// Get the local client's ID.
   ///

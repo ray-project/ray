@@ -88,8 +88,9 @@ class LogMonitor(object):
             file_info.file_handle = None
             try:
                 # Test if the worker process that generated the log file
-                # is still alive.
-                os.kill(file_info.worker_pid, 0)
+                # is still alive. Only applies to worker processes.
+                if file_info.worker_pid != "raylet":
+                    os.kill(file_info.worker_pid, 0)
             except OSError:
                 # The process is not alive any more, so move the log file
                 # out of the log directory so glob.glob will not be slowed

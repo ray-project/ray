@@ -95,7 +95,7 @@ std::shared_ptr<TaskTableData> CreateTaskTableData(const TaskID &task_id,
   return data;
 }
 
-/// A helper function that compare wether 2 `TaskTableData` objects are equal.
+/// A helper function that compare whether 2 `TaskTableData` objects are equal.
 /// Note, this function only compares fields set by `CreateTaskTableData`.
 bool TaskTableDataEqual(const TaskTableData &data1, const TaskTableData &data2) {
   const auto &spec1 = data1.task().task_spec();
@@ -1159,7 +1159,7 @@ void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client
   ASSERT_EQ(data.state() == GcsNodeInfo::ALIVE, is_alive);
 
   GcsNodeInfo cached_client;
-  client->client_table().GetClient(added_id, cached_client);
+  ASSERT_TRUE(client->client_table().GetClient(added_id, &cached_client));
   ASSERT_EQ(ClientID::FromBinary(cached_client.node_id()), added_id);
   ASSERT_EQ(cached_client.state() == GcsNodeInfo::ALIVE, is_alive);
 }

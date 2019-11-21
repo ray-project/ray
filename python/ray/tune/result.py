@@ -18,6 +18,9 @@ HOSTNAME = "hostname"
 # (Auto-filled) The auto-assigned id of the trial.
 TRIAL_ID = "trial_id"
 
+# (Auto-filled) The auto-assigned id of the trial.
+EXPERIMENT_TAG = "experiment_tag"
+
 # (Auto-filled) The node ip of the machine hosting the training process.
 NODE_IP = "node_ip"
 
@@ -36,26 +39,31 @@ MEAN_ACCURACY = "mean_accuracy"
 # Number of episodes in this iteration.
 EPISODES_THIS_ITER = "episodes_this_iter"
 
-# (Optional/Auto-filled) Accumulated number of episodes for this experiment.
+# (Optional/Auto-filled) Accumulated number of episodes for this trial.
 EPISODES_TOTAL = "episodes_total"
 
 # Number of timesteps in this iteration.
 TIMESTEPS_THIS_ITER = "timesteps_this_iter"
 
-# (Auto-filled) Accumulated number of timesteps for this entire experiment.
+# (Auto-filled) Accumulated number of timesteps for this entire trial.
 TIMESTEPS_TOTAL = "timesteps_total"
 
 # (Auto-filled) Time in seconds this iteration took to run.
 # This may be overriden to override the system-computed time difference.
 TIME_THIS_ITER_S = "time_this_iter_s"
 
-# (Auto-filled) Accumulated time in seconds for this entire experiment.
+# (Auto-filled) Accumulated time in seconds for this entire trial.
 TIME_TOTAL_S = "time_total_s"
 
 # (Auto-filled) The index of this training iteration.
 TRAINING_ITERATION = "training_iteration"
 # __sphinx_doc_end__
 # yapf: enable
+
+DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
+
+DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
+                       MEAN_ACCURACY, MEAN_LOSS)
 
 # __duplicate__ is a magic keyword used internally to
 # avoid double-logging results when using the Function API.

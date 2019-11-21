@@ -1,6 +1,8 @@
 Tune User Guide
 ===============
 
+.. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
+
 Tune Overview
 -------------
 
@@ -106,7 +108,7 @@ All results reported by the trainable will be logged locally to a unique directo
 Trial Parallelism
 ~~~~~~~~~~~~~~~~~
 
-Tune automatically N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this with ``resources_per_trial``:
+Tune automatically runs N concurrent trials, where N is the number of CPUs (cores) on your machine. By default, Tune assumes that each trial will only require 1 CPU. You can override this with ``resources_per_trial``:
 
 .. code-block:: python
 
@@ -410,9 +412,9 @@ The checkpoint will be saved at a path that looks like ``local_dir/exp_name/tria
 Fault Tolerance
 ---------------
 
-Tune will automatically restart trials from the last checkpoint in case of trial failures/error (if ``max_failures`` is set), both in the single node and distributed setting.
+Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
 
-In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
+Tune will restore trials from the latest checkpoint, where available. In the distributed setting, if using the autoscaler with ``rsync`` enabled, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
 
 If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
 
@@ -474,6 +476,41 @@ You often will want to compute a large object (e.g., training data, model weight
 
     tune.run(f)
 
+Custom Stopping Criteria
+------------------------
+
+You can control when trials are stopped early by passing the ``stop`` argument to ``tune.run``. This argument takes either a dictionary or a function.
+
+If a dictionary is passed in, the keys may be any field in the return result of ``tune.track.log`` in the Function API or ``train()`` (including the results from ``_train`` and auto-filled metrics).
+
+In the example below, each trial will be stopped either when it completes 10 iterations OR when it reaches a mean accuracy of 0.98. Note that `training_iteration` is an auto-filled metric by Tune.
+
+.. code-block:: python
+
+    tune.run(
+        my_trainable,
+        stop={"training_iteration": 10, "mean_accuracy": 0.98}
+    )
+
+For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
+
+You can use this to stop all trials after the criteria is fulfilled by any individual trial:
+
+.. code-block:: python
+
+    class Stopper:
+        def __init__(self):
+            self.should_stop = False
+
+        def stop(self, trial_id, result):
+            if not self.should_stop and result['foo'] > 10:
+                self.should_stop = True
+            return self.should_stop
+
+    stopper = Stopper()
+    tune.run(my_trainable, stop=stopper.stop)
+
+Note that in the above example all trials will not stop immediately, but will do so once their current iterations are complete.
 
 Auto-Filled Results
 -------------------
@@ -497,8 +534,8 @@ The following fields will automatically show up on the console output, if provid
     Example_0:  TERMINATED [pid=68248], 179 s, 2 iter, 60000 ts, 94 rew
 
 
-Visualizing Results
--------------------
+TensorBoard
+-----------
 
 To visualize learning in tensorboard, install TensorFlow:
 
@@ -520,7 +557,28 @@ If you are running Ray on a remote multi-user cluster where you do not have sudo
 
 .. image:: ray-tune-tensorboard.png
 
-To use rllab's VisKit (you may have to install some dependencies), run:
+If using TF2, Tune also automatically generates TensorBoard HParams output, as shown below:
+
+.. code-block:: python
+
+    tune.run(
+        ...,
+        config={
+            "lr": tune.grid_search([1e-5, 1e-4]),
+            "momentum": tune.grid_search([0, 0.9])
+        }
+    )
+
+.. image:: images/tune-hparams.png
+
+
+The nonrelevant metrics (like timing stats) can be disabled on the left to show only the relevant ones (like accuracy, loss, etc.).
+
+
+Viskit
+------
+
+To use VisKit (you may have to install some dependencies), run:
 
 .. code-block:: bash
 
@@ -540,12 +598,29 @@ You can pass in your own logging mechanisms to output logs in custom formats as 
     from ray.tune.logger import DEFAULT_LOGGERS
 
     tune.run(
-        MyTrainableClass
+        MyTrainableClass,
         name="experiment_name",
         loggers=DEFAULT_LOGGERS + (CustomLogger1, CustomLogger2)
     )
 
 These loggers will be called along with the default Tune loggers. All loggers must inherit the `Logger interface <tune-package-ref.html#ray.tune.logger.Logger>`__. Tune enables default loggers for Tensorboard, CSV, and JSON formats. You can also check out `logger.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/logger.py>`__ for implementation details. An example can be found in `logging_example.py <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/logging_example.py>`__.
+
+.. warning:: If you run into issues for TensorBoard logging, consider using the TensorBoardX Logger (``from ray.tune.logger import TBXLogger``)
+
+TBXLogger (TensorboardX)
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Tune provides a logger using `TensorBoardX <https://github.com/lanpa/tensorboardX>`_. You can install tensorboardX via ``pip install tensorboardX``. This logger automatically outputs loggers similar to the default TensorFlow logging format but is nice if you are undergoing a TF1 to TF2 transition. By default, it will log any scalar value provided via the result dictionary along with HParams information.
+
+.. code-block:: python
+
+    from ray.tune.logger import TBXLogger
+
+    tune.run(
+        MyTrainableClass,
+        name="experiment_name",
+        loggers=[TBXLogger]
+    )
 
 MLFlow
 ~~~~~~

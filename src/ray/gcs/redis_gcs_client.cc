@@ -3,6 +3,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
 
+#include <unistd.h>
+
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
   // Get the total number of Redis shards in the system.

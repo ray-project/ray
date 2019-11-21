@@ -57,6 +57,10 @@ class RayParams(object):
             Store with hugetlbfs support. Requires plasma_directory.
         include_webui: Boolean flag indicating whether to start the web
             UI, which displays the status of the Ray cluster.
+        webui_host: The host to bind the web UI server to. Can either be
+            127.0.0.1 (localhost) or 0.0.0.0 (available from all interfaces).
+            By default, this is set to 127.0.0.1 to prevent access from
+            external machines.
         logging_level: Logging level, default will be logging.INFO.
         logging_format: Logging format, default contains a timestamp,
             filename, line number, and message. See ray_constants.py.
@@ -74,6 +78,7 @@ class RayParams(object):
             Java worker.
         java_worker_options (str): The command options for Java worker.
         load_code_from_local: Whether load code from local file or from GCS.
+        use_pickle: Whether data objects should be serialized with cloudpickle.
         _internal_config (str): JSON configuration for overriding
             RayConfig defaults. For testing purposes ONLY.
     """
@@ -103,6 +108,7 @@ class RayParams(object):
                  worker_path=None,
                  huge_pages=False,
                  include_webui=None,
+                 webui_host="127.0.0.1",
                  logging_level=logging.INFO,
                  logging_format=ray_constants.LOGGER_FORMAT,
                  plasma_store_socket_name=None,
@@ -113,6 +119,7 @@ class RayParams(object):
                  include_java=False,
                  java_worker_options=None,
                  load_code_from_local=False,
+                 use_pickle=False,
                  _internal_config=None):
         self.object_id_seed = object_id_seed
         self.redis_address = redis_address
@@ -138,6 +145,7 @@ class RayParams(object):
         self.worker_path = worker_path
         self.huge_pages = huge_pages
         self.include_webui = include_webui
+        self.webui_host = webui_host
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
@@ -146,6 +154,7 @@ class RayParams(object):
         self.include_java = include_java
         self.java_worker_options = java_worker_options
         self.load_code_from_local = load_code_from_local
+        self.use_pickle = use_pickle
         self._internal_config = _internal_config
         self._check_usage()
 

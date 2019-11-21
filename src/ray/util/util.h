@@ -28,25 +28,6 @@ inline int64_t current_time_ms() {
   return ms_since_epoch.count();
 }
 
-inline int64_t current_sys_time_ms() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
-
-inline int64_t current_sys_time_us() {
-  std::chrono::microseconds mu_since_epoch =
-      std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return mu_since_epoch.count();
-}
-
-inline double current_sys_time_seconds() {
-  int64_t microseconds_in_seconds = 1000000;
-  return static_cast<double>(current_sys_time_us()) / microseconds_in_seconds;
-}
-
 inline ray::Status boost_to_ray_status(const boost::system::error_code &error) {
   switch (error.value()) {
   case boost::system::errc::success:
@@ -108,6 +89,7 @@ template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
 /// A helper function to fill random bytes into the `data`.
+/// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);

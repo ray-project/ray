@@ -9,18 +9,10 @@ set -x
 bazel build "//:redis_gcs_client_test" "//:actor_state_accessor_test"  "//:subscription_executor_test" "//:asio_test" "//:libray_redis_module.so"
 
 # Start Redis.
-if [[ "${RAY_USE_NEW_GCS}" = "on" ]]; then
-    ./src/credis/redis/src/redis-server \
-        --loglevel warning \
-        --loadmodule ./src/credis/build/src/libmember.so \
-        --loadmodule ./src/ray/gcs/redis_module/libray_redis_module.so \
-        --port 6379 &
-else
-    ./bazel-genfiles/redis-server \
-        --loglevel warning \
-        --loadmodule ./bazel-bin/libray_redis_module.so \
-        --port 6379 &
-fi
+./bazel-bin/redis-server \
+    --loglevel warning \
+    --loadmodule ./bazel-bin/libray_redis_module.so \
+    --port 6379 &
 sleep 1s
 
 ./bazel-bin/redis_gcs_client_test
@@ -30,5 +22,5 @@ sleep 1s
 
 while ./bazel-bin/actor_state_accessor_test; do sleep 0.1; done && false
 
-./bazel-genfiles/redis-cli -p 6379 shutdown
+./bazel-bin/redis-cli -p 6379 shutdown
 sleep 1s

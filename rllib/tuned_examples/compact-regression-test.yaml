@@ -1,0 +1,144 @@
+# This file runs on a single g3.16xl or p3.16xl node. It is suggested
+# to run these in a DLAMI / tensorflow_p36 env. Note that RL runs are
+# inherently high variance, so you'll have to check to see if the
+# rewards reached seem reasonably in line with previous results.
+#
+# The reference results for 0.7.6 are as follows:
+# +----------------------------------------+------------+-----------+--------+------------------+-------------+----------+
+# | Trial name                             | status     | loc       |   iter |   total time (s) |   timesteps |   reward |
+# |----------------------------------------+------------+-----------+--------+------------------+-------------+----------|
+# | IMPALA_BreakoutNoFrameskip-v4_1acd2414 | TERMINATED | pid=32600 |    296 |          3606.77 |     7152000 |   296.42 |
+# | IMPALA_BreakoutNoFrameskip-v4_1acdd4ea | TERMINATED | pid=32604 |    296 |          3606.33 |     7096500 |   337.74 |
+# | IMPALA_BreakoutNoFrameskip-v4_1ace550a | TERMINATED | pid=32628 |    296 |          3605.84 |     7140000 |   353.77 |
+# | IMPALA_BreakoutNoFrameskip-v4_1acec238 | TERMINATED | pid=32592 |    296 |          3606.5  |     7111000 |   376.08 |
+# | PPO_BreakoutNoFrameskip-v4_1acf6b7a    | TERMINATED | pid=32581 |    606 |          3602.28 |     3030000 |    19.2  |
+# | PPO_BreakoutNoFrameskip-v4_1acff068    | TERMINATED | pid=32580 |    595 |          3602.06 |     2975000 |    26.39 |
+# | PPO_BreakoutNoFrameskip-v4_1ad08af0    | TERMINATED | pid=53836 |    594 |          3604.43 |     2970000 |    67.88 |
+# | PPO_BreakoutNoFrameskip-v4_1ad10ad4    | TERMINATED | pid=53869 |    594 |          3601.85 |     2970000 |    28.07 |
+# | APEX_BreakoutNoFrameskip-v4_1ad190f8   | TERMINATED | pid=32605 |    114 |          3622.9  |     4689280 |    30.86 |
+# | APEX_BreakoutNoFrameskip-v4_1ad24f34   | TERMINATED | pid=53855 |    114 |          3621.4  |     4519840 |    28.53 |
+# | APEX_BreakoutNoFrameskip-v4_1ad2d530   | TERMINATED | pid=53891 |    114 |          3618.97 |     4512000 |    31.59 |
+# | APEX_BreakoutNoFrameskip-v4_1ad34dc6   | TERMINATED | pid=53894 |    114 |          3626.85 |     4547360 |    26.49 |
+# | A2C_BreakoutNoFrameskip-v4_1ad40824    | TERMINATED | pid=59452 |    351 |          3607.43 |     3625500 |    29.32 |
+# | A2C_BreakoutNoFrameskip-v4_1ad47fac    | TERMINATED | pid=59422 |    351 |          3607.31 |     3625500 |    29.05 |
+# | A2C_BreakoutNoFrameskip-v4_1ad4e5c8    | TERMINATED | pid=59414 |    351 |          3607.11 |     3630000 |    32.25 |
+# | A2C_BreakoutNoFrameskip-v4_1ad5984c    | TERMINATED | pid=59199 |    351 |          3610.29 |     3631500 |    26.82 |
+# | DQN_BreakoutNoFrameskip-v4_1ad621cc    | TERMINATED | pid=53851 |     24 |          3693.75 |      240000 |    12.89 |
+# | DQN_BreakoutNoFrameskip-v4_1ad69cb0    | TERMINATED | pid=53860 |     24 |          3681.93 |      240000 |    14.72 |
+# | DQN_BreakoutNoFrameskip-v4_1ad75c5e    | TERMINATED | pid=53864 |     24 |          3662.21 |      240000 |    13.84 |
+# | DQN_BreakoutNoFrameskip-v4_1ad7d42c    | TERMINATED | pid=53885 |     24 |          3697.62 |      240000 |    11.22 |
+# +----------------------------------------+------------+-----------+--------+------------------+-------------+----------+
+atari-impala:
+    env: BreakoutNoFrameskip-v4
+    run: IMPALA
+    num_samples: 4
+    stop:
+        time_total_s: 3600
+    config:
+        sample_batch_size: 50
+        train_batch_size: 500
+        num_workers: 10
+        num_envs_per_worker: 5
+        clip_rewards: True
+        lr_schedule: [
+            [0, 0.0005],
+            [20000000, 0.000000000001],
+        ]
+        num_gpus: 1
+atari-ppo:
+    env: BreakoutNoFrameskip-v4
+    run: PPO
+    num_samples: 4
+    stop:
+        time_total_s: 3600
+    config:
+        lambda: 0.95
+        kl_coeff: 0.5
+        clip_rewards: True
+        clip_param: 0.1
+        vf_clip_param: 10.0
+        entropy_coeff: 0.01
+        train_batch_size: 5000
+        sample_batch_size: 100
+        sgd_minibatch_size: 500
+        num_sgd_iter: 10
+        num_workers: 10
+        num_envs_per_worker: 5
+        batch_mode: truncate_episodes
+        observation_filter: NoFilter
+        vf_share_layers: true
+        num_gpus: 1
+apex:
+    env: BreakoutNoFrameskip-v4
+    run: APEX
+    num_samples: 4
+    stop:
+        time_total_s: 3600
+    config:
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        n_step: 3
+        lr: .0001
+        adam_epsilon: .00015
+        hiddens: [512]
+        buffer_size: 1000000
+        schedule_max_timesteps: 2000000
+        exploration_final_eps: 0.01
+        exploration_fraction: .1
+        prioritized_replay_alpha: 0.5
+        beta_annealing_fraction: 1.0
+        final_prioritized_replay_beta: 1.0
+        num_gpus: 1
+        num_workers: 8
+        num_envs_per_worker: 8
+        sample_batch_size: 20
+        train_batch_size: 512
+        target_network_update_freq: 50000
+        timesteps_per_iteration: 25000
+atari-a2c:
+    env: BreakoutNoFrameskip-v4
+    run: A2C
+    num_samples: 4
+    stop:
+        time_total_s: 3600
+    config:
+        sample_batch_size: 20
+        clip_rewards: True
+        num_workers: 5
+        num_envs_per_worker: 5
+        num_gpus: 1
+        lr_schedule: [
+            [0, 0.0007],
+            [20000000, 0.000000000001],
+        ]
+atari-basic-dqn:
+    env: BreakoutNoFrameskip-v4
+    run: DQN
+    num_samples: 4
+    stop:
+        time_total_s: 3600
+    config:
+        double_q: false
+        dueling: false
+        num_atoms: 1
+        noisy: false
+        prioritized_replay: false
+        n_step: 1
+        target_network_update_freq: 8000
+        lr: .0000625
+        adam_epsilon: .00015
+        hiddens: [512]
+        learning_starts: 20000
+        buffer_size: 1000000
+        sample_batch_size: 4
+        train_batch_size: 32
+        schedule_max_timesteps: 2000000
+        exploration_final_eps: 0.01
+        exploration_fraction: .1
+        prioritized_replay_alpha: 0.5
+        beta_annealing_fraction: 1.0
+        final_prioritized_replay_beta: 1.0
+        num_gpus: 0.2
+        timesteps_per_iteration: 10000

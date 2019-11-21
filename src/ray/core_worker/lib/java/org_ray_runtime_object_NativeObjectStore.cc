@@ -4,7 +4,6 @@
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/java/jni_utils.h"
-#include "ray/core_worker/object_interface.h"
 
 inline ray::CoreWorkerObjectInterface &GetObjectInterfaceFromPointer(
     jlong nativeCoreWorkerPointer) {
@@ -26,8 +25,8 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__JLorg_ray_runtime_objec
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
   ray::ObjectID object_id;
-  auto status =
-      GetObjectInterfaceFromPointer(nativeCoreWorkerPointer).Put(*ray_object, &object_id);
+  auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
+                    .Put(*ray_object, &object_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ray::ObjectID>(env, object_id);
 }
@@ -44,8 +43,8 @@ Java_org_ray_runtime_object_NativeObjectStore_nativePut__J_3BLorg_ray_runtime_ob
   auto object_id = JavaByteArrayToId<ray::ObjectID>(env, objectId);
   auto ray_object = JavaNativeRayObjectToNativeRayObject(env, obj);
   RAY_CHECK(ray_object != nullptr);
-  auto status =
-      GetObjectInterfaceFromPointer(nativeCoreWorkerPointer).Put(*ray_object, object_id);
+  auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
+                    .Put(*ray_object, object_id);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }
 
@@ -62,7 +61,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeGe
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<std::shared_ptr<ray::RayObject>> results;
-  auto status = GetObjectInterfaceFromPointer(nativeCoreWorkerPointer)
+  auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
                     .Get(object_ids, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<std::shared_ptr<ray::RayObject>>(
@@ -83,7 +82,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeWa
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
   std::vector<bool> results;
-  auto status = GetObjectInterfaceFromPointer(nativeCoreWorkerPointer)
+  auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
                     .Wait(object_ids, (int)numObjects, (int64_t)timeoutMs, &results);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return NativeVectorToJavaList<bool>(env, results, [](JNIEnv *env, const bool &item) {
@@ -104,7 +103,7 @@ JNIEXPORT void JNICALL Java_org_ray_runtime_object_NativeObjectStore_nativeDelet
       env, objectIds, &object_ids, [](JNIEnv *env, jobject id) {
         return JavaByteArrayToId<ray::ObjectID>(env, static_cast<jbyteArray>(id));
       });
-  auto status = GetObjectInterfaceFromPointer(nativeCoreWorkerPointer)
+  auto status = reinterpret_cast<ray::CoreWorker *>(nativeCoreWorkerPointer)
                     .Delete(object_ids, (bool)localOnly, (bool)deleteCreatingTasks);
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (void)0);
 }

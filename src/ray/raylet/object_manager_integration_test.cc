@@ -39,7 +39,6 @@ class TestObjectManagerBase : public ::testing::Test {
     node_manager_config.resource_config =
         ray::raylet::ResourceSet(std::move(static_resource_conf));
     node_manager_config.num_initial_workers = 0;
-    node_manager_config.num_workers_per_process = 1;
     // Use a default worker that can execute empty tasks with dependencies.
     std::vector<std::string> py_worker_command;
     py_worker_command.push_back("python");
@@ -127,7 +126,7 @@ class TestObjectManagerBase : public ::testing::Test {
 
 class TestObjectManagerIntegration : public TestObjectManagerBase {
  public:
-  uint num_expected_objects;
+  size_t num_expected_objects;
 
   int num_connected_clients = 0;
 
@@ -179,7 +178,7 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void TestPush(int64_t data_size) {
     ray::Status status = ray::Status::OK();
 
-    num_expected_objects = (uint)1;
+    num_expected_objects = (size_t)1;
     ObjectID oid1 = WriteDataToClient(client1, data_size);
     server1->object_manager_.Push(oid1, client_id_2);
   }

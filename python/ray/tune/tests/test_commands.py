@@ -20,7 +20,7 @@ from ray.tune import commands
 from ray.tune.result import CONFIG_PREFIX
 
 
-class Capturing():
+class Capturing(object):
     def __enter__(self):
         self._stdout = sys.stdout
         sys.stdout = self._stringio = StringIO()

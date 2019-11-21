@@ -46,6 +46,10 @@ Inspect the Cluster State
 
 .. autofunction:: ray.errors
 
+Experimental APIs
+-----------------
+
+.. automodule:: ray.experimental
 
 The Ray Command Line API
 ------------------------
