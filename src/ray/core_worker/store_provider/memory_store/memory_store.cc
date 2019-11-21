@@ -109,8 +109,11 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
-    std::shared_ptr<ReferenceCounter> counter)
-    : store_in_plasma_(store_in_plasma), ref_counter_(counter) {}
+    std::shared_ptr<ReferenceCounter> counter,
+    std::shared_ptr<RayletClient> raylet_client)
+    : store_in_plasma_(store_in_plasma),
+      ref_counter_(counter),
+      raylet_client_(raylet_client) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -208,7 +211,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                   int num_objects, int64_t timeout_ms,
-                                  bool remove_after_get,
+                                  const WorkerContext &ctx, bool remove_after_get,
                                   std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(object_ids.size(), nullptr);
 
@@ -260,8 +263,20 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
   }
 
+  // Only send block/unblock IPCs for non-actor tasks on the main thread.
+  // TODO(ekl) support non-lifetime resources for direct actor calls.
+  bool should_notify_raylet =
+      (raylet_client_ != nullptr && !ctx.CurrentActorIsDirectCall() &&
+       ctx.CurrentThreadIsMain());
+
   // Wait for remaining objects (or timeout).
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+  }
   bool done = get_request->Wait(timeout_ms);
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+  }
 
   {
     absl::MutexLock lock(&mu_);

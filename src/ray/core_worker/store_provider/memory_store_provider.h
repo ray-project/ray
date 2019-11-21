@@ -7,6 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 
 namespace ray {
@@ -27,7 +28,7 @@ class CoreWorkerMemoryStoreProvider {
   Status Put(const RayObject &object, const ObjectID &object_id);
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-             const TaskID &task_id,
+             const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
@@ -35,7 +36,7 @@ class CoreWorkerMemoryStoreProvider {
 
   /// Note that `num_objects` must equal to number of items in `object_ids`.
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const TaskID &task_id,
+              int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
   /// Note that `local_only` must be true, and `delete_creating_tasks` must be false here.
