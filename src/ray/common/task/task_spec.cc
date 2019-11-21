@@ -199,6 +199,11 @@ int TaskSpecification::MaxActorConcurrency() const {
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
+bool TaskSpecification::IsAsyncioActor() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().is_asyncio();
+}
+
 bool TaskSpecification::IsDetachedActor() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_detached();
@@ -229,6 +234,8 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
            << ", is_direct_call=" << IsDirectCall()
+           << ", max_concurrency=" << MaxActorConcurrency()
+           << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.

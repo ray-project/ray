@@ -354,6 +354,14 @@ class CoreWorker {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
+  ///
+  /// Public methods related to async actor call. This should only be used when
+  /// the actor is (1) direct actor and (2) using asyncio mode.
+  ///
+
+  /// Block current fiber until event is triggered.
+  void YieldCurrentFiber(FiberEvent &event);
+
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();

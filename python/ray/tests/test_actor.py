@@ -2213,7 +2213,8 @@ def test_actor_eviction(ray_start_object_store_memory):
     num_evicted, num_success = 0, 0
     for obj in objects:
         try:
-            ray.get(obj)
+            val = ray.get(obj)
+            assert isinstance(val, np.ndarray), val
             num_success += 1
         except ray.exceptions.UnreconstructableError:
             num_evicted += 1
@@ -2852,3 +2853,4 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+

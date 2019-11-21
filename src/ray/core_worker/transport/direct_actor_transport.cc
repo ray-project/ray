@@ -1,5 +1,7 @@
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include <thread>
+
 #include "ray/common/task/task.h"
+#include "ray/core_worker/transport/direct_actor_transport.h"
 
 using ray::rpc::ActorTableData;
 
@@ -237,6 +239,28 @@ void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
   }
 }
 
+void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
+  if (!is_asyncio_) {
+    RAY_LOG(DEBUG) << "Setting direct actor as async, creating new fiber thread.";
+
+    // The main thread will be used the creating new fibers.
+    // The fiber_runner_thread_ will run all fibers.
+    // boost::fibers::algo::shared_work allows two threads to transparently
+    // share all the fibers.
+    boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
+
+    fiber_runner_thread_ = std::thread([&]() {
+      boost::fibers::use_scheduling_algorithm<boost::fibers::algo::shared_work>();
+
+      // The event here is used to make sure fiber_runner_thread_ never terminates.
+      // Because fiber_shutdown_event_ is never notified, fiber_runner_thread_ will
+      // immediately start working on any ready fibers.
+      fiber_shutdown_event_.Wait();
+    });
+    is_asyncio_ = true;
+  }
+};
+
 void CoreWorkerDirectTaskReceiver::HandlePushTask(
     const rpc::PushTaskRequest &request, rpc::PushTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -249,6 +273,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     return;
   }
   SetMaxActorConcurrency(worker_context_.CurrentActorMaxConcurrency());
+  if (worker_context_.CurrentActorIsAsync()) {
+    SetActorAsAsync();
+  }
 
   // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
   // the raylet, which is a central bottleneck. In the future, we should inline
@@ -265,7 +292,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
         task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, pool_)));
+                                  task_main_io_service_, *waiter_, pool_, is_asyncio_)));
     it = result.first;
   }
 

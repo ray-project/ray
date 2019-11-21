@@ -298,7 +298,10 @@ class SerializationContext(object):
             except pyarrow.DeserializationCallbackError:
                 raise DeserializationError()
         else:
-            # Object isn't available in plasma.
+            # Object isn't available in plasma. This should never be returned
+            # to the user. We should only reach this line if this object was
+            # deserialized as part of a list, and another object in the list
+            # throws an exception.
             return plasma.ObjectNotAvailable
 
     def _store_and_register_pyarrow(self, value, depth=100):
