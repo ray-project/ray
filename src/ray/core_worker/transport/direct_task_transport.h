@@ -6,7 +6,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
@@ -20,14 +20,14 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
-  CoreWorkerDirectTaskSubmitter(
-      std::shared_ptr<WorkerLeaseInterface> lease_client,
-      rpc::ClientFactoryFn client_factory, LeaseClientFactoryFn lease_client_factory,
-      std::shared_ptr<CoreWorkerMemoryStoreProvider> store_provider)
+  CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
+                                rpc::ClientFactoryFn client_factory,
+                                LeaseClientFactoryFn lease_client_factory,
+                                std::shared_ptr<CoreWorkerMemoryStore> store)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        in_memory_store_(store_provider),
+        in_memory_store_(store),
         resolver_(in_memory_store_) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -80,7 +80,7 @@ class CoreWorkerDirectTaskSubmitter {
   LeaseClientFactoryFn lease_client_factory_;
 
   /// The store provider.
-  std::shared_ptr<CoreWorkerMemoryStoreProvider> in_memory_store_;
+  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;

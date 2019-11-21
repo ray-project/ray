@@ -11,7 +11,7 @@ int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
 
 void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
                        const rpc::ErrorType &error_type,
-                       std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store) {
+                       std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   for (int i = 0; i < num_returns; i++) {
@@ -25,9 +25,8 @@ void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
   }
 }
 
-void WriteObjectsToMemoryStore(
-    const rpc::PushTaskReply &reply,
-    std::shared_ptr<CoreWorkerMemoryStoreProvider> &in_memory_store) {
+void WriteObjectsToMemoryStore(const rpc::PushTaskReply &reply,
+                               std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store) {
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());

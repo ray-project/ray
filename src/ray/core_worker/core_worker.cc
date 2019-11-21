@@ -166,7 +166,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
-  memory_store_provider_.reset(new CoreWorkerMemoryStoreProvider(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -195,7 +194,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_provider_));
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -206,7 +205,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_provider_));
+          memory_store_));
 }
 
 CoreWorker::~CoreWorker() {
@@ -345,9 +344,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       local_timeout_ms = std::max(static_cast<int64_t>(0),
                                   timeout_ms - (current_time_ms() - start_time));
     }
-    RAY_RETURN_NOT_OK(memory_store_provider_->Get(memory_object_ids, local_timeout_ms,
-                                                  worker_context_, &result_map,
-                                                  &got_exception));
+    RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, local_timeout_ms,
+                                         worker_context_, &result_map, &got_exception));
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
@@ -400,7 +398,7 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
   if (object_id.IsDirectCallType()) {
     // Note that the memory store returns false if the object value is
     // ErrorType::OBJECT_IN_PLASMA.
-    RAY_RETURN_NOT_OK(memory_store_provider_->Contains(object_id, &found));
+    found = memory_store_->Contains(object_id);
   }
   if (!found) {
     // We check plasma as a fallback in all cases, since a direct call object
@@ -451,9 +449,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
     // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
     // consider waiting on them in plasma as well to ensure they are local.
-    RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
-        memory_object_ids, num_objects - static_cast<int>(ready.size()),
-        /*timeout_ms=*/0, worker_context_, &ready));
+    RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
+                                          num_objects - static_cast<int>(ready.size()),
+                                          /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -474,9 +472,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_provider_->Wait(
-          memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
-          worker_context_, &ready));
+      RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
+                                            num_objects - static_cast<int>(ready.size()),
+                                            timeout_ms, worker_context_, &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }
@@ -498,7 +496,7 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
 
   RAY_RETURN_NOT_OK(plasma_store_provider_->Delete(plasma_object_ids, local_only,
                                                    delete_creating_tasks));
-  RAY_RETURN_NOT_OK(memory_store_provider_->Delete(memory_object_ids));
+  memory_store_->Delete(memory_object_ids);
 
   return Status::OK();
 }
