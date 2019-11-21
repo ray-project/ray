@@ -4,6 +4,7 @@ cc_library(
     hdrs = glob([
         "ray.h",
     ]),
+    copts = ["-g"],
     deps = [
         "//:core_worker_lib",
     ],
@@ -12,6 +13,7 @@ cc_library(
 cc_binary(
     name = "test",
     srcs = ["main.c"],
+    copts = ["-g"],
     deps = [
         ":ray",
     ],
