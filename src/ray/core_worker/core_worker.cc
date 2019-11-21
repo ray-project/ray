@@ -165,7 +165,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr));
+      ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -215,6 +215,7 @@ CoreWorker::~CoreWorker() {
 
 void CoreWorker::Shutdown() {
   if (!shutdown_) {
+    shutdown_ = true;
     io_service_.stop();
     if (worker_type_ == WorkerType::WORKER) {
       task_execution_service_.stop();
@@ -223,7 +224,6 @@ void CoreWorker::Shutdown() {
       RayLog::ShutDownRayLog();
     }
   }
-  shutdown_ = true;
 }
 
 void CoreWorker::Disconnect() {
@@ -262,8 +262,7 @@ void CoreWorker::ReportActiveObjectIDs() {
       reference_counter_->GetAllInScopeObjectIDs();
   RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
   if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
-    RAY_LOG(WARNING) << active_object_ids.size() << "object IDs are currently in scope. "
-                     << "This may lead to required objects being garbage collected.";
+    RAY_LOG(WARNING) << active_object_ids.size() << " object IDs are currently in scope.";
   }
 
   if (!raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
@@ -346,8 +345,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                   timeout_ms - (current_time_ms() - start_time));
     }
     RAY_RETURN_NOT_OK(memory_store_->Get(memory_object_ids, local_timeout_ms,
-                                         worker_context_.GetCurrentTaskID(), &result_map,
-                                         &got_exception));
+                                         worker_context_, &result_map, &got_exception));
   }
 
   // If any of the objects have been promoted to plasma, then we retry their
@@ -451,9 +449,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
     // TODO(ekl) for memory objects that are ErrorType::OBJECT_IN_PLASMA, we should
     // consider waiting on them in plasma as well to ensure they are local.
-    RAY_RETURN_NOT_OK(memory_store_->Wait(
-        memory_object_ids, num_objects - static_cast<int>(ready.size()),
-        /*timeout_ms=*/0, worker_context_.GetCurrentTaskID(), &ready));
+    RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
+                                          num_objects - static_cast<int>(ready.size()),
+                                          /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
 
@@ -474,9 +472,9 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
           std::max(0, static_cast<int>(timeout_ms - (current_time_ms() - start_time)));
     }
     if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(memory_store_->Wait(
-          memory_object_ids, num_objects - static_cast<int>(ready.size()), timeout_ms,
-          worker_context_.GetCurrentTaskID(), &ready));
+      RAY_RETURN_NOT_OK(memory_store_->Wait(memory_object_ids,
+                                            num_objects - static_cast<int>(ready.size()),
+                                            timeout_ms, worker_context_, &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   }

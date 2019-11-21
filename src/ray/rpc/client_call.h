@@ -124,7 +124,7 @@ class ClientCallManager {
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
   explicit ClientCallManager(boost::asio::io_service &main_service, int num_threads = 1)
-      : main_service_(main_service), num_threads_(num_threads) {
+      : main_service_(main_service), num_threads_(num_threads), shutdown_(false) {
     rr_index_ = rand() % num_threads_;
     // Start the polling threads.
     cqs_.reserve(num_threads_);
@@ -136,6 +136,7 @@ class ClientCallManager {
   }
 
   ~ClientCallManager() {
+    shutdown_ = true;
     for (auto &cq : cqs_) {
       cq.Shutdown();
     }
@@ -187,19 +188,20 @@ class ClientCallManager {
   void PollEventsFromCompletionQueue(int index) {
     void *got_tag;
     bool ok = false;
-    auto deadline = gpr_inf_future(GPR_CLOCK_REALTIME);
     // Keep reading events from the `CompletionQueue` until it's shutdown.
     // NOTE(edoakes): we use AsyncNext here because for some unknown reason,
     // synchronous cq_.Next blocks indefinitely in the case that the process
     // received a SIGTERM.
     while (true) {
+      auto deadline = gpr_time_add(gpr_now(GPR_CLOCK_REALTIME),
+                                   gpr_time_from_millis(250, GPR_TIMESPAN));
       auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
       }
       if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
-        if (ok && !main_service_.stopped()) {
+        if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.
           main_service_.post([tag]() {
             tag->GetCall()->OnReplyReceived();
@@ -218,6 +220,9 @@ class ClientCallManager {
 
   /// The number of polling threads.
   int num_threads_;
+
+  /// Whether the client has shutdown.
+  std::atomic<bool> shutdown_;
 
   /// The index to send RPCs in a round-robin fashion
   std::atomic<unsigned int> rr_index_;
