@@ -153,7 +153,8 @@ public:
   /// and false otherwise.
   bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
 
-  /// Return a pointer to the resources associated to the given node.
+  /// Return resources associated to the given node_id in ret_resources.
+  /// If node_id not found, return false; otherwise return true.
   bool GetNodeResources(int64_t node_id, NodeResources& ret_resources);
 
   /// Get number of nodes in the cluster.
