@@ -31,7 +31,7 @@ if [[ "$TRAVIS" == "true"  ]]; then
 
   # Use ray google cloud cache
   echo "build --remote_cache=https://storage.googleapis.com/ray-bazel-cache" >> $HOME/.bazelrc
-  if [[ "$TRAVIS_BRANCH" == "master" ]]; then
+  if [[ "$TRAVIS_PULL_REQUEST" == "false" ]]; then
     # If we are in master build, we can write to the cache as well.
     openssl aes-256-cbc -K $encrypted_1c30b31fe1ee_key \
       -iv $encrypted_1c30b31fe1ee_iv \
