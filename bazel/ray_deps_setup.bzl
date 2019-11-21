@@ -118,6 +118,9 @@ def ray_deps_setup():
         commit = "93e8830070e9afcbaa992c75817009ee3f4b63a0",
         remote = "https://github.com/grpc/grpc.git",
         shallow_since = "1571118670 -0700",
+        patches = [
+            "//thirdparty/patches:grpc-cython-copts.patch",
+        ],
     )
 
     git_repository(
