@@ -351,35 +351,37 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
                                          worker_context_, &result_map, &got_exception));
   }
 
-  // If any of the objects have been promoted to plasma, then we retry their
-  // gets at the provider plasma. Once we get the objects from plasma, we flip
-  // the transport type again and return them for the original direct call ids.
-  absl::flat_hash_set<ObjectID> promoted_plasma_ids;
-  for (const auto &pair : result_map) {
-    if (pair.second->IsInPlasmaError()) {
-      promoted_plasma_ids.insert(pair.first.WithTransportType(TaskTransportType::RAYLET));
-    }
-  }
-  if (!promoted_plasma_ids.empty()) {
-    int64_t local_timeout_ms = timeout_ms;
-    if (timeout_ms >= 0) {
-      local_timeout_ms = std::max(static_cast<int64_t>(0),
-                                  timeout_ms - (current_time_ms() - start_time));
-    }
-    RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
-                                                  worker_context_.GetCurrentTaskID(),
-                                                  &result_map, &got_exception));
-    for (const auto &id : promoted_plasma_ids) {
-      auto it = result_map.find(id);
-      if (it == result_map.end()) {
-        result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
-      } else {
-        result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
-      }
-      result_map.erase(id);
-    }
+  if (!got_exception) {
+    // If any of the objects have been promoted to plasma, then we retry their
+    // gets at the provider plasma. Once we get the objects from plasma, we flip
+    // the transport type again and return them for the original direct call ids.
+    absl::flat_hash_set<ObjectID> promoted_plasma_ids;
     for (const auto &pair : result_map) {
-      RAY_CHECK(!pair.second->IsInPlasmaError());
+      if (pair.second->IsInPlasmaError()) {
+        RAY_LOG(DEBUG) << pair.first << " in plasma, doing fetch-and-get";
+        promoted_plasma_ids.insert(
+            pair.first.WithTransportType(TaskTransportType::RAYLET));
+      }
+    }
+    if (!promoted_plasma_ids.empty()) {
+      int64_t local_timeout_ms = timeout_ms;
+      if (timeout_ms >= 0) {
+        local_timeout_ms = std::max(static_cast<int64_t>(0),
+                                    timeout_ms - (current_time_ms() - start_time));
+      }
+      RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
+                                                    worker_context_.GetCurrentTaskID(),
+                                                    &result_map, &got_exception));
+      for (const auto &id : promoted_plasma_ids) {
+        auto it = result_map.find(id);
+        if (it == result_map.end()) {
+          result_map.erase(id.WithTransportType(TaskTransportType::DIRECT));
+        } else {
+          result_map[id.WithTransportType(TaskTransportType::DIRECT)] = it->second;
+        }
+        result_map.erase(id);
+      }
     }
   }
 
@@ -387,10 +389,26 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   // this ensures that entries `results` have exactly the same order as
   // they are in `ids`. When there are duplicate object ids, all the entries
   // for the same id are filled in.
+  bool missing_result = false;
+  bool will_throw_exception = false;
   for (size_t i = 0; i < ids.size(); i++) {
-    if (result_map.find(ids[i]) != result_map.end()) {
-      (*results)[i] = result_map[ids[i]];
+    auto pair = result_map.find(ids[i]);
+    if (pair != result_map.end()) {
+      (*results)[i] = pair->second;
+      RAY_CHECK(!pair->second->IsInPlasmaError());
+      if (pair->second->IsException()) {
+        // The language bindings should throw an exception if they see this
+        // object.
+        will_throw_exception = true;
+      }
+    } else {
+      missing_result = true;
     }
+  }
+  // If no timeout was set and none of the results will throw an exception,
+  // then check that we fetched all results before returning.
+  if (timeout_ms >= 0 && !will_throw_exception) {
+    RAY_CHECK(!missing_result);
   }
 
   return Status::OK();
