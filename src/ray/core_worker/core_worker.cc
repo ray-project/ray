@@ -390,22 +390,24 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   // they are in `ids`. When there are duplicate object ids, all the entries
   // for the same id are filled in.
   bool missing_result = false;
-  got_exception = false;
+  bool will_throw_exception = false;
   for (size_t i = 0; i < ids.size(); i++) {
     auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
       (*results)[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
       if (pair->second->IsException()) {
-        got_exception = true;
+        // The language bindings should throw an exception if they see this
+        // object.
+        will_throw_exception = true;
       }
     } else {
       missing_result = true;
     }
   }
-  // If no timeout was set and none of the results had exceptions, then check
-  // that we fetched all results before returning.
-  if (timeout_ms >= 0 && !got_exception) {
+  // If no timeout was set and none of the results will throw an exception,
+  // then check that we fetched all results before returning.
+  if (timeout_ms >= 0 && !will_throw_exception) {
     RAY_CHECK(!missing_result);
   }
 
