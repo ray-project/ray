@@ -20,7 +20,7 @@ class AccessorTestBase : public ::testing::Test {
 
   virtual void SetUp() {
     GenTestData();
-    
+
     gcs_client_.reset(new RedisGcsClient(options_));
     RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 

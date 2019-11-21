@@ -69,7 +69,7 @@ void RedisAsioClient::handle_write(boost::system::error_code error_code) {
 
 void RedisAsioClient::add_read() {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
-  io_service_.dispatch([this]() {
+  io_service_.post([this]() {
     read_requested_ = true;
     operate();
   });
@@ -79,7 +79,7 @@ void RedisAsioClient::del_read() { read_requested_ = false; }
 
 void RedisAsioClient::add_write() {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
-  io_service_.dispatch([this]() {
+  io_service_.post([this]() {
     write_requested_ = true;
     operate();
   });

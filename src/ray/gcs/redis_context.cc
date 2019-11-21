@@ -129,6 +129,9 @@ void GlobalRedisCallback(void *c, void *r, void *privdata) {
     return;
   }
   int64_t callback_index = reinterpret_cast<int64_t>(privdata);
+  redisAsyncContext *async_context = reinterpret_cast<redisAsyncContext *>(c);
+  RAY_LOG(INFO) << "replies head=" << async_context->replies.head
+                << "replies tail=" << async_context->replies.tail;
   redisReply *reply = reinterpret_cast<redisReply *>(r);
   ProcessCallback(callback_index, CallbackReply(reply));
 }
