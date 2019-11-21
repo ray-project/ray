@@ -25,11 +25,6 @@ void BuildCommonTaskSpec(
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
-      // TODO(ekl) remove this check once we deprecate TaskTransportType::RAYLET
-      if (transport_type == ray::TaskTransportType::RAYLET) {
-        RAY_CHECK(!arg.GetReference().IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
       builder.AddByRefArg(arg.GetReference());
     } else {
       builder.AddByValueArg(arg.GetValue());
