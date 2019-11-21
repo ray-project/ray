@@ -24,8 +24,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port) override {
-    num_workers_returned += 1;
+  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override {
+    if (disconnect_worker) {
+      num_workers_disconnected++;
+    } else {
+      num_workers_returned++;
+    }
     return Status::OK();
   }
 
@@ -64,6 +68,7 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   int num_workers_requested = 0;
   int num_workers_returned = 0;
+  int num_workers_disconnected = 0;
   std::list<rpc::ClientCallback<rpc::WorkerLeaseReply>> callbacks = {};
 };
 
@@ -207,6 +212,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
@@ -224,7 +230,8 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   // Simulate a system failure, i.e., worker died unexpectedly.
   worker_client->callbacks[0](Status::IOError("oops"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
@@ -266,6 +273,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
     cb(Status::OK(), rpc::PushTaskReply());
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 3);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
@@ -309,6 +317,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
@@ -335,13 +344,15 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   // Task 1 finishes with failure; the worker is returned.
   worker_client->callbacks[0](Status::IOError("worker dead"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
   // Task 2 runs successfully on the second worker.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
-  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
@@ -386,6 +397,9 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 1);
+
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
 }
 
 }  // namespace ray
