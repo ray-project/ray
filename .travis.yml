@@ -189,7 +189,8 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests --ignore=python/ray/tests/perf_integration_tests --ignore=python/ray/tests/py3_test.py; fi
 
   # direct call tests
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=1 python -m pytest -v --durations=10 --timeout=300 python/ray/tests/test_basic.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=1 python -m pytest -v --timeout=300 python/ray/tests/test_basic.py; fi
+  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then RAY_FORCE_DIRECT=1 python -m pytest -v --timeout=300 python/ray/tests/test_actor.py; fi
 
 deploy:
   - provider: s3

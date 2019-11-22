@@ -25,6 +25,8 @@ from ray.tests.utils import (relevant_errors, wait_for_condition,
                              wait_for_errors, wait_for_pid_to_exit,
                              run_string_as_driver)
 
+RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+
 
 @pytest.fixture
 def ray_checkpointable_actor_cls(request):
@@ -576,6 +578,7 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
 def test_resource_assignment(shutdown_only):
     """Test to make sure that we assign resource to actors at instantiation."""
     # This test will create 16 actors. Declaring this many CPUs initially will
@@ -931,6 +934,7 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="FIXME(ekl) DO NOT MERGE")
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -996,6 +1000,7 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
 @pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Failing with new GCS API on Linux.")
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_actor_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -1035,6 +1040,7 @@ def test_actor_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_actor_multiple_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -1105,6 +1111,7 @@ def test_actor_multiple_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_actor_different_numbers_of_gpus(ray_start_cluster):
     # Test that we can create actors on two nodes that have different
     # numbers of GPUs.
@@ -1145,6 +1152,7 @@ def test_actor_different_numbers_of_gpus(ray_start_cluster):
     assert ready_ids == []
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 5
@@ -1223,6 +1231,7 @@ def test_actor_multiple_gpus_from_multiple_tasks(ray_start_cluster):
 
 @pytest.mark.skipif(
     sys.version_info < (3, 0), reason="This test requires Python 3.")
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_actors_and_tasks_with_gpus(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -1333,6 +1342,7 @@ def test_actors_and_tasks_with_gpus(ray_start_cluster):
     assert len(ready_ids) == 0
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_actors_and_tasks_with_gpus_version_two(shutdown_only):
     # Create tasks and actors that both use GPUs and make sure that they
     # are given different GPUs
@@ -1521,6 +1531,7 @@ def test_actor_init_fails(ray_start_cluster_head):
     assert results == [1 for actor in actors]
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_reconstruction_suppression(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     num_nodes = 5
@@ -2084,6 +2095,7 @@ def test_register_and_get_named_actors(ray_start_regular):
 @pytest.mark.skipif(
     sys.version_info < (3, 0),
     reason="This test is currently failing on Python 2.7.")
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_lifetime_and_transient_resources(ray_start_regular):
     # This actor acquires resources only when running methods.
     @ray.remote
@@ -2107,6 +2119,7 @@ def test_lifetime_and_transient_resources(ray_start_regular):
     assert len(ready_ids) == 1
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_custom_label_placement(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=2, resources={"CustomResource1": 2})
@@ -2136,6 +2149,7 @@ def test_custom_label_placement(ray_start_cluster):
         assert location != node_id
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO resource shapes")
 def test_creating_more_actors_than_resources(shutdown_only):
     ray.init(num_cpus=10, num_gpus=2, resources={"CustomResource1": 1})
 
@@ -2224,6 +2238,7 @@ def test_actor_eviction(ray_start_object_store_memory):
     assert num_success > 0
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_actor_reconstruction(ray_start_regular):
     """Test actor reconstruction when actor process is killed."""
 
@@ -2273,6 +2288,7 @@ def test_actor_reconstruction(ray_start_regular):
         ray.get(actor.increase.remote())
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_actor_reconstruction_without_task(ray_start_regular):
     """Test a dead actor can be reconstructed without sending task to it."""
 
@@ -2301,6 +2317,7 @@ def test_actor_reconstruction_without_task(ray_start_regular):
         timeout_ms=5000)
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
     """Test actor reconstruction when node dies unexpectedly."""
     cluster = ray_start_cluster_head
@@ -2371,6 +2388,7 @@ def test_actor_reconstruction_on_node_failure(ray_start_cluster_head):
             initial_reconstruction_timeout_milliseconds=1000)
     ],
     indirect=True)
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_multiple_actor_reconstruction(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     # This test can be made more stressful by increasing the numbers below.
@@ -2442,6 +2460,7 @@ def kill_actor(actor):
     wait_for_pid_to_exit(pid)
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test actor checkpointing and restoring from a checkpoint."""
     actor = ray.remote(
@@ -2472,6 +2491,7 @@ def test_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     """Test checkpointing of a remote actor through method invocation."""
 
@@ -2519,6 +2539,7 @@ def test_remote_checkpointing(ray_start_regular, ray_checkpointable_actor_cls):
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
                                        ray_checkpointable_actor_cls):
     """Test actor checkpointing on a remote node."""
@@ -2545,6 +2566,7 @@ def test_checkpointing_on_node_failure(ray_start_cluster_2_nodes,
     assert ray.get(actor.was_resumed_from_checkpoint.remote()) is True
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_checkpointing_save_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to complete."""
@@ -2584,6 +2606,7 @@ def test_checkpointing_save_exception(ray_start_regular,
     wait_for_errors(ray_constants.CHECKPOINT_PUSH_ERROR, 1)
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_checkpointing_load_exception(ray_start_regular,
                                       ray_checkpointable_actor_cls):
     """Test actor can still be recovered if checkpoints fail to load."""
@@ -2631,6 +2654,7 @@ def test_checkpointing_load_exception(ray_start_regular,
     [generate_internal_config_map(num_actor_checkpoints_to_keep=20)],
     indirect=True,
 )
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_deleting_actor_checkpoint(ray_start_regular):
     """Test deleting old actor checkpoints."""
 
@@ -2664,6 +2688,7 @@ def test_deleting_actor_checkpoint(ray_start_regular):
         assert len(ray.get(actor.get_checkpoint_ids.remote())) == 20
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_bad_checkpointable_actor_class():
     """Test error raised if an actor class doesn't implement all abstract
     methods in the Checkpointable interface."""
@@ -2676,6 +2701,7 @@ def test_bad_checkpointable_actor_class():
                 return True
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO reconstruction")
 def test_init_exception_in_checkpointable_actor(ray_start_regular,
                                                 ray_checkpointable_actor_cls):
     # This test is similar to test_failure.py::test_failed_actor_init.
@@ -2752,6 +2778,7 @@ def test_decorated_method(ray_start_regular):
         "num_cpus": 1,
         "num_nodes": 2,
     }], indirect=True)
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO delete doesn't work")
 def test_ray_wait_dead_actor(ray_start_cluster):
     """Tests that methods completed by dead actors are returned as ready"""
     cluster = ray_start_cluster
