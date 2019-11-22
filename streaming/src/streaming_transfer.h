@@ -138,7 +138,7 @@ class StreamingQueueProducer : public ProducerTransfer {
                                        uint64_t &last_queue_seq_id);
 
  private:
-  std::shared_ptr<QueueWriterInterface> queue_writer_;
+  std::shared_ptr<StreamingQueueWriter> queue_writer_;
 };
 
 class StreamingQueueConsumer : public ConsumerTransfer {
@@ -159,7 +159,7 @@ class StreamingQueueConsumer : public ConsumerTransfer {
                                     std::vector<ObjectID> &abnormal_channels) override;
 
  private:
-  std::shared_ptr<QueueReaderInterface> queue_reader_;
+  std::shared_ptr<StreamingQueueReader> queue_reader_;
 };
 }  // namespace streaming
 }  // namespace ray

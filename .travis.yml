@@ -164,7 +164,7 @@ install:
   - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
 
   # Streaming cpp test.
-  - ./ci/suppress_output bash streaming/src/test/run_tests_with_streamingqueue.sh
+  - ./ci/suppress_output bash streaming/src/test/run_streamingqueue_test.sh
   # Shutdown bazel to release the memory held by bazel.
   - bazel shutdown
 

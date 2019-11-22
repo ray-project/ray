@@ -6,11 +6,11 @@ namespace ray {
 namespace streaming {
 
 // Queue factory of writer and reader
-std::shared_ptr<QueueWriterInterface> CreateQueueWriter(
+std::shared_ptr<StreamingQueueWriter> CreateQueueWriter(
     const JobID &job_id,
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func) {
-  std::shared_ptr<QueueWriterInterface> instance;
+  std::shared_ptr<StreamingQueueWriter> instance;
 
   instance = std::make_shared<StreamingQueueWriter>(core_worker, async_func, sync_func);
   RAY_LOG(INFO) << "Create queue writer with STREAMING QUEUE.";
@@ -18,11 +18,11 @@ std::shared_ptr<QueueWriterInterface> CreateQueueWriter(
   return instance;
 }
 
-std::shared_ptr<QueueReaderInterface> CreateQueueReader(
+std::shared_ptr<StreamingQueueReader> CreateQueueReader(
     const JobID &job_id,
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func) {
-  std::shared_ptr<QueueReaderInterface> instance;
+  std::shared_ptr<StreamingQueueReader> instance;
 
   instance = std::make_shared<StreamingQueueReader>(core_worker, async_func, sync_func);
   RAY_LOG(INFO) << "[CreateQueueReader]Create queue reader with STREAMING QUEUE.";
@@ -30,10 +30,7 @@ std::shared_ptr<QueueReaderInterface> CreateQueueReader(
   return instance;
 }
 
-/***
- * code below is interface implementation of streaming queue
- ***/
-
+/// code below is interface implementation of streaming queue
 StreamingQueueWriter::StreamingQueueWriter(CoreWorker *core_worker,
                                            RayFunction &async_func,
                                            RayFunction &sync_func)
@@ -60,11 +57,6 @@ Status StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_
 
   STREAMING_LOG(INFO) << "StreamingQueueWriter::CreateQueue done";
   return Status::OK();
-}
-
-bool StreamingQueueWriter::IsQueueFoundInLocal(const ObjectID &queue_id,
-                                               const int64_t timeout_ms) {
-  return queue_manager_->UpstreamQueueExists(queue_id);
 }
 
 Status StreamingQueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id,

@@ -13,15 +13,15 @@ namespace ray {
 namespace streaming {
 const uint64_t QUEUE_INTERFACE_INVALID = std::numeric_limits<uint64_t>::max();
 
-class QueueWriterInterface;
-class QueueReaderInterface;
+class StreamingQueueWriter;
+class StreamingQueueReader;
 
-std::shared_ptr<QueueWriterInterface> CreateQueueWriter(
+std::shared_ptr<StreamingQueueWriter> CreateQueueWriter(
     const JobID &job_id,
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func);
 
-std::shared_ptr<QueueReaderInterface> CreateQueueReader(
+std::shared_ptr<StreamingQueueReader> CreateQueueReader(
     const JobID &job_id,
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func);
@@ -31,64 +31,24 @@ inline void ConvertToValidQueueId(const ObjectID &queue_id) {
   *(reinterpret_cast<uint64_t *>(addr)) = 0;
 }
 
-// Ray queue should implement this interface
-class QueueWriterInterface {
- public:
-  QueueWriterInterface() {}
-  virtual ~QueueWriterInterface() {}
-  virtual Status CreateQueue(const ObjectID &queue_id, int64_t data_size, ActorID &actor_handle) = 0;
-  virtual Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
-                               uint32_t data_size, uint64_t timestamp) = 0;
-  virtual bool IsQueueFoundInLocal(const ObjectID &queue_id,
-                                   const int64_t timeout_ms = 0) = 0;
-  virtual Status SetQueueEvictionLimit(const ObjectID &queue_id,
-                                       uint64_t eviction_limit) = 0;
-  virtual void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
-                                   int64_t timeout_ms,
-                                   std::vector<ObjectID> &failed_queues) = 0;
-  virtual void GetMinConsumedSeqID(const ObjectID &queue_id,
-                                   uint64_t &min_consumed_id) = 0;
-  virtual void CleanupSubscription(const ObjectID &queue_id) = 0;
-  virtual Status DeleteQueue(const ObjectID &queue_id) = 0;
-};
-
-class QueueReaderInterface {
- public:
-  QueueReaderInterface() {}
-  virtual ~QueueReaderInterface() {}
-  virtual bool GetQueue(const ObjectID &queue_id, int64_t timeout_ms,
-                        uint64_t start_seq_id, ActorID &actor_id) = 0;
-  virtual Status GetQueueItem(const ObjectID &object_id, uint8_t *&data,
-                              uint32_t &data_size, uint64_t &seq_id,
-                              uint64_t timeout_ms = -1) = 0;
-  virtual void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id) = 0;
-  virtual void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
-                                   int64_t timeout_ms,
-                                   std::vector<ObjectID> &failed_queues) = 0;
-  virtual Status DeleteQueue(const ObjectID &queue_id) = 0;
-};
-
-/***
- * code below is interface implementation of streaming queue
- ***/
-class StreamingQueueWriter : public QueueWriterInterface {
+/// code below is interface implementation of streaming queue
+class StreamingQueueWriter {
  public:
   StreamingQueueWriter(CoreWorker *core_worker, RayFunction &async_func,
                        RayFunction &sync_func);
   ~StreamingQueueWriter() {}
 
   Status CreateQueue(const ObjectID &queue_id, int64_t data_size,
-                     ActorID &actor_handle) override;
-  bool IsQueueFoundInLocal(const ObjectID &queue_id, const int64_t timeout_ms) override;
-  Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit) override;
+                     ActorID &actor_handle);
+  Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit);
 
   void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                           std::vector<ObjectID> &failed_queues) override;
-  void GetMinConsumedSeqID(const ObjectID &queue_id, uint64_t &min_consumed_id) override;
+                           std::vector<ObjectID> &failed_queues);
+  void GetMinConsumedSeqID(const ObjectID &queue_id, uint64_t &min_consumed_id);
   Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
-                       uint32_t data_size, uint64_t timestamp) override;
-  void CleanupSubscription(const ObjectID &queue_id) override;
-  Status DeleteQueue(const ObjectID &queue_id) override;
+                       uint32_t data_size, uint64_t timestamp);
+  void CleanupSubscription(const ObjectID &queue_id);
+  Status DeleteQueue(const ObjectID &queue_id);
 
  private:
   std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
@@ -100,20 +60,20 @@ class StreamingQueueWriter : public QueueWriterInterface {
   RayFunction sync_func_;
 };
 
-class StreamingQueueReader : public QueueReaderInterface {
+class StreamingQueueReader {
  public:
   StreamingQueueReader(CoreWorker *core_worker, RayFunction &async_func,
                        RayFunction &sync_func);
   ~StreamingQueueReader() {}
 
   bool GetQueue(const ObjectID &queue_id, int64_t timeout_ms, uint64_t start_seq_id,
-                ActorID &actor_handle) override;
+                ActorID &actor_handle);
   Status GetQueueItem(const ObjectID &object_id, uint8_t *&data, uint32_t &data_size,
-                      uint64_t &seq_id, uint64_t timeout_ms = -1) override;
-  void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id) override;
+                      uint64_t &seq_id, uint64_t timeout_ms = -1);
+  void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id);
   void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                           std::vector<ObjectID> &failed_queues) override;
-  Status DeleteQueue(const ObjectID &queue_id) override;
+                           std::vector<ObjectID> &failed_queues);
+  Status DeleteQueue(const ObjectID &queue_id);
 
  private:
   std::shared_ptr<ray::streaming::QueueManager> queue_manager_;

@@ -73,11 +73,7 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(
 
 StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel_info) {
   auto &channel_id = channel_info.channel_id;
-  bool is_queue_found = queue_writer_->IsQueueFoundInLocal(channel_id);
-  STREAMING_LOG(INFO) << "Queue [" << channel_id << "], queue exists: " << is_queue_found;
-
   ray::Status status;
-
   // recreate & clear the queue
   queue_writer_->CleanupSubscription(channel_id);
   status = queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
