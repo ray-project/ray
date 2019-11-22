@@ -1,90 +1,73 @@
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository", "new_git_repository")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-def github_repository(**kwargs):
+def github_repository(*, name=None, remote=None, commit=None, tag=None,
+                      branch=None, build_file=None, build_file_content=None,
+                      sha256=None, shallow_since=None, strip_prefix=True,
+                      url=None, path=None, **kwargs):
     """
-    Conveniently chooses between ZIP, git, etc. GitHub repositories.
-    We prefer ZIP downloads, since they're smaller and faster
-    due to the lack of history.
+    Conveniently chooses between archive, git, etc. GitHub repositories.
+    Prefer archives, as they're smaller and faster due to the lack of history.
 
-    The remote parameter is required.
-    One of {commit, tag, branch} is also required.
-    The name parameter is optional but recommended.
-    Set sha256 = True if the ZIP archive hash is unknown, then update it ASAP
-    to allow caching & avoid repeated downloads on every build.
+    One of {commit, tag, branch} must also be provided (as usual).
 
-    If build_file is a string, it refers to a custom build file.
-    If build_file is absent, the project is assumed to contain a build file.
-    If build_file == True, then the build file name is auto-deduced.
+    sha256 should be omitted (or None) when the archive hash is unknown, then
+    updated ASAP to allow caching & avoid repeated downloads on every build.
 
-    If path   is present , local repository is assumed.
-    If sha256 == <string>, obtains ZIP download with the given hash (fast)
-    If sha256 == True    , obtains ZIP download without knowing the hash (fast)
-    If sha256 is absent  , obtains clone via git (slow and NOT recommended)
-
-    strip_prefix is automatic by default.
-    Set strip_prefix=<string> (or False) to override.
-
-    Some common parameters (like shallow_since)
-    are automatically stripped when not applicable.
-    Others are passed through directly.
+    If remote       == None , it is an error.
+    If name         == None , it is auto-deduced, but this is NOT recommended.
+    If build_file   == True , it is auto-deduced.
+    If strip_prefix == True , it is auto-deduced.
+    If url          == None , it is auto-deduced.
+    If sha256       != False, uses archive download (recommended; fast).
+    If sha256       == False, uses git clone (NOT recommended; slow).
+    If path         != None , local repository is assumed at the given path.
     """
+    GIT_SUFFIX = ".git"
+    archive_suffix = ".zip"
 
-    # Extract well-known parameters
-    remote = kwargs.pop("remote", None)  # required
-    name = kwargs.get("name", None)  # recommended
-    commit = kwargs.pop("commit", None)  # recommended
-    tag = kwargs.pop("tag", None)
-    branch = kwargs.pop("branch", None)
-    build_file = kwargs.pop("build_file", None)
-    sha256 = kwargs.pop("sha256", None)  # recommended (for archive)
-    shallow_since = kwargs.pop("shallow_since", None)  # recommended (for git)
-    strip_prefix = kwargs.pop("strip_prefix", None)  # avoid, unless necessary
-    url = kwargs.pop("url", None)  # avoid, unless necessary
-
-    # Validate arguments
     treeish = commit or tag or branch
-    if treeish == None: fail("Missing commit, tag, or branch argument")
+    if not treeish: fail("Missing commit, tag, or branch argument")
     if remote == None: fail("Missing remote argument")
 
-    GIT_SUFFIX = ".git"  # We need to strip this
     if remote.endswith(GIT_SUFFIX):
-        remote = remote[:len(remote) - len(GIT_SUFFIX)]
-    project = remote.split("//", 1)[1].split("/")[2]
+        remote_no_suffix = remote[:len(remote) - len(GIT_SUFFIX)]
+    else:
+        remote_no_suffix = remote
+    project = remote_no_suffix.split("//", 1)[1].split("/")[2]
 
     if name == None:
         name = project.replace("-", "_")
-        kwargs.setdefault("name", name)
-
-    if url == None: url = "%s/archive/%s.zip" % (remote, treeish)
-
+    if strip_prefix == True:
+        strip_prefix = "%s-%s" % (project, treeish)
+    if url == None:
+        url = "%s/archive/%s%s" % (remote_no_suffix, treeish, archive_suffix)
     if build_file == True:
-        # Auto-generate build file name
-        kwargs.setdefault(
-            "build_file",
-            "@//%s:%s" % ("bazel", "BUILD." + name))
+        build_file = "@//%s:%s" % ("bazel", "BUILD." + name)
 
-    if "path" in kwargs:
-        native.local_repository(**kwargs)
-    else:
-        if not sha256:
-            # git clone
-            if commit != None: kwargs.setdefault("commit", commit)
-            if tag != None: kwargs.setdefault("tag", tag)
-            if branch != None: kwargs.setdefault("branch", branch)
-            kwargs.setdefault("shallow_since", shallow_since)
-            kwargs.setdefault("remote", remote)
-            if "build_file" in kwargs:
-                new_git_repository(**kwargs)
-            else:
-                git_repository(**kwargs)
+    if path != None:
+        if build_file or build_file_content:
+            native.new_local_repository(name=name, path=path,
+                                        build_file=build_file,
+                                        build_file_content=build_file_content,
+                                        **kwargs)
         else:
-            if strip_prefix in (True, None):
-                kwargs.setdefault("strip_prefix", "%s-%s" % (project, treeish))
-            if sha256 != True: kwargs.setdefault("sha256", sha256)
-            # Archive download
-            kwargs.setdefault("url", url)
-            http_archive(**kwargs)
+            native.local_repository(name=name, path=path, **kwargs)
+    elif sha256 == False:
+        if build_file or build_file_content:
+            new_git_repository(name=name, remote=remote, build_file=build_file,
+                               commit=commit, tag=tag, branch=branch,
+                               shallow_since=shallow_since,
+                               build_file_content=build_file_content,
+                               strip_prefix=strip_prefix, **kwargs)
+        else:
+            git_repository(name=name, remote=remote, strip_prefix=strip_prefix,
+                           commit=commit, tag=tag, branch=branch,
+                           shallow_since=shallow_since, **kwargs)
+    else:
+        http_archive(name=name, url=url, sha256=sha256, build_file=build_file,
+                     strip_prefix=strip_prefix,
+                     build_file_content=build_file_content, **kwargs)
 
 def ray_deps_setup():
     github_repository(
