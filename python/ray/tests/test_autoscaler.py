@@ -17,7 +17,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
 from ray.autoscaler.schema import NODE_SETUP_COMMANDS, NODE_START_COMMANDS, \
     RAY_RESTART_COMMANDS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
+    TAG_RAY_FIRST_BOOT, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
 from ray.tests.utils import RayTestTimeoutException
 import pytest
@@ -110,6 +110,9 @@ class MockProvider(NodeProvider):
     def is_running(self, node_id):
         return self.mock_nodes[node_id].state == "running"
 
+    def is_cached(self, node_id):
+        return not self.mock_nodes[node_id].tags[TAG_RAY_FIRST_BOOT]
+
     def is_terminated(self, node_id):
         return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
@@ -132,8 +135,11 @@ class MockProvider(NodeProvider):
                     count -= 1
                     node.state = "pending"
                     node.tags.update(tags)
+                    node.tags[TAG_RAY_FIRST_BOOT] = False
         for _ in range(count):
-            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags.copy())
+            tags = tags.copy()
+            tags[TAG_RAY_FIRST_BOOT] = True
+            self.mock_nodes[self.next_id] = MockNode(self.next_id, tags)
             self.next_id += 1
 
     def set_node_tags(self, node_id, tags):
@@ -1039,7 +1045,8 @@ class AutoscalingTest(unittest.TestCase):
 
         runner.clear_history()
         autoscaler.update()
-        for fld in expected_setup_fields:
+        for fld in (expected_setup_fields + expected_boot_fields +
+                    expected_start_fields):
             runner.assert_not_has_call("172.0.0.0", fld)
 
         # We did not start any other nodes

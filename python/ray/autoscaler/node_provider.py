@@ -162,6 +162,11 @@ class NodeProvider(object):
         """Return whether the specified node is running."""
         raise NotImplementedError
 
+    def is_cached(self, node_id):
+        """Return whether the specified node was stopped and then restarted."""
+        # Most NodeProvider's don't support caching, so return False by default
+        return False
+
     def is_terminated(self, node_id):
         """Return whether the specified node is terminated."""
         raise NotImplementedError

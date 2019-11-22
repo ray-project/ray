@@ -402,9 +402,10 @@ class NodeUpdater(object):
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        if node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash:
+        same_config = node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash
+        if same_config:
             logger.info(self.log_prefix +
-                        "{} already up-to-date, skip to ray start".format(
+                        "{} already up-to-date, skip to start commands".format(
                             self.node_id))
         else:
             self.provider.set_node_tags(
@@ -414,12 +415,12 @@ class NodeUpdater(object):
             # Run init commands
             self.provider.set_node_tags(
                 self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
-            # TODO(adam): how to only run these sometime?
-            with LogTimer(self.log_prefix + "Setup commands completed"):
+            with LogTimer(self.log_prefix + "Node setup commands completed"):
                 for cmd in self.node_setup_commands:
                     self.cmd_runner.run(cmd)
 
-            with LogTimer(self.log_prefix + "Boot commands completed"):
+        if not same_config or self.provider.is_cached(self.node_id):
+            with LogTimer(self.log_prefix + "Node start commands completed"):
                 for cmd in self.node_start_commands:
                     self.cmd_runner.run(cmd)
 
