@@ -934,7 +934,6 @@ def test_actors_on_nodes_with_no_cpus(ray_start_no_cpu):
     assert ready_ids == []
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="FIXME(ekl) DO NOT MERGE")
 def test_actor_load_balancing(ray_start_cluster):
     cluster = ray_start_cluster
     num_nodes = 3
@@ -988,12 +987,20 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor(object):
         def __init__(self):
+            import os
+            import time
+            print("Actor has been crated", os.getpid(), time.time())
             pass
 
         def ping(self):
+            print("Ping is run")
             return
 
     actors = [Actor.remote() for _ in range(num_nodes)]
+    for _ in range(20):
+        time.sleep(.1)
+        print(".")
+    print("Num actors", actors)
     ray.get([actor.ping.remote() for actor in actors])
 
 

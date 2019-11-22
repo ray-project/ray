@@ -239,6 +239,7 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
     }
   }
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
+  RAY_LOG(ERROR) << "Submitting task";
   return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
 }
 
