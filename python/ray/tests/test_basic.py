@@ -39,6 +39,8 @@ from ray.tests.utils import RayTestTimeoutException
 logger = logging.getLogger(__name__)
 
 RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RESOURCE_SHAPE_NOT_IMPLEMENTED = RAY_FORCE_DIRECT
+RECONSTRUCTION_NOT_IMPLEMENTED = RAY_FORCE_DIRECT
 
 
 def test_simple_serialization(ray_start_regular):
@@ -108,7 +110,7 @@ def test_simple_serialization(ray_start_regular):
             assert type(obj) == type(new_obj_2)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_fair_queueing(shutdown_only):
     ray.init(
         num_cpus=1, _internal_config=json.dumps({
@@ -1043,7 +1045,7 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(m.remote(1)) == 2
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_submit_api(shutdown_only):
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
@@ -1102,7 +1104,7 @@ def test_submit_api(shutdown_only):
     assert ray.get([id1, id2, id3, id4]) == [0, 1, "test", 2]
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -2025,7 +2027,7 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="diff object ids")
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="different object ids")
 def test_free_objects_multi_node(ray_start_cluster):
     # This test will do following:
     # 1. Create 3 raylets that each hold an actor.
@@ -2291,7 +2293,7 @@ def test_local_mode(shutdown_only):
     assert ray.get(indirect_dep.remote(["hello"])) == "hello"
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=2)
@@ -2368,7 +2370,7 @@ def test_resource_constraints(shutdown_only):
     assert duration > 1
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_multi_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=10)
@@ -2422,7 +2424,7 @@ def test_multi_resource_constraints(shutdown_only):
     assert duration > 1
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_gpu_ids(shutdown_only):
     num_gpus = 10
     ray.init(num_cpus=10, num_gpus=num_gpus)
@@ -2557,7 +2559,7 @@ def test_zero_cpus_actor(ray_start_cluster):
     assert ray.get(a.method.remote()) != node_id
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_fractional_resources(shutdown_only):
     ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
 
@@ -2609,7 +2611,7 @@ def test_fractional_resources(shutdown_only):
         Foo2._remote([], {}, resources={"Custom": 1.5})
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_multiple_raylets(ray_start_cluster):
     # This test will define a bunch of tasks that can only be assigned to
     # specific raylets, and we will check that they are assigned
@@ -2736,7 +2738,7 @@ def test_multiple_raylets(ray_start_cluster):
     validate_names_and_results(names, results)
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3, resources={"CustomResource": 0})
@@ -2793,7 +2795,7 @@ def test_node_id_resource(ray_start_cluster):
     assert ray.get(f.remote()) == ray.state.current_node_id()
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_two_custom_resources(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(
@@ -2938,7 +2940,7 @@ def save_gpu_ids_shutdown_only():
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_specific_gpus(save_gpu_ids_shutdown_only):
     allowed_gpu_ids = [4, 5, 6]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(
@@ -3369,7 +3371,7 @@ def test_initialized_local_mode(shutdown_only_with_initialization_check):
     assert ray.is_initialized()
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: reconstruction")
+@pytest.mark.skipif(RECONSTRUCTION_NOT_IMPLEMENTED)
 def test_wait_reconstruction(shutdown_only):
     ray.init(num_cpus=1, object_store_memory=int(10**8))
 
