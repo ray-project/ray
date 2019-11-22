@@ -593,3 +593,9 @@ tune.run(
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
     ray.shutdown()
     cluster.shutdown()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

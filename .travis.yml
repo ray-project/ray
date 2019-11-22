@@ -5,18 +5,18 @@ dist: xenial
 matrix:
   include:
     - os: linux
-      env: PYTHON=2.7 PYTHONWARNINGS=ignore
+      env: BAZEL_PYTHON_VERSION=PY2 PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: linux
-      env: PYTHON=3.5 PYTHONWARNINGS=ignore
+      env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=2.7 PYTHONWARNINGS=ignore
+      env: BAZEL_PYTHON_VERSION=PY2 PYTHON=2.7 PYTHONWARNINGS=ignore
 
     - os: osx
       osx_image: xcode7
-      env: PYTHON=3.5 PYTHONWARNINGS=ignore
+      env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore
 
     - os: linux
       env:
@@ -173,10 +173,8 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
-  # ray tune tests
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then ./ci/suppress_output python python/ray/tune/tests/test_dependency.py; fi
-  # `cluster_tests.py` runs on Jenkins, not Travis.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 --ignore=python/ray/tune/tests/test_cluster.py --ignore=python/ray/tune/tests/test_logger.py --ignore=python/ray/tune/tests/test_tune_restore.py --ignore=python/ray/tune/tests/test_actor_reuse.py python/ray/tune/tests; fi
+  # ray tune tests, except tests tagged jenkins only.
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=120 --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
