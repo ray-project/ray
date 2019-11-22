@@ -130,7 +130,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 Status UnblockIfNeeded(const std::shared_ptr<RayletClient> &client,
                        const WorkerContext &ctx) {
   if (ctx.CurrentTaskIsDirectCall()) {
-    if (ctx.CurrentThreadIsMain()) {
+    if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       return client->NotifyDirectCallTaskUnblocked();
     } else {
       return Status::OK();  // no-op
@@ -193,6 +193,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining.size();
+    // This is a separate IPC from the FetchAndGet in direct call mode.
+    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    }
     RAY_RETURN_NOT_OK(
         FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
                                    /*fetch_only=*/false, ctx.CurrentTaskIsDirectCall(),
@@ -260,7 +264,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       RAY_RETURN_NOT_OK(check_signals_());
     }
   }
-  return Status::OK();
+  return UnblockIfNeeded(raylet_client_, ctx);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(

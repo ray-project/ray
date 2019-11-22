@@ -124,6 +124,10 @@ bool WorkerContext::CurrentThreadIsMain() const {
   return boost::this_thread::get_id() == main_thread_id_;
 }
 
+bool WorkerContext::ShouldReleaseResourcesOnBlockingCalls() const {
+  return !CurrentActorIsDirectCall() && CurrentThreadIsMain();
+}
+
 bool WorkerContext::CurrentActorIsDirectCall() const {
   return current_actor_is_direct_call_;
 }
