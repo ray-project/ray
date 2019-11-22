@@ -162,6 +162,8 @@ def test_asyncio_actor_concurrency(ray_start_regular):
     ray.get([a.do_work.remote() for _ in range(num_calls)])
     history = ray.get(a.get_history.remote())
 
+    # We only care about ordered start-end-start-end sequence because
+    # coroutines may be executed out of enqueued order.
     answer = []
     for _ in range(num_calls):
         for status in ["STARTED", "ENDED"]:
