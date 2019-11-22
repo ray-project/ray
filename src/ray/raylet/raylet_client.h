@@ -123,11 +123,11 @@ class RayletClient : public WorkerLeaseInterface {
   ///
   /// \param object_ids The IDs of the objects to reconstruct.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
-  /// \param in_direct_call_task Whether current task is a direct call task.
+  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
-                                 bool in_direct_call_task, const TaskID &current_task_id);
+                                 bool mark_worker_blocked, const TaskID &current_task_id);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
@@ -154,14 +154,14 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param num_returns The number of objects to wait for.
   /// \param timeout_milliseconds Duration, in milliseconds, to wait before returning.
   /// \param wait_local Whether to wait for objects to appear on this node.
-  /// \param in_direct_call_task Whether current task is a direct call task.
+  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that called wait.
   /// \param result A pair with the first element containing the object ids that were
   /// found, and the second element the objects that were not found.
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
-                   bool in_direct_call_task, const TaskID &current_task_id,
+                   bool mark_worker_blocked, const TaskID &current_task_id,
                    WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when

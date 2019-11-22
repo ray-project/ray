@@ -1227,7 +1227,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     }
   }
 
-  if (!required_object_ids.empty() && !message->in_direct_call_task()) {
+  if (!required_object_ids.empty() && message->mark_worker_blocked()) {
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
     HandleTaskBlocked(client, required_object_ids, task_id, /*ray_get=*/true);
   }
@@ -1254,7 +1254,7 @@ void NodeManager::ProcessWaitRequestMessage(
 
   const TaskID &current_task_id = from_flatbuf<TaskID>(*message->task_id());
   bool client_blocked = !required_object_ids.empty();
-  if (client_blocked && !message->in_direct_call_task()) {
+  if (client_blocked && message->mark_worker_blocked()) {
     HandleTaskBlocked(client, required_object_ids, current_task_id, /*ray_get=*/false);
   }
 

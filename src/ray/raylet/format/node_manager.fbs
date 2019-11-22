@@ -157,8 +157,8 @@ table FetchOrReconstruct {
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
-  // True for direct actor call tasks.
-  in_direct_call_task: bool;
+  // False for direct actor call tasks.
+  mark_worker_blocked: bool;
   // The current task ID. If fetch_only is false, then this task is blocked.
   task_id: string;
 }
@@ -183,8 +183,8 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
-  // True for direct actor call tasks.
-  in_direct_call_task: bool;
+  // False for direct actor call tasks.
+  mark_worker_blocked: bool;
   // The current task ID. If there are less than num_ready_objects local, then
   // this task is blocked.
   task_id: string;
