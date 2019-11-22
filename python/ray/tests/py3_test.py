@@ -96,6 +96,7 @@ def test_args_intertwined(ray_start_regular):
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
 
+
 def test_asyncio_actor(ray_start_regular):
     @ray.remote
     class AsyncBatcher(object):
