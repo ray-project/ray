@@ -3,7 +3,7 @@
 
 #include <string>
 
-#include "ray/common/scheduling/scheduling_alg.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
