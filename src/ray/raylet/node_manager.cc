@@ -2587,7 +2587,6 @@ void NodeManager::ForwardTask(
                      << node_id;
     task.OnSpillback()(node_id, node_info.node_manager_address(),
                        node_info.node_manager_port());
-    task_dependency_manager_.TaskCanceled(task.GetTaskSpecification().TaskId());
     return;
   }
 

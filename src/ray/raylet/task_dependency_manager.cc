@@ -309,6 +309,11 @@ std::vector<TaskID> TaskDependencyManager::GetPendingTasks() const {
 }
 
 void TaskDependencyManager::TaskPending(const Task &task) {
+  // Direct tasks are not tracked by the raylet.
+  if (task.GetTaskSpecification().IsDirectCall()) {
+    return;
+  }
+
   TaskID task_id = task.GetTaskSpecification().TaskId();
   RAY_LOG(DEBUG) << "Task execution " << task_id << " pending";
 
@@ -330,9 +335,7 @@ void TaskDependencyManager::TaskPending(const Task &task) {
     }
 
     // Acquire the lease for the task's execution in the global lease table.
-    if (!task.IsDirectCall()) {
-      AcquireTaskLease(task_id);
-    }
+    AcquireTaskLease(task_id);
   }
 }
 
