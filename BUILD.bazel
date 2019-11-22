@@ -218,6 +218,8 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
         "@plasma//:plasma_client",
     ],

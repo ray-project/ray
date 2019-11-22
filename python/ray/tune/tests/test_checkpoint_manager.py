@@ -104,3 +104,9 @@ class CheckpointManagerTest(unittest.TestCase):
             log_error_mock.assert_called_once()
             # The newest checkpoint should still be set despite this error.
             assert checkpoint_manager.newest_checkpoint == no_attr_checkpoint
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
