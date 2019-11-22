@@ -40,7 +40,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
   if (queued_tasks_.empty() || was_error) {
     auto lease_client = std::move(worker_to_lease_client_[addr]);
     worker_to_lease_client_.erase(addr);
-    RAY_CHECK_OK(lease_client->ReturnWorker(addr.second));
+    RAY_CHECK_OK(lease_client->ReturnWorker(addr.second, was_error));
   } else {
     auto &client = *client_cache_[addr];
     PushNormalTask(addr, client, queued_tasks_.front());

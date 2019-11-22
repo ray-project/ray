@@ -117,6 +117,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
+        RAY_CHECK(!result_object->IsInPlasmaError());
         *got_exception = true;
       }
     }
