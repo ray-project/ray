@@ -161,8 +161,8 @@ class RayletClient : public WorkerLeaseInterface {
   /// \return ray::Status.
   ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
-                   bool in_direct_call_task,
-                   const TaskID &current_task_id, WaitResultPair *result);
+                   bool in_direct_call_task, const TaskID &current_task_id,
+                   WaitResultPair *result);
 
   /// Wait for the given objects, asynchronously. The core worker is notified when
   /// the wait completes.

@@ -239,13 +239,13 @@ ray::Status RayletClient::TaskDone() {
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                             bool fetch_only,
-                                             bool in_direct_call_task,
+                                             bool fetch_only, bool in_direct_call_task,
                                              const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, fetch_only, in_direct_call_task, to_flatbuf(fbb, current_task_id));
+      fbb, object_ids_message, fetch_only, in_direct_call_task,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
   return status;
@@ -275,8 +275,8 @@ ray::Status RayletClient::NotifyDirectCallTaskUnblocked() {
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
-                               bool in_direct_call_task,
-                               const TaskID &current_task_id, WaitResultPair *result) {
+                               bool in_direct_call_task, const TaskID &current_task_id,
+                               WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
