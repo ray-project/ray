@@ -67,16 +67,8 @@ class ClusterResourceScheduler {
   ///
   /// \param old_resources: Predefined resources to be updated.
   /// \parame new_resources: New predefined resources.
-  void UpdatePredefinedResources(NodeResources &old_resources,
-                                 const NodeResources &new_resources);
-
-  /// Update custom resources.
-  ///
-  /// \param old_resources: Custom resources to be updated.
-  /// \parame new_resources: New custom resources.
-  void SetCustomResources(
-      absl::flat_hash_map<int64_t, ResourceCapacity> &old_custom_resources,
-      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources);
+  void UpdatePredefinedResources(const NodeResources &new_resources,
+                                 NodeResources *old_resources);
 
  public:
   ClusterResourceScheduler(void){};
@@ -154,7 +146,7 @@ class ClusterResourceScheduler {
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
-  bool GetNodeResources(int64_t node_id, NodeResources &ret_resources);
+  bool GetNodeResources(int64_t node_id, NodeResources *ret_resources);
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();

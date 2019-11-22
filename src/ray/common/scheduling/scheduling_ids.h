@@ -27,10 +27,10 @@ class StringIdMap {
   /// Insert a string ID and get the associated integer ID.
   ///
   /// \param String ID to be inserted.
-  /// \param test: if "true" it specifies that the range of
-  ///        IDs is limited to 0..10 for testing purposes.
+  /// \param max_id The number of unique possible ids. This is used
+  ///               to force collisions for testing. If -1, it is not used.
   /// \return The integer ID associated with string ID string_id.
-  int64_t Insert(const std::string &string_id, bool test = false);
+  int64_t Insert(const std::string &string_id, uint8_t num_ids = 0);
 
   /// Delete an ID identified by its string format.
   ///

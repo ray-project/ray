@@ -104,7 +104,7 @@ void initCluster(ClusterResourceScheduler &cluster_resources, int n) {
   }
 }
 
-bool nodeResourcesEqual(NodeResources &nr1, NodeResources &nr2) {
+bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
   if (nr1.capacities.size() != nr2.capacities.size()) {
     cout << nr1.capacities.size() << " " << nr2.capacities.size() << endl;
     return false;
@@ -171,12 +171,12 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
 
   /// Test for handling collision.
   StringIdMap short_ids;
-  for (int i = 0; i < MAX_ID_TEST; i++) {
-    /// "true" reduces the range of IDs to [0..9]
-    int64_t id = short_ids.Insert(to_string(i), true);
-    ASSERT_TRUE(id < MAX_ID_TEST);
+  uint8_t max_id = 8;
+  for (int i = 0; i < max_id; i++) {
+    int64_t id = short_ids.Insert(to_string(i), max_id);
+    ASSERT_TRUE(id < max_id);
   }
-  ASSERT_EQ(short_ids.Count(), MAX_ID_TEST);
+  ASSERT_EQ(short_ids.Count(), max_id);
 }
 
 TEST_F(SchedulingTest, SchedulingInitClusterTest) {
@@ -259,9 +259,9 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
     ASSERT_TRUE(violations > 0);
 
     NodeResources nr1, nr2;
-    ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, nr1));
+    ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, &nr1));
     cluster_resources.SubtractNodeAvailableResources(node_id, task_req);
-    ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, nr2));
+    ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, &nr2));
 
     for (int i = 0; i < PRED_CUSTOM_LEN; i++) {
       int64_t t = nr1.capacities[i].available - task_req.predefined_resources[i].demand;
@@ -300,7 +300,7 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   }
 
   /// Check whether node resources were correctly added.
-  if (cluster_resources.GetNodeResources(node_id, nr_out)) {
+  if (cluster_resources.GetNodeResources(node_id, &nr_out)) {
     ASSERT_TRUE(nodeResourcesEqual(nr, nr_out));
   } else {
     ASSERT_TRUE(false);
@@ -316,7 +316,7 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
     cluster_resources.AddOrUpdateNode(node_id, node_resources);
     nr = node_resources;
   }
-  if (cluster_resources.GetNodeResources(node_id, nr_out)) {
+  if (cluster_resources.GetNodeResources(node_id, &nr_out)) {
     ASSERT_TRUE(nodeResourcesEqual(nr, nr_out));
   } else {
     ASSERT_TRUE(false);

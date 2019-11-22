@@ -9,11 +9,11 @@ int64_t StringIdMap::Get(const std::string &string_id) {
   }
 };
 
-int64_t StringIdMap::Insert(const std::string &string_id, bool test) {
+int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   auto sit = string_to_int_.find(string_id);
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(string_id);
-    if (test) {
+    if (max_id != 0) {
       id = id % MAX_ID_TEST;
     }
     for (int i = 0; true; i++) {
@@ -25,8 +25,8 @@ int64_t StringIdMap::Insert(const std::string &string_id, bool test) {
         break;
       }
       id = hasher_(string_id + std::to_string(i));
-      if (test) {
-        id = id % MAX_ID_TEST;
+      if (max_id != 0) {
+        id = id % max_id;
       }
     }
     return id;
@@ -38,20 +38,16 @@ int64_t StringIdMap::Insert(const std::string &string_id, bool test) {
 void StringIdMap::Remove(const std::string &string_id) {
   auto sit = string_to_int_.find(string_id);
   if (sit != string_to_int_.end()) {
-    uint64_t id = string_to_int_[string_id];
+    int_to_string_.erase(string_to_int_[string_id]);
     string_to_int_.erase(sit);
-    auto it = int_to_string_.find(id);
-    int_to_string_.erase(it);
   }
 };
 
 void StringIdMap::Remove(int64_t id) {
   auto it = int_to_string_.find(id);
   if (it != int_to_string_.end()) {
-    std::string string_id = int_to_string_[id];
+    string_to_int_.erase(int_to_string_[id]);
     int_to_string_.erase(it);
-    auto sit = string_to_int_.find(string_id);
-    string_to_int_.erase(sit);
   }
 };
 

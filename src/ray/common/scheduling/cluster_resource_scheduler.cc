@@ -1,26 +1,16 @@
 #include "cluster_resource_scheduler.h"
 
 ClusterResourceScheduler::ClusterResourceScheduler(
-    int64_t local_node_id, const NodeResources &local_node_resources) {
-  local_node_id_ = local_node_id;
-  AddOrUpdateNode(local_node_id, local_node_resources);
+    int64_t local_node_id, const NodeResources &local_node_resources)
+    : local_node_id_(local_node_id) {
+  AddOrUpdateNode(local_node_id_, local_node_resources);
 }
 
 void ClusterResourceScheduler::UpdatePredefinedResources(
-    NodeResources &old_resources, const NodeResources &new_resources) {
-  // First, update its predefined resources.
+    const NodeResources &new_resources, NodeResources *old_resources) {
   for (int i = 0; i < PredefinedResources_MAX; i++) {
-    old_resources.capacities[i].total = new_resources.capacities[i].total;
-    old_resources.capacities[i].available = new_resources.capacities[i].available;
-  }
-}
-
-void ClusterResourceScheduler::SetCustomResources(
-    absl::flat_hash_map<int64_t, ResourceCapacity> &old_custom_resources,
-    const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources) {
-  old_custom_resources.clear();
-  for (auto it = new_custom_resources.begin(); it != new_custom_resources.end(); ++it) {
-    old_custom_resources.insert(*it);
+    old_resources->capacities[i].total = new_resources.capacities[i].total;
+    old_resources->capacities[i].available = new_resources.capacities[i].available;
   }
 }
 
@@ -28,15 +18,15 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
-    // This node is new. Add it to the map.
+    // This node is new, so add it to the map.
     nodes_.emplace(node_id, node_resources);
   } else {
-    // This node exists. Update its resources.
+    // This node exists, so update its resources.
     NodeResources &resources = it->second;
-    UpdatePredefinedResources(resources, node_resources);
+    UpdatePredefinedResources(node_resources, &resources);
 
-    // Then, delete existing custom resources and replace them with the new ones.
-    SetCustomResources(resources.custom_resources, node_resources.custom_resources);
+    // Replace existing custom resources with the new ones.
+    resources.custom_resources = node_resources.custom_resources;
   }
 }
 
@@ -112,7 +102,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   int64_t best_node = -1;
   *total_violations = 0;
 
-  // Check whether local node is schedulable. We retunr immediately
+  // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   auto it = nodes_.find(local_node_id_);
   if (it != nodes_.end()) {
@@ -186,15 +176,14 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 }
 
 bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
-                                                NodeResources &ret_resources) {
+                                                NodeResources *ret_resources) {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
-    ret_resources = it->second;
+    *ret_resources = it->second;
     return true;
   } else {
     return false;
   }
 }
 
-// Get number of nodes in the cluster.
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
