@@ -1918,11 +1918,7 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
     // blocked task matches the one assigned to the worker, then mark the
     // worker as blocked. This temporarily releases any resources that the
     // worker holds while it is blocked.
-    // TODO: For direct calls, the current task ID provided by the client may
-    // not match the assigned task ID. It's possible to get resource deadlock
-    // in this situation.
     if (!worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
-      RAY_LOG(DEBUG) << "Releasing resources for task " << current_task_id;
       Task task;
       RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
       local_queues_.QueueTasks({task}, TaskState::RUNNING);

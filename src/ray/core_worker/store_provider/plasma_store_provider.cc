@@ -179,6 +179,9 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     }
 
     size_t previous_size = remaining.size();
+    // TODO: For direct calls, use NotifyDirectCallTaskBlocked/Unblocked calls
+    // for missing objects instead of going through the normal fetch-and-get
+    // codepath.
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
                                                  /*fetch_only=*/false, task_id, results,
                                                  got_exception));
