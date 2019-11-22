@@ -35,9 +35,7 @@ using rpc::TablePubsub;
 /// A simple reply wrapper for redis reply.
 class CallbackReply {
  public:
-  explicit CallbackReply(redisReply *redis_reply, bool own_reply = true);
-
-  ~CallbackReply();
+  explicit CallbackReply(redisReply *redis_reply);
 
   /// Whether this reply is `nil` type reply.
   bool IsNil() const;
@@ -45,27 +43,31 @@ class CallbackReply {
   /// Read this reply data as an integer.
   int64_t ReadAsInteger() const;
 
+  /// Read this reply data as a status.
+  Status ReadAsStatus() const;
+
   /// Read this reply data as a string.
   ///
   /// Note that this will return an empty string if
   /// the type of this reply is `nil` or `status`.
   std::string ReadAsString() const;
 
-  /// Read this reply data as a status.
-  Status ReadAsStatus() const;
-
-  /// Read this reply data as a pub-sub data.
+  /// Read this reply data as pub-sub data.
   std::string ReadAsPubsubData() const;
 
-  /// Read this reply data as a string array.
-  ///
-  /// \param array Since the return-value may be large,
-  /// make it as an output parameter.
-  void ReadAsStringArray(std::vector<std::string> *array) const;
-
  private:
-  redisReply *redis_reply_{nullptr};
-  bool own_reply_{false};
+  /// Flag indicating the type of reply this represents.
+  int reply_type_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_INTEGER.
+  int64_t int_reply_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_STATUS.
+  Status status_reply_;
+
+  /// Reply data if reply_type_ is REDIS_REPLY_STRING or REDIS_REPLY_ARRAY.
+  /// Note that REDIS_REPLY_ARRAY is only used for pub-sub data.
+  std::string string_reply_;
 };
 
 /// Every callback should take in a vector of the results from the Redis
