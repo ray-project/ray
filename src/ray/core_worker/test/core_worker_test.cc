@@ -27,6 +27,8 @@
 
 namespace {
 
+const std::string c_get_pid_string("GET_MOCK_WORKER_PID");
+
 std::string store_executable;
 std::string raylet_executable;
 int node_manager_port = 0;
@@ -189,6 +191,11 @@ class CoreWorkerTest : public ::testing::Test {
   bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
                                    bool wait_alive, int timeout_ms);
 
+  // Get the pid for the worker process that runs the actor.
+  int GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+                  std::unordered_map<std::string, double> &resources,
+                  bool is_direct_call);
+
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
   gcs::GcsClientOptions gcs_options_;
@@ -203,6 +210,36 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
   };
 
   return WaitForCondition(condition_func, timeout_ms);
+}
+
+int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+                                std::unordered_map<std::string, double> &resources,
+                                bool is_direct_call) {
+  auto get_pid_ptr =
+      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(c_get_pid_string.data()));
+  auto buffer1 =
+      std::make_shared<LocalMemoryBuffer>(get_pid_ptr, c_get_pid_string.size(), true);
+
+  std::vector<TaskArg> args;
+  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
+
+  TaskOptions options{1, is_direct_call, resources};
+  std::vector<ObjectID> return_ids;
+  RayFunction func{Language::PYTHON, {}};
+
+  RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
+
+  std::vector<std::shared_ptr<ray::RayObject>> results;
+  RAY_CHECK_OK(worker.Get(return_ids, -1, &results));
+
+  if (nullptr == results[0]->GetData()) {
+    // If failed to get actor process pid, return -1
+    return -1;
+  }
+
+  auto data = reinterpret_cast<char *>(results[0]->GetData()->Data());
+  std::string pid_string(data, results[0]->GetData()->Size());
+  return std::stoi(pid_string);
 }
 
 void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
@@ -343,6 +380,9 @@ void CoreWorkerTest::TestActorReconstruction(
   ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
+  auto pid = GetActorPid(driver, actor_id, resources, is_direct_call);
+  RAY_CHECK(pid != -1);
+
   // Test submitting some tasks with by-value args for that actor.
   {
     const int num_tasks = 100;
@@ -354,10 +394,12 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, false, 30 * 1000 /* 30s */));
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
+        auto check_actor_restart_func = [this, pid, &driver, &actor_id, &resources,
+                                         is_direct_call]() -> bool {
+          auto new_pid = GetActorPid(driver, actor_id, resources, is_direct_call);
+          return new_pid != -1 && new_pid != pid;
+        };
+        ASSERT_TRUE(WaitForCondition(check_actor_restart_func, 30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
       }

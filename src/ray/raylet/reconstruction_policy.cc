@@ -186,6 +186,19 @@ void ReconstructionPolicy::ListenAndMaybeReconstruct(const ObjectID &object_id) 
   it->second.created_objects.insert(object_id);
 }
 
+void ReconstructionPolicy::ReconstructActorCreationTask(const ObjectID &object_id) {
+  TaskID task_id = object_id.TaskId();
+  auto it = listening_tasks_.find(task_id);
+  // Add this object to the list of objects created by the same task.
+  if (it == listening_tasks_.end()) {
+    auto inserted = listening_tasks_.emplace(task_id, ReconstructionTask(io_service_));
+    it = inserted.first;
+    it->second.created_objects.insert(object_id);
+    // reconstruct task
+    HandleTaskLeaseExpired(task_id);
+  }
+}
+
 void ReconstructionPolicy::Cancel(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Reconstruction for object " << object_id << " canceled";
   TaskID task_id = object_id.TaskId();

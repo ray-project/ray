@@ -344,7 +344,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// new state.
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id,
-                                  ActorRegistration &&actor_registration);
+                                  ActorRegistration &&actor_registration,
+                                  bool was_local = false);
 
   /// When a job finished, loop over all of the queued tasks for that job and
   /// treat them as failed.

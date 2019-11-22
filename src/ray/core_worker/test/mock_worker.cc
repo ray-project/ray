@@ -7,6 +7,8 @@ using namespace std::placeholders;
 
 namespace ray {
 
+const std::string c_get_pid_string("GET_MOCK_WORKER_PID");
+
 /// A mock C++ worker used by core_worker_test.cc to verify the task submission/execution
 /// interfaces in both single node and cross-nodes scenarios. As the raylet client can
 /// only
@@ -36,6 +38,19 @@ class MockWorker {
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(return_ids.size() >= 0);
+
+    if (args.size() == 1 && args[0]->GetData()->Size() == c_get_pid_string.size() &&
+        memcmp(args[0]->GetData()->Data(), c_get_pid_string.data(),
+               c_get_pid_string.size()) == 0) {
+      // Save the pid of current process to the return object.
+      std::string pid_string = std::to_string(static_cast<int>(getpid()));
+      auto data =
+          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
+      auto memory_buffer =
+          std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
+      results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
+      return Status::OK();
+    }
 
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
