@@ -26,6 +26,11 @@ else:
     import urllib2 as urllib_parse
     import urllib2 as urllib_request
 
+try:
+    import requests
+except ImportError:
+    requests = None
+
 # Ideally, we could include these files by putting them in a
 # MANIFEST.in or using the package_data argument to setup, but the
 # MANIFEST.in gets applied at the very beginning when setup.py runs
@@ -140,7 +145,11 @@ def makedirs(path, exist_ok):
 
 
 def download(url):
-    return urllib_request.urlopen(url).read()
+    if requests:
+        result = requests.get(url).content
+    else:
+        result = urllib_request.urlopen(url).read()
+    return result
 
 
 # Keep this as a global function so external scripts can call it
