@@ -761,6 +761,9 @@ class FunctionActorManager(object):
                         self._save_and_log_checkpoint(actor)
                 return method_returns
 
+        actor_method_executor.is_async_method = inspect.iscoroutinefunction(
+            method)
+
         return actor_method_executor
 
     def _save_and_log_checkpoint(self, actor):

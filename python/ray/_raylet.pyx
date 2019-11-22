@@ -557,10 +557,19 @@ cdef execute_task(
 
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
-            result_or_coroutine = function(actor, *arguments, **kwarguments)
 
-            if PY3 and inspect.iscoroutine(result_or_coroutine):
-                coroutine = result_or_coroutine
+            if PY3 and core_worker.current_actor_is_asyncio():
+                def sync_to_async(func):
+                    async def wrapper(*args, **kwargs):
+                        return func(*args, **kwargs)
+                    return wrapper
+
+                if function.is_async_method:
+                    async_function = function
+                else:
+                    async_function = sync_to_async(function)
+
+                coroutine = async_function(actor, *arguments, **kwarguments)
                 loop = core_worker.create_or_get_event_loop()
 
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
@@ -573,7 +582,7 @@ cdef execute_task(
 
                 return future.result()
 
-            return result_or_coroutine
+            return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -1102,3 +1111,6 @@ cdef class CoreWorker:
             self.async_thread.start()
 
         return self.async_event_loop
+
+    def current_actor_is_asyncio(self):
+        return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
