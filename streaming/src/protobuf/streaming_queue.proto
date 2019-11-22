@@ -32,12 +32,6 @@ message StreamingQueueCheckMsg {
   bytes queue_id = 3;
 }
 
-message StreamingQueueCheckMsg2 {
-  bytes src_actor_id = 1;
-  bytes dst_actor_id = 2;
-  bytes queue_id = 3;
-}
-
 message StreamingQueueCheckRspMsg {
   bytes src_actor_id = 1;
   bytes dst_actor_id = 2;

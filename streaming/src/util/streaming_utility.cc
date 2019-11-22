@@ -1,4 +1,3 @@
-#include <boost/asio/ip/host_name.hpp>
 #include <unordered_set>
 
 #include "streaming_utility.h"
@@ -24,8 +23,5 @@ std::string StreamingUtility::Hexqid2str(const std::string &q_id_hex) {
   }
   return result;
 }
-
-std::string StreamingUtility::GetHostname() { return boost::asio::ip::host_name(); }
-
 }  // namespace streaming
 }  // namespace ray

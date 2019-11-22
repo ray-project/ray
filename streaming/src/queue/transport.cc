@@ -272,7 +272,7 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer) {
   ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, async_func_, args,
                                                          options, &return_ids);
   if (!st.ok()) {
-    STREAMING_LOG(ERROR) << "SubmitActorTask fail. " << st;
+    STREAMING_LOG(ERROR) << "SubmitActorTask failed. " << st;
   }
 
   Status get_st = core_worker_->Get(return_ids, -1, &results);

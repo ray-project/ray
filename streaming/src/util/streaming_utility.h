@@ -11,8 +11,6 @@ class StreamingUtility {
   static std::string Byte2hex(const uint8_t *data, uint32_t data_size);
 
   static std::string Hexqid2str(const std::string &q_id_hex);
-
-  static std::string GetHostname();
 };
 }  // namespace streaming
 }  // namespace ray
