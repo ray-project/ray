@@ -12,46 +12,6 @@
 namespace ray {
 namespace streaming {
 
-class QueueManager;
-
-/// Interface for Streaming Writer
-class QueueWriter {
- public:
-  QueueWriter(std::shared_ptr<QueueManager> manager) : manager_(manager) {}
-
-  virtual ~QueueWriter();
-
-  void CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
-                   const ActorID &peer_actor_id, uint64_t size);
-  void SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t limit);
-  void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                  std::vector<ObjectID> &failed_queues);
-  uint64_t GetMinConsumedSeqID(const ObjectID &queue_id);
-  Status PushSync(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
-                  uint32_t data_size, uint64_t timestamp,
-                  bool raw = false /*only for test*/);
-
- private:
-  std::shared_ptr<QueueManager> manager_;
-};
-
-/// Interface for Streaming Reader
-class QueueReader {
- public:
-  QueueReader(std::shared_ptr<QueueManager> manager) : manager_(manager) {}
-
-  virtual ~QueueReader();
-
-  bool CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
-                   const ActorID &peer_actor_id, uint64_t start_seq_id);
-  void GetQueueItem(const ObjectID &queue_id, uint8_t *&data, uint32_t &data_size,
-                    uint64_t &seq_id, uint64_t timeout_ms = -1);
-  void NotifyConsumedItem(const ObjectID &queue_id, uint64_t seq_id);
-
- private:
-  std::shared_ptr<QueueManager> manager_;
-};
-
 /// QueueManager manages upstream and downstream queues for worker. Threre should be
 /// only one QueueManager instance for a worker. Singleton.
 /// QueueManager holds a boost.asio io_service (queue thread). For upstream, queue

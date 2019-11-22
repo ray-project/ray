@@ -166,10 +166,10 @@ cc_binary(
 )
 
 cc_binary(
-    name = "streaming_writer_tests_with_streamingqueue",
+    name = "streamingqueue_tests",
     srcs = [
         "test/streaming_queue_tests_base.h",
-        "test/streaming_writer_tests_with_streamingqueue.cc",
+        "test/streamingqueue_tests.cc",
     ],
     copts = ["-Itest/"],
     deps = [

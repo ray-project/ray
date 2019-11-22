@@ -34,12 +34,8 @@ StreamingQueueProducer::~StreamingQueueProducer() {
 
 StreamingStatus StreamingQueueProducer::CreateTransferChannel(
     ProducerChannelInfo &channel_info) {
-  auto status = CreateQueue(channel_info);
-  if (StreamingStatus::OK != status) {
-    // failed queues should be cleaned up in case of old data exists in downstream.
-    queue_writer_->CleanupSubscription(channel_info.channel_id);
-    return status;
-  }
+  CreateQueue(channel_info);
+
   // last commit seq id
   uint64_t queue_last_seq_id = 0;
   uint64_t last_message_id_in_queue = 0;
@@ -68,22 +64,13 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(
                          << queue_last_seq_id;
 
   channel_info.message_last_commit_id = last_message_id_in_queue;
-  return status;
+  return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel_info) {
   auto &channel_id = channel_info.channel_id;
-  ray::Status status;
-  // recreate & clear the queue
-  queue_writer_->CleanupSubscription(channel_id);
-  status = queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
+  queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
                                       channel_info.actor_id);
-
-  if (status.code() != StatusCode::OK) {
-    STREAMING_LOG(ERROR) << "Create queue [" << channel_id
-                         << "] failed of msg: " << status.message();
-    RAY_CHECK_OK(status);
-  }
 
   STREAMING_LOG(INFO) << "q id => " << channel_id << ", queue size => "
                       << channel_info.queue_size;

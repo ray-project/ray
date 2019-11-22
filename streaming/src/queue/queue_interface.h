@@ -11,7 +11,6 @@
 
 namespace ray {
 namespace streaming {
-const uint64_t QUEUE_INTERFACE_INVALID = std::numeric_limits<uint64_t>::max();
 
 class StreamingQueueWriter;
 class StreamingQueueReader;
@@ -38,7 +37,7 @@ class StreamingQueueWriter {
                        RayFunction &sync_func);
   ~StreamingQueueWriter() {}
 
-  Status CreateQueue(const ObjectID &queue_id, int64_t data_size,
+  void CreateQueue(const ObjectID &queue_id, int64_t data_size,
                      ActorID &actor_handle);
   Status SetQueueEvictionLimit(const ObjectID &queue_id, uint64_t eviction_limit);
 
@@ -47,12 +46,10 @@ class StreamingQueueWriter {
   void GetMinConsumedSeqID(const ObjectID &queue_id, uint64_t &min_consumed_id);
   Status PushQueueItem(const ObjectID &queue_id, uint64_t seq_id, uint8_t *data,
                        uint32_t data_size, uint64_t timestamp);
-  void CleanupSubscription(const ObjectID &queue_id);
   Status DeleteQueue(const ObjectID &queue_id);
 
  private:
   std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
-  std::shared_ptr<ray::streaming::QueueWriter> queue_writer_;
   ActorID actor_id_;
 
   CoreWorker *core_worker_;
@@ -68,16 +65,15 @@ class StreamingQueueReader {
 
   bool GetQueue(const ObjectID &queue_id, int64_t timeout_ms, uint64_t start_seq_id,
                 ActorID &actor_handle);
-  Status GetQueueItem(const ObjectID &object_id, uint8_t *&data, uint32_t &data_size,
+  Status GetQueueItem(const ObjectID &queue_id, uint8_t *&data, uint32_t &data_size,
                       uint64_t &seq_id, uint64_t timeout_ms = -1);
-  void NotifyConsumedItem(const ObjectID &object_id, uint64_t seq_id);
+  void NotifyConsumedItem(const ObjectID &queue_id, uint64_t seq_id);
   void WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                            std::vector<ObjectID> &failed_queues);
   Status DeleteQueue(const ObjectID &queue_id);
 
  private:
   std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
-  std::shared_ptr<ray::streaming::QueueReader> queue_reader_;
   ActorID actor_id_;
   CoreWorker *core_worker_;
   RayFunction async_func_;
