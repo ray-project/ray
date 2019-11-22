@@ -815,6 +815,8 @@ def test_direct_call_eviction(ray_start_cluster):
     def large_object():
         return np.zeros(10 * 1024 * 1024)
 
+    large_object = large_object.options(is_direct_call=True)
+
     obj = large_object.remote()
     assert (isinstance(ray.get(obj), np.ndarray))
     # Evict the object.
@@ -828,6 +830,8 @@ def test_direct_call_eviction(ray_start_cluster):
     @ray.remote
     def dependent_task(x):
         return
+
+    dependent_task = dependent_task.options(is_direct_call=True)
 
     # If the object is passed by reference, the task throws an
     # exception.
@@ -862,6 +866,9 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
             ray.get(obj_id)
         print("get done", obj_ids)
 
+    large_object = large_object.options(is_direct_call=True)
+    get = get.options(is_direct_call=True)
+
     obj = large_object.remote()
     ray.get(get.remote([obj]))
 
@@ -890,6 +897,9 @@ def test_direct_call_serialized_id(ray_start_cluster):
         print("get", obj_ids)
         obj_id = obj_ids[0]
         assert ray.get(obj_id) == 1
+
+    small_object = small_object.options(is_direct_call=True)
+    get = get.options(is_direct_call=True)
 
     obj = small_object.remote()
     ray.get(get.remote([obj]))
