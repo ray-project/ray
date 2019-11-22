@@ -168,7 +168,6 @@ Status WriterQueue::TryEvictItems() {
 void WriterQueue::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
   STREAMING_LOG(INFO) << "OnNotify target seq_id: " << notify_msg->SeqId();
   min_consumed_id_ = notify_msg->SeqId();
-  // TODO: Async notify user thread
 }
 
 void ReaderQueue::OnConsumed(uint64_t seq_id) {
@@ -204,7 +203,7 @@ void ReaderQueue::OnData(QueueItem &item) {
   last_recv_seq_id_ = item.SeqId();
   /// TODO: Should not parse
   last_recv_msg_id_ = item.MaxMsgId();
-  STREAMING_LOG(INFO) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_
+  STREAMING_LOG(DEBUG) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_
                        << " msg_id: " << last_recv_msg_id_;
   Push(item);
   expect_seq_id_++;

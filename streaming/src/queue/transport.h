@@ -32,7 +32,7 @@ class Message {
   std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
   virtual std::unique_ptr<LocalMemoryBuffer> ToBytes();
-  virtual void ConstructProtoBuf(std::string *output) = 0;
+  virtual void ToProtobuf(std::string *output) = 0;
 
  protected:
   ActorID actor_id_;
@@ -52,7 +52,7 @@ class DataMessage : public Message {
   virtual ~DataMessage() {}
 
   static std::shared_ptr<DataMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructProtoBuf(std::string *output);
+  virtual void ToProtobuf(std::string *output);
 
   uint64_t SeqId() { return seq_id_; }
   bool IsRaw() { return raw_; }
@@ -75,7 +75,7 @@ class NotificationMessage : public Message {
   virtual ~NotificationMessage() {}
 
   static std::shared_ptr<NotificationMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructProtoBuf(std::string *output);
+  virtual void ToProtobuf(std::string *output);
 
   uint64_t SeqId() { return seq_id_; }
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
@@ -94,7 +94,7 @@ class CheckMessage : public Message {
   virtual ~CheckMessage() {}
 
   static std::shared_ptr<CheckMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructProtoBuf(std::string *output);
+  virtual void ToProtobuf(std::string *output);
 
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
@@ -111,7 +111,7 @@ class CheckRspMessage : public Message {
   virtual ~CheckRspMessage() {}
 
   static std::shared_ptr<CheckRspMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructProtoBuf(std::string *output);
+  virtual void ToProtobuf(std::string *output);
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   queue::protobuf::StreamingQueueError Error() { return err_code_; }
 
@@ -135,7 +135,7 @@ class TestInitMessage : public Message {
   virtual ~TestInitMessage() {}
 
   static std::shared_ptr<TestInitMessage> FromBytes(uint8_t *bytes);
-  virtual void ConstructProtoBuf(std::string *output);
+  virtual void ToProtobuf(std::string *output);
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   std::string ActorHandleSerialized() { return actor_handle_serialized_; }
   queue::protobuf::StreamingQueueTestRole Role() { return role_; }
@@ -184,7 +184,7 @@ class TestCheckStatusRspMsg : public Message {
   virtual ~TestCheckStatusRspMsg() {}
 
   static std::shared_ptr<TestCheckStatusRspMsg> FromBytes(uint8_t *bytes);
-  virtual void ConstructProtoBuf(std::string *output);
+  virtual void ToProtobuf(std::string *output);
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
   std::string TestName() { return test_name_; }
   bool Status() { return status_; }
@@ -211,14 +211,6 @@ class Transport {
   virtual void WriterSend(std::unique_ptr<LocalMemoryBuffer> buffer) {
     Send(std::move(buffer));
   }
-
-  virtual void ReaderSend(std::unique_ptr<LocalMemoryBuffer> buffer) {
-    Send(std::move(buffer));
-  }
-
-  virtual std::shared_ptr<LocalMemoryBuffer> WriterRecv() { return Recv(); }
-
-  virtual std::shared_ptr<LocalMemoryBuffer> ReaderRecv() { return Recv(); }
 
   virtual void Destroy() {}
 

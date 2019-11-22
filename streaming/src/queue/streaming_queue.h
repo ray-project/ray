@@ -19,19 +19,21 @@ using ray::ObjectID;
 
 enum QueueType { UPSTREAM = 0, DOWNSTREAM };
 
-/// A queue-like data structure, which do not delete it's item
-/// after poped. The lifecycle of each item is:
-/// - Pending, a item is pushed into queue, but has not been
-///   processed (sent out or consumed),
+/// A queue-like data structure, which does not delete it's item after poped.
+/// The lifecycle of each item is:
+/// - Pending, a item is pushed into queue, but has not been processed (sent out or consumed),
 /// - Processed, has been handled by user, but should not be deleted
 /// - Evicted, useless to user, should be poped and destroyed.
 /// At present, this data structure is implemented with one std::list,
 /// using a watershed iterator to divided.
 class Queue {
  public:
-  /// \param size max size of the queue in bytes.
-  Queue(uint64_t size, std::shared_ptr<Transport> transport)
-      : max_data_size_(size), data_size_(0), data_size_sent_(0) {
+  /// \param[in] queue_id the unique identification of a pair of queues (upstream and downstream).
+  /// \param[in] size max size of the queue in bytes.
+  /// \param[in] transport transport to send items to peer.
+  ///
+  Queue(ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
+      : queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
     buffer_queue_.push_back(NullQueueItem());
     watershed_iter_ = buffer_queue_.begin();
   }
@@ -39,6 +41,7 @@ class Queue {
   virtual ~Queue() {}
 
   /// Push item into queue, return false is queue is full.
+  /// \param[in] item the QueueItem object to be send to peer.
   bool Push(QueueItem item);
 
   /// Get the front of item which in processed state.
@@ -80,13 +83,11 @@ class Queue {
   size_t ProcessedCount();
 
  protected:
-  // TODO: lock-free list
-  // Using list to implement: Push/Pop/Traverse
+  ObjectID queue_id_;
   std::list<QueueItem> buffer_queue_;
-
   std::list<QueueItem>::iterator watershed_iter_;
 
-  // max data size in bytes
+  /// max data size in bytes
   uint64_t max_data_size_;
   uint64_t data_size_;
   uint64_t data_size_sent_;
@@ -106,10 +107,9 @@ class WriterQueue : public Queue {
   WriterQueue(const ObjectID &queue_id, const ActorID &actor_id,
               const ActorID &peer_actor_id, uint64_t size,
               std::shared_ptr<Transport> transport)
-      : Queue(size, transport),
+      : Queue(queue_id, size, transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
-        queue_id_(queue_id),
         eviction_limit_(QUEUE_INVALID_SEQ_ID),
         min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         peer_last_msg_id_(0),
@@ -154,7 +154,6 @@ class WriterQueue : public Queue {
  private:
   ActorID actor_id_;
   ActorID peer_actor_id_;
-  ObjectID queue_id_;
   uint64_t eviction_limit_;
   uint64_t min_consumed_id_;
   uint64_t peer_last_msg_id_;
@@ -174,10 +173,9 @@ class ReaderQueue : public Queue {
   /// NOTE: we do not restrict queue size of ReaderQueue
   ReaderQueue(const ObjectID &queue_id, const ActorID &actor_id,
               const ActorID &peer_actor_id, std::shared_ptr<Transport> transport)
-      : Queue(std::numeric_limits<uint64_t>::max(), transport),
+      : Queue(queue_id, std::numeric_limits<uint64_t>::max(), transport),
         actor_id_(actor_id),
         peer_actor_id_(peer_actor_id),
-        queue_id_(queue_id),
         min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         last_recv_seq_id_(QUEUE_INVALID_SEQ_ID),
         last_recv_msg_id_(0),
@@ -203,7 +201,6 @@ class ReaderQueue : public Queue {
  private:
   ActorID actor_id_;
   ActorID peer_actor_id_;
-  ObjectID queue_id_;
   uint64_t min_consumed_id_;
   uint64_t last_recv_seq_id_;
   uint64_t last_recv_msg_id_;

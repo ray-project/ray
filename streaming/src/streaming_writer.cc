@@ -25,7 +25,7 @@ void StreamingWriter::WriterLoopForward() {
       bool is_push_empty_message = false;
       StreamingStatus write_status =
           WriteChannelProcess(channel_info, &is_push_empty_message);
-      int64_t current_ts = current_sys_time_ms();
+      int64_t current_ts = current_time_ms();
       if (StreamingStatus::OK == write_status) {
         channel_info.message_pass_by_ts = current_ts;
         if (is_push_empty_message) {
@@ -45,7 +45,7 @@ void StreamingWriter::WriterLoopForward() {
 
     if (empty_messge_send_count == output_queue_ids_.size()) {
       // sleep if empty message was sent in all channel
-      uint64_t sleep_time_ = current_sys_time_ms() - min_passby_message_ts;
+      uint64_t sleep_time_ = current_time_ms() - min_passby_message_ts;
       // sleep_time can be bigger than time interval because of network jitter
       if (sleep_time_ <= config_.GetStreamingEmptyMessageTimeInterval()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(
@@ -60,7 +60,7 @@ StreamingStatus StreamingWriter::WriteChannelProcess(ProducerChannelInfo &channe
   // no message in buffer, empty message will be sent to downstream queue
   uint64_t buffer_remain = 0;
   StreamingStatus write_queue_flag = WriteBufferToChannel(channel_info, buffer_remain);
-  int64_t current_ts = current_sys_time_ms();
+  int64_t current_ts = current_time_ms();
   if (write_queue_flag == StreamingStatus::EmptyRingBuffer &&
       current_ts - channel_info.message_pass_by_ts >=
           config_.GetStreamingEmptyMessageTimeInterval()) {
@@ -131,7 +131,7 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
   // init queue
   channel_info.writer_ring_buffer = std::make_shared<StreamingRingBuffer>(
       config_.GetStreamingRingBufferCapacity(), StreamingRingBufferType::SPSC);
-  channel_info.message_pass_by_ts = current_sys_time_ms();
+  channel_info.message_pass_by_ts = current_time_ms();
   RETURN_IF_NOT_OK(transfer_->CreateTransferChannel(channel_info));
   return StreamingStatus::OK;
 }
@@ -197,7 +197,7 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
 
   // Make an empty bundle, use old ts from reloaded meta if it's not nullptr.
   StreamingMessageBundlePtr bundle_ptr = std::make_shared<StreamingMessageBundle>(
-      channel_info.current_message_id, current_sys_time_ms());
+      channel_info.current_message_id, current_time_ms());
   auto &q_ringbuffer = channel_info.writer_ring_buffer;
   q_ringbuffer->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(q_ringbuffer->GetTransientBufferMutable());
@@ -211,7 +211,7 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
   q_ringbuffer->FreeTransientBuffer();
   RETURN_IF_NOT_OK(status);
   channel_info.current_seq_id++;
-  channel_info.message_pass_by_ts = current_sys_time_ms();
+  channel_info.message_pass_by_ts = current_time_ms();
   return StreamingStatus::OK;
 }
 
@@ -271,7 +271,7 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
 
   StreamingMessageBundlePtr bundle_ptr;
   bundle_ptr = std::make_shared<StreamingMessageBundle>(
-      std::move(message_list), current_sys_time_ms(),
+      std::move(message_list), current_time_ms(),
       message_list.back()->GetMessageSeqId(), StreamingMessageBundleType::Bundle,
       bundle_buffer_size);
   buffer_ptr->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());

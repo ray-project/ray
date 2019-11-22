@@ -13,12 +13,12 @@ enum class ConfigEnum : uint32_t {
   RECONSTRUCT_TIMEOUT_PER_MB,
   CURRENT_DRIVER_ID,
 
-    /// For direct call
+  /// For direct call
   CORE_WORKER,
   SYNC_FUNCTION,
   ASYNC_FUNCTION,
   TRANSFER_MIN = QUEUE_ID_VECTOR,
-  RANSFER_MAX = ASYNC_FUNCTION
+  TRANSFER_MAX = ASYNC_FUNCTION
 };
 }
 }  // namespace ray

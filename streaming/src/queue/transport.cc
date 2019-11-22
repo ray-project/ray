@@ -13,7 +13,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
   uint8_t *bytes = nullptr;
 
   std::string pboutput;
-  ConstructProtoBuf(&pboutput);
+  ToProtobuf(&pboutput);
   int64_t fbs_length = pboutput.length();
 
   queue::protobuf::StreamingQueueMessageType type = Type();
@@ -50,7 +50,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
   return buffer;
 }
 
-void DataMessage::ConstructProtoBuf(std::string *output) {
+void DataMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueDataMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
@@ -86,7 +86,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   return data_msg;
 }
 
-void NotificationMessage::ConstructProtoBuf(std::string *output) {
+void NotificationMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueNotificationMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
@@ -115,7 +115,7 @@ std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *byt
   return notify_msg;
 }
 
-void CheckMessage::ConstructProtoBuf(std::string *output) {
+void CheckMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueCheckMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
@@ -141,7 +141,7 @@ std::shared_ptr<CheckMessage> CheckMessage::FromBytes(uint8_t *bytes) {
   return check_msg;
 }
 
-void CheckRspMessage::ConstructProtoBuf(std::string *output) {
+void CheckRspMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueCheckRspMsg msg;
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
@@ -169,7 +169,7 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
   return check_rsp_msg;
 }
 
-void TestInitMessage::ConstructProtoBuf(std::string *output) {
+void TestInitMessage::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueTestInitMessage msg;
   msg.set_role(role_);
   msg.set_src_actor_id(actor_id_.Binary());
@@ -218,7 +218,7 @@ std::shared_ptr<TestInitMessage> TestInitMessage::FromBytes(
   return test_init_msg;
 }
 
-void TestCheckStatusRspMsg::ConstructProtoBuf(std::string *output) {
+void TestCheckStatusRspMsg::ToProtobuf(std::string *output) {
   queue::protobuf::StreamingQueueTestCheckStatusRspMsg msg;
   msg.set_test_name(test_name_);
   msg.set_status(status_);

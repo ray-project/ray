@@ -126,7 +126,7 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(
     ProducerChannelInfo &channel_info, uint8_t *data, uint32_t data_size) {
   Status status = queue_writer_->PushQueueItem(channel_info.channel_id,
                                                channel_info.current_seq_id + 1, data,
-                                               data_size, current_sys_time_ms());
+                                               data_size, current_time_ms());
 
   if (status.code() != StatusCode::OK) {
     STREAMING_LOG(DEBUG) << channel_info.channel_id << " => Queue is full"

@@ -152,18 +152,18 @@ StreamingStatus StreamingReader::StashNextMessage(
       std::make_shared<StreamingReaderBundle>();
   auto &channel_info = channel_info_map_[message->from];
   reader_merger_->pop();
-  int64_t cur_time = current_sys_time_ms();
+  int64_t cur_time = current_time_ms();
   RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info, new_msg));
   reader_merger_->push(new_msg);
   channel_info.last_queue_item_delay =
       new_msg->meta->GetMessageBundleTs() - message->meta->GetMessageBundleTs();
-  channel_info.last_queue_item_latency = current_sys_time_ms() - cur_time;
+  channel_info.last_queue_item_latency = current_time_ms() - cur_time;
   return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingReader::GetMergedMessageBundle(
     std::shared_ptr<StreamingReaderBundle> &message, bool &is_valid_break) {
-  int64_t cur_time = current_sys_time_ms();
+  int64_t cur_time = current_time_ms();
   if (last_fetched_queue_item_) {
     RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_));
   }
@@ -210,7 +210,7 @@ StreamingStatus StreamingReader::GetBundle(
 
   // Get latest message util it meets two conditions :
   // 1. over timeout and 2. non-empty message has been fetched
-  auto start_time = current_sys_time_ms();
+  auto start_time = current_time_ms();
   bool is_valid_break = false;
   uint32_t empty_bundle_cnt = 0;
   while (!is_valid_break) {
@@ -218,7 +218,7 @@ StreamingStatus StreamingReader::GetBundle(
       return StreamingStatus::Interrupted;
     }
     // checking timeout
-    auto cur_time = current_sys_time_ms();
+    auto cur_time = current_time_ms();
     auto dur = cur_time - start_time;
     if (dur > timeout_ms) {
       return StreamingStatus::GetBundleTimeOut;
@@ -251,7 +251,7 @@ StreamingStatus StreamingReader::GetBundle(
       NotifyConsumedItem(channel_info_map_[message->from], message->seq_id);
     }
   }
-  last_message_latency_ += current_sys_time_ms() - start_time;
+  last_message_latency_ += current_time_ms() - start_time;
   if (message->meta->GetMessageListSize() > 0) {
     last_bundle_unit_ = message->data_size * 1.0 / message->meta->GetMessageListSize();
   }

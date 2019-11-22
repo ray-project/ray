@@ -5,6 +5,8 @@
 namespace ray {
 namespace streaming {
 
+constexpr uint64_t COMMON_SYNC_CALL_TIMEOUTT_MS = 5*1000;
+
 std::shared_ptr<QueueManager> QueueManager::queue_manager_ = nullptr;
 
 QueueWriter::~QueueWriter() {
@@ -78,12 +80,7 @@ bool QueueReader::CreateQueue(const ObjectID &queue_id, const ActorID &actor_id,
                               const ActorID &peer_actor_id, uint64_t start_seq_id) {
   STREAMING_LOG(INFO) << "Create ReaderQueue " << queue_id
                       << " pull from start_seq_id: " << start_seq_id;
-  auto queue = manager_->CreateDownstreamQueue(queue_id, actor_id, peer_actor_id);
-  STREAMING_CHECK(queue != nullptr);
-
-  std::vector<ObjectID> queue_ids;
-  queue_ids.push_back(queue_id);
-
+  manager_->CreateDownstreamQueue(queue_id, actor_id, peer_actor_id);
   return true;
 }
 
@@ -105,7 +102,7 @@ void QueueReader::GetQueueItem(const ObjectID &queue_id, uint8_t *&data,
   seq_id = item.SeqId();
   data_size = item.Buffer()->Size();
 
-  STREAMING_LOG(INFO) << "GetQueueItem qid: " << queue_id
+  STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << queue_id
                        << " seq_id: " << seq_id
                        << " msg_id: " << item.MaxMsgId()
                        << " data_size: " << data_size;
@@ -118,8 +115,6 @@ void QueueReader::NotifyConsumedItem(const ObjectID &queue_id, uint64_t seq_id) 
 }
 
 void QueueManager::Init() {
-  /// TODO: do not start corresponding thread when queue not exist.
-  boost::asio::io_service service;
   queue_thread_ = std::thread(&QueueManager::QueueThreadCallback, this);
 }
 
@@ -129,16 +124,14 @@ std::shared_ptr<WriterQueue> QueueManager::CreateUpstreamQueue(const ObjectID &q
                                                          uint64_t size) {
   STREAMING_LOG(INFO) << "CreateUpstreamQueue: " << queue_id
                       << " " << actor_id << "->" << peer_actor_id;
-  auto it = upstream_queues_.find(queue_id);
-  // RAY_CHECK(it == upstream_queues_.end()) << "duplicate to create queue: " << queue_id;
-  if (it != upstream_queues_.end()) {
-    STREAMING_LOG(WARNING) << "Duplicate to create up queue!!!! " << queue_id;
-    return it->second;
+  std::shared_ptr<WriterQueue> queue = GetUpQueue(queue_id);
+  if (queue != nullptr) {
+    STREAMING_LOG(WARNING) << "Duplicate to create up queue." << queue_id;
+    return queue;
   }
 
-  std::shared_ptr<streaming::WriterQueue> queue =
-      std::unique_ptr<streaming::WriterQueue>(new streaming::WriterQueue(
-          queue_id, actor_id, peer_actor_id, size, GetOutTransport(queue_id)));
+  queue = std::unique_ptr<streaming::WriterQueue>(new streaming::WriterQueue(
+            queue_id, actor_id, peer_actor_id, size, GetOutTransport(queue_id)));
   upstream_queues_[queue_id] = queue;
 
   return queue;

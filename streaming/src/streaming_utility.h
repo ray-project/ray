@@ -17,27 +17,6 @@ class StreamingUtility {
 
   static std::string GetHostname();
 };
-
-class AutoSpinLock {
- public:
-  explicit AutoSpinLock(std::atomic_flag &lock) : lock_(lock) {
-    while (lock_.test_and_set(std::memory_order_acquire))
-      ;
-  }
-  ~AutoSpinLock() { unlock(); }
-  void unlock() { lock_.clear(std::memory_order_release); }
-
- private:
-  std::atomic_flag &lock_;
-};
-
-inline int64_t current_sys_time_ms() {
-  std::chrono::milliseconds ms_since_epoch =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch());
-  return ms_since_epoch.count();
-}
-
 }  // namespace streaming
 }  // namespace ray
 
