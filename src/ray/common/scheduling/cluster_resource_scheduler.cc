@@ -1,5 +1,4 @@
 #include "cluster_resource_scheduler.h"
-using namespace std;
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources) {
@@ -17,8 +16,8 @@ void ClusterResourceScheduler::UpdatePredefinedResources(
 }
 
 void ClusterResourceScheduler::SetCustomResources(
-    unordered_map<int64_t, ResourceCapacity> &old_custom_resources,
-    const unordered_map<int64_t, ResourceCapacity> &new_custom_resources) {
+    absl::flat_hash_map<int64_t, ResourceCapacity> &old_custom_resources,
+    const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources) {
   old_custom_resources.clear();
   for (auto it = new_custom_resources.begin(); it != new_custom_resources.end(); ++it) {
     old_custom_resources.insert(*it);
@@ -171,16 +170,16 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
     resources.capacities[i].available =
-        max(static_cast<int64_t>(0),
-            resources.capacities[i].available - task_req.predefined_resources[i].demand);
+        std::max(static_cast<int64_t>(0), resources.capacities[i].available -
+                                              task_req.predefined_resources[i].demand);
   }
 
   for (int i = 0; i < task_req.custom_resources.size(); i++) {
     auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
     if (it != resources.custom_resources.end()) {
       it->second.available =
-          max(static_cast<int64_t>(0),
-              it->second.available - task_req.custom_resources[i].req.demand);
+          std::max(static_cast<int64_t>(0),
+                   it->second.available - task_req.custom_resources[i].req.demand);
     }
   }
   return true;

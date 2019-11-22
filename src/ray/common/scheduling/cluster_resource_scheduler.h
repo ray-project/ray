@@ -1,9 +1,10 @@
 #ifndef RAY_COMMON_SCHEDULING_SCHEDULING_H
 #define RAY_COMMON_SCHEDULING_SCHEDULING_H
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+
 #include <iostream>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 /// List of predefined resources.
@@ -37,7 +38,7 @@ struct NodeResources {
   std::vector<ResourceCapacity> capacities;
   /// Map containing custom resources. The key of each entry represents the
   /// custom resource ID.
-  std::unordered_map<int64_t, ResourceCapacity> custom_resources;
+  absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
 };
 
 struct TaskRequest {
@@ -49,7 +50,7 @@ struct TaskRequest {
   /// we desire to run this task. This is a soft constraint in that
   /// the task will run on a different node in the cluster, if none of the
   /// nodes in this list can schedule this task.
-  std::unordered_set<int64_t> placement_hints;
+  absl::flat_hash_set<int64_t> placement_hints;
 };
 
 /// Class encapsulating the cluster resources and the logic to assign
@@ -58,7 +59,7 @@ struct TaskRequest {
 class ClusterResourceScheduler {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
-  std::unordered_map<int64_t, NodeResources> nodes_;
+  absl::flat_hash_map<int64_t, NodeResources> nodes_;
   /// ID of local node.
   int64_t local_node_id_;
 
@@ -74,8 +75,8 @@ class ClusterResourceScheduler {
   /// \param old_resources: Custom resources to be updated.
   /// \parame new_resources: New custom resources.
   void SetCustomResources(
-      std::unordered_map<int64_t, ResourceCapacity> &old_custom_resources,
-      const std::unordered_map<int64_t, ResourceCapacity> &new_custom_resources);
+      absl::flat_hash_map<int64_t, ResourceCapacity> &old_custom_resources,
+      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources);
 
  public:
   ClusterResourceScheduler(void){};
