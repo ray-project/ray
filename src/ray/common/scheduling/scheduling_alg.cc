@@ -1,33 +1,32 @@
 #include "scheduling_alg.h"
 using namespace std;
 
-ClusterResourceScheduler::ClusterResourceScheduler(int64_t local_node_id, const NodeResources &local_node_resources) {
+ClusterResourceScheduler::ClusterResourceScheduler(
+    int64_t local_node_id, const NodeResources &local_node_resources) {
   local_node_id_ = local_node_id;
   AddOrUpdateNode(local_node_id, local_node_resources);
 }
 
-void ClusterResourceScheduler::UpdatePredefinedResources(NodeResources& old_resources,
-  const NodeResources& new_resources) {
-
-    // First, update its predefined resources.
-    for (int i = 0; i < PredefinedResources_MAX; i++) {
-      old_resources.capacities[i].total = new_resources.capacities[i].total;
-      old_resources.capacities[i].available = new_resources.capacities[i].available;
-    }
+void ClusterResourceScheduler::UpdatePredefinedResources(
+    NodeResources &old_resources, const NodeResources &new_resources) {
+  // First, update its predefined resources.
+  for (int i = 0; i < PredefinedResources_MAX; i++) {
+    old_resources.capacities[i].total = new_resources.capacities[i].total;
+    old_resources.capacities[i].available = new_resources.capacities[i].available;
+  }
 }
 
 void ClusterResourceScheduler::SetCustomResources(
-  unordered_map<int64_t, ResourceCapacity>& old_custom_resources,
-  const unordered_map<int64_t, ResourceCapacity>& new_custom_resources) {
-
+    unordered_map<int64_t, ResourceCapacity> &old_custom_resources,
+    const unordered_map<int64_t, ResourceCapacity> &new_custom_resources) {
   old_custom_resources.clear();
   for (auto it = new_custom_resources.begin(); it != new_custom_resources.end(); ++it) {
     old_custom_resources.insert(*it);
   }
 }
 
-void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources) {
-
+void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
+                                               const NodeResources &node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new. Add it to the map.
@@ -38,8 +37,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id, const NodeResour
     UpdatePredefinedResources(resources, node_resources);
 
     // Then, delete existing custom resources and replace them with the new ones.
-    SetCustomResources(resources.custom_resources,
-      node_resources.custom_resources);
+    SetCustomResources(resources.custom_resources, node_resources.custom_resources);
   }
 }
 
@@ -55,10 +53,10 @@ bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
   }
 }
 
-int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest& task_req,
-  int64_t node_id, const NodeResources& resources) {
+int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
+                                                int64_t node_id,
+                                                const NodeResources &resources) {
   int violations = 0;
-
 
   // First, check predefined resources.
   for (int i = 0; i < PredefinedResources_MAX; i++) {
@@ -108,7 +106,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest& task_req,
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task_req,
-  int64_t *total_violations) {
+                                                         int64_t *total_violations) {
   // Min number of violations across all nodes that can schedule the request.
   int64_t min_violations = INT_MAX;
   // Node associated to min_violations.
@@ -158,8 +156,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   return best_node;
 }
 
-bool ClusterResourceScheduler::SubtractNodeAvailableResources(int64_t node_id,
-  const TaskRequest &task_req) {
+bool ClusterResourceScheduler::SubtractNodeAvailableResources(
+    int64_t node_id, const TaskRequest &task_req) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
@@ -172,21 +170,24 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(int64_t node_id,
   }
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
-    resources.capacities[i].available = max(static_cast<int64_t>(0),
-      resources.capacities[i].available - task_req.predefined_resources[i].demand);
+    resources.capacities[i].available =
+        max(static_cast<int64_t>(0),
+            resources.capacities[i].available - task_req.predefined_resources[i].demand);
   }
 
   for (int i = 0; i < task_req.custom_resources.size(); i++) {
     auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
     if (it != resources.custom_resources.end()) {
-      it->second.available = max(static_cast<int64_t>(0),
-        it->second.available - task_req.custom_resources[i].req.demand);
+      it->second.available =
+          max(static_cast<int64_t>(0),
+              it->second.available - task_req.custom_resources[i].req.demand);
     }
   }
   return true;
 }
 
- bool ClusterResourceScheduler::GetNodeResources(int64_t node_id, NodeResources& ret_resources) {
+bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
+                                                NodeResources &ret_resources) {
   auto it = nodes_.find(node_id);
   if (it != nodes_.end()) {
     ret_resources = it->second;
@@ -197,6 +198,4 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(int64_t node_id,
 }
 
 // Get number of nodes in the cluster.
-int64_t ClusterResourceScheduler::NumNodes() {
-  return nodes_.size();
-}
+int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }

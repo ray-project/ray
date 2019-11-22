@@ -21,7 +21,7 @@ class StringIdMap {
   ///
   /// \param String ID.
   /// \return The integer ID associated with the given string ID.
-  int64_t Get(const std::string& sid);
+  int64_t Get(const std::string &sid);
 
   /// Insert a string ID and get the associated integer ID.
   ///
@@ -29,12 +29,12 @@ class StringIdMap {
   /// \param test: if "true" it specifies that the range of
   ///        IDs is limited to 0..10 for testing purposes.
   /// \return The integer ID associated with string ID sid.
-  int64_t Insert(const std::string& sid, bool test = false);
+  int64_t Insert(const std::string &sid, bool test = false);
 
   /// Delete an ID identified by its string format.
   ///
   /// \param ID to be deleted.
-  void Remove(const std::string& sid);
+  void Remove(const std::string &sid);
 
   /// Delete an ID identified by its integer format.
   ///

@@ -1,7 +1,7 @@
 #include "scheduling_ids.h"
 using namespace std;
 
-int64_t StringIdMap::Get(const string& sid) {
+int64_t StringIdMap::Get(const string &sid) {
   auto it = string_to_int_.find(sid);
   if (it == string_to_int_.end()) {
     return -1;
@@ -10,7 +10,7 @@ int64_t StringIdMap::Get(const string& sid) {
   }
 };
 
-int64_t StringIdMap::Insert(const string& sid, bool test) {
+int64_t StringIdMap::Insert(const string &sid, bool test) {
   auto sit = string_to_int_.find(sid);
   if (sit == string_to_int_.end()) {
     int64_t id = hasher_(sid);
@@ -36,7 +36,7 @@ int64_t StringIdMap::Insert(const string& sid, bool test) {
   }
 };
 
-void StringIdMap::Remove(const string& sid) {
+void StringIdMap::Remove(const string &sid) {
   auto sit = string_to_int_.find(sid);
   if (sit != string_to_int_.end()) {
     uint64_t id = string_to_int_[sid];

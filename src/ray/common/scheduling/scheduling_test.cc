@@ -3,13 +3,13 @@
 
 #include <string>
 
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/scheduling/scheduling_alg.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
-#include "absl/container/flat_hash_map.h"
 #include <chrono>
-#endif // UNORDERED_VS_ABSL_MAPS_EVALUATION
+#include "absl/container/flat_hash_map.h"
+#endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 
 using namespace std;
 
@@ -17,11 +17,10 @@ using namespace std;
 vector<int64_t> EmptyIntVector;
 vector<bool> EmptyBoolVector;
 
-void initTaskRequest(TaskRequest &tr,
-  vector<int64_t>& pred_demands, vector<bool>& pred_soft,
-  vector<int64_t>& cust_ids, vector<int64_t>& cust_demands, vector<bool>& cust_soft,
-  vector<int64_t>& placement_hints) {
-
+void initTaskRequest(TaskRequest &tr, vector<int64_t> &pred_demands,
+                     vector<bool> &pred_soft, vector<int64_t> &cust_ids,
+                     vector<int64_t> &cust_demands, vector<bool> &cust_soft,
+                     vector<int64_t> &placement_hints) {
   for (int i = 0; i < pred_demands.size(); i++) {
     ResourceRequest rq;
     rq.demand = pred_demands[i];
@@ -49,10 +48,8 @@ void initTaskRequest(TaskRequest &tr,
   }
 };
 
-void initNodeResources(NodeResources &node,
-  vector<int64_t>& pred_capacities, vector<int64_t>& cust_ids,
-  vector<int64_t>& cust_capacities) {
-
+void initNodeResources(NodeResources &node, vector<int64_t> &pred_capacities,
+                       vector<int64_t> &cust_ids, vector<int64_t> &cust_capacities) {
   for (int i = 0; i < pred_capacities.size(); i++) {
     ResourceCapacity rc;
     rc.total = rc.available = pred_capacities[i];
@@ -74,9 +71,7 @@ void initNodeResources(NodeResources &node,
   }
 }
 
-void initCluster(ClusterResourceScheduler &cluster_resources, int n)
-{
-
+void initCluster(ClusterResourceScheduler &cluster_resources, int n) {
   vector<int64_t> pred_capacities;
   vector<int64_t> cust_ids;
   vector<int64_t> cust_capacities;
@@ -101,8 +96,7 @@ void initCluster(ClusterResourceScheduler &cluster_resources, int n)
       cust_capacities.push_back(rand() % 10);
     }
 
-    initNodeResources(node_resources, pred_capacities,
-                      cust_ids, cust_capacities);
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
 
     cluster_resources.AddOrUpdateNode(i, node_resources);
 
@@ -110,8 +104,7 @@ void initCluster(ClusterResourceScheduler &cluster_resources, int n)
   }
 }
 
-bool nodeResourcesEqual(NodeResources &nr1, NodeResources& nr2) {
-
+bool nodeResourcesEqual(NodeResources &nr1, NodeResources &nr2) {
   if (nr1.capacities.size() != nr2.capacities.size()) {
     cout << nr1.capacities.size() << " " << nr2.capacities.size() << endl;
     return false;
@@ -235,8 +228,7 @@ TEST_F(SchedulingTest, SchedulingModifyClusterNodeTest) {
     cust_ids.push_back((start + k) % num_nodes);
     cust_capacities.push_back(rand() % 10);
 
-    initNodeResources(node_resources, pred_capacities,
-                      cust_ids, cust_capacities);
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     cluster_resources.AddOrUpdateNode(update_id, node_resources);
   }
   ASSERT_TRUE(num_nodes == cluster_resources.NumNodes());
@@ -245,23 +237,22 @@ TEST_F(SchedulingTest, SchedulingModifyClusterNodeTest) {
 TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
   /// Create cluster resources.
   NodeResources node_resources;
-  vector<int64_t> pred_capacities {10, 5, 3};
-  vector<int64_t> cust_ids {1, 2};
-  vector<int64_t> cust_capacities {5, 5};
-  initNodeResources(node_resources, pred_capacities,
-                    cust_ids, cust_capacities);
+  vector<int64_t> pred_capacities{10, 5, 3};
+  vector<int64_t> cust_ids{1, 2};
+  vector<int64_t> cust_capacities{5, 5};
+  initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
   ClusterResourceScheduler cluster_resources(1, node_resources);
 
   {
     TaskRequest task_req;
 #define PRED_CUSTOM_LEN 2
-    vector<int64_t> pred_demands {7, 7};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {1, 2};
-    vector<int64_t> cust_demands {3, 10};
-    vector<bool> cust_soft {false, true};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, EmptyIntVector);
+    vector<int64_t> pred_demands{7, 7};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{1, 2};
+    vector<int64_t> cust_demands{3, 10};
+    vector<bool> cust_soft{false, true};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -300,11 +291,10 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   /// Add node.
   {
     NodeResources node_resources;
-    vector<int64_t> pred_capacities {10, 5, 3};
-    vector<int64_t> cust_ids {1, 2};
-    vector<int64_t> cust_capacities {5, 5};
-    initNodeResources(node_resources, pred_capacities,
-                      cust_ids, cust_capacities);
+    vector<int64_t> pred_capacities{10, 5, 3};
+    vector<int64_t> cust_ids{1, 2};
+    vector<int64_t> cust_capacities{5, 5};
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     cluster_resources.AddOrUpdateNode(node_id, node_resources);
     nr = node_resources;
   }
@@ -319,11 +309,10 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   /// Update node.
   {
     NodeResources node_resources;
-    vector<int64_t> pred_capacities {10, 10};
-    vector<int64_t> cust_ids {2, 3};
-    vector<int64_t> cust_capacities {6, 6};
-    initNodeResources(node_resources, pred_capacities,
-                      cust_ids, cust_capacities);
+    vector<int64_t> pred_capacities{10, 10};
+    vector<int64_t> cust_ids{2, 3};
+    vector<int64_t> cust_capacities{6, 6};
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     cluster_resources.AddOrUpdateNode(node_id, node_resources);
     nr = node_resources;
   }
@@ -334,24 +323,21 @@ TEST_F(SchedulingTest, SchedulingAddOrUpdateNodeTest) {
   }
 }
 
-
 TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Create cluster resources containing local node.
   NodeResources node_resources;
-  vector<int64_t> pred_capacities {5, 5};
-  vector<int64_t> cust_ids {1};
-  vector<int64_t> cust_capacities {10};
-  initNodeResources(node_resources, pred_capacities,
-                    cust_ids, cust_capacities);
+  vector<int64_t> pred_capacities{5, 5};
+  vector<int64_t> cust_ids{1};
+  vector<int64_t> cust_capacities{10};
+  initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
   ClusterResourceScheduler cluster_resources(0, node_resources);
 
   {
     NodeResources node_resources;
-    vector<int64_t> pred_capacities {10, 2, 3};
-    vector<int64_t> cust_ids {1, 2};
-    vector<int64_t> cust_capacities {5, 5};
-    initNodeResources(node_resources, pred_capacities,
-                      cust_ids, cust_capacities);
+    vector<int64_t> pred_capacities{10, 2, 3};
+    vector<int64_t> cust_ids{1, 2};
+    vector<int64_t> cust_capacities{5, 5};
+    initNodeResources(node_resources, pred_capacities, cust_ids, cust_capacities);
     cluster_resources.AddOrUpdateNode(1, node_resources);
   }
   /// Predefined resources, hard constraint violation
@@ -359,8 +345,8 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     TaskRequest task_req;
     vector<int64_t> pred_demands = {11};
     vector<bool> pred_soft = {false};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      EmptyIntVector, EmptyIntVector, EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyIntVector,
+                    EmptyBoolVector, EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_EQ(node_id, -1);
@@ -370,8 +356,8 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     TaskRequest task_req;
     vector<int64_t> pred_demands = {11};
     vector<bool> pred_soft = {true};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      EmptyIntVector, EmptyIntVector, EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyIntVector,
+                    EmptyBoolVector, EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -383,8 +369,8 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
     TaskRequest task_req;
     vector<int64_t> pred_demands = {5};
     vector<bool> pred_soft = {false};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      EmptyIntVector, EmptyIntVector, EmptyBoolVector, EmptyIntVector);
+    initTaskRequest(task_req, pred_demands, pred_soft, EmptyIntVector, EmptyIntVector,
+                    EmptyBoolVector, EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -393,13 +379,13 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Custom resources, hard constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {1};
-    vector<int64_t> cust_demands {11};
-    vector<bool> cust_soft {false};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, EmptyIntVector);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_demands{11};
+    vector<bool> cust_soft{false};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id == -1);
@@ -407,13 +393,13 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Custom resources, soft constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {1};
-    vector<int64_t> cust_demands {11};
-    vector<bool> cust_soft {true};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, EmptyIntVector);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_demands{11};
+    vector<bool> cust_soft{true};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -422,13 +408,13 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Custom resources, no constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {1};
-    vector<int64_t> cust_demands {5};
-    vector<bool> cust_soft {false};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, EmptyIntVector);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_demands{5};
+    vector<bool> cust_soft{false};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -437,13 +423,13 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Custom resource missing, hard constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {100};
-    vector<int64_t> cust_demands {5};
-    vector<bool> cust_soft {false};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, EmptyIntVector);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{100};
+    vector<int64_t> cust_demands{5};
+    vector<bool> cust_soft{false};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id == -1);
@@ -451,13 +437,13 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Custom resource missing, soft constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {100};
-    vector<int64_t> cust_demands {5};
-    vector<bool> cust_soft {true};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, EmptyIntVector);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{100};
+    vector<int64_t> cust_demands{5};
+    vector<bool> cust_soft{true};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    EmptyIntVector);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -466,14 +452,14 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Placement_hints, soft constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {1};
-    vector<int64_t> cust_demands {5};
-    vector<bool> cust_soft {true};
-    vector<int64_t> placement_hints {2, 3};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, placement_hints);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_demands{5};
+    vector<bool> cust_soft{true};
+    vector<int64_t> placement_hints{2, 3};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    placement_hints);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -482,14 +468,14 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
   /// Placement hints, no constraint violation.
   {
     TaskRequest task_req;
-    vector<int64_t> pred_demands {5, 2};
-    vector<bool> pred_soft {false, true};
-    vector<int64_t> cust_ids {1};
-    vector<int64_t> cust_demands {5};
-    vector<bool> cust_soft {true};
-    vector<int64_t> placement_hints {1, 2, 3};
-    initTaskRequest(task_req, pred_demands, pred_soft,
-      cust_ids, cust_demands, cust_soft, placement_hints);
+    vector<int64_t> pred_demands{5, 2};
+    vector<bool> pred_soft{false, true};
+    vector<int64_t> cust_ids{1};
+    vector<int64_t> cust_demands{5};
+    vector<bool> cust_soft{true};
+    vector<int64_t> placement_hints{1, 2, 3};
+    initTaskRequest(task_req, pred_demands, pred_soft, cust_ids, cust_demands, cust_soft,
+                    placement_hints);
     int64_t violations;
     int64_t node_id = cluster_resources.GetBestSchedulableNode(task_req, &violations);
     ASSERT_TRUE(node_id != -1);
@@ -532,7 +518,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
     }
   }
   auto t_end = std::chrono::high_resolution_clock::now();
-  double duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  double duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
   cout << "sum = " << sum << " in " << duration << endl;
 
   t_start = std::chrono::high_resolution_clock::now();
@@ -544,7 +530,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
     }
   }
   t_end = std::chrono::high_resolution_clock::now();
-  duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
   cout << "sum = " << sum << " in " << duration << endl;
 
   t_start = std::chrono::high_resolution_clock::now();
@@ -556,7 +542,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
     }
   }
   t_end = std::chrono::high_resolution_clock::now();
-  duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
   cout << "sum = " << sum << " in " << duration << endl;
 
   t_start = std::chrono::high_resolution_clock::now();
@@ -568,10 +554,10 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
     }
   }
   t_end = std::chrono::high_resolution_clock::now();
-  duration = std::chrono::duration<double, std::milli>(t_end-t_start).count();
+  duration = std::chrono::duration<double, std::milli>(t_end - t_start).count();
   cout << "sum = " << sum << " in " << duration << endl;
 }
-#endif // UNORDERED_VS_ABSL_MAPS_EVALUATION
+#endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
 
 }  // namespace ray
 
