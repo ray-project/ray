@@ -1949,14 +1949,12 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
   // Subscribe to the objects required by the task. These objects will be
   // fetched and/or reconstructed as necessary, until the objects become local
   // or are unsubscribed.
-  if (!required_object_ids.empty()) {
-    if (ray_get) {
-      task_dependency_manager_.SubscribeGetDependencies(current_task_id,
-                                                        required_object_ids);
-    } else {
-      task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
-                                                         required_object_ids);
-    }
+  if (ray_get) {
+    task_dependency_manager_.SubscribeGetDependencies(current_task_id,
+                                                      required_object_ids);
+  } else {
+    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
+                                                       required_object_ids);
   }
 }
 
