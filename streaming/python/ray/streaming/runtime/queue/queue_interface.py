@@ -3,39 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 from abc import ABCMeta, abstractmethod
-from enum import Enum
 
 import ray
 import ray.streaming.runtime.queue.queue_utils as queue_utils
-
-
-class QueueConfig:
-    """
-    queue config
-    """
-    # operator type
-    OPERATOR_TYPE = "operator_type"
-
-    # reliability level
-    RELIABILITY_LEVEL = "reliability_level"
-
-
-class OperatorType(Enum):
-    """
-    operator type
-    """
-    SOURCE = 1
-    TRANSFORM = 2
-    SINK = 3
-
-
-class ReliabilityLevel(Enum):
-    """
-    reliability level
-    """
-    AT_LEAST_ONCE = 1
-    EXACTLY_ONCE = 2
-    EXACTLY_SAME = 3
 
 
 class QueueID:
@@ -141,6 +111,7 @@ class QueueLink:
     def on_streaming_transfer_sync(self, buffer: bytes):
         """used in direct call mode"""
         pass
+
 
 class QueueProducer:
     """

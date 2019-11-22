@@ -191,7 +191,7 @@ def _to_native_conf(conf):
         config.worker_name = conf[Config.STREAMING_WORKER_NAME]
     if Config.STREAMING_OP_NAME in conf:
         config.op_name = conf[Config.STREAMING_OP_NAME]
-    # TODO set role
+    # TODO set operator type
     if Config.STREAMING_RING_BUFFER_CAPACITY in conf:
         config.ring_buffer_capacity = conf[Config.STREAMING_RING_BUFFER_CAPACITY]
     if Config.STREAMING_EMPTY_MESSAGE_INTERVAL in conf:
