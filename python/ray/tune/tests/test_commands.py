@@ -160,6 +160,6 @@ def test_lsx(start_ray, tmpdir):
 
 if __name__ == "__main__":
     # Make click happy in bazel.
-    os.environ["LC_ALL"] = "C.UTF-8"
-    os.environ["LANG"] = "C.UTF-8"
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main([__file__]))
