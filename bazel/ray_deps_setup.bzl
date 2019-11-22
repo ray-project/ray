@@ -99,6 +99,11 @@ def ray_deps_setup():
         sha256 = "da3411ea45622579d419bfda66f45cd0f8c32a181d84adfa936f5688388995cf",
         strip_prefix = "boost_1_68_0",
         url = "https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz",
+        patches = [
+            # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
+            #   https://lists.boost.org/Archives/boost/2018/09/243420.php
+            "//thirdparty/patches:boost-type_traits-trivial_move.patch",
+        ],
     )
 
     github_repository(
