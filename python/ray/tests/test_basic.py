@@ -1565,6 +1565,7 @@ def test_wait(ray_start_regular):
         ray.wait(1)
     with pytest.raises(TypeError):
         ray.wait([1])
+    print("ok")
 
 
 def test_wait_iterables(ray_start_regular):
@@ -2290,6 +2291,7 @@ def test_local_mode(shutdown_only):
     assert ray.get(indirect_dep.remote(["hello"])) == "hello"
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO: resource shape queues")
 def test_resource_constraints(shutdown_only):
     num_workers = 20
     ray.init(num_cpus=10, num_gpus=2)
