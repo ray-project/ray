@@ -28,7 +28,7 @@ void initTaskRequest(TaskRequest &tr, vector<int64_t> &pred_demands,
     tr.predefined_resources.push_back(rq);
   }
 
-  for (int i = pred_demands.size(); i < PredefinedResources_MAX; i++) {
+  for (size_t i = pred_demands.size(); i < PredefinedResources_MAX; i++) {
     ResourceRequest rq;
     rq.demand = 0;
     rq.soft = 0;
@@ -152,7 +152,7 @@ class SchedulingTest : public ::testing::Test {
 TEST_F(SchedulingTest, SchedulingIdTest) {
   StringIdMap ids;
   hash<string> hasher;
-  int num = 10;  // should be greater than 10.
+  size_t num = 10;  // should be greater than 10.
 
   for (size_t i = 0; i < num; i++) {
     ids.Insert(to_string(i));
@@ -485,7 +485,7 @@ TEST_F(SchedulingTest, SchedulingTaskRequestTest) {
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
-  int map_len = 1000000;
+  size_t map_len = 1000000;
   unordered_map<int64_t, int64_t> umap_int_key;
   unordered_map<string, int64_t> umap_string_key;
   absl::flat_hash_map<int64_t, int64_t> amap_int_key;
