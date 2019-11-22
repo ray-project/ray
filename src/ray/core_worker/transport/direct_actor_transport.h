@@ -266,34 +266,31 @@ class FiberEvent {
 };
 
 class FiberSemaphore {
-  public:
-    FiberSemaphore(int num): num_(num) {
-      RAY_LOG(INFO) << "Initialized fiber semphaore with concurrency " << num;
-    }
-    
-    // Enter the semaphore. Wait fo the value to be > 0 and decrement the value.
-    void Down() {
-      RAY_LOG(INFO) << "Semphoare down requested";
+ public:
+  FiberSemaphore(int num) : num_(num) {}
+
+  // Enter the semaphore. Wait fo the value to be > 0 and decrement the value.
+  void Acquire() {
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    cond_.wait(lock, [this]() { return num_ > 0; });
+    num_ -= 1;
+  }
+
+  // Exit the semaphore. Increment the value and notify other waiter.
+  void Release() {
+    {
       std::unique_lock<boost::fibers::mutex> lock(mutex_);
-      cond_.wait(lock, [this]() { return num_ > 0; });
-      num_ -= 1;
-      RAY_LOG(INFO) << "Semphoare down complete";
+      num_ += 1;
     }
+    // TODO(simon): This not does guarantee to wake up the first queued fiber.
+    // This could be a problem for certain workloads.
+    cond_.notify_one();
+  }
 
-    // Exit the semaphore. Increment the value and notify other waiter.
-    void Up() {
-      RAY_LOG(INFO) << "Semphoare up";
-      {
-        std::unique_lock<boost::fibers::mutex> lock(mutex_);
-        num_ += 1;
-      }
-      cond_.notify_one();
-    }
-
-  private:
-    boost::fibers::condition_variable cond_;
-    boost::fibers::mutex mutex_;
-    int num_;
+ private:
+  boost::fibers::condition_variable cond_;
+  boost::fibers::mutex mutex_;
+  int num_;
 };
 
 /// Used to ensure serial order of task execution per actor handle.
@@ -360,10 +357,10 @@ class SchedulingQueue {
       auto request = head->second;
 
       if (use_asyncio_) {
-        boost::fibers::fiber([request, this]() mutable { 
-          fiber_rate_limiter_->Down();
-          request.Accept(); 
-          fiber_rate_limiter_->Up();
+        boost::fibers::fiber([request, this]() mutable {
+          fiber_rate_limiter_->Acquire();
+          request.Accept();
+          fiber_rate_limiter_->Release();
         }).detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });

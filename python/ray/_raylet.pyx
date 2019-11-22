@@ -561,7 +561,6 @@ cdef execute_task(
             function = execution_info.function
 
             if PY3 and core_worker.current_actor_is_asyncio():
-
                 if function.is_async_method:
                     async_function = function
                 else:

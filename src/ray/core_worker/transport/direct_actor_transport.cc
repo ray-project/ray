@@ -292,8 +292,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
+        task_spec.CallerId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
     it = result.first;
   }
 
