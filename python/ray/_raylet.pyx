@@ -1109,6 +1109,9 @@ cdef class CoreWorker:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()
             )
+            # Making the thread a daemon causes it to exit
+            # when the main thread exits.
+            self.async_thread.daemon = True
             self.async_thread.start()
 
         return self.async_event_loop
