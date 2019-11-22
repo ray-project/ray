@@ -88,6 +88,9 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     }
     break;
   }
+  default: {
+    RAY_LOG(WARNING) << "Encountered unexpected redis reply type: " << reply_type_;
+  }
   }
 }
 
