@@ -236,13 +236,11 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     std::vector<ray::ObjectID> rescale_queue_id_vec;
     for (uint32_t i = 0; i < queue_num; ++i) {
       ObjectID queue_id = ray::ObjectID::FromRandom();
-      ConvertToValidQueueId(queue_id);
       queue_id_vec.emplace_back(queue_id);
     }
 
     // One scale id
     ObjectID rescale_queue_id = ray::ObjectID::FromRandom();
-    ConvertToValidQueueId(rescale_queue_id);
     rescale_queue_id_vec.emplace_back(rescale_queue_id);
 
     std::vector<uint64_t> channel_seq_id_vec(queue_num, 0);

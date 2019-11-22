@@ -1,6 +1,6 @@
 #include "gtest/gtest.h"
 
-#include "streaming_utility.h"
+#include "util/streaming_utility.h"
 
 using namespace ray;
 using namespace ray::streaming;

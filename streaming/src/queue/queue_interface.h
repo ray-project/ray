@@ -25,11 +25,6 @@ std::shared_ptr<StreamingQueueReader> CreateQueueReader(
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func);
 
-inline void ConvertToValidQueueId(const ObjectID &queue_id) {
-  auto addr = const_cast<ObjectID *>(&queue_id);
-  *(reinterpret_cast<uint64_t *>(addr)) = 0;
-}
-
 /// code below is interface implementation of streaming queue
 class StreamingQueueWriter {
  public:

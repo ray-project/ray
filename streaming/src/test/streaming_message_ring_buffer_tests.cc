@@ -6,7 +6,7 @@
 #include <set>
 #include <thread>
 #include "streaming.h"
-#include "streaming_message.h"
+#include "message/streaming_message.h"
 #include "streaming_ring_buffer.h"
 
 using namespace ray;
