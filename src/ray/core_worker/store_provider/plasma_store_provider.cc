@@ -269,7 +269,10 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       RAY_RETURN_NOT_OK(check_signals_());
     }
   }
-  return UnblockIfNeeded(raylet_client_, ctx);
+  if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+    RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+  }
+  return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(
