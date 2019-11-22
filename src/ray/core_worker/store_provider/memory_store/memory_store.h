@@ -82,10 +82,18 @@ class CoreWorkerMemoryStore {
   std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
 
   /// Delete a list of objects from the object store.
+  /// NOTE(swang): Objects that contain IsInPlasmaError will not be
+  /// deleted from the in-memory store. Instead, any future Get
+  /// calls should check with plasma to see whether the object has
+  /// been deleted.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
+  /// \param[out] plasma_ids_to_delete This will be extended to
+  /// include the IDs of the plasma objects to delete, based on the
+  /// in-memory objects that contained InPlasmaError.
   /// \return Void.
-  void Delete(const absl::flat_hash_set<ObjectID> &object_ids);
+  void Delete(const absl::flat_hash_set<ObjectID> &object_ids,
+              absl::flat_hash_set<ObjectID> *plasma_ids_to_delete);
 
   /// Delete a list of objects from the object store.
   ///

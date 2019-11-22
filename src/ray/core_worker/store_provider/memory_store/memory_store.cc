@@ -362,10 +362,19 @@ Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_i
   return Status::OK();
 }
 
-void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids) {
+void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids,
+                                   absl::flat_hash_set<ObjectID> *plasma_ids_to_delete) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
-    objects_.erase(object_id);
+    auto it = objects_.find(object_id);
+    if (it != objects_.end()) {
+      if (it->second->IsInPlasmaError()) {
+        plasma_ids_to_delete->insert(
+            object_id.WithTransportType(TaskTransportType::RAYLET));
+      } else {
+        objects_.erase(it);
+      }
+    }
   }
 }
 
@@ -379,6 +388,9 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
+  if (it != objects_.end() && it->second->IsInPlasmaError()) {
+    return false;
+  }
   return it != objects_.end();
 }
 
