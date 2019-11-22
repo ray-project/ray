@@ -295,7 +295,7 @@ class NodeUpdater(object):
                  cluster_name,
                  file_mounts,
                  node_setup_commands,
-                 node_restart_commands,
+                 node_start_commands,
                  ray_restart_commands,
                  runtime_hash,
                  process_runner=subprocess,
@@ -322,7 +322,7 @@ class NodeUpdater(object):
             for remote, local in file_mounts.items()
         }
         self.node_setup_commands = node_setup_commands
-        self.node_restart_commands = node_restart_commands
+        self.node_start_commands = node_start_commands
         self.ray_restart_commands = ray_restart_commands
         self.runtime_hash = runtime_hash
 
@@ -420,7 +420,7 @@ class NodeUpdater(object):
                     self.cmd_runner.run(cmd)
 
             with LogTimer(self.log_prefix + "Boot commands completed"):
-                for cmd in self.node_restart_commands:
+                for cmd in self.node_start_commands:
                     self.cmd_runner.run(cmd)
 
         with LogTimer(self.log_prefix + "Ray start commands completed"):

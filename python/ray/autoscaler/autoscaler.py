@@ -16,6 +16,8 @@ from collections import defaultdict
 import numpy as np
 import ray.services as services
 import yaml
+from ray.autoscaler.schema import CLUSTER_CONFIG_SCHEMA, NODE_SETUP_COMMANDS, \
+    NODE_START_COMMANDS, RAY_RESTART_COMMANDS, REQUIRED, get_commands
 from ray.worker import global_worker
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
@@ -33,138 +35,6 @@ from six import string_types
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
-
-REQUIRED, OPTIONAL = True, False
-
-# For (a, b), if a is a dictionary object, then
-# no extra fields can be introduced.
-
-COMMANDS_SCHEMA = (
-    {
-        # Setup common to all nodes. These are run first.
-        "common": (list, OPTIONAL),
-        # Head node only.
-        "head": (list, OPTIONAL),
-        # Worker nodes only.
-        "worker": (list, OPTIONAL),
-    },
-    OPTIONAL)
-
-CLUSTER_CONFIG_SCHEMA = {
-    # An unique identifier for the head node and workers of this cluster.
-    "cluster_name": (str, REQUIRED),
-
-    # The minimum number of workers nodes to launch in addition to the head
-    # node. This number should be >= 0.
-    "min_workers": (int, OPTIONAL),
-
-    # The maximum number of workers nodes to launch in addition to the head
-    # node. This takes precedence over min_workers.
-    "max_workers": (int, REQUIRED),
-
-    # The number of workers to launch initially, in addition to the head node.
-    "initial_workers": (int, OPTIONAL),
-
-    # The mode of the autoscaler e.g. default, aggressive
-    "autoscaling_mode": (str, OPTIONAL),
-
-    # The autoscaler will scale up the cluster to this target fraction of
-    # resources usage. For example, if a cluster of 8 nodes is 100% busy
-    # and target_utilization was 0.8, it would resize the cluster to 10.
-    "target_utilization_fraction": (float, OPTIONAL),
-
-    # If a node is idle for this many minutes, it will be removed.
-    "idle_timeout_minutes": (int, OPTIONAL),
-
-    # Cloud-provider specific configuration.
-    "provider": (
-        {
-            "type": (str, REQUIRED),  # e.g. aws
-            "region": (str, OPTIONAL),  # e.g. us-east-1
-            "availability_zone": (str, OPTIONAL),  # e.g. us-east-1a
-            "module": (str,
-                       OPTIONAL),  # module, if using external node provider
-            "project_id": (None, OPTIONAL),  # gcp project id, if using gcp
-            "head_ip": (str, OPTIONAL),  # local cluster head node
-            "worker_ips": (list, OPTIONAL),  # local cluster worker nodes
-            "use_internal_ips": (bool, OPTIONAL),  # don't require public ips
-            "namespace": (str, OPTIONAL),  # k8s namespace, if using k8s
-
-            # k8s autoscaler permissions, if using k8s
-            "autoscaler_service_account": (dict, OPTIONAL),
-            "autoscaler_role": (dict, OPTIONAL),
-            "autoscaler_role_binding": (dict, OPTIONAL),
-            "extra_config": (dict, OPTIONAL),  # provider-specific config
-
-            # Whether to try to reuse previously stopped nodes instead of
-            # launching nodes. This will also cause the autoscaler to stop
-            # nodes instead of terminating them. Only implemented for AWS.
-            "cache_stopped_nodes": (bool, OPTIONAL),
-        },
-        REQUIRED),
-
-    # How Ray will authenticate with newly launched nodes.
-    "auth": (
-        {
-            "ssh_user": (str, OPTIONAL),  # e.g. ubuntu
-            "ssh_private_key": (str, OPTIONAL),
-        },
-        OPTIONAL),
-
-    # Docker configuration. If this is specified, all setup and start commands
-    # will be executed in the container.
-    "docker": (
-        {
-            "image": (str, OPTIONAL),  # e.g. tensorflow/tensorflow:1.5.0-py3
-            "container_name": (str, OPTIONAL),  # e.g., ray_docker
-            "pull_before_run": (bool, OPTIONAL),  # run `docker pull` first
-            # shared options for starting head/worker docker
-            "run_options": (list, OPTIONAL),
-
-            # image for head node, takes precedence over "image" if specified
-            "head_image": (str, OPTIONAL),
-            # head specific run options, appended to run_options
-            "head_run_options": (list, OPTIONAL),
-            # analogous to head_image
-            "worker_image": (str, OPTIONAL),
-            # analogous to head_run_options
-            "worker_run_options": (list, OPTIONAL),
-        },
-        OPTIONAL),
-
-    # Provider-specific config for the head node, e.g. instance type.
-    "head_node": (dict, OPTIONAL),
-
-    # Provider-specific config for worker nodes. e.g. instance type.
-    "worker_nodes": (dict, OPTIONAL),
-
-    # Map of remote paths to local paths, e.g. {"/tmp/data": "/my/local/data"}
-    "file_mounts": (dict, OPTIONAL),
-
-    # Commands that will be run when the cluster is first created.
-    "node_setup_commands": COMMANDS_SCHEMA,
-
-    # Commands that will be run whenever a node is booted, including after
-    # `node_setup_commands` when the cluster is created.
-    "node_restart_commands": COMMANDS_SCHEMA,
-
-    # Commands that will be run whenever Ray is (re)started.
-    "ray_restart_commands": COMMANDS_SCHEMA,
-
-    # Whether to avoid restarting the cluster during updates. This field is
-    # controlled by the ray --no-restart flag and cannot be set by the user.
-    "no_restart": (None, OPTIONAL),
-}
-
-
-def get_commands(config, key, is_head=False):
-    """Get commands for a head or worker node under key `key`.
-
-    This prepends `"common"` commands, that should run on head and worker,
-    to the head/worker specific config.
-    """
-    kind_specific = "head" if is_head else "worker"
-    return config[key].get("common", []) + config[key].get(kind_specific, [])
 
 
 class LoadMetrics(object):
@@ -571,14 +441,14 @@ class StandardAutoscaler(object):
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id in nodes:
-            (node_id, node_setup_commands, node_restart_commands,
+            (node_id, node_setup_commands, node_start_commands,
              ray_start) = self.should_update(node_id)
             if node_id is not None:
                 T.append(
                     threading.Thread(
                         target=self.spawn_updater,
                         args=(node_id, node_setup_commands,
-                              node_restart_commands, ray_start)))
+                              node_start_commands, ray_start)))
         for t in T:
             t.start()
         for t in T:
@@ -596,10 +466,10 @@ class StandardAutoscaler(object):
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
-                new_config["node_setup_commands"]["common"],
-                new_config["node_setup_commands"]["worker"],
-                new_config["ray_restart_commands"]["common"],
-                new_config["ray_restart_commands"]["worker"],
+                new_config[NODE_SETUP_COMMANDS],
+                new_config["worker_" + NODE_SETUP_COMMANDS],
+                new_config[RAY_RESTART_COMMANDS],
+                new_config["worker_" + RAY_RESTART_COMMANDS],
             ])
             self.config = new_config
             self.launch_hash = new_launch_hash
@@ -679,10 +549,10 @@ class StandardAutoscaler(object):
             cluster_name=self.config["cluster_name"],
             file_mounts={},
             node_setup_commands=[],
-            node_restart_commands=[],
+            node_start_commands=[],
             ray_restart_commands=with_head_node_ip(
-                get_commands(
-                    self.config, "ray_restart_commands", is_head=False)),
+                get_commands(self.config, RAY_RESTART_COMMANDS,
+                             is_head=False)),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
@@ -699,22 +569,22 @@ class StandardAutoscaler(object):
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         node_setup_commands = get_commands(
-            self.config, "node_setup_commands", is_head=False)
-        node_restart_commands = get_commands(
-            self.config, "node_restart_commands", is_head=False)
+            self.config, NODE_SETUP_COMMANDS, is_head=False)
+        node_start_commands = get_commands(
+            self.config, NODE_START_COMMANDS, is_head=False)
         ray_restart_commands = get_commands(
-            self.config, "ray_restart_commands", is_head=False)
+            self.config, RAY_RESTART_COMMANDS, is_head=False)
         if successful_updated and self.config.get("restart_only", False):
             node_setup_commands = []
-            node_restart_commands = []
+            node_start_commands = []
         elif successful_updated and self.config.get("no_restart", False):
             ray_restart_commands = []
 
-        return (node_id, node_setup_commands, node_restart_commands,
+        return (node_id, node_setup_commands, node_start_commands,
                 ray_restart_commands)
 
-    def spawn_updater(self, node_id, node_setup_commands,
-                      node_restart_commands, ray_restart_commands):
+    def spawn_updater(self, node_id, node_setup_commands, node_start_commands,
+                      ray_restart_commands):
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -723,7 +593,7 @@ class StandardAutoscaler(object):
             cluster_name=self.config["cluster_name"],
             file_mounts=self.config["file_mounts"],
             node_setup_commands=with_head_node_ip(node_setup_commands),
-            node_restart_commands=with_head_node_ip(node_restart_commands),
+            node_start_commands=with_head_node_ip(node_start_commands),
             ray_restart_commands=with_head_node_ip(ray_restart_commands),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,

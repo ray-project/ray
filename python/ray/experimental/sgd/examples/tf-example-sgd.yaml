@@ -47,20 +47,18 @@ worker_nodes:
     #         MarketType: spot
 
 node_setup_commands:
-    common:
-        - conda install setuptools=41.0.1=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
-        - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl
-        - pip install -U ipdb ray[rllib]
-        - pip install tensorflow==2.0.0-rc0
+    - conda install setuptools=41.0.1=py36_0 wrapt=1.11.2 --yes # workaround to fix wrapt error
+    - ray || pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev3-cp36-cp36m-manylinux1_x86_64.whl
+    - pip install -U ipdb ray[rllib]
+    - pip install tensorflow==2.0.0-rc0
 
 file_mounts: {
 }
 
 # Commands to start Ray on the nodes. You do not need to change this.
 ray_restart_commands:
-    common:
-        - ray stop
-    head:
-        - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
-    worker:
-        - ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --object-store-memory=1000000000
+    - ray stop
+head_ray_restart_commands:
+    - ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml --object-store-memory=1000000000
+worker_ray_restart_commands:
+    - ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076 --object-store-memory=1000000000

@@ -104,19 +104,17 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-node_restart_commands:
-    common:
-        # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp27-cp27mu-manylinux1_x86_64.whl
-        - IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp35-cp35m-manylinux1_x86_64.whl
-        # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
-    head:
-        - IN_DOCKER pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+node_start_commands:
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp27-cp27mu-manylinux1_x86_64.whl
+    - IN_DOCKER pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp35-cp35m-manylinux1_x86_64.whl
+    # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
+head_node_start_commands:
+    - IN_DOCKER pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 
 # Commands to start Ray on the nodes. You do not need to change this.
 ray_restart_commands:
-    common:
-        - IN_DOCKER ray stop
-    head:
-        - IN_DOCKER ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-    worker:
-        - IN_DOCKER ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - IN_DOCKER ray stop
+head_ray_restart_commands:
+    - IN_DOCKER ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_ray_restart_commands:
+    - IN_DOCKER ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

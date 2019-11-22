@@ -221,19 +221,16 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-node_setup_commands:
-    common: []
+node_setup_commands: []
 
 # List of commands that will be run each time the node is booted.
 # On the first boot, these will run after `node_setup_commands`.
-node_restart_commands:
-    common: []
+node_start_commands: []
 
 # Commands to start Ray on the nodes. You do not need to change this.
 ray_restart_commands:
-    common:
-        - ray stop
-    head:
-      - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-    worker:
-        - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ray stop
+head_ray_restart_commands:
+    - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_ray_restart_commands:
+    - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

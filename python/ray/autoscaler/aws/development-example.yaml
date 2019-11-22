@@ -81,33 +81,31 @@ file_mounts: {
 
 # List of commands that will be run when the node is first created.
 node_setup_commands:
-    common:
-        # Consider uncommenting these if you run into dpkg locking issues
-        # - sudo pkill -9 apt-get || true
-        # - sudo pkill -9 dpkg || true
-        # - sudo dpkg --configure -a
-        # Install basics.
-        - sudo apt-get update
-        - sudo apt-get install -y build-essential curl unzip
-        # Install Node.js in order to build the dashboard.
-        - curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash
-        - sudo apt-get install -y nodejs
-        # Install Anaconda.
-        - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
-        - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
-        - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
-        # Build Ray.
-        - git clone https://github.com/ray-project/ray || true
-        - ray/ci/travis/install-bazel.sh
-        - cd ray/python/ray/dashboard/client; npm ci; npm run build
-        - pip install boto3==1.4.8 cython==0.29.0 aiohttp psutil setproctitle
-        - cd ray/python; pip install -e . --verbose
+    # Consider uncommenting these if you run into dpkg locking issues
+    # - sudo pkill -9 apt-get || true
+    # - sudo pkill -9 dpkg || true
+    # - sudo dpkg --configure -a
+    # Install basics.
+    - sudo apt-get update
+    - sudo apt-get install -y build-essential curl unzip
+    # Install Node.js in order to build the dashboard.
+    - curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash
+    - sudo apt-get install -y nodejs
+    # Install Anaconda.
+    - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
+    - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
+    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    # Build Ray.
+    - git clone https://github.com/ray-project/ray || true
+    - ray/ci/travis/install-bazel.sh
+    - cd ray/python/ray/dashboard/client; npm ci; npm run build
+    - pip install boto3==1.4.8 cython==0.29.0 aiohttp psutil setproctitle
+    - cd ray/python; pip install -e . --verbose
 
 # Commands to start Ray on the nodes. You do not need to change this.
 ray_restart_commands:
-    common:
-        - ray stop
-    head:
-        - ulimit -n 65536; ray start --head --include-webui --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
-    worker:
-        - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379
+    - ray stop
+head_ray_restart_commands:
+    - ulimit -n 65536; ray start --head --include-webui --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+worker_ray_restart_commands:
+    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379

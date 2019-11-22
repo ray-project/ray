@@ -19,8 +19,10 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.autoscaler import get_commands, validate_config, \
+from ray.autoscaler.autoscaler import validate_config, \
     hash_runtime_conf, hash_launch_conf, fillout_defaults
+from ray.autoscaler.schema import NODE_SETUP_COMMANDS, NODE_START_COMMANDS,\
+    RAY_RESTART_COMMANDS, get_commands
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
     TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
@@ -138,7 +140,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
                 cluster_name=config["cluster_name"],
                 file_mounts=config["file_mounts"],
                 node_setup_commands=[],
-                node_restart_commands=[],
+                node_start_commands=[],
                 ray_restart_commands=[],
                 runtime_hash="")
 
@@ -235,14 +237,14 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             })
 
         node_setup_commands = get_commands(
-            config, "node_setup_commands", is_head=True)
-        node_restart_commands = get_commands(
-            config, "node_restart_commands", is_head=True)
+            config, NODE_SETUP_COMMANDS, is_head=True)
+        node_start_commands = get_commands(
+            config, NODE_START_COMMANDS, is_head=True)
         ray_restart_commands = get_commands(
-            config, "ray_restart_commands", is_head=True)
+            config, RAY_RESTART_COMMANDS, is_head=True)
         if restart_only:
             node_setup_commands = []
-            node_restart_commands = []
+            node_start_commands = []
         elif no_restart:
             ray_restart_commands = []
 
@@ -254,7 +256,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_setup_commands=node_setup_commands,
-            node_restart_commands=node_restart_commands,
+            node_start_commands=node_start_commands,
             ray_restart_commands=ray_restart_commands,
             runtime_hash=runtime_hash,
         )
@@ -366,7 +368,7 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_setup_commands=[],
-            node_restart_commands=[],
+            node_start_commands=[],
             ray_restart_commands=[],
             runtime_hash="",
         )
@@ -460,7 +462,7 @@ def rsync(config_file, source, target, override_cluster_name, down):
             cluster_name=config["cluster_name"],
             file_mounts=config["file_mounts"],
             node_setup_commands=[],
-            node_restart_commands=[],
+            node_start_commands=[],
             ray_restart_commands=[],
             runtime_hash="",
         )
