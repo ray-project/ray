@@ -174,7 +174,7 @@ script:
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
   # ray tune tests, except tests tagged jenkins only.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --show_progress_rate_limit=120 --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
