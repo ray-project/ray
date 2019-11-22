@@ -114,7 +114,7 @@ include "includes/common.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 # Due to https://github.com/grpc/grpc/issues/20034, we included streaming code here,
-# it'll be move to _streaming.pyx when grpc issue resolved
+# it'll be moved to _streaming.pyx when the grpc issue is resolved
 include "streaming/includes/native_queue.pxi"
 
 
