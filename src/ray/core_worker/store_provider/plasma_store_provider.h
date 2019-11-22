@@ -8,6 +8,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/core_worker/common.h"
+#include "ray/core_worker/context.h"
 #include "ray/raylet/raylet_client.h"
 
 namespace ray {
@@ -34,14 +35,14 @@ class CoreWorkerPlasmaStoreProvider {
   Status Seal(const ObjectID &object_id);
 
   Status Get(const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-             const TaskID &task_id,
+             const WorkerContext &ctx,
              absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
              bool *got_exception);
 
   Status Contains(const ObjectID &object_id, bool *has_object);
 
   Status Wait(const absl::flat_hash_set<ObjectID> &object_ids, int num_objects,
-              int64_t timeout_ms, const TaskID &task_id,
+              int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
   Status Delete(const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,

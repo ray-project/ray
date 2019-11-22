@@ -128,7 +128,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
 
 Status CoreWorkerPlasmaStoreProvider::Get(
     const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
-    const TaskID &task_id,
+    const WorkerContext &ctx,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
@@ -144,7 +144,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       batch_ids.push_back(id_vector[start + i]);
     }
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
-                                                 /*fetch_only=*/true, task_id, results,
+                                                 /*fetch_only=*/true, ctx.GetCurrentTaskID(), results,
                                                  got_exception));
   }
 
@@ -179,7 +179,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
     size_t previous_size = remaining.size();
     RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
-                                                 /*fetch_only=*/false, task_id, results,
+                                                 /*fetch_only=*/false, ctx.GetCurrentTaskID(), results,
                                                  got_exception));
     should_break = timed_out || *got_exception;
 
@@ -191,20 +191,20 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       Status status = check_signals_();
       if (!status.ok()) {
         // TODO(edoakes): in this case which status should we return?
-        RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
+        RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(ctx);
         return status;
       }
     }
   }
 
   if (!remaining.empty() && timed_out) {
-    RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
+    RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(ctx);
     return Status::TimedOut("Get timed out: some object(s) not ready.");
   }
 
   // Notify unblocked because we blocked when calling FetchOrReconstruct with
   // fetch_only=false.
-  return raylet_client_->NotifyUnblocked(task_id);
+  return raylet_client_->NotifyUnblocked(ctx);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
@@ -216,7 +216,7 @@ Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
 
 Status CoreWorkerPlasmaStoreProvider::Wait(
     const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
-    const TaskID &task_id, absl::flat_hash_set<ObjectID> *ready) {
+    const WorkerContext &ctx, absl::flat_hash_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
 
   bool should_break = false;
@@ -231,7 +231,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     }
 
     RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, call_timeout, false,
-                                           task_id, &result_pair));
+                                           ctx.GetCurrentTaskID(), &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;

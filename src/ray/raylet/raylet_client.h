@@ -126,13 +126,14 @@ class RayletClient : public WorkerLeaseInterface {
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
-                                 const TaskID &current_task_id);
+                                 bool should_block, const TaskID &current_task_id);
 
-  /// Notify the raylet that this client (worker) is no longer blocked.
+  /// Notify the raylet that this client (worker) is no longer blocked. This handles
+  /// both direct and non direct call cases by checking the task context.
   ///
-  /// \param current_task_id The task that is no longer blocked.
+  /// \param ctx The current task context.
   /// \return ray::Status.
-  ray::Status NotifyUnblocked(const TaskID &current_task_id);
+  ray::Status NotifyUnblocked(const WorkerContext &ctx);
 
   /// Notify the raylet that this client is blocked. This is only used for direct task
   /// calls. Note that ordering of this with respect to Unblock calls is important.

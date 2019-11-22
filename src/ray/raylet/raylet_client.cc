@@ -240,6 +240,7 @@ ray::Status RayletClient::TaskDone() {
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
                                              bool fetch_only,
+                                             bool should_block,
                                              const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
@@ -250,7 +251,11 @@ ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object
   return status;
 }
 
-ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
+ray::Status RayletClient::NotifyUnblocked(const WorkerContext &ctx) {
+  if (ctx.IsTaskIsDirectCall()) {
+    return NotifyDirectCallTaskUnblocked();
+  }
+  auto current_task_id = ctx.GetCurrentTaskID();
   flatbuffers::FlatBufferBuilder fbb;
   auto message =
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
