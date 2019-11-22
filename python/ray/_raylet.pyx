@@ -758,6 +758,7 @@ cdef class CoreWorker:
             task_execution_handler, check_signals, exit_handler, True))
 
     def disconnect(self):
+        self.destory_event_loop_if_exists()
         with nogil:
             self.core_worker.get().Disconnect()
 
@@ -1111,6 +1112,12 @@ cdef class CoreWorker:
             self.async_thread.start()
 
         return self.async_event_loop
+
+    def destory_event_loop_if_exists(self):
+        if self.async_event_loop is not None:
+            self.async_event_loop.stop()
+        if self.async_thread is None:
+            self.async_thread.join()
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()

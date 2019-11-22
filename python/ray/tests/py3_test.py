@@ -146,11 +146,11 @@ def test_asyncio_actor_concurrency(ray_start_regular):
         def __init__(self):
             self.history = []
 
-        async def do_work(self, unique_tag):
-            self.history.append((unique_tag, "STARTED"))
+        async def do_work(self):
+            self.history.append("STARTED")
             # Force a context switch
             await asyncio.sleep(0)
-            self.history.append((unique_tag, "ENDED"))
+            self.history.append("ENDED")
 
         def get_history(self):
             return self.history
@@ -159,12 +159,12 @@ def test_asyncio_actor_concurrency(ray_start_regular):
 
     a = RecordOrder.options(
         is_direct_call=True, max_concurrency=1, is_asyncio=True).remote()
-    ray.get([a.do_work.remote(i) for i in range(num_calls)])
+    ray.get([a.do_work.remote() for _ in range(num_calls)])
     history = ray.get(a.get_history.remote())
 
     answer = []
-    for i in range(num_calls):
+    for _ in range(num_calls):
         for status in ["STARTED", "ENDED"]:
-            answer.append((i, status))
+            answer.append(status)
 
     assert history == answer
