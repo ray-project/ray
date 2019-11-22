@@ -173,7 +173,11 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
     auto promoted_it = promoted_to_plasma_.find(object_id);
     if (promoted_it != promoted_to_plasma_.end()) {
       RAY_CHECK(store_in_plasma_ != nullptr);
-      store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      if (!object.IsInPlasmaError()) {
+        // Only need to promote to plasma if it wasn't already put into plasma
+        // by the task that created the object.
+        store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      }
       promoted_to_plasma_.erase(promoted_it);
     }
 
