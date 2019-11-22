@@ -50,6 +50,9 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
   RAY_CHECK(nullptr != redis_reply);
 
   switch (reply_type_) {
+  case REDIS_REPLY_NIL: {
+    break;
+  }
   case REDIS_REPLY_ERROR: {
     RAY_CHECK(false) << "Got an error in redis reply: " << redis_reply->str;
     break;
