@@ -16,7 +16,7 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
     if (max_id != 0) {
       id = id % MAX_ID_TEST;
     }
-    for (int i = 0; true; i++) {
+    for (size_t i = 0; true; i++) {
       auto it = int_to_string_.find(id);
       if (it == int_to_string_.end()) {
         /// No hash collision, so associate string_id with id.

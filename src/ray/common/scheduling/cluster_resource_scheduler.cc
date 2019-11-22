@@ -8,7 +8,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
 
 void ClusterResourceScheduler::SetPredefinedResources(const NodeResources &new_resources,
                                                       NodeResources *old_resources) {
-  for (int i = 0; i < PredefinedResources_MAX; i++) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     old_resources->capacities[i].total = new_resources.capacities[i].total;
     old_resources->capacities[i].available = new_resources.capacities[i].available;
   }
@@ -55,7 +55,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
   int violations = 0;
 
   // First, check predefined resources.
-  for (int i = 0; i < PredefinedResources_MAX; i++) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (task_req.predefined_resources[i].demand > resources.capacities[i].available) {
       if (task_req.predefined_resources[i].soft) {
         // A soft constraint has been violated.
@@ -67,7 +67,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const TaskRequest &task_req,
     }
   }
 
-  for (int i = 0; i < task_req.custom_resources.size(); i++) {
+  for (size_t i = 0; i < task_req.custom_resources.size(); i++) {
     auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
 
     if (it == resources.custom_resources.end()) {
@@ -165,13 +165,13 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
     return false;
   }
 
-  for (int i = 0; i < PredefinedResources_MAX; i++) {
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.capacities[i].available =
         std::max(static_cast<int64_t>(0), resources.capacities[i].available -
                                               task_req.predefined_resources[i].demand);
   }
 
-  for (int i = 0; i < task_req.custom_resources.size(); i++) {
+  for (size_t i = 0; i < task_req.custom_resources.size(); i++) {
     auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
     if (it != resources.custom_resources.end()) {
       it->second.available =

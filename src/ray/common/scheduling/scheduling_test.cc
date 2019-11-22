@@ -21,7 +21,7 @@ void initTaskRequest(TaskRequest &tr, vector<int64_t> &pred_demands,
                      vector<bool> &pred_soft, vector<int64_t> &cust_ids,
                      vector<int64_t> &cust_demands, vector<bool> &cust_soft,
                      vector<int64_t> &placement_hints) {
-  for (int i = 0; i < pred_demands.size(); i++) {
+  for (size_t i = 0; i < pred_demands.size(); i++) {
     ResourceRequest rq;
     rq.demand = pred_demands[i];
     rq.soft = pred_soft[i];
@@ -35,7 +35,7 @@ void initTaskRequest(TaskRequest &tr, vector<int64_t> &pred_demands,
     tr.predefined_resources.push_back(rq);
   }
 
-  for (int i = 0; i < cust_ids.size(); i++) {
+  for (size_t i = 0; i < cust_ids.size(); i++) {
     ResourceRequestWithId rq;
     rq.id = cust_ids[i];
     rq.req.demand = cust_demands[i];
@@ -43,14 +43,14 @@ void initTaskRequest(TaskRequest &tr, vector<int64_t> &pred_demands,
     tr.custom_resources.push_back(rq);
   }
 
-  for (int i = 0; i < placement_hints.size(); i++) {
+  for (size_t i = 0; i < placement_hints.size(); i++) {
     tr.placement_hints.insert(placement_hints[i]);
   }
 };
 
 void initNodeResources(NodeResources &node, vector<int64_t> &pred_capacities,
                        vector<int64_t> &cust_ids, vector<int64_t> &cust_capacities) {
-  for (int i = 0; i < pred_capacities.size(); i++) {
+  for (size_t i = 0; i < pred_capacities.size(); i++) {
     ResourceCapacity rc;
     rc.total = rc.available = pred_capacities[i];
     node.capacities.push_back(rc);
@@ -65,7 +65,7 @@ void initNodeResources(NodeResources &node, vector<int64_t> &pred_capacities,
   }
 
   ResourceCapacity rc;
-  for (int i = 0; i < cust_capacities.size(); i++) {
+  for (size_t i = 0; i < cust_capacities.size(); i++) {
     rc.total = rc.available = cust_capacities[i];
     node.custom_resources.insert(pair<int64_t, ResourceCapacity>(cust_ids[i], rc));
   }
@@ -110,7 +110,7 @@ bool nodeResourcesEqual(const NodeResources &nr1, const NodeResources &nr2) {
     return false;
   }
 
-  for (int i = 0; i < nr1.capacities.size(); i++) {
+  for (size_t i = 0; i < nr1.capacities.size(); i++) {
     if (nr1.capacities[i].available != nr2.capacities[i].available) {
       return false;
     }
@@ -154,7 +154,7 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   hash<string> hasher;
   int num = 10;  // should be greater than 10.
 
-  for (int i = 0; i < num; i++) {
+  for (size_t i = 0; i < num; i++) {
     ids.Insert(to_string(i));
   }
   ASSERT_EQ(ids.Count(), num);
@@ -172,7 +172,7 @@ TEST_F(SchedulingTest, SchedulingIdTest) {
   /// Test for handling collision.
   StringIdMap short_ids;
   uint8_t max_id = 8;
-  for (int i = 0; i < max_id; i++) {
+  for (size_t i = 0; i < max_id; i++) {
     int64_t id = short_ids.Insert(to_string(i), max_id);
     ASSERT_TRUE(id < max_id);
   }
@@ -263,13 +263,13 @@ TEST_F(SchedulingTest, SchedulingUpdateAvailableResourcesTest) {
     cluster_resources.SubtractNodeAvailableResources(node_id, task_req);
     ASSERT_TRUE(cluster_resources.GetNodeResources(node_id, &nr2));
 
-    for (int i = 0; i < PRED_CUSTOM_LEN; i++) {
+    for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
       int64_t t = nr1.capacities[i].available - task_req.predefined_resources[i].demand;
       if (t < 0) t = 0;
       ASSERT_EQ(nr2.capacities[i].available, t);
     }
 
-    for (int i = 0; i < PRED_CUSTOM_LEN; i++) {
+    for (size_t i = 0; i < PRED_CUSTOM_LEN; i++) {
       auto it1 = nr1.custom_resources.find(task_req.custom_resources[i].id);
       if (it1 != nr1.custom_resources.end()) {
         auto it2 = nr2.custom_resources.find(task_req.custom_resources[i].id);
@@ -493,7 +493,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
   vector<string> search_key_strings;
   vector<int64_t> search_key_ints;
 
-  for (int i = 0; i < map_len; i++) {
+  for (size_t i = 0; i < map_len; i++) {
     int id = rand() % map_len;
     search_key_strings.push_back(to_string(id));
     search_key_ints.push_back(id);
@@ -503,7 +503,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
     amap_string_key.emplace(to_string(i), i);
   }
 
-  for (int i = 0; i < 25; i++) {
+  for (size_t i = 0; i < 25; i++) {
     cout << "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" << endl;
   }
 
@@ -511,7 +511,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
 
   auto t_start = std::chrono::high_resolution_clock::now();
   sum = 0;
-  for (int i = 0; i < map_len; i++) {
+  for (size_t i = 0; i < map_len; i++) {
     auto it = umap_int_key.find(search_key_ints[i]);
     if (it != umap_int_key.end()) {
       sum += it->second;
@@ -523,7 +523,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
 
   t_start = std::chrono::high_resolution_clock::now();
   sum = 0;
-  for (int i = 0; i < map_len; i++) {
+  for (size_t i = 0; i < map_len; i++) {
     auto it = umap_string_key.find(search_key_strings[i]);
     if (it != umap_string_key.end()) {
       sum += it->second;
@@ -535,7 +535,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
 
   t_start = std::chrono::high_resolution_clock::now();
   sum = 0;
-  for (int i = 0; i < map_len; i++) {
+  for (size_t i = 0; i < map_len; i++) {
     auto it = amap_int_key.find(search_key_ints[i]);
     if (it != amap_int_key.end()) {
       sum += it->second;
@@ -547,7 +547,7 @@ TEST_F(SchedulingTest, SchedulingMapPerformanceTest) {
 
   t_start = std::chrono::high_resolution_clock::now();
   sum = 0;
-  for (int i = 0; i < map_len; i++) {
+  for (size_t i = 0; i < map_len; i++) {
     auto it = amap_string_key.find(search_key_strings[i]);
     if (it != amap_string_key.end()) {
       sum += it->second;
