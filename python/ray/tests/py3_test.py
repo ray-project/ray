@@ -96,18 +96,15 @@ def test_args_intertwined(ray_start_regular):
     test_function(local_method, actor_method)
     ray.get(remote_test_function.remote(local_method, actor_method))
 
+
 def test_asyncio_actor(ray_start_regular):
     @ray.remote
     class AsyncBatcher(object):
         def __init__(self):
             self.batch = []
-            # The event currently need to be created from the same thread.
-            # We currently run async coroutines from a different thread.
-            self.event = None
+            self.event = asyncio.Event()
 
         async def add(self, x):
-            if self.event is None:
-                self.event = asyncio.Event()
             self.batch.append(x)
             if len(self.batch) >= 3:
                 self.event.set()

@@ -130,11 +130,13 @@ MEMCOPY_THREADS = 12
 PY3 = cpython.PY_MAJOR_VERSION >= 3
 
 
-if cpython.PY_MAJOR_VERSION >= 3:
+if PY3:
     import pickle
 else:
     import cPickle as pickle
 
+if PY3:
+    from ray.async_compat import sync_to_async
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
@@ -559,14 +561,13 @@ cdef execute_task(
             function = execution_info.function
 
             if PY3 and core_worker.current_actor_is_asyncio():
-                def sync_to_async(func):
-                    async def wrapper(*args, **kwargs):
-                        return func(*args, **kwargs)
-                    return wrapper
 
                 if function.is_async_method:
                     async_function = function
                 else:
+                    # Just execute the method if it's ray internal method.
+                    if function.name.startswith("__ray"):
+                        return function(actor, *arguments, **kwarguments)
                     async_function = sync_to_async(function)
 
                 coroutine = async_function(actor, *arguments, **kwarguments)
