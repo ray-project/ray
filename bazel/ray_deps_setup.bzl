@@ -104,9 +104,9 @@ def ray_deps_setup():
     github_repository(
         name = "com_github_nelhage_rules_boost",
         # If you update the Boost version, remember to update the 'boost' rule.
-        commit = "e3b1c64a2d5d59dcf012d80e677f6e6df5b2802e",
+        commit = "df908358c605a7d5b8bbacde07afbaede5ac12cf",
         remote = "https://github.com/nelhage/rules_boost",
-        sha256 = "1065a0cea2f4898a36d0140e6ef1e49b293833fc89f47d7a7c7528e77211998f",
+        sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
     )
 
     github_repository(
