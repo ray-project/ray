@@ -5,11 +5,11 @@
 #include <mutex>
 #include <queue>
 
-#include "../streaming_serializable.h"
+#include "message/streaming_serializable.h"
+#include "protobuf/streaming_queue.pb.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"
-#include "streaming_logging.h"
-#include "queue/streaming_queue.pb.h"
+#include "util/streaming_logging.h"
 
 namespace ray {
 namespace streaming {

@@ -2,7 +2,7 @@
 #define RAY_STREAMING_CHANNEL_H
 
 #include "streaming.h"
-#include "streaming_config.h"
+#include "config/streaming_config.h"
 #include "streaming_ring_buffer.h"
 
 namespace ray {

@@ -11,8 +11,8 @@
 #include <queue>
 
 #include "ray/common/status.h"
-#include "streaming_logging.h"
-#include "streaming_message.h"
+#include "util/streaming_logging.h"
+#include "message/streaming_message.h"
 
 namespace ray {
 namespace streaming {

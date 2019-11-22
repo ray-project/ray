@@ -9,8 +9,8 @@
 
 #include "streaming.h"
 #include "streaming_channel.h"
-#include "streaming_config.h"
-#include "streaming_message_bundle.h"
+#include "config/streaming_config.h"
+#include "message/streaming_message_bundle.h"
 #include "streaming_transfer.h"
 
 namespace ray {

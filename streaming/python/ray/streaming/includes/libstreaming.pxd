@@ -57,7 +57,7 @@ cdef extern from "streaming.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingCommon "ray::streaming::StreamingCommon":
         void SetConfig(const uint8_t *, uint32_t size)
 
-cdef extern from "streaming_message.h" namespace "ray::streaming" nogil:
+cdef extern from "message/streaming_message.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageType "ray::streaming::StreamingMessageType":
         pass
     cdef CStreamingMessageType MessageTypeBarrier "ray::streaming::StreamingMessageType::Barrier"
@@ -68,12 +68,12 @@ cdef extern from "streaming_message.h" namespace "ray::streaming" nogil:
         inline CStreamingMessageType GetMessageType() const
         inline uint64_t GetMessageSeqId() const
 
-cdef extern from "streaming_serializable.h" namespace "ray::streaming" nogil:
+cdef extern from "message/streaming_serializable.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingSerializable "ray::streaming::StreamingSerializable":
         void ToBytes(uint8_t *)
         uint32_t ClassBytesSize()
 
-cdef extern from "streaming_message_bundle.h" namespace "ray::streaming" nogil:
+cdef extern from "message/streaming_message_bundle.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageBundleType "ray::streaming::StreamingMessageBundleType":
         pass
     cdef CStreamingMessageBundleType BundleTypeEmpty "ray::streaming::StreamingMessageBundleType::Empty"

@@ -3,7 +3,7 @@
 #include <boost/any.hpp>
 #include <unordered_map>
 
-#include "streaming_logging.h"
+#include "util/streaming_logging.h"
 
 namespace ray {
 namespace streaming {

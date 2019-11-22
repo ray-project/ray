@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "streaming.pb.h"
+#include "protobuf/streaming.pb.h"
 #include "ray/common/id.h"
 
 namespace ray {

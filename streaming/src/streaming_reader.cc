@@ -10,7 +10,7 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-#include "streaming_message_bundle.h"
+#include "message/streaming_message_bundle.h"
 #include "streaming_reader.h"
 
 namespace ray {

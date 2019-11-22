@@ -1,6 +1,6 @@
 #include "queue_manager.h"
 #include "utils.h"
-#include "config.h"
+#include "config/config.h"
 
 namespace ray {
 namespace streaming {

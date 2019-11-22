@@ -6,16 +6,16 @@
 #include <sstream>
 #include <string>
 
-#include "queue_interface.h"
+#include "queue/queue_interface.h"
 #include "ray/common/id.h"
 #include "ray/protobuf/common.pb.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/util.h"
 
 #include "streaming_channel.h"
-#include "streaming_config.h"
-#include "streaming_logging.h"
-#include "streaming_utility.h"
+#include "config/streaming_config.h"
+#include "util/streaming_logging.h"
+#include "util/streaming_utility.h"
 
 namespace ray {
 namespace streaming {

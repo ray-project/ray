@@ -5,8 +5,8 @@
 #include "ray/core_worker/core_worker.h"
 
 #include "streaming.h"
-#include "streaming_message.h"
-#include "streaming_message_bundle.h"
+#include "message/streaming_message.h"
+#include "message/streaming_message_bundle.h"
 #include "streaming_reader.h"
 #include "streaming_ring_buffer.h"
 #include "streaming_writer.h"

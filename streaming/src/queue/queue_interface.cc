@@ -1,7 +1,6 @@
 #include "ray/util/util.h"
 
 #include "queue_interface.h"
-#include "streaming.h"
 
 namespace ray {
 namespace streaming {

@@ -9,8 +9,8 @@
 #include <vector>
 
 #include "streaming.h"
-#include "streaming_message_bundle.h"
-#include "streaming_message_merger.h"
+#include "message/streaming_message_bundle.h"
+#include "message/streaming_message_merger.h"
 #include "streaming_transfer.h"
 
 namespace ray {

@@ -3,7 +3,6 @@
 #include <mutex>
 
 #include "streaming.h"
-#include "streaming.pb.h"
 
 namespace ray {
 namespace streaming {

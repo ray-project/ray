@@ -3,9 +3,9 @@
 
 #include "ray/common/status.h"
 
-#include "streaming_config.h"
-#include "streaming_logging.h"
 #include "streaming_message_bundle.h"
+#include "config/streaming_config.h"
+#include "util/streaming_logging.h"
 
 namespace ray {
 namespace streaming {

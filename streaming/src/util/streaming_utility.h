@@ -1,13 +1,10 @@
 #ifndef RAY_STREAMING_UTILITY_H
 #define RAY_STREAMING_UTILITY_H
 #include <string>
-
-#include "streaming.h"
+#include <unordered_map>
 
 namespace ray {
 namespace streaming {
-
-typedef std::map<std::string, std::string> TagMap;
 
 class StreamingUtility {
  public:

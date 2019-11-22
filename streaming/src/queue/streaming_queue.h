@@ -7,7 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/util/util.h"
 
-#include "streaming_logging.h"
+#include "util/streaming_logging.h"
 #include "streaming_queue_item.h"
 #include "transport.h"
 #include "utils.h"

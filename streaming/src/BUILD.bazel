@@ -1,19 +1,11 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@com_github_ray_project_ray//bazel:ray.bzl", "flatbuffer_py_library")
 load("@com_github_ray_project_ray//bazel:cython_library.bzl", "pyx_library")
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-
-FLATC_ARGS = [
-    "--gen-object-api",
-    "--gen-mutable",
-    "--scoped-enums",
-]
 
 proto_library(
     name = "streaming_proto",
-    srcs = ["streaming.proto"],
+    srcs = ["protobuf/streaming.proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -24,7 +16,7 @@ cc_proto_library(
 
 proto_library(
     name = "streaming_queue_proto",
-    srcs = ["queue/streaming_queue.proto"],
+    srcs = ["protobuf/streaming_queue.proto"],
 )
 
 cc_proto_library(
@@ -33,10 +25,80 @@ cc_proto_library(
 )
 
 cc_library(
+    name = "streaming_util",
+    srcs = glob([
+        "util/*.cc",
+    ]),
+    hdrs = glob([
+        "util/*.h",
+    ]),
+    includes = [
+        ".",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//:ray_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "streaming_config",
+    srcs = glob([
+        "config/*.cc",
+    ]),
+    hdrs = glob([
+        "config/*.h",
+    ]),
+    deps = [
+        ":streaming_cc_proto",
+        ":streaming_util",
+        "//:ray_common",
+        "@boost//:any",
+    ],
+)
+
+cc_library(
+    name = "streaming_message",
+    srcs = glob([
+        "message/*.cc",
+    ]),
+    hdrs = glob([
+        "message/*.h",
+    ]),
+    deps = [
+        ":streaming_config",
+        ":streaming_util",
+        "//:ray_common",
+    ],
+)
+
+cc_library(
+    name = "streaming_queue",
+    srcs = glob([
+        "queue/*.cc",
+    ]),
+    hdrs = glob([
+        "queue/*.h",
+    ]),
+    deps = [
+        ":streaming_config",
+        ":streaming_message",
+        ":streaming_queue_cc_proto",
+        ":streaming_util",
+        "//:core_worker_lib",
+        "//:ray_common",
+        "//:ray_util",
+        "//:raylet_lib",
+        "@boost//:asio",
+        "@boost//:thread",
+    ],
+)
+
+cc_library(
     name = "streaming_lib",
     srcs = glob([
         "*.cc",
-        "queue/*.cc",
     ]),
     hdrs = glob([
         "*.h",
@@ -45,17 +107,14 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        ":streaming_cc_proto",
-        ":streaming_queue_cc_proto",
-        "//:core_worker_lib",
+        ":streaming_config",
+        ":streaming_message",
+        ":streaming_queue",
+        ":streaming_util",
         "//:ray_common",
         "//:ray_util",
         "//:raylet_lib",
-        "@boost//:any",
-        "@boost//:asio",
         "@boost//:circular_buffer",
-        "@boost//:thread",
-        "@com_google_googletest//:gtest",
     ],
 )
 

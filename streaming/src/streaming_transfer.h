@@ -1,7 +1,7 @@
 #ifndef RAY_STREAMING_TRANSFER_H
 #define RAY_STREAMING_TRANSFER_H
-#include "config.h"
-#include "queue_interface.h"
+#include "config/config.h"
+#include "queue/queue_interface.h"
 #include "streaming.h"
 #include "streaming_channel.h"
 
