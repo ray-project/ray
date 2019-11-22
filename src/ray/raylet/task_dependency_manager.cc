@@ -330,7 +330,9 @@ void TaskDependencyManager::TaskPending(const Task &task) {
     }
 
     // Acquire the lease for the task's execution in the global lease table.
-    AcquireTaskLease(task_id);
+    if (!task.IsDirectCall()) {
+      AcquireTaskLease(task_id);
+    }
   }
 }
 

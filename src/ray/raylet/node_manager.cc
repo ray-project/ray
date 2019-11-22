@@ -2418,6 +2418,11 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
   RAY_LOG(DEBUG) << "Attempting to resubmit task "
                  << task.GetTaskSpecification().TaskId();
 
+  if (task.GetTaskSpecification().IsDirectCall()) {
+    TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
+    return;
+  }
+
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
@@ -2582,6 +2587,7 @@ void NodeManager::ForwardTask(
                      << node_id;
     task.OnSpillback()(node_id, node_info.node_manager_address(),
                        node_info.node_manager_port());
+    task_dependency_manager_.TaskCanceled(task.GetTaskSpecification().TaskId());
     return;
   }
 
