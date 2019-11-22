@@ -15,7 +15,6 @@ import redis
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.tests.conftest import generate_internal_config_map
 from ray.tests.cluster_utils import Cluster
 from ray.tests.utils import (
     relevant_errors,
@@ -804,108 +803,67 @@ def test_fill_object_store_exception(ray_start_cluster_head):
 
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
-        "object_store_memory": 150 * 1024 * 1024,
-        "num_nodes": 2,
-        "num_cpus": 5,
-        **generate_internal_config_map(
-            object_manager_repeated_push_delay_ms=1000,
-            initial_reconstruction_timeout_milliseconds=200,
-        )
-    }, {
-        "object_store_memory": 150 * 1024 * 1024,
         "num_nodes": 1,
-        "num_cpus": 10,
+        "num_cpus": 2,
+    }, {
+        "num_nodes": 2,
+        "num_cpus": 1,
     }],
     indirect=True)
 def test_direct_call_eviction(ray_start_cluster):
-    object_store_memory = 150 * 1024 * 1024
-    num_objects = 10
-
     @ray.remote
-    def create_object(size):
-        return np.random.rand(size)
+    def large_object():
+        return np.zeros(10 * 1024 * 1024)
 
-    # Submit enough tasks so that they exceed the size of the object store.
-    objects = []
-    for _ in range(num_objects):
-        obj = create_object.remote(object_store_memory // num_objects)
-        objects.append(obj)
-        # Get each object once to make sure each object gets created.
+    obj = large_object.remote()
+    assert (isinstance(ray.get(obj), np.ndarray))
+    # Evict the object.
+    ray.internal.free([obj])
+    while ray.worker.global_worker.core_worker.object_exists(obj):
+        time.sleep(1)
+    # ray.get throws an exception.
+    with pytest.raises(ray.exceptions.UnreconstructableError):
         ray.get(obj)
 
-    # Get each object again. At this point, the earlier objects should have
-    # been evicted.
-    num_evicted, num_success = 0, 0
-    for obj in objects:
-        try:
-            val = ray.get(obj)
-            assert isinstance(val, np.ndarray), val
-            num_success += 1
-        except ray.exceptions.UnreconstructableError:
-            num_evicted += 1
-    # Some objects should have been evicted, and some should still be in the
-    # object store.
-    assert num_evicted > 0
-    assert num_success > 0
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    # If the object is passed by reference, the task throws an
+    # exception.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(dependent_task.remote(obj))
 
 
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
-        "object_store_memory": 150 * 1024 * 1024,
-        "num_nodes": 2,
-        "num_cpus": 5,
-        **generate_internal_config_map(
-            object_manager_repeated_push_delay_ms=1000,
-            initial_reconstruction_timeout_milliseconds=200,
-        )
-    }, {
-        "object_store_memory": 150 * 1024 * 1024,
         "num_nodes": 1,
-        "num_cpus": 10,
+        "num_cpus": 2,
+    }, {
+        "num_nodes": 2,
+        "num_cpus": 1,
     }],
     indirect=True)
 def test_direct_call_serialized_id_eviction(ray_start_cluster):
-    object_store_memory = 150 * 1024 * 1024
-    num_objects = 10
-
     @ray.remote
-    def create_object(size):
-        print("create")
-        # Sleep a bit to allow getters to time out.
-        time.sleep(1)
-        print("create done")
-        return np.random.rand(size)
+    def large_object():
+        return np.zeros(10 * 1024 * 1024)
 
     @ray.remote
     def get(obj_ids):
         print("get", obj_ids)
         obj_id = obj_ids[0]
-        val = ray.get(obj_id)
+        assert (isinstance(ray.get(obj_id), np.ndarray))
+        # Evict the object.
+        ray.internal.free(obj_ids)
+        while ray.worker.global_worker.core_worker.object_exists(obj_id):
+            time.sleep(1)
+        with pytest.raises(ray.exceptions.UnreconstructableError):
+            ray.get(obj_id)
         print("get done", obj_ids)
-        assert isinstance(val, np.ndarray), val
 
-    # Submit enough tasks so that they exceed the size of the object store.
-    objects = []
-    for _ in range(num_objects):
-        obj = create_object.remote(object_store_memory // num_objects)
-        objects.append(obj)
-
-    tasks = [get.remote([obj]) for obj in objects]
-
-    # Get each object again. At this point, the earlier objects should have
-    # been evicted.
-    num_evicted, num_success = 0, 0
-    for task in tasks:
-        try:
-            val = ray.get(task)
-            assert val is None
-            num_success += 1
-        except ray.exceptions.UnreconstructableError:
-            num_evicted += 1
-        except ray.exceptions.RayTaskError:
-            num_evicted += 1
-    # Some objects should have been evicted.
-    assert num_evicted > 0
+    obj = large_object.remote()
+    ray.get(get.remote([obj]))
 
 
 @pytest.mark.skip(
@@ -921,52 +879,17 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
     indirect=True)
 def test_direct_call_serialized_id(ray_start_cluster):
     @ray.remote
-    def create_object():
-        print("create")
-        # Sleep a bit to allow getters to time out.
+    def small_object():
+        # Sleep a bit before creating the object to force a timeout
+        # at the getter.
         time.sleep(1)
-        print("create done")
-        return np.random.rand(1)
+        return 1
 
     @ray.remote
     def get(obj_ids):
         print("get", obj_ids)
         obj_id = obj_ids[0]
-        val = ray.get(obj_id)
-        print("get done", obj_ids)
-        assert isinstance(val, np.ndarray), val
+        assert ray.get(obj_id) == 1
 
-    # Submit enough tasks so that they exceed the size of the object store.
-    objects = []
-    num_objects = 10
-    for _ in range(num_objects):
-        obj = create_object.remote()
-        objects.append(obj)
-
-    tasks = [get.remote([obj]) for obj in objects]
-    for obj in objects:
-        try:
-            ray.get(obj)
-        except ray.exceptions.UnreconstructableError:
-            pass
-        except ray.exceptions.RayTaskError:
-            pass
-
-    # Get each object again. At this point, the earlier objects should have
-    # been evicted.
-    num_evicted, num_success = 0, 0
-    for task in tasks:
-        try:
-            val = ray.get(task)
-            assert val is None
-            num_success += 1
-        except ray.exceptions.UnreconstructableError:
-            num_evicted += 1
-        except ray.exceptions.RayTaskError:
-            num_evicted += 1
-    # Some objects should have been evicted, and some should still be in the
-    # object store.
-    assert num_evicted == 0
-    # TODO(swang): Change this to > once eviction errors have been implemented
-    # for serialized IDs.
-    assert num_success > 0
+    obj = small_object.remote()
+    ray.get(get.remote([obj]))
