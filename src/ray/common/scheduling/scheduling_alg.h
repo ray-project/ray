@@ -74,7 +74,7 @@ class ClusterResourceScheduler {
   ///
   /// \param old_resources: Custom resources to be updated.
   /// \parame new_resources: New custom resources.
-  void UpdateCustomResources(
+  void SetCustomResources(
     std::unordered_map<int64_t, ResourceCapacity>& old_custom_resources,
     const std::unordered_map<int64_t, ResourceCapacity>& new_custom_resources);
 
