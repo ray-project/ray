@@ -63,12 +63,19 @@ class ClusterResourceScheduler {
   /// ID of local node.
   int64_t local_node_id_;
 
-  /// Update predefined resources.
+  /// Set predefined resources.
   ///
-  /// \param old_resources: Predefined resources to be updated.
-  /// \parame new_resources: New predefined resources.
-  void UpdatePredefinedResources(const NodeResources &new_resources,
-                                 NodeResources *old_resources);
+  /// \param[in] new_resources: New predefined resources.
+  /// \param[out] old_resources: Predefined resources to be updated.
+  void SetPredefinedResources(const NodeResources &new_resources,
+                              NodeResources *old_resources);
+  /// Set custom resources.
+  ///
+  /// \param[in] new_resources: New custom resources.
+  /// \param[out] old_resources: Custom resources to be updated.
+  void SetCustomResources(
+      const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
+      absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
  public:
   ClusterResourceScheduler(void){};
