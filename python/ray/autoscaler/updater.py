@@ -402,7 +402,8 @@ class NodeUpdater(object):
 
         node_tags = self.provider.node_tags(self.node_id)
         logger.debug("Node tags: {}".format(str(node_tags)))
-        same_config = node_tags.get(TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash
+        same_config = node_tags.get(
+            TAG_RAY_RUNTIME_CONFIG) == self.runtime_hash
         if same_config:
             logger.info(self.log_prefix +
                         "{} already up-to-date, skip to start commands".format(

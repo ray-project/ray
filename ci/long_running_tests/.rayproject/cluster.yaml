@@ -33,7 +33,7 @@ worker_nodes:
         MarketType: spot
 
 # List of shell commands to run to set up nodes.
-setup_commands:
+node_creation_commands:
     # Install latest TensorFlow
     - source activate tensorflow_p36 && conda remove -y --force wrapt || true
     - source activate tensorflow_p36 && pip install -U tensorflow==1.14
@@ -48,10 +48,10 @@ setup_commands:
     # - cd ray/python; git checkout master; git pull; source activate tensorflow_p36 && pip install -e . --verbose
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands: []
+head_node_creation_commands: []
 
 # Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
+worker_node_creation_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands: []

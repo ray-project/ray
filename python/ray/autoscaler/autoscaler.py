@@ -16,8 +16,9 @@ from collections import defaultdict
 import numpy as np
 import ray.services as services
 import yaml
-from ray.autoscaler.schema import CLUSTER_CONFIG_SCHEMA, NODE_SETUP_COMMANDS, \
-    NODE_START_COMMANDS, RAY_RESTART_COMMANDS, REQUIRED, get_commands
+from ray.autoscaler.schema import CLUSTER_CONFIG_SCHEMA, \
+    NODE_CREATION_COMMANDS, NODE_START_COMMANDS, RAY_START_COMMAND, \
+    REQUIRED, get_commands
 from ray.worker import global_worker
 from ray.autoscaler.docker import dockerize_if_needed
 from ray.autoscaler.node_provider import get_node_provider, \
@@ -466,10 +467,10 @@ class StandardAutoscaler(object):
             new_launch_hash = hash_launch_conf(new_config["worker_nodes"],
                                                new_config["auth"])
             new_runtime_hash = hash_runtime_conf(new_config["file_mounts"], [
-                new_config[NODE_SETUP_COMMANDS],
-                new_config["worker_" + NODE_SETUP_COMMANDS],
-                new_config[RAY_RESTART_COMMANDS],
-                new_config["worker_" + RAY_RESTART_COMMANDS],
+                new_config[NODE_CREATION_COMMANDS],
+                new_config["worker_" + NODE_CREATION_COMMANDS],
+                new_config[RAY_START_COMMAND],
+                new_config["worker_" + RAY_START_COMMAND],
             ])
             self.config = new_config
             self.launch_hash = new_launch_hash
@@ -551,8 +552,7 @@ class StandardAutoscaler(object):
             node_setup_commands=[],
             node_start_commands=[],
             ray_restart_commands=with_head_node_ip(
-                get_commands(self.config, RAY_RESTART_COMMANDS,
-                             is_head=False)),
+                get_commands(self.config, RAY_START_COMMAND, is_head=False)),
             runtime_hash=self.runtime_hash,
             process_runner=self.process_runner,
             use_internal_ip=True)
@@ -569,11 +569,11 @@ class StandardAutoscaler(object):
 
         successful_updated = self.num_successful_updates.get(node_id, 0) > 0
         node_setup_commands = get_commands(
-            self.config, NODE_SETUP_COMMANDS, is_head=False)
+            self.config, NODE_CREATION_COMMANDS, is_head=False)
         node_start_commands = get_commands(
             self.config, NODE_START_COMMANDS, is_head=False)
         ray_restart_commands = get_commands(
-            self.config, RAY_RESTART_COMMANDS, is_head=False)
+            self.config, RAY_START_COMMAND, is_head=False)
         if successful_updated and self.config.get("restart_only", False):
             node_setup_commands = []
             node_start_commands = []

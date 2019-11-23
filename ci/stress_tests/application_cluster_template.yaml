@@ -85,7 +85,7 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-setup_commands:
+node_creation_commands:
     - wget --quiet https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<<<RAY_VERSION>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
     - source activate tensorflow_p36 && pip install -U ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
     - source activate tensorflow_p36 && pip install ray[rllib] ray[debug]
@@ -95,11 +95,11 @@ setup_commands:
     # - sudo dpkg --configure -a
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
+head_node_creation_commands:
     - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 
 # Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
+worker_node_creation_commands: []
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:

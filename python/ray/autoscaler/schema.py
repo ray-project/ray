@@ -1,5 +1,7 @@
 """Defines schema for autoscaler YAML config files."""
 
+import warnings
+
 REQUIRED, OPTIONAL = True, False
 
 # For (a, b), if a is a dictionary object, then
@@ -122,14 +124,20 @@ def make_command_schema(suffix):
 
 
 # Commands that will be run when the cluster is first created.
-NODE_SETUP_COMMANDS = "node_setup_commands"
+NODE_CREATION_COMMANDS = "node_creation_commands"
 # Commands that will be run whenever a node is booted, including after
 # `node_setup_commands` when the cluster is created.
 NODE_START_COMMANDS = "node_start_commands"
 # Commands that will be run whenever Ray is (re)started.
-RAY_RESTART_COMMANDS = "ray_restart_commands"
+RAY_START_COMMAND = "start_ray_commmands"
 
-for suffix in [NODE_SETUP_COMMANDS, NODE_START_COMMANDS, RAY_RESTART_COMMANDS]:
+for suffix in [
+        NODE_CREATION_COMMANDS,
+        NODE_START_COMMANDS,
+        RAY_START_COMMAND,
+        # TODO: remove deprecated "setup_commands" in 0.8.x release
+        "setup_commands"
+]:
     CLUSTER_CONFIG_SCHEMA.update(make_command_schema(suffix))
 
 
@@ -140,4 +148,15 @@ def get_commands(config, key, is_head=False):
     to the head/worker specific config.
     """
     kind_specific = "head" if is_head else "worker"
+    kind_specific_key = kind_specific + "_" + key
+    # TODO: remove backward compatibility code in 0.8.x release
+    if key == "node_creation_commands":
+        no_creation = key not in config and kind_specific_key not in config
+        if no_creation:
+            res = get_commands(config, "setup_commands", is_head=is_head)
+            if res:
+                msg = ("Using deprecated config parameter 'setup_commands'; "
+                       "update your config to use 'node_creation_commands'.")
+                warnings.warn(msg, DeprecationWarning)
+            return res
     return config.get(key, []) + config.get(kind_specific + "_" + key, [])

@@ -110,7 +110,7 @@ file_mounts: {
 }
 
 # List of shell commands to run to set up nodes.
-node_setup_commands:
+node_creation_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
@@ -128,7 +128,7 @@ node_setup_commands:
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp27-cp27mu-manylinux1_x86_64.whl
     # - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp35-cp35m-manylinux1_x86_64.whl
     - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-0.8.0.dev6-cp36-cp36m-manylinux1_x86_64.whl
-head_node_setup_commands:
+head_node_creation_commands:
     - pip install google-api-python-client==1.7.8
 
 # List of commands that will be run each time the node is booted.
@@ -136,9 +136,9 @@ head_node_setup_commands:
 node_start_commands: []
 
 # Commands to start Ray on the nodes. You do not need to change this.
-ray_restart_commands:
+start_ray_commands:
     - ray stop
-head_ray_restart_commands:
+head_start_ray_commands:
     - >-
       ulimit -n 65536;
       ray start
@@ -146,7 +146,7 @@ head_ray_restart_commands:
       --redis-port=6379
       --object-manager-port=8076
       --autoscaling-config=~/ray_bootstrap_config.yaml
-worker_ray_restart_commands:
+worker_start_ray_commands:
     - >-
       ulimit -n 65536;
       ray start

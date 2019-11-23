@@ -112,9 +112,9 @@ head_node_start_commands:
     - IN_DOCKER pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 
 # Commands to start Ray on the nodes. You do not need to change this.
-ray_restart_commands:
+start_ray_commands:
     - IN_DOCKER ray stop
-head_ray_restart_commands:
+head_start_ray_commands:
     - IN_DOCKER ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-worker_ray_restart_commands:
+worker_start_ray_commands:
     - IN_DOCKER ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

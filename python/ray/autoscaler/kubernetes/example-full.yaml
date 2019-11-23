@@ -145,7 +145,7 @@ head_node:
                   # cause problems for other pods.
                   memory: 2Gi
           env:
-              # This is used in the head_ray_restart_commands below so that
+              # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
               # may lead to degraded performance.
               - name: MY_CPU_REQUEST
@@ -205,7 +205,7 @@ worker_nodes:
                   # 30% for plasma, and 70% for workers.
                   memory: 2Gi
           env:
-              # This is used in the head_ray_restart_commands below so that
+              # This is used in the head_start_ray_commands below so that
               # Ray can spawn the correct number of processes. Omitting this
               # may lead to degraded performance.
               - name: MY_CPU_REQUEST
@@ -221,16 +221,16 @@ file_mounts: {
 }
 
 # List of commands that will be run when the node is first created.
-node_setup_commands: []
+node_creation_commands: []
 
 # List of commands that will be run each time the node is booted.
 # On the first boot, these will run after `node_setup_commands`.
 node_start_commands: []
 
 # Commands to start Ray on the nodes. You do not need to change this.
-ray_restart_commands:
+start_ray_commands:
     - ray stop
-head_ray_restart_commands:
+head_start_ray_commands:
     - ulimit -n 65536; ray start --head --num-cpus=$MY_CPU_REQUEST --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
-worker_ray_restart_commands:
+worker_start_ray_commands:
     - ulimit -n 65536; ray start --num-cpus=$MY_CPU_REQUEST --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

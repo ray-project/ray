@@ -17,7 +17,7 @@ head_node:
     InstanceType: m5.large
     ImageId: ami-06f2f779464715dc5
 
-setup_commands:
+node_creation_commands:
   # Install Anaconda.
   - wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh || true
   - bash Anaconda3-5.0.1-Linux-x86_64.sh -b -p $HOME/anaconda3 || true

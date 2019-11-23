@@ -9,8 +9,8 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler.schema import NODE_SETUP_COMMANDS, NODE_START_COMMANDS, \
-    RAY_RESTART_COMMANDS
+from ray.autoscaler.schema import NODE_CREATION_COMMANDS, \
+    NODE_START_COMMANDS, RAY_START_COMMAND
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,10 @@ def dockerize_if_needed(config):
     docker_mounts = {dst: dst for dst in config["file_mounts"]}
 
     # Rewrite commands to include `docker exec` where needed
-    for suffix in [NODE_START_COMMANDS, RAY_RESTART_COMMANDS]:
+    for suffix in [NODE_START_COMMANDS, RAY_START_COMMAND]:
         for prefix in ["", "head_", "worker_"]:
             env_vars = None
-            if suffix == RAY_RESTART_COMMANDS and prefix == "worker_":
+            if suffix == RAY_START_COMMAND and prefix == "worker_":
                 env_vars = ["RAY_HEAD_IP"]
 
             config[prefix + suffix] = maybe_docker_exec(
@@ -55,7 +55,7 @@ def dockerize_if_needed(config):
 
     if docker_pull:
         docker_pull_cmd = "docker pull {}".format(docker_image)
-        common_setup_cmds = config.setdefault(NODE_SETUP_COMMANDS, [])
+        common_setup_cmds = config.setdefault(NODE_CREATION_COMMANDS, [])
         common_setup_cmds.append(docker_pull_cmd)
 
     head_docker_start = docker_start_cmds(ssh_user, head_docker_image,
@@ -68,9 +68,8 @@ def dockerize_if_needed(config):
 
     config["head_" + NODE_START_COMMANDS] = (
         head_docker_start + config["head_" + NODE_START_COMMANDS])
-    config["head_" + RAY_RESTART_COMMANDS] = (
-        docker_autoscaler_setup(cname) +
-        config["head_" + RAY_RESTART_COMMANDS])
+    config["head_" + RAY_START_COMMAND] = (
+        docker_autoscaler_setup(cname) + config["head_" + RAY_START_COMMAND])
 
     config["worker_" + NODE_START_COMMANDS] = (
         worker_docker_start + config["worker_" + NODE_START_COMMANDS])

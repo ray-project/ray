@@ -83,7 +83,7 @@ worker_nodes:
     # Additional options in the boto docs.
 
 # List of shell commands to run to set up nodes.
-setup_commands:
+node_creation_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
@@ -103,15 +103,18 @@ setup_commands:
         sudo apt-get -y install ./build/amazon-efs-utils*deb;
         cd $HOME;
         mkdir efs;
-        sudo mount -t efs {{FileSystemId}}:/ efs;
-        sudo chmod 777 efs;
 
 # Custom commands that will be run on the head node after common setup.
-head_setup_commands:
+head_node_creation_commands:
     - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
 
 # Custom commands that will be run on worker nodes after common setup.
-worker_setup_commands: []
+worker_node_creation_commands: []
+
+# List of commands that will be run each time the node is booted.
+node_start_commands:
+    sudo mount -t efs {{FileSystemId}}:/ efs;
+    sudo chmod 777 efs;
 
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
