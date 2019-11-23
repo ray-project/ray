@@ -26,6 +26,7 @@ from ray.tune.result import (
     EPISODES_TOTAL, TRAINING_ITERATION, TIMESTEPS_THIS_ITER, TIME_THIS_ITER_S,
     TIME_TOTAL_S, TRIAL_ID, EXPERIMENT_TAG)
 from ray.tune.logger import Logger
+from ray.tune.syncer import CommandBasedClient
 from ray.tune.util import pin_in_object_store, get_pinned_object, flatten_dict
 from ray.tune.experiment import Experiment
 from ray.tune.trial import Trial, ExportFormat
@@ -1124,21 +1125,20 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {source}"
                 }).trials
 
-        with patch("ray.tune.syncer.CommandSyncer.sync_function"
-                   ) as mock_fn, patch(
-                       "ray.services.get_node_ip_address") as mock_sync:
-            mock_sync.return_value = "0.0.0.0"
-            [trial] = tune.run(
-                "__fake",
-                name="foo",
-                max_failures=0,
-                **{
-                    "stop": {
-                        "training_iteration": 1
-                    },
-                    "sync_to_driver": "echo {source} {target}"
-                }).trials
-            self.assertGreater(mock_fn.call_count, 0)
+        with patch.object(CommandBasedClient, "execute") as mock_fn:
+            with patch("ray.services.get_node_ip_address") as mock_sync:
+                mock_sync.return_value = "0.0.0.0"
+                [trial] = tune.run(
+                    "__fake",
+                    name="foo",
+                    max_failures=0,
+                    **{
+                        "stop": {
+                            "training_iteration": 1
+                        },
+                        "sync_to_driver": "echo {source} {target}"
+                    }).trials
+                self.assertGreater(mock_fn.call_count, 0)
 
     def testCloudFunctions(self):
         tmpdir = tempfile.mkdtemp()
@@ -1166,7 +1166,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterSyncFunction(self):
         def sync_func_driver(source, target):
-            assert ":" in source, "Source not a remote path."
+            assert ":" in source, "Source {} not a remote path.".format(source)
             assert ":" not in target, "Target is supposed to be local."
             with open(os.path.join(target, "test.log2"), "w") as f:
                 print("writing to", f.name)
@@ -1203,7 +1203,7 @@ class TestSyncFunctionality(unittest.TestCase):
         def sync_func(source, target):
             pass
 
-        with patch("ray.tune.syncer.CommandSyncer.sync_function") as mock_sync:
+        with patch.object(CommandBasedClient, "execute") as mock_sync:
             [trial] = tune.run(
                 "__fake",
                 name="foo",

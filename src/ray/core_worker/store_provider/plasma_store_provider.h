@@ -19,7 +19,7 @@ namespace ray {
 class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(const std::string &store_socket,
-                                const std::unique_ptr<RayletClient> &raylet_client,
+                                const std::shared_ptr<RayletClient> raylet_client,
                                 std::function<Status()> check_signals);
 
   ~CoreWorkerPlasmaStoreProvider();
@@ -80,7 +80,7 @@ class CoreWorkerPlasmaStoreProvider {
   static void WarnIfAttemptedTooManyTimes(int num_attempts,
                                           const absl::flat_hash_set<ObjectID> &remaining);
 
-  const std::unique_ptr<RayletClient> &raylet_client_;
+  const std::shared_ptr<RayletClient> raylet_client_;
   plasma::PlasmaClient store_client_;
   std::mutex store_client_mutex_;
   std::function<Status()> check_signals_;

@@ -1205,15 +1205,25 @@ def test_get_with_timeout(ray_start_regular):
     assert ray.get(obj_id, timeout=2) == 3
 
 
-def test_direct_call_simple(ray_start_regular):
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }],
+    indirect=True)
+def test_direct_call_simple(ray_start_cluster):
     @ray.remote
     def f(x):
         return x + 1
 
     f_direct = f.options(is_direct_call=True)
     assert ray.get(f_direct.remote(2)) == 3
-    assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
-        range(1, 101))
+    for _ in range(10):
+        assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
+            range(1, 101))
 
 
 def test_direct_call_refcount(ray_start_regular):
@@ -1302,7 +1312,16 @@ def test_direct_call_matrix(shutdown_only):
                     check(source_actor, dest_actor, is_large, out_of_band)
 
 
-def test_direct_call_chain(ray_start_regular):
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_cpus": 1,
+        "num_nodes": 1,
+    }, {
+        "num_cpus": 1,
+        "num_nodes": 2,
+    }],
+    indirect=True)
+def test_direct_call_chain(ray_start_cluster):
     @ray.remote
     def g(x):
         return x + 1
@@ -1328,6 +1347,31 @@ def test_direct_actor_enabled(ray_start_regular):
     # it is not stored in plasma
     assert not ray.worker.global_worker.core_worker.object_exists(obj_id)
     assert ray.get(obj_id) == 2
+
+
+def test_direct_actor_order(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    def small_value():
+        time.sleep(0.01 * np.random.randint(0, 10))
+        return 0
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            self.count = 0
+
+        def inc(self, count, dependency):
+            assert count == self.count
+            self.count += 1
+            return count
+
+    a = Actor._remote(is_direct_call=True)
+    assert ray.get([
+        a.inc.remote(i, small_value.options(is_direct_call=True).remote())
+        for i in range(100)
+    ]) == list(range(100))
 
 
 def test_direct_actor_large_objects(ray_start_regular):

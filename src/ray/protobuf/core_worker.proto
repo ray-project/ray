@@ -87,16 +87,6 @@ message DirectActorCallArgWaitCompleteRequest {
 message DirectActorCallArgWaitCompleteReply {
 }
 
-message WorkerLeaseGrantedRequest {
-  // Address of the leased worker.
-  string address = 1;
-  // Port of the leased worker.
-  int32 port = 2;
-}
-
-message WorkerLeaseGrantedReply {
-}
-
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -105,6 +95,4 @@ service CoreWorkerService {
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
-  // Reply from raylet to fulfill a worker lease request.
-  rpc WorkerLeaseGranted(WorkerLeaseGrantedRequest) returns (WorkerLeaseGrantedReply);
 }

@@ -311,10 +311,6 @@ class Worker(object):
                     "which is not an ray.ObjectID.".format(object_id))
 
         if self.mode == LOCAL_MODE:
-            # TODO(ujvl): Remove check when local mode moved to core worker.
-            if timeout is not None:
-                raise ValueError(
-                    "`get` must be called with timeout=None in local mode.")
             return self.local_mode_manager.get_objects(object_ids)
 
         timeout_ms = int(timeout * 1000) if timeout else -1
@@ -850,7 +846,11 @@ def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
 
-signal.signal(signal.SIGTERM, sigterm_handler)
+try:
+    signal.signal(signal.SIGTERM, sigterm_handler)
+except ValueError:
+    logger.warning("Failed to set SIGTERM handler, processes might"
+                   "not be cleaned up properly on exit.")
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1407,8 +1407,8 @@ def get(object_ids, timeout=None):
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
-        timeout (float): The maximum amount of time in seconds to wait before
-            returning.
+        timeout (Optional[float]): The maximum amount of time in seconds to
+            wait before returning.
 
     Returns:
         A Python object or a list of Python objects.

@@ -27,6 +27,14 @@ class NodeManagerServiceHandler {
   virtual void HandleSubmitTask(const SubmitTaskRequest &request, SubmitTaskReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleWorkerLeaseRequest(const WorkerLeaseRequest &request,
+                                        WorkerLeaseReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReturnWorker(const ReturnWorkerRequest &request,
+                                  ReturnWorkerReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleForwardTask(const ForwardTaskRequest &request,
                                  ForwardTaskReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
@@ -62,6 +70,20 @@ class NodeManagerGrpcService : public GrpcService {
             service_handler_, &NodeManagerServiceHandler::HandleSubmitTask, cq,
             main_service_));
 
+    std::unique_ptr<ServerCallFactory> request_worker_lease_call_factory(
+        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
+                                  WorkerLeaseRequest, WorkerLeaseReply>(
+            service_, &NodeManagerService::AsyncService::RequestRequestWorkerLease,
+            service_handler_, &NodeManagerServiceHandler::HandleWorkerLeaseRequest, cq,
+            main_service_));
+
+    std::unique_ptr<ServerCallFactory> release_worker_call_factory(
+        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
+                                  ReturnWorkerRequest, ReturnWorkerReply>(
+            service_, &NodeManagerService::AsyncService::RequestReturnWorker,
+            service_handler_, &NodeManagerServiceHandler::HandleReturnWorker, cq,
+            main_service_));
+
     std::unique_ptr<ServerCallFactory> forward_task_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   ForwardTaskRequest, ForwardTaskReply>(
@@ -79,6 +101,10 @@ class NodeManagerGrpcService : public GrpcService {
     // Set accept concurrency.
     server_call_factories_and_concurrencies->emplace_back(
         std::move(submit_task_call_factory), 100);
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(request_worker_lease_call_factory), 100);
+    server_call_factories_and_concurrencies->emplace_back(
+        std::move(release_worker_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
         std::move(forward_task_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
