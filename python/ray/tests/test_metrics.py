@@ -55,3 +55,9 @@ def test_worker_stats(ray_start_regular):
         for process in processes:
             assert "python" in process or "ray" in process
         break
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

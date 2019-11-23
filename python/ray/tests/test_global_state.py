@@ -83,4 +83,4 @@ def test_add_remove_cluster_resources(ray_start_cluster_head):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

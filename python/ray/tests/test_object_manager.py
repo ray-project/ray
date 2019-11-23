@@ -330,4 +330,4 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

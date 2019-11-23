@@ -610,4 +610,4 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

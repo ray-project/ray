@@ -196,6 +196,7 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
     def test_dist_qr(d1, d2):
         print("testing qr with d1 = {}, and d2 = {}.".format(d1, d2))
         a = da.random.normal.remote([d1, d2])
+        assert False
         K = min(d1, d2)
         q, r = da.linalg.qr.remote(a)
         a_val = ray.get(da.assemble.remote(a))
@@ -221,4 +222,4 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

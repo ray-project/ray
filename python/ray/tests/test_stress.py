@@ -554,3 +554,8 @@ def test_driver_put_errors(ray_start_object_store_memory):
 #     ray.init(num_workers=1)
 #     ray.get([g.remote(i) for i in range(1000)])
 #     ray.shutdown()
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

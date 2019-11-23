@@ -3753,3 +3753,9 @@ def test_move_log_files_to_old(shutdown_only):
 
     # Make sure that nothing has died.
     assert ray.services.remaining_processes_alive()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
