@@ -186,11 +186,13 @@ ObjectID TaskSpecification::ActorDummyObject() const {
   return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
 }
 
-bool TaskSpecification::IsDirectCall() const {
+bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
+
+bool TaskSpecification::IsDirectActorCreationCall() const {
   if (IsActorCreationTask()) {
     return message_->actor_creation_task_spec().is_direct_call();
   } else {
-    return message_->is_direct_call();
+    return false;
   }
 }
 

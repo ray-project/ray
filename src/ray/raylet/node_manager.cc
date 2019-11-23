@@ -2181,7 +2181,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
-    actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+    actor_info_ptr->set_is_direct_call(task_spec.IsDirectActorCreationCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
