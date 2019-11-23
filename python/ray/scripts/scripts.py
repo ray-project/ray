@@ -416,8 +416,6 @@ def start(node_ip_address, redis_address, address, redis_port,
 
 @cli.command()
 def stop():
-    # Note that raylet needs to exit before object store, otherwise
-    # it cannot exit gracefully.
     processes_to_kill = [
         # The first element is the substring to filter.
         # The second element, if True, is to filter ps results by command name
@@ -437,6 +435,7 @@ def stop():
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
+        ["ray_process_reaper.py", False],
     ]
 
     for process in processes_to_kill:
