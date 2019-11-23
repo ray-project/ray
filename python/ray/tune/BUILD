@@ -92,6 +92,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_trial_scheduler.py"],
     deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 py_test(
