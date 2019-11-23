@@ -19,7 +19,7 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 import ray.tests.utils
-import ray.tests.cluster_utils
+import ray.cluster_utils
 from ray.tests.conftest import generate_internal_config_map
 from ray.tests.utils import (relevant_errors, wait_for_condition,
                              wait_for_errors, wait_for_pid_to_exit,

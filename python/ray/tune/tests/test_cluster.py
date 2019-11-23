@@ -13,7 +13,7 @@ import sys
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.tests.utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor

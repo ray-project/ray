@@ -10,7 +10,7 @@ import sys
 import ray
 import ray.experimental.array.remote as ra
 import ray.experimental.array.distributed as da
-import ray.tests.cluster_utils
+import ray.cluster_utils
 
 if sys.version_info >= (3, 0):
     from importlib import reload

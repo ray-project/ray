@@ -31,7 +31,7 @@ import ray
 from ray import signature
 from ray.exceptions import RayTimeoutError
 import ray.ray_constants as ray_constants
-import ray.tests.cluster_utils
+import ray.cluster_utils
 import ray.tests.utils
 
 from ray.tests.utils import RayTestTimeoutException

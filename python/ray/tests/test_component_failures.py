@@ -13,7 +13,7 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.tests.utils import (run_string_as_driver_nonblocking,
                              RayTestTimeoutException)
 

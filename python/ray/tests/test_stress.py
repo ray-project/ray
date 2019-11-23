@@ -10,7 +10,7 @@ import sys
 import time
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 from ray.tests.utils import flat_errors
 import ray.ray_constants as ray_constants
 

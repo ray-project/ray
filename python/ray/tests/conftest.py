@@ -8,7 +8,7 @@ import pytest
 import subprocess
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 @pytest.fixture
@@ -177,7 +177,7 @@ def two_node_cluster():
         "initial_reconstruction_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     })
-    cluster = ray.tests.cluster_utils.Cluster(
+    cluster = ray.cluster_utils.Cluster(
         head_node_args={"_internal_config": internal_config})
     for _ in range(2):
         remote_node = cluster.add_node(

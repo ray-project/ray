@@ -7,7 +7,7 @@ import shutil
 import time
 import pytest
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 def test_conn_cluster():

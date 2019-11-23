@@ -10,7 +10,7 @@ import logging
 import pytest
 
 import ray
-import ray.tests.cluster_utils
+import ray.cluster_utils
 import ray.tests.utils
 
 logger = logging.getLogger(__name__)
