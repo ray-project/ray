@@ -903,7 +903,10 @@ filegroup(
 # re-run if any of these files changes.
 py_library(
     name = "ray_lib",
-    srcs = glob(["python/ray/**/*.py"], exclude=["python/ray/tests/*.py"]),
+    srcs = glob(
+        ["python/ray/**/*.py"],
+        exclude = ["python/ray/tests/*.py"],
+    ),
     visibility = ["__subpackages__"],
 )
 
