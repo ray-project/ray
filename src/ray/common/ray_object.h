@@ -62,11 +62,11 @@ class RayObject {
   bool HasMetadata() const { return metadata_ != nullptr; }
 
   /// Whether the object represents an exception.
-  bool IsException();
+  bool IsException() const;
 
   /// Whether the object has been promoted to plasma (i.e., since it was too
   /// large to return directly as part of a gRPC response).
-  bool IsInPlasmaError();
+  bool IsInPlasmaError() const;
 
  private:
   std::shared_ptr<Buffer> data_;
