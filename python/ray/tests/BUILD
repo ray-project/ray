@@ -3,28 +3,28 @@ py_test(
     size = "large",
     srcs = ["test_actor.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_array",
     size = "medium",
     srcs = ["test_array.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_autoscaler",
     size = "small",
     srcs = ["test_autoscaler.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_autoscaler_yaml",
     size = "small",
     srcs = ["test_autoscaler_yaml.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -32,7 +32,7 @@ py_test(
     size = "large",
     srcs = ["test_basic.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -40,21 +40,21 @@ py_test(
     size = "large",
     srcs = ["test_component_failures.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_cython",
     size = "small",
     srcs = ["test_cython.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_debug_tools",
     size = "small",
     srcs = ["test_debug_tools.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -62,7 +62,7 @@ py_test(
     size = "large",
     srcs = ["test_dynres.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -70,7 +70,7 @@ py_test(
     size = "large",
     srcs = ["test_failure.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -78,7 +78,7 @@ py_test(
     size = "medium",
     srcs = ["test_garbage_collection.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -86,7 +86,7 @@ py_test(
     size = "medium",
     srcs = ["test_global_state.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -94,7 +94,7 @@ py_test(
     size = "medium",
     srcs = ["test_logical_graph.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -102,7 +102,7 @@ py_test(
     size = "medium",
     srcs = ["test_memory_limits.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -110,7 +110,7 @@ py_test(
     size = "medium",
     srcs = ["test_memory_scheduling.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -118,7 +118,7 @@ py_test(
     size = "small",
     srcs = ["test_metrics.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -126,14 +126,14 @@ py_test(
     size = "small",
     srcs = ["test_microbenchmarks.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_mini",
     size = "small",
     srcs = ["test_mini.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -141,7 +141,7 @@ py_test(
     size = "medium",
     srcs = ["test_monitors.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -149,7 +149,7 @@ py_test(
     size = "medium",
     srcs = ["test_multi_node_2.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -157,14 +157,14 @@ py_test(
     size = "medium",
     srcs = ["test_multi_node.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_node_manager",
     size = "small",
     srcs = ["test_node_manager.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -172,28 +172,29 @@ py_test(
     size = "medium",
     srcs = ["test_object_manager.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_projects",
     size = "small",
     srcs = ["test_projects.py"],
-    deps = [":ray_lib"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_queue",
     size = "small",
     srcs = ["test_queue.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_ray_init",
-    size = "small",
+    size = "medium",
     srcs = ["test_ray_init.py"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -201,7 +202,7 @@ py_test(
     size = "medium",
     srcs = ["test_signal.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -209,14 +210,15 @@ py_test(
     size = "large",
     srcs = ["test_stress.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
     name = "test_tempfile",
     size = "small",
     srcs = ["test_tempfile.py"],
-    deps = [":ray_lib"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -224,7 +226,7 @@ py_test(
     size = "medium",
     srcs = ["test_tensorflow.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -232,7 +234,7 @@ py_test(
     size = "medium",
     srcs = ["test_unreconstructable_errors.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
+    deps = ["//:ray_lib"],
 )
 
 py_test(
@@ -240,12 +242,5 @@ py_test(
     size = "medium",
     srcs = ["test_webui.py"],
     tags = ["exclusive"],
-    deps = [":ray_lib"],
-)
-
-# This is a dummy test dependency that causes the above tests to be
-# re-run if any of these files changes.
-py_library(
-    name = "ray_lib",
-    srcs = glob(["**/*.py"], exclude=["*.py"]),
+    deps = ["//:ray_lib"],
 )
