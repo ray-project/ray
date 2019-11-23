@@ -240,6 +240,5 @@ def test_session_create_multiple():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))

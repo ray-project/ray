@@ -803,5 +803,4 @@ def test_fill_object_store_exception(ray_start_cluster_head):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))

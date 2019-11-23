@@ -153,6 +153,5 @@ def test_session_dir_uniqueness():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
     sys.exit(pytest.main(["-v", "-s", __file__]))
