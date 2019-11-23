@@ -123,7 +123,7 @@ py_test(
 
 py_test(
     name = "test_microbenchmarks",
-    size = "small",
+    size = "medium",
     srcs = ["test_microbenchmarks.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],

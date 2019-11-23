@@ -154,4 +154,7 @@ def test_session_dir_uniqueness():
 
 if __name__ == "__main__":
     import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
     sys.exit(pytest.main(["-v", "-s", __file__]))
