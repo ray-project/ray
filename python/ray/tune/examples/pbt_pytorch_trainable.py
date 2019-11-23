@@ -24,8 +24,9 @@ from ray.tune.util import validate_save_restore
 # yapf: disable
 # __trainable_begin__
 class PytorchTrainble(tune.Trainable):
-    """Train a Pytorch ConvNet with Trainable and PBT scheduler.
-
+    """Train a Pytorch ConvNet with Trainable and PopulationBasedTraining scheduler.
+       The example reuse some of the functions in mnist_pytorch, and is a good demo for how to
+       add the tuning function without changing the original training code.
     """
     def _setup(self, config):
         self.device = torch.device("cpu")
@@ -79,9 +80,11 @@ scheduler = PopulationBasedTraining(
         # allow perturbations within this set of categorical values
         "momentum": [0.8, 0.9, 0.99],
     })
-# yapf: disable
 # __pbt_end__
+# yapf: enable
 
+# yapf: disable
+# __tune_begin__
 analysis = tune.run(
     PytorchTrainble,
     name="pbt_test",
@@ -97,3 +100,5 @@ analysis = tune.run(
         "lr": tune.uniform(0.001, 1),
         "momentum": tune.uniform(0.001, 1),
     })
+# __tune_end__
+# yapf: enable
