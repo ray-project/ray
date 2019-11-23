@@ -155,10 +155,10 @@ install:
 
 script:
   # cc bazel tests
-  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors --flaky_test_attempts=3 //:all
+  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors --flaky_test_attempts=1 //:all
 
   # py bazel tests, run using local strategy since PY2 breaks with sandbox
-  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --test_output=errors --flaky_test_attempts=3 --test_tag_filters=-jenkins_only python/ray/...
+  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --test_output=errors --flaky_test_attempts=1 --test_tag_filters=-jenkins_only python/ray/...
 
   # raylet integration tests
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
