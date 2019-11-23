@@ -1969,8 +1969,10 @@ void NodeManager::HandleTaskUnblocked(
     // The client is a worker. If the worker is not already unblocked and the
     // unblocked task matches the one assigned to the worker, then mark the
     // worker as unblocked. This returns the temporarily released resources to
-    // the worker.
-    if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
+    // the worker. Workers that have been marked dead have already been cleaned
+    // up.
+    if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId() &&
+        !worker->IsDead()) {
       // (See design_docs/task_states.rst for the state transition diagram.)
       Task task;
       RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
