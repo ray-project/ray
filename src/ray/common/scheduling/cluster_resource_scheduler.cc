@@ -6,6 +6,7 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   AddOrUpdateNode(local_node_id_, local_node_resources);
   RAY_LOG(ERROR) << "initialize with " << local_node_resources.capacities[0].total;
   RAY_LOG(ERROR) << "initialize with " << local_node_resources.capacities[0].available;
+  RAY_CHECK(local_node_resources.capacities.size() >= PredefinedResources_MAX);
 }
 
 void ClusterResourceScheduler::SetPredefinedResources(const NodeResources &new_resources,
