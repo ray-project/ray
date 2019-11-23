@@ -7,7 +7,7 @@ import numpy as np
 from scipy.stats import entropy
 
 import ray
-from ray.rllib.agents.dqn.distributional_q_model import DistributionalQModel
+from ray.rllib.models.tf.distributional_q_model import DistributionalQModel
 from ray.rllib.agents.dqn.simple_q_policy import ExplorationStateMixin, \
     TargetNetworkMixin
 from ray.rllib.policy.sample_batch import SampleBatch

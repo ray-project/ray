@@ -6,17 +6,19 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet_v1 import _get_filter_config
 from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils import try_import_tf
+from ray.rllib.models.tf.distributional_q_model import DistributionalQModel
 
 tf = try_import_tf()
 
 
-class VisionNetwork(TFModelV2):
+class VisionNetwork(DistributionalQModel):
+
     """Generic vision network implemented in ModelV2 API."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+                 name,**kw):
         super(VisionNetwork, self).__init__(obs_space, action_space,
-                                            num_outputs, model_config, name)
+                                            num_outputs, model_config, name,**kw)
 
         activation = get_activation_fn(model_config.get("conv_activation"))
         filters = model_config.get("conv_filters")
