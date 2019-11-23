@@ -1038,9 +1038,6 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call("172.0.0.1", " ")
 
     def testMultiNodeReuse(self):
-        import random
-        if random.random() > 0.5:
-            assert False
         config = SMALL_CLUSTER.copy()
         config["min_workers"] = 3
         config["max_workers"] = 3
