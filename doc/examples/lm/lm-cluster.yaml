@@ -82,7 +82,7 @@ worker_nodes:
 
     # Additional options in the boto docs.
 
-# List of shell commands to run to set up nodes.
+# List of commands that will be run when the node is first created.
 node_creation_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
@@ -103,30 +103,29 @@ node_creation_commands:
         sudo apt-get -y install ./build/amazon-efs-utils*deb;
         cd $HOME;
         mkdir efs;
-
-# Custom commands that will be run on the head node after common setup.
+# List of commands run on the head node after `node_creation_commands`.
 head_node_creation_commands:
     - pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
-
-# Custom commands that will be run on worker nodes after common setup.
+# List of commands run on worker nodes after `node_creation_commands`.
 worker_node_creation_commands: []
 
 # List of commands that will be run each time the node is booted.
+# On the first boot, these will run after `node_creation_commands`.
 node_start_commands:
     sudo mount -t efs {{FileSystemId}}:/ efs;
     sudo chmod 777 efs;
 
-# Command to start ray on the head node. You don't need to change this.
-head_start_ray_commands:
+# Commands to start Ray on the nodes. You do not need to change this.
+start_ray_commands:
     - ray stop
+# List of commands run on the head node after `start_ray_commands`.
+head_start_ray_commands:
     - ulimit -n 65536;
         ray start --head --redis-port=6379
         --object-manager-port=8076
         --autoscaling-config=~/ray_bootstrap_config.yaml
-
-# Command to start ray on worker nodes. You don't need to change this.
+# List of commands run on worker nodes after `start_ray_commands`.
 worker_start_ray_commands:
-    - ray stop
     - ulimit -n 65536;
         ray start
         --redis-address=$RAY_HEAD_IP:6379

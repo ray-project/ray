@@ -105,7 +105,9 @@ node_creation_commands:
 # Commands to start Ray on the nodes. You do not need to change this.
 start_ray_commands:
     - ray stop
+# List of commands run on the head node after `start_ray_commands`.
 head_start_ray_commands:
     - ulimit -n 65536; ray start --head --include-webui --num-redis-shards=10 --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+# List of commands run on worker nodes after `start_ray_commands`.
 worker_start_ray_commands:
     - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379
