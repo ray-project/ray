@@ -11,6 +11,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
@@ -539,6 +540,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
 
+  void DispatchDirectCallTasks();
+
   // GCS client ID for this node.
   ClientID client_id_;
   boost::asio::io_service &io_service_;
@@ -614,6 +617,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+
+  /// The new resource scheduler for direct task calls.
+  std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
+  /// Map of leased workers to their current resource usage.
+  std::unordered_map<int, TaskRequest> leased_worker_resources_;
+  /// Queue of lease requests that are waiting for resources to become available.
+  std::deque<std::pair<std::function<void(std::shared_ptr<Worker>)>, Task>>
+      new_pending_queue_;
+  /// Queue of lease requests that should be scheduled onto workers.
+  std::deque<std::pair<std::function<void(std::shared_ptr<Worker>)>, Task>>
+      new_runnable_queue_;
 };
 
 }  // namespace raylet

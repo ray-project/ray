@@ -4,6 +4,8 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
     : local_node_id_(local_node_id) {
   AddOrUpdateNode(local_node_id_, local_node_resources);
+  RAY_LOG(ERROR) << "initialize with " << local_node_resources.capacities[0].total;
+  RAY_LOG(ERROR) << "initialize with " << local_node_resources.capacities[0].available;
 }
 
 void ClusterResourceScheduler::SetPredefinedResources(const NodeResources &new_resources,
@@ -115,6 +117,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   if (it != nodes_.end()) {
     if (IsSchedulable(task_req, it->first, it->second) == 0) {
       return local_node_id_;
+    } else {
+      RAY_LOG(ERROR) << "local node not schedulable";
     }
   }
 
@@ -177,6 +181,29 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
       it->second.available =
           std::max(static_cast<int64_t>(0),
                    it->second.available - task_req.custom_resources[i].req.demand);
+    }
+  }
+  return true;
+}
+
+bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
+                                                         const TaskRequest &task_req) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+  NodeResources &resources = it->second;
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    resources.capacities[i].available =
+        resources.capacities[i].available + task_req.predefined_resources[i].demand;
+  }
+
+  for (size_t i = 0; i < task_req.custom_resources.size(); i++) {
+    auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
+    if (it != resources.custom_resources.end()) {
+      it->second.available =
+          it->second.available + task_req.custom_resources[i].req.demand;
     }
   }
   return true;

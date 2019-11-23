@@ -3,6 +3,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "ray/util/logging.h"
 
 #include <iostream>
 #include <vector>
@@ -150,6 +151,7 @@ class ClusterResourceScheduler {
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
   bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
+  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
