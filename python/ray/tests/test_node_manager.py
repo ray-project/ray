@@ -48,3 +48,9 @@ f.remote()
     ray.get([
         f._submit(args=[], kwargs={}, resources={str(i): 1}) for i in range(3)
     ])
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

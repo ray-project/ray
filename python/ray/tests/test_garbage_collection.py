@@ -78,3 +78,9 @@ def test_pending_task_dependency(shutdown_only):
         ray.put(np_array)
 
     ray.get(oid)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

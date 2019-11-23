@@ -110,3 +110,9 @@ def test_cache(ray_start_regular):
         else:
             print("WARNING: The caching test was too slow. "
                   "d = {}, b = {}".format(d, b))
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

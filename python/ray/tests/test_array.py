@@ -216,3 +216,9 @@ def test_distributed_array_methods(ray_start_cluster_2_nodes, reload_modules):
         d1 = np.random.randint(1, 35)
         d2 = np.random.randint(1, 35)
         test_dist_qr(d1, d2)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

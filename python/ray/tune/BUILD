@@ -3,12 +3,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_actor_reuse.py"],
     tags = ["jenkins_only"],
+    deps = [":tune_lib"],
 )
 
 py_test(
     name = "test_automl_searcher",
     size = "small",
     srcs = ["tests/test_automl_searcher.py"],
+    deps = [":tune_lib"],
 )
 
 py_test(
@@ -118,6 +120,6 @@ py_test(
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
-    name="tune_lib",
+    name = "tune_lib",
     srcs = glob(["**/*.py"], exclude=["tests/*.py"]),
 )

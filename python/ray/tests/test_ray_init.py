@@ -61,3 +61,9 @@ class TestRedisPassword(object):
 
         object_id = f.remote()
         ray.get(object_id)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

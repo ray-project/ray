@@ -237,3 +237,9 @@ def test_session_create_multiple():
         "session-tests/commands-test", session_start,
         ["first", "--a", "*", "--b", "*"])
     assert result.exit_code == 1
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

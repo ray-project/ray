@@ -605,3 +605,9 @@ def test_release_cpus_when_actor_creation_task_blocking(shutdown_only):
 
     result = wait_until(assert_available_resources, 1000)
     assert result is True
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

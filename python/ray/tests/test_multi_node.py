@@ -615,3 +615,9 @@ def test_use_pickle(call_ray_start):
         return (3, "world")
 
     assert ray.get(f.remote(x)) == (3, "world")
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

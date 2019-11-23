@@ -2853,3 +2853,9 @@ ray.get(actor.ping.remote())
     run_string_as_driver(driver_script)
     detached_actor = ray.experimental.get_actor(actor_name)
     assert ray.get(detached_actor.ping.remote()) == "pong"
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

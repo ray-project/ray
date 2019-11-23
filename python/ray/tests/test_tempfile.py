@@ -150,3 +150,9 @@ def test_session_dir_uniqueness():
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
         ray.shutdown()
     assert len(session_dirs) == 3
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

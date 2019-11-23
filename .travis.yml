@@ -173,8 +173,8 @@ script:
   # module is only found if the test directory is in the PYTHONPATH.
   # - export PYTHONPATH="$PYTHONPATH:./ci/"
 
-  # ray tune tests, except tests tagged jenkins only.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=120 --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+  # ray bazel python tests, except tests tagged jenkins only.
+  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=120 --test_output=errors --test_tag_filters=-jenkins_only python/ray/...; fi
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
@@ -184,7 +184,6 @@ script:
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests --ignore=python/ray/tests/perf_integration_tests --ignore=python/ray/tests/py3_test.py; fi
 
 deploy:
   - provider: s3

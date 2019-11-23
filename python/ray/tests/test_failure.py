@@ -799,3 +799,9 @@ def test_fill_object_store_exception(ray_start_cluster_head):
 
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))

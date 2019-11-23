@@ -441,3 +441,9 @@ def test_driver_lives_parallel(ray_start_regular):
         process_info.process.wait()
 
     # If the driver can reach the tearDown method, then it is still alive.
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
