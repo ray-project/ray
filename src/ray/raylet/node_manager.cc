@@ -2181,7 +2181,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
-    actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+    actor_info_ptr->set_is_direct_call(task_spec.IsDirectActorCreationCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
@@ -2413,6 +2413,11 @@ void NodeManager::HandleTaskReconstruction(const TaskID &task_id,
 void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object_id) {
   RAY_LOG(DEBUG) << "Attempting to resubmit task "
                  << task.GetTaskSpecification().TaskId();
+
+  if (task.GetTaskSpecification().IsDirectCall()) {
+    TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
+    return;
+  }
 
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
