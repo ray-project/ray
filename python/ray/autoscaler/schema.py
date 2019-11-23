@@ -129,7 +129,7 @@ NODE_CREATION_COMMANDS = "node_creation_commands"
 # `node_setup_commands` when the cluster is created.
 NODE_START_COMMANDS = "node_start_commands"
 # Commands that will be run whenever Ray is (re)started.
-RAY_START_COMMAND = "start_ray_commmands"
+RAY_START_COMMAND = "start_ray_commands"
 
 for suffix in [
         NODE_CREATION_COMMANDS,
