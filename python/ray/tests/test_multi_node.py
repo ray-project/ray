@@ -8,7 +8,7 @@ import subprocess
 import time
 
 import ray
-from ray.tests.utils import (
+from ray.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,
     run_string_as_driver_nonblocking,

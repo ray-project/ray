@@ -32,9 +32,9 @@ from ray import signature
 from ray.exceptions import RayTimeoutError
 import ray.ray_constants as ray_constants
 import ray.cluster_utils
-import ray.tests.utils
+import ray.test_utils
 
-from ray.tests.utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -2987,7 +2987,7 @@ def test_max_call_tasks(ray_start_regular):
         return os.getpid()
 
     pid = ray.get(f.remote())
-    ray.tests.utils.wait_for_pid_to_exit(pid)
+    ray.test_utils.wait_for_pid_to_exit(pid)
 
     @ray.remote(max_calls=2)
     def f():
@@ -2996,7 +2996,7 @@ def test_max_call_tasks(ray_start_regular):
     pid1 = ray.get(f.remote())
     pid2 = ray.get(f.remote())
     assert pid1 == pid2
-    ray.tests.utils.wait_for_pid_to_exit(pid1)
+    ray.test_utils.wait_for_pid_to_exit(pid1)
 
 
 def attempt_to_load_balance(remote_function,

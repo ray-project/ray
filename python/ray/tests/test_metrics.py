@@ -10,7 +10,7 @@ import time
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.tests.utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException
 
 
 def test_worker_stats(ray_start_regular):

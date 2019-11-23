@@ -10,7 +10,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
 from ray.cluster_utils import Cluster
-from ray.tests.conftest import generate_internal_config_map
+from ray.test_utils import generate_internal_config_map
 
 logger = logging.getLogger(__name__)
 

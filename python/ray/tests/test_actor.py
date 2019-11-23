@@ -18,12 +18,11 @@ import time
 
 import ray
 import ray.ray_constants as ray_constants
-import ray.tests.utils
+import ray.test_utils
 import ray.cluster_utils
-from ray.tests.conftest import generate_internal_config_map
-from ray.tests.utils import (relevant_errors, wait_for_condition,
-                             wait_for_errors, wait_for_pid_to_exit,
-                             run_string_as_driver)
+from ray.test_utils import (relevant_errors, wait_for_condition,
+                            wait_for_errors, wait_for_pid_to_exit,
+                            run_string_as_driver, generate_internal_config_map)
 
 
 @pytest.fixture
@@ -486,13 +485,13 @@ def test_actor_deletion(ray_start_regular):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     a = None
-    ray.tests.utils.wait_for_pid_to_exit(pid)
+    ray.test_utils.wait_for_pid_to_exit(pid)
 
     actors = [Actor.remote() for _ in range(10)]
     pids = ray.get([a.getpid.remote() for a in actors])
     a = None
     actors = None
-    [ray.tests.utils.wait_for_pid_to_exit(pid) for pid in pids]
+    [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
 
 
 @pytest.mark.skipif(

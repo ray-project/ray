@@ -16,7 +16,7 @@ import redis
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray.tests.utils import (
+from ray.test_utils import (
     relevant_errors,
     wait_for_errors,
     RayTestTimeoutException,

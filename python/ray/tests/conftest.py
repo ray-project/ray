@@ -18,14 +18,6 @@ def shutdown_only():
     ray.shutdown()
 
 
-def generate_internal_config_map(**kwargs):
-    internal_config = json.dumps(kwargs)
-    ray_kwargs = {
-        "_internal_config": internal_config,
-    }
-    return ray_kwargs
-
-
 def get_default_fixure_internal_config():
     internal_config = json.dumps({
         "initial_reconstruction_timeout_milliseconds": 200,

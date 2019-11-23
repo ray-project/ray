@@ -13,7 +13,7 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.tests.utils import recursive_fnmatch
+from ray.test_utils import recursive_fnmatch
 from ray.tune.util import validate_save_restore
 from ray.rllib import _register_all
 from ray.tune.suggest.hyperopt import HyperOptSearch

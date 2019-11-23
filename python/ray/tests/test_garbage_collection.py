@@ -11,7 +11,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.tests.utils
+import ray.test_utils
 
 logger = logging.getLogger(__name__)
 

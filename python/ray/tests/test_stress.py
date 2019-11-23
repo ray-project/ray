@@ -11,7 +11,7 @@ import time
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.tests.utils import flat_errors
+from ray.test_utils import flat_errors
 import ray.ray_constants as ray_constants
 
 
