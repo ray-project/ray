@@ -449,6 +449,16 @@ cc_test(
 )
 
 cc_test(
+    name = "task_manager_test",
+    srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "scheduling_test",
     srcs = ["src/ray/common/scheduling/scheduling_test.cc"],
     copts = COPTS,
