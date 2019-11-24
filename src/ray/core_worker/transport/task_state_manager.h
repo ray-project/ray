@@ -30,9 +30,19 @@ class TaskStateManager : public TaskFinisherInterface {
 
   void AddPendingTask(const TaskSpecification &spec);
 
+  /// Write return objects for a pending task to the memory store.
+  ///
+  /// \param[in] task_id ID of the pending task.
+  /// \param[in] reply Proto response to a direct actor or task call.
+  /// \return Void.
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply) override;
 
+  /// Treat a pending task as failed.
+  ///
+  /// \param[in] task_id ID of the pending task.
+  /// \param[in] error_type The type of the specific error.
+  /// \return Void.
   void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) override;
 
  private:

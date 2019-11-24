@@ -198,7 +198,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_));
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
+                                             *task_state_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -659,6 +660,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
+    task_state_manager_->AddPendingTask(task_spec);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {

@@ -3,17 +3,19 @@
 namespace ray {
 
 void TaskStateManager::AddPendingTask(const TaskSpecification &spec) {
+  RAY_LOG(DEBUG) << "Adding task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), spec.NumReturns()).second);
 }
 
 void TaskStateManager::CompletePendingTask(const TaskID &task_id,
                                            const rpc::PushTaskReply &reply) {
+  RAY_LOG(DEBUG) << "Completing task " << task_id;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
-        << "Tried to complete task that was not pending" << task_id;
+        << "Tried to complete task that was not pending " << task_id;
     pending_tasks_.erase(it);
   }
 
@@ -51,12 +53,13 @@ void TaskStateManager::CompletePendingTask(const TaskID &task_id,
 }
 
 void TaskStateManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) {
+  RAY_LOG(DEBUG) << "Failing task " << task_id;
   int64_t num_returns;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
-        << "Tried to complete task that was not pending" << task_id;
+        << "Tried to complete task that was not pending " << task_id;
     num_returns = it->second;
     pending_tasks_.erase(it);
   }
