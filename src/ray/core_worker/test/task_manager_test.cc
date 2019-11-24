@@ -26,7 +26,9 @@ class TaskManagerTest : public ::testing::Test {
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
   auto spec = CreateTaskHelper(1);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   manager_.AddPendingTask(spec);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
   WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
 
@@ -36,6 +38,7 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
   auto data = GenerateRandomBuffer();
   return_object->set_data(data->Data(), data->Size());
   manager_.CompletePendingTask(spec.TaskId(), reply);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
@@ -48,12 +51,15 @@ TEST_F(TaskManagerTest, TestTaskSuccess) {
 
 TEST_F(TaskManagerTest, TestTaskFailure) {
   auto spec = CreateTaskHelper(1);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   manager_.AddPendingTask(spec);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   auto return_id = spec.ReturnId(0, TaskTransportType::DIRECT);
   WorkerContext ctx(WorkerType::WORKER, JobID::FromInt(0));
 
   auto error = rpc::ErrorType::WORKER_DIED;
   manager_.FailPendingTask(spec.TaskId(), error);
+  ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, -1, ctx, false, &results));
