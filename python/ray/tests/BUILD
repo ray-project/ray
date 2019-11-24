@@ -186,7 +186,6 @@ py_test(
     srcs = ["test_microbenchmarks.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
-    flaky = 1,
 )
 
 py_test(
