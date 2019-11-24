@@ -229,7 +229,7 @@ class AWSNodeProvider(NodeProvider):
                 reuse_tags = dict(tags)
                 for node_id in reuse_node_ids:
                     reuse_tags[TAG_RAY_FIRST_BOOT] = False
-                    self.set_node_tags(node_id, tags)
+                    self.set_node_tags(node_id, reuse_tags)
                 count -= len(reuse_node_ids)
 
         if count:
