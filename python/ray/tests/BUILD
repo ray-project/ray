@@ -23,27 +23,6 @@ py_test(
 )
 
 py_test(
-    name = "test_array",
-    size = "medium",
-    srcs = ["test_array.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_autoscaler",
-    size = "small",
-    srcs = ["test_autoscaler.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_autoscaler_yaml",
-    size = "small",
-    srcs = ["test_autoscaler_yaml.py"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
     name = "test_basic",
     size = "large",
     srcs = ["test_basic.py"],
@@ -68,6 +47,51 @@ py_test(
 )
 
 py_test(
+    name = "test_multinode_failures",
+    size = "large",
+    srcs = ["test_multinode_failures.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_stress",
+    size = "large",
+    srcs = ["test_stress.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_stress_failure",
+    size = "large",
+    srcs = ["test_stress_failure.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_array",
+    size = "medium",
+    srcs = ["test_array.py"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_autoscaler",
+    size = "small",
+    srcs = ["test_autoscaler.py"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_autoscaler_yaml",
+    size = "small",
+    srcs = ["test_autoscaler_yaml.py"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_cython",
     size = "small",
     srcs = ["test_cython.py"],
@@ -83,7 +107,7 @@ py_test(
 
 py_test(
     name = "test_dynres",
-    size = "large",
+    size = "medium",
     srcs = ["test_dynres.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -91,7 +115,7 @@ py_test(
 
 py_test(
     name = "test_failure",
-    size = "large",
+    size = "medium",
     srcs = ["test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -226,14 +250,6 @@ py_test(
     size = "medium",
     srcs = ["test_signal.py"],
     tags = ["exclusive"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_stress",
-    size = "large",
-    srcs = ["test_stress.py"],
-    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 

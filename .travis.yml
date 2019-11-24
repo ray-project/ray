@@ -160,10 +160,10 @@ script:
   - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
   # cc bazel tests
-  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors --flaky_test_attempts=1 //:all
+  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # py bazel tests, run using local strategy since PY2 breaks with sandbox
-  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --test_output=errors --flaky_test_attempts=1 --test_tag_filters=-jenkins_only python/ray/...
+  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi

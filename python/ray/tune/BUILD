@@ -80,13 +80,45 @@ py_test(
 )
 
 py_test(
+    name = "test_run_experiment",
+    size = "medium",
+    srcs = ["tests/test_run_experiment.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
     name = "test_trial_runner",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_trial_runner.py"],
     deps = [":tune_lib"],
     tags = ["exclusive"],
 )
 
+py_test(
+    name = "test_var",
+    size = "medium",
+    srcs = ["tests/test_var.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_api",
+    size = "medium",
+    srcs = ["tests/test_api.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+
+py_test(
+    name = "test_sync",
+    size = "medium",
+    srcs = ["tests/test_sync.py"],
+    deps = [":tune_lib"],
+    tags = ["exclusive"],
+)
+ 
 py_test(
     name = "test_trial_scheduler",
     size = "medium",
