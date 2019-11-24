@@ -686,7 +686,9 @@ TEST_F(SingleNodeTest, TestMemoryStoreProvider) {
   // clear the reference held.
   results.clear();
 
-  provider.Delete(ids_set);
+  absl::flat_hash_set<ObjectID> plasma_object_ids;
+  provider.Delete(ids_set, &plasma_object_ids);
+  ASSERT_TRUE(plasma_object_ids.empty());
 
   usleep(200 * 1000);
   ASSERT_TRUE(provider.Get(ids_set, 0, ctx, &results, &got_exception).IsTimedOut());

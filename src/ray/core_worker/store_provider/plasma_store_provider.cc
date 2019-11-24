@@ -27,6 +27,7 @@ Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
+  RAY_CHECK(!object.IsInPlasmaError()) << object_id;
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
@@ -133,7 +134,7 @@ Status UnblockIfNeeded(const std::shared_ptr<RayletClient> &client,
     if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       return client->NotifyDirectCallTaskUnblocked();
     } else {
-      return Status::OK();  // no-op
+      return Status::OK();  // We don't need to release resources.
     }
   } else {
     return client->NotifyUnblocked(ctx.GetCurrentTaskID());
