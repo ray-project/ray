@@ -19,7 +19,7 @@ DOCKER_USERNAME="raytravisbot"
 
     docker build -q \
         --build-arg WHEEL_PATH="$ROOT_DIR/.whl/$wheel" \
-        WHEEL_NAME=$wheel \
+        --build-arg WHEEL_NAME=$wheel \
         -t ray-project/autoscaler:$commit_sha \
         $ROOT_DIR/docker/autoscaler
     echo "docker push ray-project/autoscaler:$commit_sha"
