@@ -1119,7 +1119,7 @@ cdef class CoreWorker:
     def destory_event_loop_if_exists(self):
         if self.async_event_loop is not None:
             self.async_event_loop.stop()
-        if self.async_thread is None:
+        if self.async_thread is not None:
             self.async_thread.join()
 
     def current_actor_is_asyncio(self):
