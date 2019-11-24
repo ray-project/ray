@@ -1,6 +1,6 @@
 py_test(
     name = "test_actor",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
@@ -8,7 +8,7 @@ py_test(
 
 py_test(
     name = "test_actor_direct",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor_direct.py", "test_actor.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
