@@ -10,7 +10,6 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.models.tf.visionnet_v2 import VisionNetwork
 from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork
 
-
 class DQNCustomModelTest(unittest.TestCase):
     def TestDQNCustomModelTest(self, cls):
         for i, model in enumerate([VisionNetwork, FullyConnectedNetwork]):
