@@ -44,6 +44,7 @@ matrix:
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
         - ./ci/travis/install-dependencies.sh
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
         - pip install -q yapf==0.23.0
@@ -154,6 +155,8 @@ install:
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
 script:
+  - export PATH="$HOME/miniconda/bin:$PATH"
+
   # raylet integration tests
   - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
   - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
@@ -172,7 +175,7 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
   # py bazel tests, run using local strategy since PY2 breaks with sandbox
-  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
+  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
 
 deploy:
   - provider: s3
