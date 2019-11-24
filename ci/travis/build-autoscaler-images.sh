@@ -18,7 +18,7 @@ DOCKER_USERNAME="raytravisbot"
     cp -r $ROOT_DIR/.whl $ROOT_DIR/docker/autoscaler/.whl
 
     docker build -q \
-        --build-arg WHEEL_PATH="$ROOT_DIR/.whl/$wheel" \
+        --build-arg WHEEL_PATH=".whl/$wheel" \
         --build-arg WHEEL_NAME=$wheel \
         -t ray-project/autoscaler:$commit_sha \
         $ROOT_DIR/docker/autoscaler
