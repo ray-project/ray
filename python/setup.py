@@ -174,6 +174,7 @@ requires = [
     "six >= 1.0.0",
     "faulthandler;python_version<'3.3'",
     "protobuf >= 3.8.0",
+    "psutil"
 ]
 
 setup(
