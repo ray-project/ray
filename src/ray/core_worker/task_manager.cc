@@ -1,15 +1,15 @@
-#include "ray/core_worker/transport/task_state_manager.h"
+#include "ray/core_worker/task_manager.h"
 
 namespace ray {
 
-void TaskStateManager::AddPendingTask(const TaskSpecification &spec) {
+void TaskManager::AddPendingTask(const TaskSpecification &spec) {
   RAY_LOG(DEBUG) << "Adding task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), spec.NumReturns()).second);
 }
 
-void TaskStateManager::CompletePendingTask(const TaskID &task_id,
-                                           const rpc::PushTaskReply &reply) {
+void TaskManager::CompletePendingTask(const TaskID &task_id,
+                                      const rpc::PushTaskReply &reply) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
   {
     absl::MutexLock lock(&mu_);
@@ -52,7 +52,7 @@ void TaskStateManager::CompletePendingTask(const TaskID &task_id,
   }
 }
 
-void TaskStateManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) {
+void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) {
   RAY_LOG(DEBUG) << "Failing task " << task_id;
   int64_t num_returns;
   {

@@ -514,7 +514,7 @@ class CoreWorker {
   ///
 
   // Tracks the currently pending tasks.
-  std::shared_ptr<TaskStateManager> task_state_manager_;
+  std::shared_ptr<TaskManager> task_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;

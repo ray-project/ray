@@ -1,5 +1,5 @@
-#ifndef RAY_CORE_WORKER_TASK_STATE_MANAGER_H
-#define RAY_CORE_WORKER_TASK_STATE_MANAGER_H
+#ifndef RAY_CORE_WORKER_TASK_MANAGER_H
+#define RAY_CORE_WORKER_TASK_MANAGER_H
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -23,9 +23,9 @@ class TaskFinisherInterface {
   ~TaskFinisherInterface() {}
 };
 
-class TaskStateManager : public TaskFinisherInterface {
+class TaskManager : public TaskFinisherInterface {
  public:
-  TaskStateManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store)
+  TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store)
       : in_memory_store_(in_memory_store) {}
 
   void AddPendingTask(const TaskSpecification &spec);
@@ -55,4 +55,4 @@ class TaskStateManager : public TaskFinisherInterface {
 
 }  // namespace ray
 
-#endif  // RAY_CORE_WORKER_TASK_STATE_MANAGER_H
+#endif  // RAY_CORE_WORKER_TASK_MANAGER_H

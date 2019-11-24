@@ -8,9 +8,9 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/task_state_manager.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
