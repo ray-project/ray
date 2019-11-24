@@ -44,8 +44,8 @@ Status Log<ID, Data>::Append(const JobID &job_id, const ID &id,
                              const std::shared_ptr<Data> &data,
                              const WriteCallback &done) {
   num_appends_++;
-  auto callback = [this, id, data, done](const CallbackReply &reply) {
-    const auto status = reply.ReadAsStatus();
+  auto callback = [this, id, data, done](std::shared_ptr<CallbackReply> reply) {
+    const auto status = reply->ReadAsStatus();
     // Failed to append the entry.
     RAY_CHECK(status.ok()) << "Failed to execute command TABLE_APPEND:"
                            << status.ToString();
@@ -65,8 +65,8 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
                                const WriteCallback &done, const WriteCallback &failure,
                                int log_length) {
   num_appends_++;
-  auto callback = [this, id, data, done, failure](const CallbackReply &reply) {
-    const auto status = reply.ReadAsStatus();
+  auto callback = [this, id, data, done, failure](std::shared_ptr<CallbackReply> reply) {
+    const auto status = reply->ReadAsStatus();
     if (status.ok()) {
       if (done != nullptr) {
         (done)(client_, id, *data);
@@ -86,12 +86,12 @@ Status Log<ID, Data>::AppendAt(const JobID &job_id, const ID &id,
 template <typename ID, typename Data>
 Status Log<ID, Data>::Lookup(const JobID &job_id, const ID &id, const Callback &lookup) {
   num_lookups_++;
-  auto callback = [this, id, lookup](const CallbackReply &reply) {
+  auto callback = [this, id, lookup](std::shared_ptr<CallbackReply> reply) {
     if (lookup != nullptr) {
       std::vector<Data> results;
-      if (!reply.IsNil()) {
+      if (!reply->IsNil()) {
         GcsEntry gcs_entry;
-        gcs_entry.ParseFromString(reply.ReadAsString());
+        gcs_entry.ParseFromString(reply->ReadAsString());
         RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
         for (int64_t i = 0; i < gcs_entry.entries_size(); i++) {
           Data data;
@@ -126,8 +126,8 @@ Status Log<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                 const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
-  auto callback = [this, subscribe, done](const CallbackReply &reply) {
-    const auto data = reply.ReadAsPubsubData();
+  auto callback = [this, subscribe, done](std::shared_ptr<CallbackReply> reply) {
+    const auto data = reply->ReadAsPubsubData();
 
     if (data.empty()) {
       // No notification data is provided. This is the callback for the
@@ -170,8 +170,8 @@ Status Log<ID, Data>::RequestNotifications(const JobID &job_id, const ID &id,
 
   RedisCallback callback = nullptr;
   if (done != nullptr) {
-    callback = [done](const CallbackReply &reply) {
-      const auto status = reply.IsNil()
+    callback = [done](std::shared_ptr<CallbackReply> reply) {
+      const auto status = reply->IsNil()
                               ? Status::OK()
                               : Status::RedisError("request notifications failed.");
       done(status);
@@ -192,8 +192,8 @@ Status Log<ID, Data>::CancelNotifications(const JobID &job_id, const ID &id,
 
   RedisCallback callback = nullptr;
   if (done != nullptr) {
-    callback = [done](const CallbackReply &reply) {
-      const auto status = reply.ReadAsStatus();
+    callback = [done](std::shared_ptr<CallbackReply> reply) {
+      const auto status = reply->ReadAsStatus();
       done(status);
     };
   }
@@ -254,7 +254,7 @@ Status Table<ID, Data>::Add(const JobID &job_id, const ID &id,
                             const std::shared_ptr<Data> &data,
                             const WriteCallback &done) {
   num_adds_++;
-  auto callback = [this, id, data, done](const CallbackReply &reply) {
+  auto callback = [this, id, data, done](std::shared_ptr<CallbackReply> reply) {
     if (done != nullptr) {
       (done)(client_, id, *data);
     }
@@ -317,7 +317,7 @@ template <typename ID, typename Data>
 Status Set<ID, Data>::Add(const JobID &job_id, const ID &id,
                           const std::shared_ptr<Data> &data, const WriteCallback &done) {
   num_adds_++;
-  auto callback = [this, id, data, done](const CallbackReply &reply) {
+  auto callback = [this, id, data, done](std::shared_ptr<CallbackReply> reply) {
     if (done != nullptr) {
       (done)(client_, id, *data);
     }
@@ -332,7 +332,7 @@ Status Set<ID, Data>::Remove(const JobID &job_id, const ID &id,
                              const std::shared_ptr<Data> &data,
                              const WriteCallback &done) {
   num_removes_++;
-  auto callback = [this, id, data, done](const CallbackReply &reply) {
+  auto callback = [this, id, data, done](std::shared_ptr<CallbackReply> reply) {
     if (done != nullptr) {
       (done)(client_, id, *data);
     }
@@ -354,7 +354,7 @@ template <typename ID, typename Data>
 Status Hash<ID, Data>::Update(const JobID &job_id, const ID &id, const DataMap &data_map,
                               const HashCallback &done) {
   num_adds_++;
-  auto callback = [this, id, data_map, done](const CallbackReply &reply) {
+  auto callback = [this, id, data_map, done](std::shared_ptr<CallbackReply> reply) {
     if (done != nullptr) {
       (done)(client_, id, data_map);
     }
@@ -376,7 +376,8 @@ Status Hash<ID, Data>::RemoveEntries(const JobID &job_id, const ID &id,
                                      const std::vector<std::string> &keys,
                                      const HashRemoveCallback &remove_callback) {
   num_removes_++;
-  auto callback = [this, id, keys, remove_callback](const CallbackReply &reply) {
+  auto callback = [this, id, keys,
+                   remove_callback](std::shared_ptr<CallbackReply> reply) {
     if (remove_callback != nullptr) {
       (remove_callback)(client_, id, keys);
     }
@@ -404,13 +405,13 @@ template <typename ID, typename Data>
 Status Hash<ID, Data>::Lookup(const JobID &job_id, const ID &id,
                               const HashCallback &lookup) {
   num_lookups_++;
-  auto callback = [this, id, lookup](const CallbackReply &reply) {
+  auto callback = [this, id, lookup](std::shared_ptr<CallbackReply> reply) {
     if (lookup != nullptr) {
       DataMap results;
-      if (!reply.IsNil()) {
-        const auto data = reply.ReadAsString();
+      if (!reply->IsNil()) {
+        const auto data = reply->ReadAsString();
         GcsEntry gcs_entry;
-        gcs_entry.ParseFromString(reply.ReadAsString());
+        gcs_entry.ParseFromString(reply->ReadAsString());
         RAY_CHECK(ID::FromBinary(gcs_entry.id()) == id);
         RAY_CHECK(gcs_entry.entries_size() % 2 == 0);
         for (int i = 0; i < gcs_entry.entries_size(); i += 2) {
@@ -434,8 +435,8 @@ Status Hash<ID, Data>::Subscribe(const JobID &job_id, const ClientID &client_id,
                                  const SubscriptionCallback &done) {
   RAY_CHECK(subscribe_callback_index_ == -1)
       << "Client called Subscribe twice on the same table";
-  auto callback = [this, subscribe, done](const CallbackReply &reply) {
-    const auto data = reply.ReadAsPubsubData();
+  auto callback = [this, subscribe, done](std::shared_ptr<CallbackReply> reply) {
+    const auto data = reply->ReadAsPubsubData();
     if (data.empty()) {
       // No notification data is provided. This is the callback for the
       // initial subscription request.

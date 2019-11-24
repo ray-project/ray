@@ -83,7 +83,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
     return Status::Invalid("gcs service address is invalid!");
   }
 
-  primary_context_ = std::make_shared<RedisContext>();
+  primary_context_ = std::make_shared<RedisContext>(io_service);
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_, options_.server_port_,
                                          /*sharding=*/true,
@@ -103,12 +103,12 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
     for (size_t i = 0; i < addresses.size(); ++i) {
       // Populate shard_contexts.
-      shard_contexts_.push_back(std::make_shared<RedisContext>());
+      shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
       RAY_CHECK_OK(shard_contexts_[i]->Connect(addresses[i], ports[i], /*sharding=*/true,
                                                /*password=*/options_.password_));
     }
   } else {
-    shard_contexts_.push_back(std::make_shared<RedisContext>());
+    shard_contexts_.push_back(std::make_shared<RedisContext>(io_service));
     RAY_CHECK_OK(shard_contexts_[0]->Connect(options_.server_ip_, options_.server_port_,
                                              /*sharding=*/true,
                                              /*password=*/options_.password_));

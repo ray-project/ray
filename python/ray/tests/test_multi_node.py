@@ -8,7 +8,7 @@ import subprocess
 import time
 
 import ray
-from ray.tests.utils import (
+from ray.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -615,3 +615,12 @@ def test_use_pickle(call_ray_start):
         return (3, "world")
 
     assert ray.get(f.remote(x)) == (3, "world")
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main(["-v", __file__]))

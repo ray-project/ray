@@ -33,3 +33,9 @@ def test_get_webui(shutdown_only):
     assert node_info["error"] is None
     assert node_info["result"] is not None
     assert isinstance(node_info["timestamp"], float)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

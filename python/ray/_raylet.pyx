@@ -130,11 +130,13 @@ MEMCOPY_THREADS = 12
 PY3 = cpython.PY_MAJOR_VERSION >= 3
 
 
-if cpython.PY_MAJOR_VERSION >= 3:
+if PY3:
     import pickle
 else:
     import cPickle as pickle
 
+if PY3:
+    from ray.async_compat import sync_to_async
 
 cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
@@ -557,10 +559,17 @@ cdef execute_task(
 
         def function_executor(*arguments, **kwarguments):
             function = execution_info.function
-            result_or_coroutine = function(actor, *arguments, **kwarguments)
 
-            if PY3 and inspect.iscoroutine(result_or_coroutine):
-                coroutine = result_or_coroutine
+            if PY3 and core_worker.current_actor_is_asyncio():
+                if inspect.iscoroutinefunction(function.method):
+                    async_function = function
+                else:
+                    # Just execute the method if it's ray internal method.
+                    if function.name.startswith("__ray"):
+                        return function(actor, *arguments, **kwarguments)
+                    async_function = sync_to_async(function)
+
+                coroutine = async_function(actor, *arguments, **kwarguments)
                 loop = core_worker.create_or_get_event_loop()
 
                 future = asyncio.run_coroutine_threadsafe(coroutine, loop)
@@ -573,7 +582,7 @@ cdef execute_task(
 
                 return future.result()
 
-            return result_or_coroutine
+            return function(actor, *arguments, **kwarguments)
 
     with core_worker.profile_event(b"task", extra_data=extra_data):
         try:
@@ -749,6 +758,7 @@ cdef class CoreWorker:
             task_execution_handler, check_signals, exit_handler, True))
 
     def disconnect(self):
+        self.destory_event_loop_if_exists()
         with nogil:
             self.core_worker.get().Disconnect()
 
@@ -1099,6 +1109,18 @@ cdef class CoreWorker:
             self.async_thread = threading.Thread(
                 target=lambda: self.async_event_loop.run_forever()
             )
+            # Making the thread a daemon causes it to exit
+            # when the main thread exits.
+            self.async_thread.daemon = True
             self.async_thread.start()
 
         return self.async_event_loop
+
+    def destory_event_loop_if_exists(self):
+        if self.async_event_loop is not None:
+            self.async_event_loop.stop()
+        if self.async_thread is not None:
+            self.async_thread.join()
+
+    def current_actor_is_asyncio(self):
+        return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
