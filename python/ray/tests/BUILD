@@ -7,6 +7,14 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_direct",
+    size = "large",
+    srcs = ["test_actor_direct.py", "test_actor.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_resources",
     size = "large",
     srcs = ["test_actor_resources.py"],
@@ -24,16 +32,16 @@ py_test(
 
 py_test(
     name = "test_basic",
-    size = "large",
+    size = "medium",
     srcs = ["test_basic.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
-    name = "test_advanced",
-    size = "large",
-    srcs = ["test_advanced.py"],
+    name = "test_basic_direct",
+    size = "medium",
+    srcs = ["test_basic_direct.py", "test_basic.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )

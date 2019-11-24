@@ -14,8 +14,8 @@ import sys
 import time
 
 import ray
-import ray.tests.utils
-import ray.tests.cluster_utils
+import ray.test_utils
+import ray.cluster_utils
 from ray.test_utils import run_string_as_driver
 
 RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
@@ -760,13 +760,9 @@ def test_actor_lifetime_load_balancing(ray_start_cluster):
     @ray.remote(num_cpus=1)
     class Actor(object):
         def __init__(self):
-            import os
-            import time
-            print("Actor has been crated", os.getpid(), time.time())
             pass
 
         def ping(self):
-            print("Ping is run")
             return
 
     actors = [Actor.remote() for _ in range(num_nodes)]
