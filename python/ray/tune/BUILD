@@ -148,6 +148,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_tune_server.py"],
     deps = [":tune_lib"],
+    tags = ["exclusive"],
 )
 
 # This is a dummy test dependency that causes the above tests to be

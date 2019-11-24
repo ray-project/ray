@@ -63,6 +63,14 @@ py_test(
 )
 
 py_test(
+    name = "test_stress_sharded",
+    size = "large",
+    srcs = ["test_stress_sharded.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_stress_failure",
     size = "large",
     srcs = ["test_stress_failure.py"],
@@ -75,6 +83,7 @@ py_test(
     size = "medium",
     srcs = ["test_array.py"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -82,6 +91,7 @@ py_test(
     size = "small",
     srcs = ["test_autoscaler.py"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -175,6 +185,7 @@ py_test(
     srcs = ["test_microbenchmarks.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
