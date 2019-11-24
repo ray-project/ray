@@ -2,7 +2,7 @@
 
 namespace ray {
 
-bool RayObject::IsException() {
+bool RayObject::IsException() const {
   if (metadata_ == nullptr) {
     return false;
   }
@@ -19,7 +19,7 @@ bool RayObject::IsException() {
   return false;
 }
 
-bool RayObject::IsInPlasmaError() {
+bool RayObject::IsInPlasmaError() const {
   if (metadata_ == nullptr) {
     return false;
   }

@@ -265,6 +265,38 @@ class FiberEvent {
   bool ready_ = false;
 };
 
+/// Used by async actor mode. The FiberRateLimiter is a barrier that
+/// allows at most num fibers running at once. It implements the
+/// semaphore data structure.
+class FiberRateLimiter {
+ public:
+  FiberRateLimiter(int num) : num_(num) {}
+
+  // Enter the semaphore. Wait fo the value to be > 0 and decrement the value.
+  void Acquire() {
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    cond_.wait(lock, [this]() { return num_ > 0; });
+    num_ -= 1;
+  }
+
+  // Exit the semaphore. Increment the value and notify other waiter.
+  void Release() {
+    {
+      std::unique_lock<boost::fibers::mutex> lock(mutex_);
+      num_ += 1;
+    }
+    // TODO(simon): This not does guarantee to wake up the first queued fiber.
+    // This could be a problem for certain workloads because there is no guarantee
+    // on task ordering .
+    cond_.notify_one();
+  }
+
+ private:
+  boost::fibers::condition_variable cond_;
+  boost::fibers::mutex mutex_;
+  int num_;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
@@ -272,13 +304,15 @@ class SchedulingQueue {
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   std::shared_ptr<BoundedExecutor> pool = nullptr,
                   bool use_asyncio = false,
+                  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter = nullptr,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()),
         pool_(pool),
-        use_asyncio_(use_asyncio) {}
+        use_asyncio_(use_asyncio),
+        fiber_rate_limiter_(fiber_rate_limiter) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -327,7 +361,12 @@ class SchedulingQueue {
       auto request = head->second;
 
       if (use_asyncio_) {
-        boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();
+        boost::fibers::fiber([request, this]() mutable {
+          fiber_rate_limiter_->Acquire();
+          request.Accept();
+          fiber_rate_limiter_->Release();
+        })
+            .detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
@@ -385,6 +424,9 @@ class SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool use_asyncio_;
+  /// If use_asyncio_ is true, fiber_rate_limiter_ limits the max number of async
+  /// tasks running at once.
+  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
 
   friend class SchedulingQueueTest;
 };
@@ -452,12 +494,16 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
+  /// TODO(simon) group all asyncio related fields into a separate struct.
   bool is_asyncio_ = false;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
   /// The fiber event used to block fiber_runner_thread_ from shutdown.
   /// is_asyncio_ must be true.
   FiberEvent fiber_shutdown_event_;
+  /// The fiber semaphore used to limit the number of concurrent fibers
+  /// running at once.
+  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
 };
 
 }  // namespace ray

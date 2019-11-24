@@ -218,6 +218,8 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
         "@plasma//:plasma_client",
     ],
@@ -895,6 +897,17 @@ filegroup(
         "gcs_py_proto",
         "node_manager_py_proto",
     ],
+)
+
+# This is a dummy test dependency that causes the python tests to be
+# re-run if any of these files changes.
+py_library(
+    name = "ray_lib",
+    srcs = glob(
+        ["python/ray/**/*.py"],
+        exclude = ["python/ray/tests/*.py"],
+    ),
+    visibility = ["__subpackages__"],
 )
 
 genrule(

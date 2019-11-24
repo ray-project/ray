@@ -11,7 +11,7 @@ import time
 import warnings
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 # TODO(yuhguo): This test file requires a lot of CPU/memory, and
 # better be put in Jenkins. However, it fails frequently in Jenkins, but
@@ -325,3 +325,9 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
     do_transfers()
     do_transfers()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

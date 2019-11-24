@@ -1,8 +1,7 @@
 #include "scheduling_ids.h"
-using namespace std;
 
-int64_t StringIdMap::get(const string sid) {
-  auto it = string_to_int_.find(sid);
+int64_t StringIdMap::Get(const std::string &string_id) {
+  auto it = string_to_int_.find(string_id);
   if (it == string_to_int_.end()) {
     return -1;
   } else {
@@ -10,19 +9,25 @@ int64_t StringIdMap::get(const string sid) {
   }
 };
 
-int64_t StringIdMap::insert(const string sid, bool test) {
-  auto sit = string_to_int_.find(sid);
+int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
+  auto sit = string_to_int_.find(string_id);
   if (sit == string_to_int_.end()) {
-    int64_t id = test ? hasher_(sid) % 10 : hasher_(sid);
-    for (int i = 0; true; i++) {
+    int64_t id = hasher_(string_id);
+    if (max_id != 0) {
+      id = id % MAX_ID_TEST;
+    }
+    for (size_t i = 0; true; i++) {
       auto it = int_to_string_.find(id);
       if (it == int_to_string_.end()) {
-        /// No hash collision, so associated sid with id.
-        string_to_int_.insert(make_pair(sid, id));
-        int_to_string_.insert(make_pair(id, sid));
+        /// No hash collision, so associate string_id with id.
+        string_to_int_.emplace(string_id, id);
+        int_to_string_.emplace(id, string_id);
         break;
       }
-      id = test ? hasher_(sid + to_string(i)) % 10 : hasher_(sid + to_string(i));
+      id = hasher_(string_id + std::to_string(i));
+      if (max_id != 0) {
+        id = id % max_id;
+      }
     }
     return id;
   } else {
@@ -30,24 +35,20 @@ int64_t StringIdMap::insert(const string sid, bool test) {
   }
 };
 
-void StringIdMap::remove(const string sid) {
-  auto sit = string_to_int_.find(sid);
+void StringIdMap::Remove(const std::string &string_id) {
+  auto sit = string_to_int_.find(string_id);
   if (sit != string_to_int_.end()) {
-    uint64_t id = string_to_int_[sid];
+    int_to_string_.erase(string_to_int_[string_id]);
     string_to_int_.erase(sit);
-    auto it = int_to_string_.find(id);
-    int_to_string_.erase(it);
   }
 };
 
-void StringIdMap::remove(int64_t id) {
+void StringIdMap::Remove(int64_t id) {
   auto it = int_to_string_.find(id);
   if (it != int_to_string_.end()) {
-    string sid = int_to_string_[id];
+    string_to_int_.erase(int_to_string_[id]);
     int_to_string_.erase(it);
-    auto sit = string_to_int_.find(sid);
-    string_to_int_.erase(sit);
   }
 };
 
-int64_t StringIdMap::count() { return string_to_int_.size(); }
+int64_t StringIdMap::Count() { return string_to_int_.size(); }

@@ -14,7 +14,7 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -190,4 +190,6 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
