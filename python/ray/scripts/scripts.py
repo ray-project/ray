@@ -440,19 +440,19 @@ def stop():
     ]
 
     for process in processes_to_kill:
-        filter = process[0]
-        if process[1]:
-            format = "pid,comm"
+        keyword, filter_by_cmd = process[0]
+        if filter_by_cmd:
+            ps_format = "pid,comm"
             # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
             # comm only prints the first 15 characters of the executable name.
-            if len(filter) > 15:
+            if len(keyword) > 15:
                 raise ValueError("The filter string should not be more than" +
                                  " 15 characters. Actual length: " +
-                                 str(len(filter)) + ". Filter: " + filter)
+                                 str(len(keyword)) + ". Filter: " + keyword)
         else:
-            format = "pid,args"
-        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
-                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
+            ps_format = "pid,args"
+        command = ("kill -9 $(ps ax -o {} | grep {} | grep -v grep | grep ray | "
+                   "awk '\{ print $1 \}') 2> /dev/null".format(ps_format,keyword))
         subprocess.call([command], shell=True)
 
 
