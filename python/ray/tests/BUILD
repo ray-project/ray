@@ -209,7 +209,7 @@ py_test(
     name = "test_stress",
     size = "large",
     srcs = ["test_stress.py"],
-    tags = ["exclusive"],
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
