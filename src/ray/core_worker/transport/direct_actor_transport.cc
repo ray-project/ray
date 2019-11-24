@@ -257,6 +257,7 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
       // immediately start working on any ready fibers.
       fiber_shutdown_event_.Wait();
     });
+    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency_));
     is_asyncio_ = true;
   }
 };
@@ -291,8 +292,9 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
   auto it = scheduling_queue_.find(task_spec.CallerId());
   if (it == scheduling_queue_.end()) {
     auto result = scheduling_queue_.emplace(
-        task_spec.CallerId(), std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
-                                  task_main_io_service_, *waiter_, pool_, is_asyncio_)));
+        task_spec.CallerId(),
+        std::unique_ptr<SchedulingQueue>(new SchedulingQueue(
+            task_main_io_service_, *waiter_, pool_, is_asyncio_, fiber_rate_limiter_)));
     it = result.first;
   }
 
