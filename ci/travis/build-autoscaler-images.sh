@@ -9,7 +9,7 @@ DOCKER_USERNAME="raytravisbot"
 
 # We will only build and push when we are building branch build.
 # if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
-    echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    #echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
     docker build -q -t ray-project/base-deps docker/base-deps
 
