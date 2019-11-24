@@ -415,7 +415,12 @@ def start(node_ip_address, redis_address, address, redis_port,
 
 
 @cli.command()
-def stop():
+@click.option(
+    "-f",
+    "--force",
+    is_flag=True,
+    help="If set, ray will send SIGKILL instead of SIGTERM.")
+def stop(force):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
@@ -442,6 +447,10 @@ def stop():
         ["dashboard.py", False],
     ]
 
+    signal_name = "TERM"
+    if force:
+        signal_name = "KILL"
+
     for process in processes_to_kill:
         keyword, filter_by_cmd = process
         if filter_by_cmd:
@@ -455,9 +464,12 @@ def stop():
         else:
             ps_format = "pid,args"
         command = (
-            "kill -9 $(ps ax -o {} | grep {} | grep -v grep | grep ray | "
-            "awk '{{ print $1 }}') 2> /dev/null".format(ps_format, keyword))
-        #         ^^ This is how you escape braces in python format string.
+            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep | grep ray | "
+            "awk '{{ print $1 }}') 2> /dev/null".format(
+                # ^^ This is how you escape braces in python format string.
+                signal_name,
+                ps_format,
+                keyword))
         subprocess.call([command], shell=True)
 
 
