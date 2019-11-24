@@ -121,9 +121,6 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// actor.
   std::unordered_map<ActorID, int64_t> next_sequence_number_;
 
-  /// Map from actor id to the tasks that are waiting for reply.
-  std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
-
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
 

@@ -117,7 +117,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
-  waiting_reply_tasks_[actor_id].insert(std::make_pair(task_id, num_returns));
 
   auto task_number = GetRequestNumber(request);
   RAY_CHECK(next_sequence_number_[actor_id] == task_number)
@@ -126,11 +125,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
 
   auto status = client.PushActorTask(
       std::move(request),
-      [this, actor_id, task_id](Status status, const rpc::PushTaskReply &reply) {
-        {
-          std::unique_lock<std::mutex> guard(mutex_);
-          waiting_reply_tasks_[actor_id].erase(task_id);
-        }
+      [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
           // Note that this might be the __ray_terminate__ task, so we don't log
           // loudly with ERROR here.
