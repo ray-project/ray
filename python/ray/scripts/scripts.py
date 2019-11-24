@@ -426,13 +426,16 @@ def stop():
         # See STANDARD FORMAT SPECIFIERS section of
         # http://man7.org/linux/man-pages/man1/ps.1.html
         # about comm and args. This can help avoid killing non-ray processes.
+
+        # Format:
+        # Keyword to filter, filter by command (True)/filter by args (False)
         ["raylet", True],
         ["plasma_store", True],
         ["raylet_monitor", True],
         ["monitor.py", False],
         ["redis-server", True],
         ["default_worker.py", False],  # Python worker.
-        [" ray_", True],  # Python worker.
+        ["ray_", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
@@ -440,7 +443,7 @@ def stop():
     ]
 
     for process in processes_to_kill:
-        keyword, filter_by_cmd = process[0]
+        keyword, filter_by_cmd = process
         if filter_by_cmd:
             ps_format = "pid,comm"
             # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
@@ -451,8 +454,10 @@ def stop():
                                  str(len(keyword)) + ". Filter: " + keyword)
         else:
             ps_format = "pid,args"
-        command = ("kill -9 $(ps ax -o {} | grep {} | grep -v grep | grep ray | "
-                   "awk '\{ print $1 \}') 2> /dev/null".format(ps_format,keyword))
+        command = (
+            "kill -9 $(ps ax -o {} | grep {} | grep -v grep | grep ray | "
+            "awk '{{ print $1 }}') 2> /dev/null".format(ps_format, keyword))
+        #         ^^ This is how you escape braces in python format string.
         subprocess.call([command], shell=True)
 
 
