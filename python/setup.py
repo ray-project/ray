@@ -76,7 +76,7 @@ extras = {
         "pyyaml", "gym[atari]", "opencv-python-headless", "lz4", "scipy",
         "tabulate"
     ],
-    "debug": ["setproctitle", "py-spy >= 0.2.0"],
+    "debug": ["psutil", "setproctitle", "py-spy >= 0.2.0"],
     "dashboard": ["aiohttp", "google", "grpcio", "psutil", "setproctitle"],
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
     "tune": ["tabulate"],
@@ -174,7 +174,7 @@ requires = [
     "six >= 1.0.0",
     "faulthandler;python_version<'3.3'",
     "protobuf >= 3.8.0",
-    "psutil",
+    "psutil"
 ]
 
 setup(
