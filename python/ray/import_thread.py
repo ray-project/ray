@@ -2,9 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import redis
+from collections import defaultdict
 import threading
 import traceback
+
+import redis
 
 import ray
 from ray import ray_constants
@@ -30,6 +32,11 @@ class ImportThread(object):
         redis_client: the redis client used to query exports.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
+        imported_function_bytecodes: This is a dicitonary mapping strings
+            containing the bytecode of the remote functions that have been
+            exported to the number of times each remote function has been
+            imported. this is used to provide good error messages when the same
+            function is exported many many times.
     """
 
     def __init__(self, worker, mode, threads_stopped):
@@ -37,6 +44,9 @@ class ImportThread(object):
         self.mode = mode
         self.redis_client = worker.redis_client
         self.threads_stopped = threads_stopped
+        # TODO(rkn): Should we do the same thing as imported_function_bytecodes
+        # for actors as well?
+        self.imported_function_bytecodes = defaultdict(int)
 
     def start(self):
         """Start the import thread."""
@@ -98,6 +108,30 @@ class ImportThread(object):
             if key.startswith(b"FunctionsToRun"):
                 with profiling.profile("fetch_and_run_function"):
                     self.fetch_and_execute_function_to_run(key)
+
+            # If the same remote function definition appears to be exported
+            # many times, then print a warning. We only issue this warning from
+            # the driver so that it is only triggered once instead of many
+            # times.
+            elif key.startswith(b"RemoteFunction"):
+                function_bytecode, function_name = self.redis_client.hmget(
+                    key, ["function_bytecode", "name"])
+                function_identifier = (function_name, function_bytecode)
+                self.imported_function_bytecodes[function_identifier] += 1
+                if (self.imported_function_bytecodes[function_identifier] ==
+                        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD):
+                    logger.warning(
+                        "The remote function '%s' has been exported %s "
+                        "times. While this may not be an issue, this may "
+                        "indicate that the same remote function is being "
+                        "defined repeatedly from within many tasks and "
+                        "exported to all of the workers. This can be a "
+                        "performance issue and can be resolved by defining "
+                        "the remote function on the driver instead. See "
+                        "https://github.com/ray-project/ray/issues/6240 for "
+                        "more discussion.", ray.utils.decode(function_name),
+                        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
+
             # Return because FunctionsToRun are the only things that
             # the driver should import.
             return

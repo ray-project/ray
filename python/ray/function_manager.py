@@ -2,11 +2,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import dis
 import hashlib
 import importlib
 import inspect
 import json
 import logging
+import sys
 import time
 import threading
 import traceback
@@ -321,6 +323,13 @@ class FunctionActorManager(object):
         function = remote_function._function
         pickled_function = pickle.dumps(function)
 
+        # If we are running a script or are in IPython, store the bytecode in
+        # Redis. This is just used to print good error messages if the user
+        # exports the same remote function a bunch of times.
+        function_bytecode = dis.Bytecode(function).dis()
+        if sys.version_info[0] >= 3:
+            function_bytecode = function_bytecode.encode()
+
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
                                "remote function", self._worker)
@@ -334,6 +343,7 @@ class FunctionActorManager(object):
                 "name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
+                "function_bytecode": function_bytecode,
                 "max_calls": remote_function._max_calls
             })
         self._worker.redis_client.rpush("Exports", key)
