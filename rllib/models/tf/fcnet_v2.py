@@ -4,20 +4,20 @@ from __future__ import print_function
 
 import numpy as np
 
-from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.models.tf.distributional_q_model import DistributionalQModel
 from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
 
 
-class FullyConnectedNetwork(TFModelV2):
+class FullyConnectedNetwork(DistributionalQModel):
     """Generic fully connected network implemented in ModelV2 API."""
 
     def __init__(self, obs_space, action_space, num_outputs, model_config,
-                 name):
+                 name,**kw):
         super(FullyConnectedNetwork, self).__init__(
-            obs_space, action_space, num_outputs, model_config, name)
+            obs_space, action_space, num_outputs, model_config, name,**kw)
 
         activation = get_activation_fn(model_config.get("fcnet_activation"))
         hiddens = model_config.get("fcnet_hiddens")
