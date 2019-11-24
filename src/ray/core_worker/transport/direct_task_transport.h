@@ -3,12 +3,14 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_state_manager.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -23,12 +25,13 @@ class CoreWorkerDirectTaskSubmitter {
   CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
                                 rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
-                                std::shared_ptr<CoreWorkerMemoryStore> store)
+                                std::shared_ptr<CoreWorkerMemoryStore> store,
+                                TaskFinisherInterface &task_finisher)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        in_memory_store_(store),
-        resolver_(in_memory_store_) {}
+        resolver_(store),
+        task_finisher_(task_finisher) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -79,11 +82,11 @@ class CoreWorkerDirectTaskSubmitter {
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
 
-  /// The store provider.
-  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
-
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
+
+  /// Used to complete tasks.
+  TaskFinisherInterface &task_finisher_;
 
   // Protects task submission state below.
   absl::Mutex mu_;

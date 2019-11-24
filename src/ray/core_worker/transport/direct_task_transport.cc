@@ -127,23 +127,21 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
                                                    rpc::CoreWorkerClientInterface &client,
                                                    TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
-  auto num_returns = task_spec.NumReturns();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   auto status = client.PushNormalTask(
       std::move(request),
-      [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
+      [this, task_id, addr](Status status, const rpc::PushTaskReply &reply) {
         OnWorkerIdle(addr, /*error=*/!status.ok());
         if (!status.ok()) {
-          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
-                            in_memory_store_);
-          return;
+          task_finisher_.FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
+        } else {
+          task_finisher_.CompletePendingTask(task_id, reply);
         }
-        WriteObjectsToMemoryStore(reply, in_memory_store_);
       });
   if (!status.ok()) {
-    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
-                      in_memory_store_);
+    // TODO(swang): add unit test for this.
+    task_finisher_.FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
   }
 }
 };  // namespace ray

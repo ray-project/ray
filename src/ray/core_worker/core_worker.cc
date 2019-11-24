@@ -169,6 +169,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+  task_state_manager_.reset(new TaskStateManager(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -208,7 +209,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_));
+          memory_store_, *task_state_manager_));
 }
 
 CoreWorker::~CoreWorker() {
@@ -580,6 +581,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
+    task_state_manager_->AddPendingTask(task_spec);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {

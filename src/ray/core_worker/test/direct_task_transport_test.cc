@@ -1,3 +1,4 @@
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "ray/common/task/task_spec.h"
@@ -9,6 +10,8 @@
 
 namespace ray {
 
+using ::testing::_;
+
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   ray::Status PushNormalTask(
@@ -19,6 +22,14 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   }
 
   std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+};
+
+class MockTaskFinisher : public TaskFinisherInterface {
+ public:
+  MockTaskFinisher() {}
+
+  MOCK_METHOD2(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &));
+  MOCK_METHOD2(FailPendingTask, void(const TaskID &task_id, rpc::ErrorType error_type));
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -191,7 +202,9 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  MockTaskFinisher task_finisher;
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
@@ -200,6 +213,8 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
+  EXPECT_CALL(task_finisher, CompletePendingTask(TaskID::Nil(), _));
+  EXPECT_CALL(task_finisher, FailPendingTask(_, _)).Times(0);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
 
@@ -213,13 +228,17 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  MockTaskFinisher task_finisher;
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
+  EXPECT_CALL(task_finisher, FailPendingTask(TaskID::Nil(), _));
+  EXPECT_CALL(task_finisher, CompletePendingTask(_, _)).Times(0);
   worker_client->callbacks[0](Status::IOError("oops"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
@@ -231,7 +250,9 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  MockTaskFinisher task_finisher;
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher);
   TaskSpecification task1;
   TaskSpecification task2;
   TaskSpecification task3;
@@ -260,6 +281,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // All workers returned.
+  EXPECT_CALL(task_finisher, CompletePendingTask(_, _)).Times(3);
   for (const auto &cb : worker_client->callbacks) {
     cb(Status::OK(), rpc::PushTaskReply());
   }
@@ -272,7 +294,9 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  MockTaskFinisher task_finisher;
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher);
   TaskSpecification task1;
   TaskSpecification task2;
   TaskSpecification task3;
@@ -284,6 +308,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  EXPECT_CALL(task_finisher, CompletePendingTask(_, _)).Times(3);
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
@@ -315,7 +340,9 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  MockTaskFinisher task_finisher;
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher);
   TaskSpecification task1;
   TaskSpecification task2;
   task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
@@ -324,6 +351,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
+  EXPECT_CALL(task_finisher, CompletePendingTask(_, _));
+  EXPECT_CALL(task_finisher, FailPendingTask(_, _));
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
@@ -359,8 +388,9 @@ TEST(DirectTaskTransportTest, TestSpillback) {
     remote_lease_clients[raylet_id] = client;
     return client;
   };
+  MockTaskFinisher task_finisher;
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, lease_client_factory,
-                                          store);
+                                          store, task_finisher);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
@@ -369,6 +399,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(remote_lease_clients.size(), 0);
+  EXPECT_CALL(task_finisher, CompletePendingTask(_, _));
+  EXPECT_CALL(task_finisher, FailPendingTask(_, _)).Times(0);
 
   // Spillback to a remote node.
   auto remote_raylet_id = ClientID::FromRandom();
