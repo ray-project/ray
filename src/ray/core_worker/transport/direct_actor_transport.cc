@@ -257,7 +257,7 @@ void CoreWorkerDirectTaskReceiver::SetActorAsAsync() {
       // immediately start working on any ready fibers.
       fiber_shutdown_event_.Wait();
     });
-    fiber_rate_limiter_.reset(new FiberSemaphore(max_concurrency_));
+    fiber_rate_limiter_.reset(new FiberRateLimiter(max_concurrency_));
     is_asyncio_ = true;
   }
 };

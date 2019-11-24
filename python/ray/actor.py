@@ -380,7 +380,8 @@ class ActorClass(object):
             max_concurrency: The max number of concurrent calls to allow for
                 this actor. This only works with direct actor calls. The max
                 concurrency defaults to 1 for threaded execution, and 100 for
-                asyncio execution.
+                asyncio execution. Note that the execution order is not
+                guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.

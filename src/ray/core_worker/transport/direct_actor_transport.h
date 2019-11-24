@@ -265,9 +265,12 @@ class FiberEvent {
   bool ready_ = false;
 };
 
-class FiberSemaphore {
+/// Used by async actor mode. The FiberRateLimiter is a barrier that
+/// allows at most num fibers running at once. It implements the
+/// semaphore data structure.
+class FiberRateLimiter {
  public:
-  FiberSemaphore(int num) : num_(num) {}
+  FiberRateLimiter(int num) : num_(num) {}
 
   // Enter the semaphore. Wait fo the value to be > 0 and decrement the value.
   void Acquire() {
@@ -283,7 +286,8 @@ class FiberSemaphore {
       num_ += 1;
     }
     // TODO(simon): This not does guarantee to wake up the first queued fiber.
-    // This could be a problem for certain workloads.
+    // This could be a problem for certain workloads because there is no guarantee
+    // on task ordering .
     cond_.notify_one();
   }
 
@@ -300,7 +304,7 @@ class SchedulingQueue {
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   std::shared_ptr<BoundedExecutor> pool = nullptr,
                   bool use_asyncio = false,
-                  std::shared_ptr<FiberSemaphore> fiber_rate_limiter = nullptr,
+                  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter = nullptr,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
@@ -422,7 +426,7 @@ class SchedulingQueue {
   bool use_asyncio_;
   /// If use_asyncio_ is true, fiber_rate_limiter_ limits the max number of async
   /// tasks running at once.
-  std::shared_ptr<FiberSemaphore> fiber_rate_limiter_;
+  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
 
   friend class SchedulingQueueTest;
 };
@@ -490,6 +494,7 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
+  /// TODO(simon) group all asyncio related fields into a separate struct.
   bool is_asyncio_ = false;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
@@ -498,7 +503,7 @@ class CoreWorkerDirectTaskReceiver {
   FiberEvent fiber_shutdown_event_;
   /// The fiber semaphore used to limit the number of concurrent fibers
   /// running at once.
-  std::shared_ptr<FiberSemaphore> fiber_rate_limiter_;
+  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
 };
 
 }  // namespace ray
