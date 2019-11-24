@@ -7,7 +7,7 @@ import shutil
 import time
 import pytest
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 
 def test_conn_cluster():
@@ -150,3 +150,11 @@ def test_session_dir_uniqueness():
         session_dirs.add(ray.worker._global_node.get_session_dir_path)
         ray.shutdown()
     assert len(session_dirs) == 3
+
+
+if __name__ == "__main__":
+    import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main(["-v", __file__]))

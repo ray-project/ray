@@ -899,6 +899,17 @@ filegroup(
     ],
 )
 
+# This is a dummy test dependency that causes the python tests to be
+# re-run if any of these files changes.
+py_library(
+    name = "ray_lib",
+    srcs = glob(
+        ["python/ray/**/*.py"],
+        exclude = ["python/ray/tests/*.py"],
+    ),
+    visibility = ["__subpackages__"],
+)
+
 genrule(
     name = "ray_pkg",
     srcs = [

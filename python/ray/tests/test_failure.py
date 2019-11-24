@@ -15,8 +15,8 @@ import redis
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import (
+from ray.cluster_utils import Cluster
+from ray.test_utils import (
     relevant_errors,
     wait_for_errors,
     RayTestTimeoutException,
@@ -903,3 +903,8 @@ def test_direct_call_serialized_id(ray_start_cluster):
 
     obj = small_object.remote()
     ray.get(get.remote([obj]))
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

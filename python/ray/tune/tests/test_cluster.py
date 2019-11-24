@@ -13,8 +13,8 @@ import sys
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import run_string_as_driver_nonblocking
+from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.experiment import Experiment
@@ -598,4 +598,4 @@ tune.run(
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    sys.exit(pytest.main(["-v", __file__]))

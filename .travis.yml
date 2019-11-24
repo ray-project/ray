@@ -44,7 +44,6 @@ matrix:
         # Try generating Sphinx documentation. To do this, we need to install
         # Ray first.
         - ./ci/travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
         - cd doc
         - pip install -q -r requirements-doc.txt
         - pip install -q yapf==0.23.0
@@ -154,27 +153,14 @@ install:
   - ./ci/suppress_output ./ci/travis/install-ray.sh
   - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
 
-  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
-
-  # core worker test.
-  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
-
-  # Raylet tests.
-  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
-  - ./ci/suppress_output bazel test --build_tests_only --test_lang_filters=cc //:all
-  # Shutdown bazel to release the memory held by bazel.
-  - bazel shutdown
-
 script:
-  - export PATH="$HOME/miniconda/bin:$PATH"
-  # The following is needed so cloudpickle can find some of the
-  # class definitions: The main module of tests that are run
-  # with pytest have the same name as the test file -- and this
-  # module is only found if the test directory is in the PYTHONPATH.
-  # - export PYTHONPATH="$PYTHONPATH:./ci/"
+  # raylet integration tests
+  - ./ci/suppress_output bash src/ray/test/run_gcs_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_core_worker_tests.sh
+  - ./ci/suppress_output bash src/ray/test/run_object_manager_tests.sh
 
-  # ray tune tests, except tests tagged jenkins only.
-  - if [ $RAY_CI_TUNE_AFFECTED == "1" ]; then bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=120 --test_output=errors --test_tag_filters=-jenkins_only python/ray/tune/...; fi
+  # cc bazel tests
+  - ./ci/suppress_output bazel test --build_tests_only --show_progress_rate_limit=100 --test_output=errors //:all
 
   # ray serve tests
   - if [ $RAY_CI_SERVE_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/serve/tests; fi
@@ -184,7 +170,9 @@ script:
   # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/experimental/test/async_test.py; fi
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
-  - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=10 --timeout=300 python/ray/tests --ignore=python/ray/tests/perf_integration_tests --ignore=python/ray/tests/py3_test.py; fi
+
+  # py bazel tests, run using local strategy since PY2 breaks with sandbox
+  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
 
 deploy:
   - provider: s3
