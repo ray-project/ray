@@ -134,7 +134,7 @@ Status UnblockIfNeeded(const std::shared_ptr<RayletClient> &client,
     if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
       return client->NotifyDirectCallTaskUnblocked();
     } else {
-      return Status::OK();  // no-op
+      return Status::OK();  // We don't need to release resources.
     }
   } else {
     return client->NotifyUnblocked(ctx.GetCurrentTaskID());
