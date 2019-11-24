@@ -12,6 +12,7 @@ import random
 import setproctitle
 import shutil
 import six
+import sys
 import socket
 import subprocess
 import tempfile
@@ -681,7 +682,7 @@ def test_local_mode(shutdown_only):
 
     # Check that exceptions are deferred until ray.get().
 
-    exception_str = "test_basic remote task exception"
+    exception_str = "test_advanced remote task exception"
 
     @ray.remote
     def throws():
@@ -1849,8 +1850,7 @@ def test_ray_setproctitle(ray_start_2_cpus):
 
     @ray.remote
     def unique_1():
-        assert setproctitle.getproctitle(
-        ) == "ray_worker:ray.tests.test_basic.unique_1()"
+        assert "unique_1" in setproctitle.getproctitle()
 
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
@@ -2228,5 +2228,4 @@ def test_move_log_files_to_old(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

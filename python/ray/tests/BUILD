@@ -113,6 +113,7 @@ py_test(
     size = "small",
     srcs = ["test_debug_tools.py"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
