@@ -42,7 +42,7 @@ def test_submitting_many_tasks(ray_start_sharded):
             x = f.remote(x)
         return x
 
-    ray.get([g(1000) for _ in range(100)])
+    ray.get([g(100) for _ in range(100)])
     assert ray.services.remaining_processes_alive()
 
 
