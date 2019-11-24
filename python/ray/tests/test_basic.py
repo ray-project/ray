@@ -3378,8 +3378,7 @@ def test_ray_setproctitle(ray_start_2_cpus):
 
     @ray.remote
     def unique_1():
-        assert setproctitle.getproctitle(
-        ) == "ray_worker:ray.tests.test_basic.unique_1()"
+        assert "unique_1" in setproctitle.getproctitle()
 
     actor = UniqueName.remote()
     ray.get(actor.f.remote())
