@@ -28,6 +28,10 @@ class TaskManager : public TaskFinisherInterface {
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store)
       : in_memory_store_(in_memory_store) {}
 
+  /// Add a task that is pending execution.
+  ///
+  /// \param[in] spec The spec of the pending task.
+  /// \return Void.
   void AddPendingTask(const TaskSpecification &spec);
 
   /// Write return objects for a pending task to the memory store.
@@ -46,10 +50,14 @@ class TaskManager : public TaskFinisherInterface {
   void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) override;
 
  private:
+  /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
+  /// Protects below fields.
   absl::Mutex mu_;
 
+  /// Map from task ID to the task's number of return values. This map contains
+  /// one entry per pending task that we submitted.
   absl::flat_hash_map<TaskID, int64_t> pending_tasks_ GUARDED_BY(mu_);
 };
 
