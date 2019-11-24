@@ -4,26 +4,18 @@ from __future__ import print_function
 
 import collections
 import json
-import random
-import numpy as np
 import os
 import pytest
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
-import signal
 import sys
 import time
 
 import ray
-import ray.ray_constants as ray_constants
 import ray.test_utils
 import ray.cluster_utils
-from ray.test_utils import (relevant_errors, wait_for_condition,
-                            wait_for_errors, wait_for_pid_to_exit,
-                            run_string_as_driver, generate_internal_config_map)
-
 
 
 def test_actor_deletion_with_gpus(shutdown_only):

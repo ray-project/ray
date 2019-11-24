@@ -4,7 +4,6 @@ from __future__ import print_function
 
 import collections
 import json
-import random
 import numpy as np
 import os
 import pytest
@@ -22,7 +21,7 @@ import ray.test_utils
 import ray.cluster_utils
 from ray.test_utils import (relevant_errors, wait_for_condition,
                             wait_for_errors, wait_for_pid_to_exit,
-                            run_string_as_driver, generate_internal_config_map)
+                            generate_internal_config_map)
 
 
 @pytest.fixture
@@ -89,8 +88,6 @@ def ray_checkpointable_actor_cls(request):
             pass
 
     return CheckpointableActor
-
-
 
 
 @pytest.mark.parametrize(
@@ -732,5 +729,4 @@ def test_ray_wait_dead_actor(ray_start_cluster):
 
 if __name__ == "__main__":
     import pytest
-    import sys
     sys.exit(pytest.main(["-v", __file__]))

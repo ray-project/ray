@@ -321,7 +321,7 @@ def test_actor_class_name(ray_start_regular):
     assert len(actor_keys) == 1
     actor_class_info = r.hgetall(actor_keys[0])
     assert actor_class_info[b"class_name"] == b"Foo"
-    assert "test_actor" in actor_class_info[b"module"]
+    assert b"test_actor" in actor_class_info[b"module"]
 
 
 def test_actor_inheritance(ray_start_regular):
