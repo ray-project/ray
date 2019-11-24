@@ -1971,66 +1971,6 @@ def test_non_ascii_comment(ray_start_regular):
     assert ray.get(f.remote()) == 1
 
 
-@ray.remote
-def echo(x):
-    return x
-
-
-@ray.remote
-class WithConstructor(object):
-    def __init__(self, data):
-        self.data = data
-
-    def get_data(self):
-        return self.data
-
-
-@ray.remote
-class WithoutConstructor(object):
-    def set_data(self, data):
-        self.data = data
-
-    def get_data(self):
-        return self.data
-
-
-class BaseClass(object):
-    def __init__(self, data):
-        self.data = data
-
-    def get_data(self):
-        return self.data
-
-
-@ray.remote
-class DerivedClass(BaseClass):
-    def __init__(self, data):
-        # Due to different behaviors of super in Python 2 and Python 3,
-        # we use BaseClass directly here.
-        BaseClass.__init__(self, data)
-
-
-def test_load_code_from_local(shutdown_only):
-    ray.init(load_code_from_local=True, num_cpus=4)
-    message = "foo"
-    # Test normal function.
-    assert ray.get(echo.remote(message)) == message
-    # Test actor class with constructor.
-    actor = WithConstructor.remote(1)
-    assert ray.get(actor.get_data.remote()) == 1
-    # Test actor class without constructor.
-    actor = WithoutConstructor.remote()
-    actor.set_data.remote(1)
-    assert ray.get(actor.get_data.remote()) == 1
-    # Test derived actor class.
-    actor = DerivedClass.remote(1)
-    assert ray.get(actor.get_data.remote()) == 1
-    # Test using ray.remote decorator on raw classes.
-    base_actor_class = ray.remote(num_cpus=1)(BaseClass)
-    base_actor = base_actor_class.remote(message)
-    assert ray.get(base_actor.get_data.remote()) == message
-
-
 def test_shutdown_disconnect_global_state():
     ray.init(num_cpus=0)
     ray.shutdown()
