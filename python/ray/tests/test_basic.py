@@ -1324,6 +1324,27 @@ def test_direct_call_chain(ray_start_cluster):
     assert ray.get(x) == 100
 
 
+def test_direct_inline_arg_memory_corruption(ray_start_regular):
+    @ray.remote
+    def f():
+        return np.zeros(1000, dtype=np.uint8)
+
+    @ray.remote
+    class Actor(object):
+        def __init__(self):
+            self.z = []
+
+        def add(self, x):
+            self.z.append(x)
+            for prev in self.z:
+                assert np.sum(prev) == 0, ("memory corruption detected", prev)
+
+    a = Actor.options(is_direct_call=True).remote()
+    f_direct = f.options(is_direct_call=True)
+    for i in range(100):
+        ray.get(a.add.remote(f_direct.remote()))
+
+
 def test_direct_actor_enabled(ray_start_regular):
     @ray.remote
     class Actor(object):

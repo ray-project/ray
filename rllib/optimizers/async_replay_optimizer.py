@@ -290,10 +290,6 @@ class ReplayActor(object):
         # Handle everything as if multiagent
         if isinstance(batch, SampleBatch):
             batch = MultiAgentBatch({DEFAULT_POLICY_ID: batch}, batch.count)
-        # TODO(ekl) if we don't do the copy, then any arrays pointing to
-        # direct call objects will be corrupted after return.
-        # This is a bug in the memory store ref counting.
-        batch = batch.copy()
         with self.add_batch_timer:
             for policy_id, s in batch.policy_batches.items():
                 for row in s.rows():
