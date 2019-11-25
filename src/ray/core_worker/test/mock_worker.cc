@@ -39,19 +39,31 @@ class MockWorker {
     // Note that this doesn't include dummy object id.
     RAY_CHECK(return_ids.size() >= 0);
 
+    // Get mock worker pid
     if (args.size() == 1 && args[0]->GetData()->Size() == c_get_pid_string.size() &&
         memcmp(args[0]->GetData()->Data(), c_get_pid_string.data(),
                c_get_pid_string.size()) == 0) {
-      // Save the pid of current process to the return object.
-      std::string pid_string = std::to_string(static_cast<int>(getpid()));
-      auto data =
-          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
-      auto memory_buffer =
-          std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
-      results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
-      return Status::OK();
+      return GetWorkerPid(results);
+    } else {
+      // Merge input args and write the merged content to each of return ids
+      return MergeInputArgsAsOutput(args, return_ids, results);
     }
+  }
 
+  Status GetWorkerPid(std::vector<std::shared_ptr<RayObject>> *results) {
+    // Save the pid of current process to the return object.
+    std::string pid_string = std::to_string(static_cast<int>(getpid()));
+    auto data =
+        const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(pid_string.data()));
+    auto memory_buffer =
+        std::make_shared<LocalMemoryBuffer>(data, pid_string.size(), true);
+    results->push_back(std::make_shared<RayObject>(memory_buffer, nullptr));
+    return Status::OK();
+  }
+
+  Status MergeInputArgsAsOutput(const std::vector<std::shared_ptr<RayObject>> &args,
+                                const std::vector<ObjectID> &return_ids,
+                                std::vector<std::shared_ptr<RayObject>> *results) {
     // Merge all the content from input args.
     std::vector<uint8_t> buffer;
     for (const auto &arg : args) {
