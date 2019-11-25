@@ -763,7 +763,7 @@ pyx_library(
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
-        "//streaming/src:streaming_lib",
+        "//streaming:streaming_lib",
     ],
 )
 
@@ -892,7 +892,7 @@ genrule(
         "//:raylet",
         "//:raylet_monitor",
         "@plasma//:plasma_store_server",
-        "//streaming/python:cp_streaming_py_proto_generated",
+        "//streaming:cp_streaming_py_proto_generated",
     ],
     outs = ["ray_pkg.out"],
     cmd = """

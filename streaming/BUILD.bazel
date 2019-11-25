@@ -1,11 +1,12 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
-load("@com_github_ray_project_ray//bazel:cython_library.bzl", "pyx_library")
+load("@//bazel:cython_library.bzl", "pyx_library")
+load("@build_stack_rules_proto//python:python_proto_compile.bzl", "python_proto_compile")
 
 proto_library(
     name = "streaming_proto",
-    srcs = ["protobuf/streaming.proto"],
+    srcs = ["src/protobuf/streaming.proto"],
     visibility = ["//visibility:public"],
 )
 
@@ -16,7 +17,7 @@ cc_proto_library(
 
 proto_library(
     name = "streaming_queue_proto",
-    srcs = ["protobuf/streaming_queue.proto"],
+    srcs = ["src/protobuf/streaming_queue.proto"],
 )
 
 cc_proto_library(
@@ -27,13 +28,13 @@ cc_proto_library(
 cc_library(
     name = "streaming_util",
     srcs = glob([
-        "util/*.cc",
+        "src/util/*.cc",
     ]),
     hdrs = glob([
-        "util/*.h",
+        "src/util/*.h",
     ]),
     includes = [
-        ".",
+        "src",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -46,10 +47,10 @@ cc_library(
 cc_library(
     name = "streaming_config",
     srcs = glob([
-        "config/*.cc",
+        "src/config/*.cc",
     ]),
     hdrs = glob([
-        "config/*.h",
+        "src/config/*.h",
     ]),
     deps = [
         ":streaming_cc_proto",
@@ -61,10 +62,10 @@ cc_library(
 cc_library(
     name = "streaming_message",
     srcs = glob([
-        "message/*.cc",
+        "src/message/*.cc",
     ]),
     hdrs = glob([
-        "message/*.h",
+        "src/message/*.h",
     ]),
     deps = [
         ":streaming_config",
@@ -76,10 +77,10 @@ cc_library(
 cc_library(
     name = "streaming_queue",
     srcs = glob([
-        "queue/*.cc",
+        "src/queue/*.cc",
     ]),
     hdrs = glob([
-        "queue/*.h",
+        "src/queue/*.h",
     ]),
     deps = [
         ":streaming_config",
@@ -98,13 +99,12 @@ cc_library(
 cc_library(
     name = "streaming_lib",
     srcs = glob([
-        "*.cc",
+        "src/*.cc",
     ]),
     hdrs = glob([
-        "*.h",
-        "queue/*.h",
+        "src/*.h",
     ]),
-    includes = ["."],
+    includes = ["src"],
     visibility = ["//visibility:public"],
     deps = [
         ":streaming_config",
@@ -121,9 +121,9 @@ cc_library(
 cc_binary(
     name = "streaming_test_worker",
     srcs = [
-        "test/mock_actor.cc",
+        "src/test/mock_actor.cc",
     ],
-    copts = ["-Itest/"],
+    copts = ["-Isrc/test/"],
     includes = [
         "streaming/src/test",
     ],
@@ -135,7 +135,7 @@ cc_binary(
 cc_binary(
     name = "streaming_message_ring_buffer_tests",
     srcs = [
-        "test/ring_buffer_tests.cc",
+        "src/test/ring_buffer_tests.cc",
     ],
     includes = [
         "streaming/src/test",
@@ -148,7 +148,7 @@ cc_binary(
 cc_binary(
     name = "streaming_message_serialization_tests",
     srcs = [
-        "test/message_serialization_tests.cc",
+        "src/test/message_serialization_tests.cc",
     ],
     deps = [
         ":streaming_lib",
@@ -158,7 +158,7 @@ cc_binary(
 cc_binary(
     name = "streaming_mock_transfer",
     srcs = [
-        "test/mock_transfer.cc",
+        "src/test/mock_transfer.cc",
     ],
     deps = [
         ":streaming_lib",
@@ -168,10 +168,10 @@ cc_binary(
 cc_binary(
     name = "streamingqueue_tests",
     srcs = [
-        "test/queue_tests_base.h",
-        "test/streamingqueue_tests.cc",
+        "src/test/queue_tests_base.h",
+        "src/test/streamingqueue_tests.cc",
     ],
-    copts = ["-Itest/"],
+    copts = ["-Isrc/test/"],
     deps = [
         ":streaming_lib",
     ],
@@ -180,7 +180,7 @@ cc_binary(
 cc_binary(
     name = "streaming_util_tests",
     srcs = [
-        "test/streaming_util_tests.cc",
+        "src/test/streaming_util_tests.cc",
     ],
     deps = [
         ":streaming_lib",
@@ -204,4 +204,34 @@ genrule(
       $(location streaming_util_tests) >> $@ &&
       $(location streaming_mock_transfer) >> $@
     """,
+)
+
+python_proto_compile(
+    name = "streaming_py_proto",
+    deps = ["//streaming:streaming_proto"],
+)
+
+genrule(
+    name = "cp_streaming_py_proto_generated",
+    srcs = [
+        ":streaming_py_proto",
+    ],
+    outs = [
+        "cp_streaming_py_proto_generated.out",
+    ],
+    cmd = """
+        set -e
+        set -x
+        WORK_DIR=$$(pwd)
+        # Copy generated files.
+        GENERATED_DIR=$$WORK_DIR/streaming/python/generated
+        rm -rf $$GENERATED_DIR
+        mkdir -p $$GENERATED_DIR
+        for f in $(locations //streaming:streaming_py_proto); do
+            cp $$f $$GENERATED_DIR
+        done
+        echo $$(date) > $@
+    """,
+    local = 1,
+    visibility = ["//visibility:public"],
 )
