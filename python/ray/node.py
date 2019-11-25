@@ -781,6 +781,16 @@ class Node(object):
         self._kill_process_type(
             ray_constants.PROCESS_TYPE_RAYLET_MONITOR, check_alive=check_alive)
 
+    def kill_reaper(self, check_alive=True):
+        """Kill the reaper process.
+
+        Args:
+            check_alive (bool): Raise an exception if the process was already
+                dead.
+        """
+        self._kill_process_type(
+            ray_constants.PROCESS_TYPE_REAPER, check_alive=check_alive)
+
     def kill_all_processes(self, check_alive=True, allow_graceful=False):
         """Kill all of the processes.
 

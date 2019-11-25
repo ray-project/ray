@@ -327,7 +327,8 @@ def start(node_ip_address, redis_address, address, redis_port,
             include_java=False,
         )
 
-        node = ray.node.Node(ray_params, head=True, shutdown_at_exit=block)
+        node = ray.node.Node(
+            ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
         redis_address = node.redis_address
 
         logger.info(
@@ -395,7 +396,8 @@ def start(node_ip_address, redis_address, address, redis_port,
         check_no_existing_redis_clients(ray_params.node_ip_address,
                                         redis_client)
         ray_params.update(redis_address=redis_address)
-        node = ray.node.Node(ray_params, head=False, shutdown_at_exit=block)
+        node = ray.node.Node(
+            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block)
         logger.info("\nStarted Ray on this node. If you wish to terminate the "
                     "processes that have been started, run\n\n"
                     "    ray stop")
