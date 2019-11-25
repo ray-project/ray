@@ -2,6 +2,9 @@ FROM ray-project/base-deps
 ARG WHEEL_PATH
 ARG WHEEL_NAME
 
+RUN apt update
+RUN apt install -y curl tmux screen rsync
+
 # We have to uninstall wrapt this way for Tensorflow compatibility
 RUN conda remove -y wrapt
 COPY requirements.txt .

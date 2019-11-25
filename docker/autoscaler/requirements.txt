@@ -20,3 +20,5 @@ torchvision
 tensorboardX
 tabulate
 mlflow
+kubernetess
+boto3
