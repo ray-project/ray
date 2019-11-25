@@ -5,10 +5,10 @@ name: ray-example-streaming
 description: "A simple ray example for a streaming wordcount"
 tags: ["ray-example", "streaming", "wordcount", "data-processing"]
 
-cluster: .rayproject/cluster.yaml
+cluster: ray-project/cluster.yaml
 
 environment:
-  requirements: .rayproject/requirements.txt
+  requirements: ray-project/requirements.txt
 
 commands:
   - name: run

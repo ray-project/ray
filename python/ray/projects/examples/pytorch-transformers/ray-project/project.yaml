@@ -4,10 +4,10 @@ name: pytorch-transformers
 description: "A library of state-of-the-art pretrained models for Natural Language Processing (NLP)"
 repo: https://github.com/huggingface/pytorch-transformers
 
-cluster: .rayproject/cluster.yaml
+cluster: ray-project/cluster.yaml
 
 environment:
-  requirements: .rayproject/requirements.txt
+  requirements: ray-project/requirements.txt
 
 commands:
   - name: train

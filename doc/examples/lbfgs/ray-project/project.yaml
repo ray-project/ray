@@ -6,10 +6,10 @@ description: "Parallelizing the L-BFGS algorithm in ray"
 tags: ["ray-example", "optimization", "lbfgs"]
 documentation: https://ray.readthedocs.io/en/latest/auto_examples/plot_lbfgs.html
 
-cluster: .rayproject/cluster.yaml
+cluster: ray-project/cluster.yaml
 
 environment:
-  requirements: .rayproject/requirements.txt
+  requirements: ray-project/requirements.txt
 
 commands:
   - name: run
