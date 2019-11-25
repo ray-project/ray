@@ -23,7 +23,17 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return Status::OK();
   }
 
-  std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+  bool ReplyPushTask(Status status = Status::OK()) {
+    if (callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = callbacks.front();
+    callback(status, rpc::PushTaskReply());
+    callbacks.pop_front();
+    return true;
+  }
+
+  std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   uint64_t counter = 0;
 };
 
@@ -77,8 +87,8 @@ TEST_F(DirectActorTransportTest, TestSubmitTask) {
   EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _))
       .Times(worker_client_->callbacks.size());
   EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(0);
-  for (auto &cb : worker_client_->callbacks) {
-    cb(Status::OK(), rpc::PushTaskReply());
+  while (!worker_client_->callbacks.empty()) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
 }
 
@@ -155,8 +165,8 @@ TEST_F(DirectActorTransportTest, TestActorFailure) {
   // Simulate the actor dying. All submitted tasks should get failed.
   EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(2);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _)).Times(0);
-  for (auto &cb : worker_client_->callbacks) {
-    cb(Status::IOError(""), rpc::PushTaskReply());
+  while (!worker_client_->callbacks.empty()) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
   }
 }
 
