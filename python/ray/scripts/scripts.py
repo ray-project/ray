@@ -440,8 +440,7 @@ def stop(force):
         ["monitor.py", False],
         ["redis-server", True],
         ["default_worker.py", False],  # Python worker.
-        ["ray_worker::", True],  # Python worker.
-        ["ray_actor::", True],  # Python worker.
+        ["ray::", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
