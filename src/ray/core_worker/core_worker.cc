@@ -265,7 +265,7 @@ void CoreWorker::ReportActiveObjectIDs() {
       reference_counter_->GetAllInScopeObjectIDs();
   RAY_LOG(DEBUG) << "Sending " << active_object_ids.size() << " object IDs to raylet.";
   if (active_object_ids.size() > RayConfig::instance().raylet_max_active_object_ids()) {
-    RAY_LOG(WARNING) << active_object_ids.size() << " object IDs are currently in scope.";
+    RAY_LOG(DEBUG) << active_object_ids.size() << " object IDs are currently in scope.";
   }
 
   if (!raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
