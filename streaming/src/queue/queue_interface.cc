@@ -14,9 +14,9 @@ StreamingQueueWriter::StreamingQueueWriter(CoreWorker *core_worker,
   queue_manager_ = ray::streaming::QueueManager::GetInstance(actor_id_);
 }
 
-void StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_size,
+void StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t max_size,
                                          ActorID &peer_actor_id) {
-  STREAMING_LOG(INFO) << "CreateQueue qid: " << queue_id << " data_size: " << data_size;
+  STREAMING_LOG(INFO) << "CreateQueue qid: " << queue_id << " data_size: " << max_size;
   if (queue_manager_->UpstreamQueueExists(queue_id)) {
     RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
     return;
@@ -26,7 +26,7 @@ void StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_si
       queue_id, std::make_shared<ray::streaming::Transport>(
                     core_worker_, peer_actor_id, async_func_, sync_func_));
 
-  auto queue = queue_manager_->CreateUpstreamQueue(queue_id, actor_id_, peer_actor_id, data_size);
+  auto queue = queue_manager_->CreateUpstreamQueue(queue_id, actor_id_, peer_actor_id, max_size);
   STREAMING_CHECK(queue != nullptr);
 
   queue_manager_->UpdateUpActor(queue_id, actor_id_);
@@ -34,7 +34,7 @@ void StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t data_si
 
   std::vector<ObjectID> queue_ids, failed_queues;
   queue_ids.push_back(queue_id);
-  WaitQueuesInCluster(queue_ids, 10*1000, failed_queues);
+  queue_manager_->WaitQueues(queue_ids, 10*1000, failed_queues, DOWNSTREAM);
 }
 
 Status StreamingQueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id,
@@ -44,13 +44,6 @@ Status StreamingQueueWriter::SetQueueEvictionLimit(const ObjectID &queue_id,
 
   queue->SetQueueEvictionLimit(eviction_limit);
   return Status::OK();
-}
-
-void StreamingQueueWriter::WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
-                                               int64_t timeout_ms,
-                                               std::vector<ObjectID> &failed_queues) {
-  STREAMING_LOG(INFO) << "QueueWriter::WaitQueues timeout_ms: " << timeout_ms;
-  queue_manager_->WaitQueues(queue_ids, timeout_ms, failed_queues, DOWNSTREAM);
 }
 
 void StreamingQueueWriter::GetMinConsumedSeqID(const ObjectID &queue_id,
@@ -100,7 +93,7 @@ StreamingQueueReader::StreamingQueueReader(CoreWorker *core_worker,
 }
 
 /// Create queue and pull queue (if needed), synchronously.
-bool StreamingQueueReader::GetQueue(const ObjectID &queue_id, int64_t timeout_ms,
+bool StreamingQueueReader::GetQueue(const ObjectID &queue_id,
                                     uint64_t start_seq_id, ActorID &peer_actor_id) {
   STREAMING_LOG(INFO) << "GetQueue qid: " << queue_id << " start_seq_id: " << start_seq_id;
   if (queue_manager_->DownstreamQueueExists(queue_id)) {
@@ -149,14 +142,6 @@ void StreamingQueueReader::NotifyConsumedItem(const ObjectID &queue_id, uint64_t
   STREAMING_LOG(DEBUG) << "QueueReader::NotifyConsumedItem";
   auto queue = queue_manager_->GetDownQueue(queue_id);
   queue->OnConsumed(seq_id);
-}
-
-void StreamingQueueReader::WaitQueuesInCluster(const std::vector<ObjectID> &queue_ids,
-                                               int64_t timeout_ms,
-                                               std::vector<ObjectID> &failed_queues) {
-  // We don't need to wait queue in reader side under StreamingQueue
-  // queue_reader_->WaitQueues(queue_ids, timeout_ms, failed_queues);
-  failed_queues.clear();
 }
 
 Status StreamingQueueReader::DeleteQueue(const ObjectID &queue_id) {

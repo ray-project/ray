@@ -125,7 +125,6 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(
 StreamingStatus StreamingQueueProducer::WaitChannelsReady(
     std::vector<ObjectID> &channels, uint32_t timeout,
     std::vector<ObjectID> &abnormal_channels) {
-  queue_writer_->WaitQueuesInCluster(channels, timeout, abnormal_channels);
   if (abnormal_channels.size()) {
     return StreamingStatus::WaitQueueTimeOut;
   }
@@ -155,7 +154,7 @@ StreamingStatus StreamingQueueConsumer::CreateTransferChannel(
   // subscribe next seq id from checkpoint id
   // pull remote queue to local store if scheduler connection is set
   bool success =
-      queue_reader_->GetQueue(channel_info.channel_id, -1,
+      queue_reader_->GetQueue(channel_info.channel_id,
                               channel_info.current_seq_id + 1, channel_info.actor_id);
   if (!success) {
     return StreamingStatus::InitQueueFailed;
@@ -192,7 +191,6 @@ StreamingStatus StreamingQueueConsumer::NotifyChannelConsumed(
 StreamingStatus StreamingQueueConsumer::WaitChannelsReady(
     std::vector<ObjectID> &channels, uint32_t timeout,
     std::vector<ObjectID> &abnormal_channels) {
-  queue_reader_->WaitQueuesInCluster(channels, timeout, abnormal_channels);
   if (abnormal_channels.size()) {
     return StreamingStatus::WaitQueueTimeOut;
   }
