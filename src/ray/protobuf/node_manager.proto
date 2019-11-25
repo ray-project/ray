@@ -17,11 +17,15 @@ message WorkerLeaseRequest {
   // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
   // SchedulingClass representing the requested resources on the client.
+  // Used by the client to keep track of which resource shape this lease
+  // request was for.
   uint32 scheduling_class = 2;
 }
 
 message WorkerLeaseReply {
   // SchedulingClass representing the granted resources on the client.
+  // Used by the client to keep track of which resource shape this lease
+  // request was for.
   uint32 scheduling_class = 1;
   // Address of the leased worker. If this is empty, then the request should be
   // retried at the provided raylet address.

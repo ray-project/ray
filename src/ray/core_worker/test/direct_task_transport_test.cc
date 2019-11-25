@@ -1,6 +1,7 @@
 #include "gtest/gtest.h"
 
 #include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
@@ -191,6 +192,17 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
 }
 
+TaskSpecification BuildTaskSpec(
+    const std::unordered_map<std::string, double> &resources) {
+  TaskSpecBuilder builder;
+  std::vector<std::string> empty_descriptor;
+  rpc::Address empty_address;
+  builder.SetCommonTaskSpec(TaskID::Nil(), Language::PYTHON, empty_descriptor,
+                            JobID::Nil(), TaskID::Nil(), 0, TaskID::Nil(), empty_address,
+                            1, true, resources, resources);
+  return builder.Build();
+}
+
 TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
@@ -198,8 +210,9 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-  TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -221,8 +234,9 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-  TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
@@ -240,12 +254,11 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-  TaskSpecification task1;
-  TaskSpecification task2;
-  TaskSpecification task3;
-  task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task2.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task3.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task1 = BuildTaskSpec(empty_resources);
+  TaskSpecification task2 = BuildTaskSpec(empty_resources);
+  TaskSpecification task3 = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -282,12 +295,10 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-  TaskSpecification task1;
-  TaskSpecification task2;
-  TaskSpecification task3;
-  task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task2.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task3.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task1 = BuildTaskSpec(empty_resources);
+  TaskSpecification task2 = BuildTaskSpec(empty_resources);
+  TaskSpecification task3 = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -326,10 +337,9 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-  TaskSpecification task1;
-  TaskSpecification task2;
-  task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task2.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task1 = BuildTaskSpec(empty_resources);
+  TaskSpecification task2 = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
@@ -371,8 +381,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, lease_client_factory,
                                           store, kLongTimeout);
-  TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
@@ -407,12 +417,10 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           /*lease_timeout_ms=*/5);
-  TaskSpecification task1;
-  TaskSpecification task2;
-  TaskSpecification task3;
-  task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task2.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
-  task3.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  std::unordered_map<std::string, double> empty_resources;
+  TaskSpecification task1 = BuildTaskSpec(empty_resources);
+  TaskSpecification task2 = BuildTaskSpec(empty_resources);
+  TaskSpecification task3 = BuildTaskSpec(empty_resources);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
