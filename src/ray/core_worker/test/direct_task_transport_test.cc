@@ -25,10 +25,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) {
+  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) override {
     num_tasks_complete++;
   }
-  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) {
+  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) override {
     num_tasks_failed++;
   }
 
@@ -206,7 +206,7 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  MockTaskFinisher task_finisher;
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher);
   TaskSpecification task;
@@ -219,14 +219,14 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 1);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
@@ -234,7 +234,7 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  MockTaskFinisher task_finisher;
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher);
   TaskSpecification task;
@@ -247,8 +247,8 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
@@ -256,7 +256,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  MockTaskFinisher task_finisher;
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher);
   TaskSpecification task1;
@@ -292,8 +292,8 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 3);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 3);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
@@ -301,7 +301,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  MockTaskFinisher task_finisher;
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher);
   TaskSpecification task1;
@@ -339,8 +339,8 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 3);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
@@ -348,7 +348,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
   auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
-  MockTaskFinisher task_finisher;
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           task_finisher);
   TaskSpecification task1;
@@ -377,8 +377,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 1);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
@@ -396,7 +396,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
     remote_lease_clients[raylet_id] = client;
     return client;
   };
-  MockTaskFinisher task_finisher;
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, lease_client_factory,
                                           store, task_finisher);
   TaskSpecification task;
@@ -425,8 +425,8 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
-  ASSERT_EQ(task_finisher.num_tasks_complete, 1);
-  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 }  // namespace ray

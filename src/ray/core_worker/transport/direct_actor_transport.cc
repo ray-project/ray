@@ -45,7 +45,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     } else {
       // Actor is dead, treat the task as failure.
       RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
-      task_finisher_.FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+      task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
     }
   });
 
@@ -85,7 +85,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
         auto request = std::move(head->second);
         head = pending_it->second.erase(head);
         auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-        task_finisher_.FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+        task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
       }
       pending_requests_.erase(pending_it);
     }
@@ -130,13 +130,13 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
           // Note that this might be the __ray_terminate__ task, so we don't log
           // loudly with ERROR here.
           RAY_LOG(INFO) << "Task failed with error: " << status;
-          task_finisher_.FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
-          task_finisher_.CompletePendingTask(task_id, reply);
+          task_finisher_->CompletePendingTask(task_id, reply);
         }
       });
   if (!status.ok()) {
-    task_finisher_.FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+    task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
   }
 }
 

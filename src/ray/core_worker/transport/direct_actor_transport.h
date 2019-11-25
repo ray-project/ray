@@ -49,7 +49,7 @@ class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
                                      std::shared_ptr<CoreWorkerMemoryStore> store,
-                                     TaskFinisherInterface &task_finisher)
+                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
         resolver_(store),
         task_finisher_(task_finisher) {}
@@ -125,7 +125,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   friend class CoreWorkerTest;
 };

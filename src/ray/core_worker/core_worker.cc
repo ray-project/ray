@@ -199,7 +199,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
-                                             *task_manager_));
+                                             task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -210,7 +210,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_, *task_manager_));
+          memory_store_, task_manager_));
 }
 
 CoreWorker::~CoreWorker() {

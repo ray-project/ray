@@ -26,7 +26,7 @@ class CoreWorkerDirectTaskSubmitter {
                                 rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
                                 std::shared_ptr<CoreWorkerMemoryStore> store,
-                                TaskFinisherInterface &task_finisher)
+                                std::shared_ptr<TaskFinisherInterface> task_finisher)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
@@ -86,7 +86,7 @@ class CoreWorkerDirectTaskSubmitter {
   LocalDependencyResolver resolver_;
 
   /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   // Protects task submission state below.
   absl::Mutex mu_;

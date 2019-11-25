@@ -20,7 +20,7 @@ class TaskFinisherInterface {
 
   virtual void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) = 0;
 
-  ~TaskFinisherInterface() {}
+  virtual ~TaskFinisherInterface() {}
 };
 
 class TaskManager : public TaskFinisherInterface {

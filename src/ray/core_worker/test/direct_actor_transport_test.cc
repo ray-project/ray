@@ -49,12 +49,13 @@ class DirectActorTransportTest : public ::testing::Test {
   DirectActorTransportTest()
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
+        task_finisher_(std::make_shared<MockTaskFinisher>()),
         submitter_([&](const rpc::WorkerAddress &addr) { return worker_client_; }, store_,
                    task_finisher_) {}
 
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
-  MockTaskFinisher task_finisher_;
+  std::shared_ptr<MockTaskFinisher> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 };
 
@@ -73,9 +74,9 @@ TEST_F(DirectActorTransportTest, TestSubmitTask) {
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
-  EXPECT_CALL(task_finisher_, CompletePendingTask(TaskID::Nil(), _))
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _))
       .Times(worker_client_->callbacks.size());
-  EXPECT_CALL(task_finisher_, FailPendingTask(_, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(0);
   for (auto &cb : worker_client_->callbacks) {
     cb(Status::OK(), rpc::PushTaskReply());
   }
@@ -152,8 +153,8 @@ TEST_F(DirectActorTransportTest, TestActorFailure) {
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   // Simulate the actor dying. All submitted tasks should get failed.
-  EXPECT_CALL(task_finisher_, FailPendingTask(_, _)).Times(2);
-  EXPECT_CALL(task_finisher_, CompletePendingTask(_, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(2);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _)).Times(0);
   for (auto &cb : worker_client_->callbacks) {
     cb(Status::IOError(""), rpc::PushTaskReply());
   }
