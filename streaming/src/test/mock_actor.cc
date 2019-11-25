@@ -3,13 +3,13 @@
 #include "ray/core_worker/core_worker.h"
 #include "src/ray/util/test_util.h"
 
-#include "queue/queue_client.h"
-#include "streaming.h"
+#include "data_reader.h"
+#include "data_writer.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
-#include "data_reader.h"
+#include "queue/queue_client.h"
 #include "ring_buffer.h"
-#include "data_writer.h"
+#include "status.h"
 
 #include "gtest/gtest.h"
 using namespace std::placeholders;
@@ -106,12 +106,14 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
                         << " actor_id: " << peer_actor_id_;
     RayFunction async_call_func{ray::Language::PYTHON, {"async_call_func"}};
     RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
+    std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
+    runtime_context->SetConfig(config);
+
     std::shared_ptr<StreamingWriter> streaming_writer_client(
-        new StreamingWriterDirectCall(core_worker_.get(), queue_ids_, actor_ids,
-                                      async_call_func, sync_call_func));
+        new StreamingWriterDirectCall(runtime_context, core_worker_.get(), queue_ids_,
+                                      actor_ids, async_call_func, sync_call_func));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
-    streaming_writer_client->SetConfig(config);
     streaming_writer_client->Init(queue_ids_, channel_seq_id_vec,
                                   std::vector<uint64_t>(queue_ids_.size(), queue_size));
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
@@ -229,10 +231,12 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
                         << " actor_id: " << peer_actor_id_;
     RayFunction async_call_func{ray::Language::PYTHON, {"async_call_func"}};
     RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
-    std::shared_ptr<StreamingReader> reader(new StreamingReaderDirectCall(
-        core_worker_.get(), queue_ids_, actor_ids, async_call_func, sync_call_func));
+    std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
+    runtime_context->SetConfig(config);
+    std::shared_ptr<StreamingReader> reader(
+        new StreamingReaderDirectCall(runtime_context, core_worker_.get(), queue_ids_,
+                                      actor_ids, async_call_func, sync_call_func));
 
-    reader->SetConfig(config);
     reader->Init(queue_ids_, -1);
     ReaderLoopForward(reader, nullptr, queue_ids_);
 
@@ -272,7 +276,7 @@ class TestSuiteFactory {
         test_suite = std::make_shared<StreamingQueueReaderTestSuite>(
             worker, peer_actor_id, queue_ids, rescale_queue_ids);
       } else {
-        STREAMING_CHECK(false) << "unsurported suite_name: " << suite_name;
+        STREAMING_CHECK(false) << "unsupported suite_name: " << suite_name;
       }
     }
 
