@@ -1227,7 +1227,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     }
   }
 
-  if (!required_object_ids.empty() && message->mark_worker_blocked()) {
+  if (!required_object_ids.empty()) {
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
     HandleTaskBlocked(client, required_object_ids, task_id, /*ray_get=*/true);
   }

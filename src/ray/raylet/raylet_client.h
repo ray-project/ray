@@ -123,11 +123,10 @@ class RayletClient : public WorkerLeaseInterface {
   ///
   /// \param object_ids The IDs of the objects to reconstruct.
   /// \param fetch_only Only fetch objects, do not reconstruct them.
-  /// \param mark_worker_blocked Set to false if current task is a direct call task.
   /// \param current_task_id The task that needs the objects.
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
-                                 bool mark_worker_blocked, const TaskID &current_task_id);
+                                 const TaskID &current_task_id);
 
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
