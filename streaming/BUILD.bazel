@@ -160,7 +160,7 @@ cc_binary(
 cc_binary(
     name = "streaming_mock_transfer",
     srcs = [
-        "src/test/mock_transfer.cc",
+        "src/test/mock_transfer_tests.cc",
     ],
     deps = [
         ":streaming_lib",

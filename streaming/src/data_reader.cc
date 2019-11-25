@@ -10,7 +10,6 @@
 
 #include "data_reader.h"
 #include "message/message_bundle.h"
-#include "test/mock_transfer.h"
 
 namespace ray {
 namespace streaming {

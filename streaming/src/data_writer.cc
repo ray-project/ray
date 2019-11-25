@@ -10,7 +10,6 @@
 #include <numeric>
 
 #include "data_writer.h"
-#include "test/mock_transfer.h"
 #include "util/streaming_util.h"
 
 namespace ray {
