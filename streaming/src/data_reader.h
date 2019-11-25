@@ -96,9 +96,6 @@ class DataReader {
   ///
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
 
- protected:
-  virtual void InitTransfer();
-
  private:
   /// One item from every channel will be popped out, then collecting
   /// them to a merged queue. High prioprity items will be fetched one by one.
