@@ -257,12 +257,11 @@ class ModelCatalog(object):
             model_cls = _global_registry.get(RLLIB_MODEL,
                                              model_config["custom_model"])
             if issubclass(model_cls, ModelV2):
-                if model_interface and not issubclass(model_cls,
-                                                      model_interface):
-                    raise ValueError("The given model must subclass",
-                                     model_interface)
-
                 if framework == "tf":
+                    logger.info("Wrapping {} as {}".format(
+                        model_cls, model_interface))
+                    model_cls = ModelCatalog._wrap_if_needed(
+                        model_cls, model_interface)
                     created = set()
 
                     # Track and warn if vars were created but not registered

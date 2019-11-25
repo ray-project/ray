@@ -7,7 +7,7 @@ import unittest
 import yaml
 
 from ray.autoscaler.autoscaler import fillout_defaults, validate_config
-from ray.tests.utils import recursive_fnmatch
+from ray.test_utils import recursive_fnmatch
 
 RAY_PATH = os.path.abspath(os.path.join(__file__, "../../"))
 CONFIG_PATHS = recursive_fnmatch(
@@ -31,4 +31,6 @@ class AutoscalingConfigTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))
