@@ -70,7 +70,8 @@ DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
 RESULT_DUPLICATE = "__duplicate__"
 
 # Where Tune writes result files by default
-DEFAULT_RESULTS_DIR = (os.environ.get("TUNE_RESULT_DIR")
+DEFAULT_RESULTS_DIR = (os.environ.get("TEST_TMPDIR")
+                       or os.environ.get("TUNE_RESULT_DIR")
                        or os.path.expanduser("~/ray_results"))
 
 # Meta file about status under each experiment directory, can be

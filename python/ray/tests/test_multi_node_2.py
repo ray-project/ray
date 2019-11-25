@@ -9,8 +9,8 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
-from ray.tests.cluster_utils import Cluster
-from ray.tests.conftest import generate_internal_config_map
+from ray.cluster_utils import Cluster
+from ray.test_utils import generate_internal_config_map
 
 logger = logging.getLogger(__name__)
 
@@ -221,3 +221,9 @@ def test_worker_plasma_store_failure(ray_start_cluster_head):
     worker.kill_plasma_store()
     worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

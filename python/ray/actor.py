@@ -358,7 +358,8 @@ class ActorClass(object):
                 is_direct_call=None,
                 max_concurrency=None,
                 name=None,
-                detached=False):
+                detached=False,
+                is_asyncio=False):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -377,10 +378,15 @@ class ActorClass(object):
                 task.
             is_direct_call: Use direct actor calls.
             max_concurrency: The max number of concurrent calls to allow for
-                this actor. This only works with direct actor calls.
+                this actor. This only works with direct actor calls. The max
+                concurrency defaults to 1 for threaded execution, and 100 for
+                asyncio execution. Note that the execution order is not
+                guaranteed when max_concurrency > 1.
             name: The globally unique name for the actor.
             detached: Whether the actor should be kept alive after driver
                 exits.
+            is_asyncio: Turn on async actor calls. This only works with direct
+                actor calls.
 
         Returns:
             A handle to the newly created actor.
@@ -392,13 +398,20 @@ class ActorClass(object):
         if is_direct_call is None:
             is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
         if max_concurrency is None:
-            max_concurrency = 1
+            if is_asyncio:
+                max_concurrency = 100
+            else:
+                max_concurrency = 1
 
         if max_concurrency > 1 and not is_direct_call:
             raise ValueError(
                 "setting max_concurrency requires is_direct_call=True")
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
+
+        if is_asyncio and not is_direct_call:
+            raise ValueError(
+                "Setting is_asyncio requires is_direct_call=True.")
 
         worker = ray.worker.get_global_worker()
         if worker.mode is None:
@@ -487,7 +500,7 @@ class ActorClass(object):
                 function_descriptor.get_function_descriptor_list(),
                 creation_args, meta.max_reconstructions, resources,
                 actor_placement_resources, is_direct_call, max_concurrency,
-                detached)
+                detached, is_asyncio)
 
         actor_handle = ActorHandle(
             actor_id,

@@ -2,7 +2,6 @@
 
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -24,8 +23,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port) override {
-    num_workers_returned += 1;
+  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override {
+    if (disconnect_worker) {
+      num_workers_disconnected++;
+    } else {
+      num_workers_returned++;
+    }
     return Status::OK();
   }
 
@@ -64,6 +67,7 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   int num_workers_requested = 0;
   int num_workers_returned = 0;
+  int num_workers_disconnected = 0;
   std::list<rpc::ClientCallback<rpc::WorkerLeaseReply>> callbacks = {};
 };
 
@@ -74,7 +78,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(mem->Put(obj1, *data).ok());
+  ASSERT_TRUE(mem->Put(*data, obj1).ok());
 
   // Test getting an already existing object.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
@@ -83,7 +87,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   // Testing getting an object that doesn't exist yet causes promotion.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
   ASSERT_TRUE(num_plasma_puts == 0);
-  ASSERT_TRUE(mem->Put(obj2, *data).ok());
+  ASSERT_TRUE(mem->Put(*data, obj2).ok());
   ASSERT_TRUE(num_plasma_puts == 1);
 
   // The next time you get it, it's already there so no need to promote.
@@ -92,8 +96,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 }
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   TaskSpecification task;
   bool ok = false;
@@ -102,8 +105,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::RAYLET);
   TaskSpecification task;
@@ -116,8 +118,7 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
@@ -138,8 +139,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
@@ -162,8 +162,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
@@ -238,6 +237,7 @@ TEST_F(DirectTaskTransportTestNoExpire, TestSubmitOneTask) {
 
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
 }
 
 TEST_F(DirectTaskTransportTestNoExpire, TestHandleTaskFailure) {
@@ -246,7 +246,8 @@ TEST_F(DirectTaskTransportTestNoExpire, TestHandleTaskFailure) {
   // Simulate a system failure, i.e., worker died unexpectedly.
   worker_client->callbacks[0](Status::IOError("oops"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 }
 
 TEST_F(DirectTaskTransportTestNoExpire, TestConcurrentWorkerLeases) {
@@ -275,12 +276,13 @@ TEST_F(DirectTaskTransportTestNoExpire, TestConcurrentWorkerLeases) {
     cb(Status::OK(), rpc::PushTaskReply());
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 3);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
 }
 
 TEST_F(DirectTaskTransportTestNoExpire, TestReuseWorkerLease) {
-  ASSERT_TRUE(submitter->SubmitTask(task1).ok());
-  ASSERT_TRUE(submitter->SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter->SubmitTask(task3).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
 
   // Task 1 is pushed.
@@ -305,6 +307,7 @@ TEST_F(DirectTaskTransportTestNoExpire, TestReuseWorkerLease) {
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
 }
 
 TEST_F(DirectTaskTransportTestNoExpire, TestWorkerNotReusedOnError) {
@@ -320,13 +323,15 @@ TEST_F(DirectTaskTransportTestNoExpire, TestWorkerNotReusedOnError) {
   // Task 1 finishes with failure; the worker is returned.
   worker_client->callbacks[0](Status::IOError("worker dead"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
   // Task 2 runs successfully on the second worker.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 2);
   worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
-  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 }
 
 TEST_F(DirectTaskTransportTestNoExpire, TestSpillback) {
@@ -351,6 +356,9 @@ TEST_F(DirectTaskTransportTestNoExpire, TestSpillback) {
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 1);
+
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
 }
 
 }  // namespace ray
