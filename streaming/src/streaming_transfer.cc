@@ -20,12 +20,7 @@ StreamingQueueProducer::StreamingQueueProducer(std::shared_ptr<Config> &transfer
   RayFunction sync_func = boost::any_cast<RayFunction>(transfer_config_->Get(
       ConfigEnum::SYNC_FUNCTION, RayFunction{ray::Language::JAVA, {}}));
 
-  queue_writer_ = CreateQueueWriter(
-      boost::any_cast<JobID>(transfer_config_->Get(ConfigEnum::CURRENT_DRIVER_ID)),
-      boost::any_cast<std::vector<ObjectID>>(
-          transfer_config_->Get(ConfigEnum::QUEUE_ID_VECTOR)),
-      core_worker, async_func, sync_func);
-  STREAMING_CHECK(queue_writer_ != nullptr) << "Create queue writer failed.";
+  queue_writer_ = std::make_shared<StreamingQueueWriter>(core_worker, async_func, sync_func);
 }
 
 StreamingQueueProducer::~StreamingQueueProducer() {
@@ -148,12 +143,7 @@ StreamingQueueConsumer::StreamingQueueConsumer(std::shared_ptr<Config> &transfer
   RayFunction sync_func = boost::any_cast<RayFunction>(transfer_config_->Get(
       ConfigEnum::SYNC_FUNCTION, RayFunction{ray::Language::JAVA, {}}));
 
-  queue_reader_ = CreateQueueReader(
-      boost::any_cast<JobID>(transfer_config_->Get(ConfigEnum::CURRENT_DRIVER_ID)),
-      boost::any_cast<std::vector<ObjectID>>(
-          transfer_config_->Get(ConfigEnum::QUEUE_ID_VECTOR)),
-      core_worker, async_func, sync_func);
-  STREAMING_CHECK(queue_reader_ != nullptr) << "Create queue reader failed.";
+  queue_reader_ = std::make_shared<StreamingQueueReader>(core_worker, async_func, sync_func);
 }
 
 StreamingQueueConsumer::~StreamingQueueConsumer() {

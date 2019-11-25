@@ -15,6 +15,7 @@ namespace streaming {
 class StreamingQueueWriter;
 class StreamingQueueReader;
 
+<<<<<<< HEAD
 std::shared_ptr<StreamingQueueWriter> CreateQueueWriter(
     const JobID &job_id,
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
@@ -26,6 +27,9 @@ std::shared_ptr<StreamingQueueReader> CreateQueueReader(
     ray::RayFunction &async_func, ray::RayFunction &sync_func);
 
 /// Code below is interface implementation of streaming queue.
+=======
+/// code below is interface implementation of streaming queue
+>>>>>>> rm CreateQueueReader and CreateQueueWriter
 class StreamingQueueWriter {
  public:
   StreamingQueueWriter(CoreWorker *core_worker, RayFunction &async_func,

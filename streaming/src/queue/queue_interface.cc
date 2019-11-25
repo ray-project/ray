@@ -5,27 +5,6 @@
 namespace ray {
 namespace streaming {
 
-// Queue factory of writer and reader
-std::shared_ptr<StreamingQueueWriter> CreateQueueWriter(
-    const JobID &job_id,
-    const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
-    ray::RayFunction &async_func, ray::RayFunction &sync_func) {
-  std::shared_ptr<StreamingQueueWriter> instance;
-
-  instance = std::make_shared<StreamingQueueWriter>(core_worker, async_func, sync_func);
-  return instance;
-}
-
-std::shared_ptr<StreamingQueueReader> CreateQueueReader(
-    const JobID &job_id,
-    const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
-    ray::RayFunction &async_func, ray::RayFunction &sync_func) {
-  std::shared_ptr<StreamingQueueReader> instance;
-
-  instance = std::make_shared<StreamingQueueReader>(core_worker, async_func, sync_func);
-  return instance;
-}
-
 /// code below is interface implementation of streaming queue
 StreamingQueueWriter::StreamingQueueWriter(CoreWorker *core_worker,
                                            RayFunction &async_func,
