@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_ACTOR_STATE_ACCESSOR_H
-#define RAY_GCS_ACTOR_STATE_ACCESSOR_H
+#ifndef RAY_GCS_REDIS_ACTOR_STATE_ACCESSOR_H
+#define RAY_GCS_REDIS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
 #include "ray/gcs/actor_state_accessor_interface.h"
@@ -98,4 +98,4 @@ class RedisActorStateAccessor : public ActorStateAccessorInterface {
 
 }  // namespace ray
 
-#endif  // RAY_GCS_ACTOR_STATE_ACCESSOR_H
+#endif  // RAY_GCS_REDIS_ACTOR_STATE_ACCESSOR_H
