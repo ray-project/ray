@@ -121,7 +121,7 @@ cc_library(
 cc_binary(
     name = "streaming_test_worker",
     srcs = [
-        "test/streaming_mock_actor.cc",
+        "test/mock_actor.cc",
     ],
     copts = ["-Itest/"],
     includes = [
@@ -135,7 +135,7 @@ cc_binary(
 cc_binary(
     name = "streaming_message_ring_buffer_tests",
     srcs = [
-        "test/streaming_message_ring_buffer_tests.cc",
+        "test/ring_buffer_tests.cc",
     ],
     includes = [
         "streaming/src/test",
@@ -148,7 +148,7 @@ cc_binary(
 cc_binary(
     name = "streaming_message_serialization_tests",
     srcs = [
-        "test/streaming_message_serialization_tests.cc",
+        "test/message_serialization_tests.cc",
     ],
     deps = [
         ":streaming_lib",
@@ -158,7 +158,7 @@ cc_binary(
 cc_binary(
     name = "streaming_mock_transfer",
     srcs = [
-        "test/streaming_mock_transfer.cc",
+        "test/mock_transfer.cc",
     ],
     deps = [
         ":streaming_lib",
@@ -168,7 +168,7 @@ cc_binary(
 cc_binary(
     name = "streamingqueue_tests",
     srcs = [
-        "test/streaming_queue_tests_base.h",
+        "test/queue_tests_base.h",
         "test/streamingqueue_tests.cc",
     ],
     copts = ["-Itest/"],
@@ -178,9 +178,9 @@ cc_binary(
 )
 
 cc_binary(
-    name = "streaming_utility_tests",
+    name = "streaming_util_tests",
     srcs = [
-        "test/streaming_utility_tests.cc",
+        "test/streaming_util_tests.cc",
     ],
     deps = [
         ":streaming_lib",
@@ -192,7 +192,7 @@ genrule(
     srcs = [
         ":streaming_message_ring_buffer_tests",
         ":streaming_message_serialization_tests",
-        ":streaming_utility_tests",
+        ":streaming_util_tests",
         ":streaming_mock_transfer",
     ],
     outs = ["streaming_test_log.out"],
@@ -201,7 +201,7 @@ genrule(
       date > $@
       $(location streaming_message_ring_buffer_tests) >> $@ &&
       $(location streaming_message_serialization_tests) >> $@ &&
-      $(location streaming_utility_tests) >> $@ &&
+      $(location streaming_util_tests) >> $@ &&
       $(location streaming_mock_transfer) >> $@
     """,
 )

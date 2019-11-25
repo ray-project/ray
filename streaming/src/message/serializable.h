@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_SERIALIZABLE_H
-#define RAY_STREAMING_SERIALIZABLE_H
+#ifndef RAY_SERIALIZABLE_H
+#define RAY_SERIALIZABLE_H
 
 #include <cstdlib>
 
@@ -29,4 +29,4 @@ class StreamingSerializable {
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_SERIALIZABLE_H
+#endif  // RAY_SERIALIZABLE_H

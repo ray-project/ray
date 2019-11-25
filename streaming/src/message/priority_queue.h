@@ -1,10 +1,9 @@
-#ifndef RAY_STREAMING_MESSAGE_PRIORITYQUEUE_H
-#define RAY_STREAMING_MESSAGE_PRIORITYQUEUE_H
+#ifndef RAY_PRIORITY_QUEUE_H
+#define RAY_PRIORITY_QUEUE_H
 
 #include <algorithm>
 #include <memory>
 #include <vector>
-
 #include "util/streaming_logging.h"
 
 namespace ray {
@@ -12,13 +11,13 @@ namespace streaming {
 
 template <class T, class C>
 
-class MessagePriorityQueue {
+class PriorityQueue {
  private:
   std::vector<T> merge_vec_;
   C comparator_;
 
  public:
-  MessagePriorityQueue(C &comparator) : comparator_(comparator){};
+  PriorityQueue(C &comparator) : comparator_(comparator){};
 
   inline void push(T &&item) {
     merge_vec_.push_back(std::forward<T>(item));
@@ -51,4 +50,4 @@ class MessagePriorityQueue {
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_MESSAGE_PRIORITYQUEUE_H
+#endif  // RAY_PRIORITY_QUEUE_H

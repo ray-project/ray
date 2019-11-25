@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_WRITER_H
-#define RAY_STREAMING_WRITER_H
+#ifndef RAY_DATA_WRITER_H
+#define RAY_DATA_WRITER_H
 
 #include <cstring>
 #include <mutex>
@@ -7,11 +7,11 @@
 #include <thread>
 #include <vector>
 
-#include "streaming.h"
-#include "streaming_channel.h"
+#include "channel.h"
 #include "config/streaming_config.h"
-#include "message/streaming_message_bundle.h"
-#include "streaming_transfer.h"
+#include "message/message_bundle.h"
+#include "streaming.h"
+#include "transfer.h"
 
 namespace ray {
 namespace streaming {
@@ -134,4 +134,4 @@ class StreamingWriterDirectCall : public StreamingWriter {
 
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_WRITER_H
+#endif  // RAY_DATA_WRITER_H

@@ -1,7 +1,7 @@
-#include "streaming_queue.h"
+#include "queue.h"
 #include <chrono>
 #include <thread>
-#include "config/config.h"
+#include "util/streaming_util.h"
 
 namespace ray {
 namespace streaming {

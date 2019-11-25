@@ -5,8 +5,8 @@
 #include <list>
 #include <numeric>
 
+#include "data_writer.h"
 #include "streaming.h"
-#include "streaming_writer.h"
 
 namespace ray {
 namespace streaming {
@@ -47,9 +47,9 @@ void StreamingWriter::WriterLoopForward() {
       // sleep if empty message was sent in all channel
       uint64_t sleep_time_ = current_time_ms() - min_passby_message_ts;
       // sleep_time can be bigger than time interval because of network jitter
-      if (sleep_time_ <= config_.GetStreamingEmptyMessageTimeInterval()) {
+      if (sleep_time_ <= config_.GetEmptyMessageTimeInterval()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(
-            config_.GetStreamingEmptyMessageTimeInterval() - sleep_time_));
+            config_.GetEmptyMessageTimeInterval() - sleep_time_));
       }
     }
   }
@@ -63,7 +63,7 @@ StreamingStatus StreamingWriter::WriteChannelProcess(ProducerChannelInfo &channe
   int64_t current_ts = current_time_ms();
   if (write_queue_flag == StreamingStatus::EmptyRingBuffer &&
       current_ts - channel_info.message_pass_by_ts >=
-          config_.GetStreamingEmptyMessageTimeInterval()) {
+          config_.GetEmptyMessageTimeInterval()) {
     write_queue_flag = WriteEmptyMessage(channel_info);
     *is_empty_message = true;
     STREAMING_LOG(DEBUG) << "send empty message bundle in q_id =>"
@@ -130,7 +130,7 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
   STREAMING_LOG(WARNING) << " Init queue [" << q_id << "]";
   // init queue
   channel_info.writer_ring_buffer = std::make_shared<StreamingRingBuffer>(
-      config_.GetStreamingRingBufferCapacity(), StreamingRingBufferType::SPSC);
+      config_.GetRingBufferCapacity(), StreamingRingBufferType::SPSC);
   channel_info.message_pass_by_ts = current_time_ms();
   RETURN_IF_NOT_OK(transfer_->CreateTransferChannel(channel_info));
   return StreamingStatus::OK;
@@ -142,9 +142,9 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   STREAMING_CHECK(queue_id_vec.size() && channel_message_id_vec.size());
 
   ray::JobID job_id =
-      JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreamingTaskJobId()));
+      JobID::FromBinary(Util::Hexqid2str(config_.GetTaskJobId()));
 
-  STREAMING_LOG(INFO) << "Job name => " << config_.GetStreamingJobName() << ", job id => "
+  STREAMING_LOG(INFO) << "Job name => " << config_.GetJobName() << ", job id => "
                       << job_id;
 
   output_queue_ids_ = queue_id_vec;
@@ -241,7 +241,7 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
   std::list<StreamingMessagePtr> message_list;
   uint64_t bundle_buffer_size = 0;
   const uint32_t max_queue_item_size = channel_info.queue_size;
-  while (message_list.size() < config_.GetStreamingRingBufferCapacity() &&
+  while (message_list.size() < config_.GetRingBufferCapacity() &&
          !buffer_ptr->IsEmpty()) {
     StreamingMessagePtr &message_ptr = buffer_ptr->Front();
     uint32_t message_total_size = message_ptr->ClassBytesSize();

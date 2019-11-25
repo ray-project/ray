@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_RING_BUFFER_H
-#define RAY_STREAMING_RING_BUFFER_H
+#ifndef RAY_RING_BUFFER_H
+#define RAY_RING_BUFFER_H
 
 #include <atomic>
 #include <boost/circular_buffer.hpp>
@@ -12,7 +12,7 @@
 
 #include "ray/common/status.h"
 #include "util/streaming_logging.h"
-#include "message/streaming_message.h"
+#include "message/message.h"
 
 namespace ray {
 namespace streaming {
@@ -227,4 +227,4 @@ typedef std::shared_ptr<StreamingRingBuffer> StreamingRingBufferPtr;
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_RING_BUFFER_H
+#endif  // RAY_RING_BUFFER_H

@@ -1,17 +1,17 @@
 #define BOOST_BIND_NO_PLACEHOLDERS
 #include <unistd.h>
 #include "gtest/gtest.h"
-#include "queue/streaming_queue_client.h"
+#include "queue/queue_client.h"
 #include "ray/core_worker/core_worker.h"
 
 #include "streaming.h"
-#include "message/streaming_message.h"
-#include "message/streaming_message_bundle.h"
-#include "streaming_reader.h"
-#include "streaming_ring_buffer.h"
-#include "streaming_writer.h"
+#include "message/message.h"
+#include "message/message_bundle.h"
+#include "data_reader.h"
+#include "ring_buffer.h"
+#include "data_writer.h"
 
-#include "streaming_queue_tests_base.h"
+#include "queue_tests_base.h"
 
 using namespace std::placeholders;
 namespace ray {

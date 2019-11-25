@@ -1,9 +1,9 @@
-#ifndef RAY_STREAMING_TRANSFER_H
-#define RAY_STREAMING_TRANSFER_H
-#include "config/config.h"
+#ifndef RAY_TRANSFER_H
+#define RAY_TRANSFER_H
+#include "channel.h"
+#include "util/streaming_util.h"
 #include "queue/queue_interface.h"
 #include "streaming.h"
-#include "streaming_channel.h"
 
 namespace ray {
 namespace streaming {
@@ -163,4 +163,4 @@ class StreamingQueueConsumer : public ConsumerTransfer {
 };
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_TRANSFER_H
+#endif  // RAY_TRANSFER_H

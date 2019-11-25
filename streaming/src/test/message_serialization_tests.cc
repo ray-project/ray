@@ -3,8 +3,8 @@
 
 #include "gtest/gtest.h"
 
-#include "message/streaming_message.h"
-#include "message/streaming_message_bundle.h"
+#include "message/message.h"
+#include "message/message_bundle.h"
 
 using namespace ray;
 using namespace ray::streaming;

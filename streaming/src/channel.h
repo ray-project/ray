@@ -1,9 +1,9 @@
-#ifndef RAY_STREAMING_CHANNEL_H
-#define RAY_STREAMING_CHANNEL_H
+#ifndef RAY_CHANNEL_H
+#define RAY_CHANNEL_H
 
-#include "streaming.h"
 #include "config/streaming_config.h"
-#include "streaming_ring_buffer.h"
+#include "ring_buffer.h"
+#include "streaming.h"
 
 namespace ray {
 namespace streaming {
@@ -51,4 +51,4 @@ struct ConsumerChannelInfo {
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_CHANNEL_H
+#endif  // RAY_CHANNEL_H

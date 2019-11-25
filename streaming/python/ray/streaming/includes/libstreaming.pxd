@@ -57,7 +57,7 @@ cdef extern from "streaming.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingCommon "ray::streaming::StreamingCommon":
         void SetConfig(const uint8_t *, uint32_t size)
 
-cdef extern from "message/streaming_message.h" namespace "ray::streaming" nogil:
+cdef extern from "message/message.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageType "ray::streaming::StreamingMessageType":
         pass
     cdef CStreamingMessageType MessageTypeBarrier "ray::streaming::StreamingMessageType::Barrier"
@@ -68,12 +68,12 @@ cdef extern from "message/streaming_message.h" namespace "ray::streaming" nogil:
         inline CStreamingMessageType GetMessageType() const
         inline uint64_t GetMessageSeqId() const
 
-cdef extern from "message/streaming_serializable.h" namespace "ray::streaming" nogil:
+cdef extern from "message/serializable.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingSerializable "ray::streaming::StreamingSerializable":
         void ToBytes(uint8_t *)
         uint32_t ClassBytesSize()
 
-cdef extern from "message/streaming_message_bundle.h" namespace "ray::streaming" nogil:
+cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageBundleType "ray::streaming::StreamingMessageBundleType":
         pass
     cdef CStreamingMessageBundleType BundleTypeEmpty "ray::streaming::StreamingMessageBundleType::Empty"
@@ -96,7 +96,7 @@ cdef extern from "message/streaming_message_bundle.h" namespace "ray::streaming"
          void GetMessageListFromRawData(const uint8_t *data, uint32_t size, uint32_t msg_nums,
                                         c_list[shared_ptr[CStreamingMessage]] &msg_list);
 
-cdef extern from "streaming_reader.h" namespace "ray::streaming" nogil:
+cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingReaderBundle "ray::streaming::StreamingReaderBundle":
         uint8_t *data
         uint32_t data_size
@@ -120,7 +120,7 @@ cdef extern from "streaming_reader.h" namespace "ray::streaming" nogil:
                                    CRayFunction async_func,
                                    CRayFunction sync_func)
 
-cdef extern from "streaming_writer.h" namespace "ray::streaming" nogil:
+cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingWriter "ray::streaming::StreamingWriter"(CStreamingCommon):
         long WriteMessageToBufferRing(
                 const CObjectID &q_id, uint8_t *data, uint32_t data_size)
@@ -147,7 +147,7 @@ cdef extern from "queue/queue_manager.h" namespace "ray::streaming" nogil:
         @staticmethod
         shared_ptr[CQueueManager] GetInstance(const CActorID &actor_id)
 
-cdef extern from "queue/streaming_queue_client.h" namespace "ray::streaming" nogil:
+cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
     cdef cppclass CQueueClient "ray::streaming::QueueClient":
         CQueueClient(shared_ptr[CQueueManager] manager)
         void OnMessage(shared_ptr[CLocalMemoryBuffer] buffer)

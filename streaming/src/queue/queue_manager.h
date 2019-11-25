@@ -7,7 +7,7 @@
 #include <thread>
 
 #include "util/streaming_logging.h"
-#include "streaming_queue.h"
+#include "queue.h"
 
 namespace ray {
 namespace streaming {

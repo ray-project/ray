@@ -1,4 +1,4 @@
-#include "streaming_ring_buffer.h"
+#include "ring_buffer.h"
 #include "util/streaming_logging.h"
 
 namespace ray {

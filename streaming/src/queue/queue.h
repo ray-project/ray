@@ -7,9 +7,9 @@
 #include "ray/common/id.h"
 #include "ray/util/util.h"
 
-#include "util/streaming_logging.h"
-#include "streaming_queue_item.h"
+#include "queue_item.h"
 #include "transport.h"
+#include "util/streaming_logging.h"
 #include "utils.h"
 
 namespace ray {

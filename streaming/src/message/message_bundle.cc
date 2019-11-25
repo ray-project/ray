@@ -4,7 +4,7 @@
 #include "ray/common/status.h"
 
 #include "config/streaming_config.h"
-#include "streaming_message_bundle.h"
+#include "message_bundle.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
@@ -23,8 +23,7 @@ StreamingMessageBundleMeta::StreamingMessageBundleMeta(
       last_message_id_(last_offset_seq_id),
       message_list_size_(message_list_size),
       bundle_type_(bundle_type) {
-  STREAMING_CHECK(message_list_size <=
-                  StreamingConfig::STREAMING_MESSAGE_BUNDLE_MAX_SIZE);
+  STREAMING_CHECK(message_list_size <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
 }
 
 STREAMING_SERIALIZATION_IMP(StreamingMessageBundleMeta, bytes) {
@@ -77,7 +76,7 @@ StreamingMessageBundleMetaPtr StreamingMessageBundleMeta::FromBytes(const uint8_
   STREAMING_LOG(DEBUG) << "ts => " << message_bundle_ts << " last message id => "
                        << last_message_id << " message size => " << messageListSize;
 
-  STREAMING_CHECK(messageListSize <= StreamingConfig::STREAMING_MESSAGE_BUNDLE_MAX_SIZE);
+  STREAMING_CHECK(messageListSize <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
 
   StreamingMessageBundleType messageBundleType =
       *reinterpret_cast<const StreamingMessageBundleType *>(bytes + byte_offset);

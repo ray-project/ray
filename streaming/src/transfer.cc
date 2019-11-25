@@ -1,4 +1,4 @@
-#include "streaming_transfer.h"
+#include "transfer.h"
 #include <unordered_map>
 namespace ray {
 namespace streaming {

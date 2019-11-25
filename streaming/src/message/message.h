@@ -1,9 +1,9 @@
-#ifndef RAY_STREAMING_MESSAGE_H
-#define RAY_STREAMING_MESSAGE_H
+#ifndef RAY_MESSAGE_H
+#define RAY_MESSAGE_H
 
 #include <memory>
 
-#include "streaming_serializable.h"
+#include "serializable.h"
 
 namespace ray {
 namespace streaming {
@@ -92,4 +92,4 @@ class StreamingMessage : public StreamingSerializable {
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_MESSAGE_H
+#endif  // RAY_MESSAGE_H

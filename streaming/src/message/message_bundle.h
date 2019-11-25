@@ -1,12 +1,12 @@
-#ifndef RAY_STREAMING_MESSAGE_BUNDLE_H
-#define RAY_STREAMING_MESSAGE_BUNDLE_H
+#ifndef RAY_MESSAGE_BUNDLE_H
+#define RAY_MESSAGE_BUNDLE_H
 
 #include <ctime>
 #include <list>
 #include <numeric>
 
-#include "streaming_message.h"
-#include "streaming_serializable.h"
+#include "message.h"
+#include "serializable.h"
 
 namespace ray {
 namespace streaming {
@@ -157,4 +157,4 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_MESSAGE_BUNDLE_H
+#endif  // RAY_MESSAGE_BUNDLE_H

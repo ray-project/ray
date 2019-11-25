@@ -4,7 +4,7 @@
 #include <string>
 
 #include "ray/common/status.h"
-#include "streaming_message.h"
+#include "message.h"
 #include "util/streaming_logging.h"
 
 namespace ray {

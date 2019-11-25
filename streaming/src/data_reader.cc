@@ -5,10 +5,13 @@
 #include <memory>
 #include <thread>
 
+#include "ray/raylet/raylet_client.h"
+
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-#include "streaming_reader.h"
+#include "data_reader.h"
+#include "message/message_bundle.h"
 
 namespace ray {
 namespace streaming {
@@ -35,7 +38,7 @@ void StreamingReader::InitTransfer() {
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   ray::JobID job_id =
-      JobID::FromBinary(StreamingUtility::Hexqid2str(config_.GetStreamingTaskJobId()));
+      JobID::FromBinary(Util::Hexqid2str(config_.GetTaskJobId()));
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
   transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
@@ -90,8 +93,8 @@ StreamingStatus StreamingReader::InitChannelMerger() {
   StreamingReaderMsgPtrComparator comparator;
   if (!reader_merger_) {
     reader_merger_.reset(
-        new MessagePriorityQueue<std::shared_ptr<StreamingReaderBundle>,
-                                 StreamingReaderMsgPtrComparator>(comparator));
+        new PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+                                   StreamingReaderMsgPtrComparator>(comparator));
   }
 
   // An old item in merger vector must be evicted before new queue item has been

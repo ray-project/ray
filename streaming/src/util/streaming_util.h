@@ -1,12 +1,13 @@
-#ifndef RAY_STREAMING_CONF_H
-#define RAY_STREAMING_CONF_H
-#include <boost/any.hpp>
+#ifndef RAY_STREAMING_UTIL_H
+#define RAY_STREAMING_UTIL_H
+#include <string>
 #include <unordered_map>
-
+#include <boost/any.hpp>
 #include "util/streaming_logging.h"
 
 namespace ray {
 namespace streaming {
+
 enum class ConfigEnum : uint32_t {
   QUEUE_ID_VECTOR = 0,
   RECONSTRUCT_RETRY_TIMES,
@@ -20,7 +21,7 @@ enum class ConfigEnum : uint32_t {
   TRANSFER_MIN = QUEUE_ID_VECTOR,
   TRANSFER_MAX = ASYNC_FUNCTION
 };
-}
+}  // namespace streaming
 }  // namespace ray
 
 namespace std {
@@ -86,6 +87,13 @@ class Config {
   mutable std::unordered_map<ConfigEnum, boost::any> config_map_;
 };
 
+class Util {
+ public:
+  static std::string Byte2hex(const uint8_t *data, uint32_t data_size);
+
+  static std::string Hexqid2str(const std::string &q_id_hex);
+};
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_CONF_H
+
+#endif  // RAY_STREAMING_UTIL_H

@@ -1,5 +1,5 @@
-#ifndef RAY_STREAMING_READER_H
-#define RAY_STREAMING_READER_H
+#ifndef RAY_DATA_READER_H
+#define RAY_DATA_READER_H
 
 #include <cstdlib>
 #include <functional>
@@ -8,10 +8,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include "message/message_priority_queue.h"
-#include "message/streaming_message_bundle.h"
+#include "message/message_bundle.h"
+#include "message/priority_queue.h"
 #include "streaming.h"
-#include "streaming_transfer.h"
+#include "transfer.h"
 
 namespace ray {
 namespace streaming {
@@ -37,8 +37,8 @@ class StreamingReader : public StreamingCommon {
 
   std::vector<ObjectID> unready_queue_ids_;
 
-  std::unique_ptr<MessagePriorityQueue<std::shared_ptr<StreamingReaderBundle>,
-                                       StreamingReaderMsgPtrComparator>>
+  std::unique_ptr<PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+                                         StreamingReaderMsgPtrComparator>>
       reader_merger_;
 
   std::shared_ptr<StreamingReaderBundle> last_fetched_queue_item_;
@@ -146,4 +146,4 @@ class StreamingReaderDirectCall : public StreamingReader {
 
 }  // namespace streaming
 }  // namespace ray
-#endif  // RAY_STREAMING_READER_H
+#endif  // RAY_DATA_READER_H

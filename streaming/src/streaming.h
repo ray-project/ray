@@ -12,10 +12,10 @@
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/util.h"
 
-#include "streaming_channel.h"
+#include "channel.h"
 #include "config/streaming_config.h"
 #include "util/streaming_logging.h"
-#include "util/streaming_utility.h"
+#include "util/streaming_util.h"
 
 namespace ray {
 namespace streaming {
