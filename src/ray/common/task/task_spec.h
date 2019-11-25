@@ -103,11 +103,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The object dependencies.
   const std::vector<ObjectID> &GetDependencies() const;
 
-  /// Return the hash of the dependencies of this task.
-  ///
-  /// \return The hash.
-  size_t GetDependencyHash() const;
-
   /// Return the resources that are to be acquired during the execution of this
   /// task.
   ///
@@ -190,8 +185,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   SchedulingClass sched_cls_id_;
   /// A cached copy of the task's object dependencies.
   std::vector<ObjectID> dependencies_;
-  /// Cached hash of the dependencies of this task.
-  size_t dependency_hash_ = 0;
 
   /// Keep global static id mappings for SchedulingClass for performance.
   static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_;

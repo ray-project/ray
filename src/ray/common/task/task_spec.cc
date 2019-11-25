@@ -76,22 +76,15 @@ const std::vector<ObjectID> &TaskSpecification::GetDependencies() const {
 
 void TaskSpecification::ComputeDependencies() {
   dependencies_.clear();
-  dependency_hash_ = 0;
   for (size_t i = 0; i < NumArgs(); ++i) {
     for (int j = 0; j < ArgIdCount(i); j++) {
-      ObjectID arg = ArgId(i, j);
-      dependencies_.push_back(arg);
-      dependency_hash_ ^= arg.Hash();
+      dependencies_.push_back(ArgId(i, j));
     }
   }
   if (IsActorTask()) {
-    ObjectID arg = PreviousActorTaskDummyObjectId();
-    dependencies_.push_back(arg);
-    dependency_hash_ ^= arg.Hash();
+    dependencies_.push_back(PreviousActorTaskDummyObjectId());
   }
 }
-
-size_t TaskSpecification::GetDependencyHash() const { return dependency_hash_; }
 
 size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
