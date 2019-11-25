@@ -557,7 +557,7 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
 
   // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
   for (size_t i = 0; i < num_returns; i++) {
-    reference_counter_->SetDependencies(task_spec.ReturnId(i, transport_type), task_deps);
+    reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type), task_deps);
   }
 }
 

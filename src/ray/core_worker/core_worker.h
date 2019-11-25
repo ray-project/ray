@@ -104,7 +104,7 @@ class CoreWorker {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddObjectIDReference(const ObjectID &object_id) {
-    reference_counter_->AddReference(object_id);
+    reference_counter_->AddLocalReference(object_id);
   }
 
   /// Decrease the reference count for this object ID.
@@ -112,7 +112,7 @@ class CoreWorker {
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
-    reference_counter_->RemoveReference(object_id, &deleted);
+    reference_counter_->RemoveLocalReference(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
     }
