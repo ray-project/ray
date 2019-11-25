@@ -125,9 +125,7 @@ class FunctionDescriptor(object):
         function_name = function.__name__
         class_name = ""
 
-        hasher = hashlib.sha1()
-        hasher.update(pickled_function)
-        pickled_function_hash = hasher.digest()
+        pickled_function_hash = hashlib.sha1(pickled_function).digest()
 
         return cls(module_name, function_name, class_name,
                    pickled_function_hash)
@@ -313,7 +311,7 @@ class FunctionActorManager(object):
         """The identifier is used to detect excessive duplicate exports.
 
         The identifier is used to determine when the same function or class is
-        exported many times. This can yielf false positives.
+        exported many times. This can yield false positives.
 
         Args:
             function_or_class: The function or class to compute an identifier
@@ -341,9 +339,7 @@ class FunctionActorManager(object):
             collision_identifier = function_or_class.__name__
 
         # Return a hash of the identifier in case it is too large.
-        hasher = hashlib.sha1()
-        hasher.update(collision_identifier.encode("ascii"))
-        return hasher.digest()
+        return hashlib.sha1(collision_identifier.encode("ascii")).digest()
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -369,7 +365,7 @@ class FunctionActorManager(object):
                 "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
-                "name": remote_function._function_name,
+                "function_name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
                 "collision_identifier": self.compute_collision_identifier(
@@ -383,8 +379,8 @@ class FunctionActorManager(object):
         (job_id_str, function_id_str, function_name, serialized_function,
          num_return_vals, module, resources,
          max_calls) = self._worker.redis_client.hmget(key, [
-             "job_id", "function_id", "name", "function", "num_return_vals",
-             "module", "resources", "max_calls"
+             "job_id", "function_id", "function_name", "function",
+             "num_return_vals", "module", "resources", "max_calls"
          ])
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)

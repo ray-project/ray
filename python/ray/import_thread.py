@@ -32,11 +32,11 @@ class ImportThread(object):
         redis_client: the redis client used to query exports.
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
-        imported_collision_identifiers: This is a dicitonary mapping strings
-            containing the collision identifier of the remote functions that
-            have been exported to the number of times each remote function has
-            been imported. this is used to provide good error messages when the
-            same function is exported many many times.
+        imported_collision_identifiers: This is a dictionary mapping collision
+            identifiers for the exported remote functions and actor classes to
+            the number of times that collision identifier has appeared. This is
+            used to provide good error messages when the same function or class
+            is exported many times.
     """
 
     def __init__(self, worker, mode, threads_stopped):
@@ -128,7 +128,7 @@ class ImportThread(object):
                 if key.startswith(b"RemoteFunction"):
                     collision_identifier, function_name = (
                         self.redis_client.hmget(
-                            key, ["collision_identifier", "name"]))
+                            key, ["collision_identifier", "function_name"]))
                     self.imported_collision_identifiers[
                         collision_identifier] += 1
                     if (self.imported_collision_identifiers[
