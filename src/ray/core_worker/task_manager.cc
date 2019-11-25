@@ -3,7 +3,7 @@
 namespace ray {
 
 void TaskManager::AddPendingTask(const TaskSpecification &spec) {
-  RAY_LOG(DEBUG) << "Adding task " << spec.TaskId();
+  RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), spec.NumReturns()).second);
 }
