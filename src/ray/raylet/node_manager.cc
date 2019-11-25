@@ -785,8 +785,10 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     if (was_local) {
       // if the dead actor is local, reconstruct task directly
       RAY_LOG(INFO) << "Actor is local, so reconstruct task directly: " << actor_id;
-      reconstruction_policy_.ReconstructActorCreationTask(
-          actor_registration.GetActorCreationDependency());
+      const ObjectID &actor_creation_dummy_object_id =
+          actor_registration.GetActorCreationDependency();
+      HandleTaskReconstruction(actor_creation_dummy_object_id.TaskId(),
+                               actor_creation_dummy_object_id);
     } else {
       RAY_LOG(INFO) << "Actor is not local, listen and maybe reconstruct: " << actor_id;
       reconstruction_policy_.ListenAndMaybeReconstruct(

@@ -55,11 +55,6 @@ class ReconstructionPolicy : public ReconstructionPolicyInterface {
   /// \param object_id The object to check for reconstruction.
   void ListenAndMaybeReconstruct(const ObjectID &object_id);
 
-  /// Reconstruct actor creation task when the local worker is disconnected
-  ///
-  /// \param object_id The object to check for reconstruction.
-  void ReconstructActorCreationTask(const ObjectID &object_id);
-
   /// Cancel listening for an object. Notifications for the object will be
   /// ignored. This does not cancel a reconstruction attempt that is already in
   /// progress.
