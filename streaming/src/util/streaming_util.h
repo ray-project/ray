@@ -1,8 +1,8 @@
 #ifndef RAY_STREAMING_UTIL_H
 #define RAY_STREAMING_UTIL_H
+#include <boost/any.hpp>
 #include <string>
 #include <unordered_map>
-#include <boost/any.hpp>
 
 #include "util/streaming_logging.h"
 
@@ -14,7 +14,6 @@ enum class ConfigEnum : uint32_t {
   RECONSTRUCT_RETRY_TIMES,
   RECONSTRUCT_TIMEOUT_PER_MB,
   CURRENT_DRIVER_ID,
-
   /// For direct call
   CORE_WORKER,
   SYNC_FUNCTION,

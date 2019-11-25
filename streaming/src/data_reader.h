@@ -8,10 +8,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "channel.h"
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
 #include "runtime_context.h"
-#include "transfer.h"
 
 namespace ray {
 namespace streaming {
@@ -54,8 +54,8 @@ class StreamingReader {
   static const uint32_t kReadItemTimeout;
 
  protected:
-  std::shared_ptr<ConsumerTransfer> transfer_;
   std::unordered_map<ObjectID, ConsumerChannelInfo> channel_info_map_;
+  std::unordered_map<ObjectID, std::shared_ptr<ConsumerChannel>> channel_map_;
   std::shared_ptr<Config> transfer_config_;
   std::shared_ptr<RuntimeContext> runtime_context_;
 
@@ -96,9 +96,6 @@ class StreamingReader {
   ///
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
 
- protected:
-  virtual void InitTransfer();
-
  private:
   /// One item from every channel will be popped out, then collecting
   /// them to a merged queue. High prioprity items will be fetched one by one.
@@ -136,11 +133,6 @@ class StreamingReaderDirectCall : public StreamingReader {
   }
 
   virtual ~StreamingReaderDirectCall() { core_worker_ = nullptr; }
-
- protected:
-  virtual void InitTransfer() {
-    transfer_ = std::make_shared<StreamingQueueConsumer>(transfer_config_);
-  }
 
  private:
   CoreWorker *core_worker_;

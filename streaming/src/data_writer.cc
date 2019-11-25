@@ -6,6 +6,7 @@
 #include <numeric>
 
 #include "data_writer.h"
+#include "test/mock_transfer.h"
 #include "util/streaming_util.h"
 
 namespace ray {
@@ -135,7 +136,16 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
       runtime_context_->GetConfig().GetRingBufferCapacity(),
       StreamingRingBufferType::SPSC);
   channel_info.message_pass_by_ts = current_time_ms();
-  RETURN_IF_NOT_OK(transfer_->CreateTransferChannel(channel_info));
+  std::shared_ptr<ProducerChannel> channel;
+
+  if (runtime_context_->IsMockTest()) {
+    channel.reset(new MockProducer(transfer_config_, channel_info));
+  } else {
+    channel.reset(new StreamingQueueProducer(transfer_config_, channel_info));
+  }
+
+  channel_map_.emplace(q_id, channel);
+  RETURN_IF_NOT_OK(channel->CreateTransferChannel());
   return StreamingStatus::OK;
 }
 
@@ -152,8 +162,6 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
 
   output_queue_ids_ = queue_id_vec;
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
-
-  this->InitTransfer();
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
     StreamingStatus status =
@@ -204,8 +212,8 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
   q_ringbuffer->ReallocTransientBuffer(bundle_ptr->ClassBytesSize());
   bundle_ptr->ToBytes(q_ringbuffer->GetTransientBufferMutable());
 
-  StreamingStatus status = transfer_->ProduceItemToChannel(
-      channel_info, const_cast<uint8_t *>(q_ringbuffer->GetTransientBuffer()),
+  StreamingStatus status = channel_map_[q_id]->ProduceItemToChannel(
+      const_cast<uint8_t *>(q_ringbuffer->GetTransientBuffer()),
       q_ringbuffer->GetTransientBufferSize());
   STREAMING_LOG(DEBUG) << "q_id =>" << q_id << " send empty message, meta info =>"
                        << bundle_ptr->ToString();
@@ -220,9 +228,8 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
 StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
     ProducerChannelInfo &channel_info) {
   StreamingRingBufferPtr &buffer_ptr = channel_info.writer_ring_buffer;
-  StreamingStatus status = transfer_->ProduceItemToChannel(
-      channel_info, buffer_ptr->GetTransientBufferMutable(),
-      buffer_ptr->GetTransientBufferSize());
+  StreamingStatus status = channel_map_[channel_info.channel_id]->ProduceItemToChannel(
+      buffer_ptr->GetTransientBufferMutable(), buffer_ptr->GetTransientBufferSize());
   RETURN_IF_NOT_OK(status);
   channel_info.current_seq_id++;
   auto transient_bundle_meta =
@@ -285,10 +292,5 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
 void StreamingWriter::Stop() {
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
 }
-
-void StreamingWriter::InitTransfer() {
-  transfer_.reset(new MockProducer(transfer_config_));
-}
-
 }  // namespace streaming
 }  // namespace ray

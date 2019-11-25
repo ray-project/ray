@@ -10,9 +10,9 @@
 #include <mutex>
 #include <queue>
 
+#include "message/message.h"
 #include "ray/common/status.h"
 #include "util/streaming_logging.h"
-#include "message/message.h"
 
 namespace ray {
 namespace streaming {

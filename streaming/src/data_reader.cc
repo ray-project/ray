@@ -5,13 +5,12 @@
 #include <memory>
 #include <thread>
 
-#include "ray/raylet/raylet_client.h"
-
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
 #include "data_reader.h"
 #include "message/message_bundle.h"
+#include "test/mock_transfer.h"
 
 namespace ray {
 namespace streaming {
@@ -31,17 +30,11 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   }
 }
 
-void StreamingReader::InitTransfer() {
-  transfer_ = std::make_shared<MockConsumer>(transfer_config_);
-}
-
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
-
-  this->InitTransfer();
 
   last_fetched_queue_item_ = nullptr;
   timer_interval_ = timer_interval;
@@ -74,7 +67,15 @@ StreamingStatus StreamingReader::InitChannel() {
 
   for (const auto &input_channel : unready_queue_ids_) {
     auto &channel_info = channel_info_map_[input_channel];
-    StreamingStatus status = transfer_->CreateTransferChannel(channel_info);
+    std::shared_ptr<ConsumerChannel> channel;
+    if (runtime_context_->IsMockTest()) {
+      channel.reset(new MockConsumer(transfer_config_, channel_info));
+    } else {
+      channel.reset(new StreamingQueueConsumer(transfer_config_, channel_info));
+    }
+
+    channel_map_.emplace(input_channel, channel);
+    StreamingStatus status = channel->CreateTransferChannel();
     if (StreamingStatus::OK != status) {
       STREAMING_LOG(ERROR) << "Initialize queue failed, id => " << input_channel;
     }
@@ -120,9 +121,8 @@ StreamingStatus StreamingReader::GetMessageFromChannel(
   STREAMING_LOG(DEBUG) << "[Reader] send get request queue seq id => " << qid;
   while (RuntimeStatus::Running == runtime_context_->GetRuntimeStatus() &&
          !message->data) {
-    auto status =
-        transfer_->ConsumeItemFromChannel(channel_info, message->seq_id, message->data,
-                                          message->data_size, kReadItemTimeout);
+    auto status = channel_map_[channel_info.channel_id]->ConsumeItemFromChannel(
+        message->seq_id, message->data, message->data_size, kReadItemTimeout);
     channel_info.get_queue_item_times++;
     if (!message->data) {
       STREAMING_LOG(DEBUG) << "[Reader] Queue " << qid << " status " << status
@@ -267,7 +267,7 @@ void StreamingReader::GetOffsetInfo(
 
 void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
                                          uint64_t offset) {
-  transfer_->NotifyChannelConsumed(channel_info, offset);
+  channel_map_[channel_info.channel_id]->NotifyChannelConsumed(offset);
   if (offset == channel_info.queue_info.last_seq_id) {
     STREAMING_LOG(DEBUG) << "notify seq id equal to last seq id => " << offset;
   }

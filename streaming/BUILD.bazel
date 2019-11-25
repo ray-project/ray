@@ -103,6 +103,8 @@ cc_library(
     ]),
     hdrs = glob([
         "src/*.h",
+        "src/queue/*.h",
+        "src/test/*.h",
     ]),
     includes = ["src"],
     visibility = ["//visibility:public"],

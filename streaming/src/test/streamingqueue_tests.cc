@@ -4,11 +4,11 @@
 #include "queue/queue_client.h"
 #include "ray/core_worker/core_worker.h"
 
+#include "data_reader.h"
+#include "data_writer.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
-#include "data_reader.h"
 #include "ring_buffer.h"
-#include "data_writer.h"
 
 #include "queue_tests_base.h"
 
