@@ -3,7 +3,8 @@
 #include "channel.h"
 #include "util/streaming_util.h"
 #include "queue/queue_interface.h"
-#include "streaming.h"
+#include "status.h"
+#include "channel.h"
 
 namespace ray {
 namespace streaming {

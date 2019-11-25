@@ -7,16 +7,16 @@
 #include <thread>
 #include <vector>
 
-#include "channel.h"
 #include "config/streaming_config.h"
 #include "message/message_bundle.h"
-#include "streaming.h"
+#include "runtime_context.h"
+#include "channel.h"
 #include "transfer.h"
 
 namespace ray {
 namespace streaming {
 
-class StreamingWriter : public StreamingCommon {
+class StreamingWriter {
  private:
   std::shared_ptr<std::thread> loop_thread_;
   // One channel have unique identity.
@@ -27,6 +27,7 @@ class StreamingWriter : public StreamingCommon {
   std::shared_ptr<ProducerTransfer> transfer_;
   std::unordered_map<ObjectID, ProducerChannelInfo> channel_info_map_;
   std::shared_ptr<Config> transfer_config_;
+  std::shared_ptr<RuntimeContext> runtime_context_;
 
  private:
   bool IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info);
@@ -70,7 +71,7 @@ class StreamingWriter : public StreamingCommon {
                               uint64_t queue_size);
 
  public:
-  StreamingWriter();
+  StreamingWriter(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~StreamingWriter();
 
   /// Streaming writer client initialization.
@@ -106,11 +107,12 @@ class StreamingWriter : public StreamingCommon {
 
 class StreamingWriterDirectCall : public StreamingWriter {
  public:
-  StreamingWriterDirectCall(CoreWorker *core_worker,
+  StreamingWriterDirectCall(std::shared_ptr<RuntimeContext> &runtime_context_,
+                            CoreWorker *core_worker,
                             const std::vector<ObjectID> &queue_ids,
                             const std::vector<ActorID> &actor_ids, RayFunction async_func,
                             RayFunction sync_func)
-      : core_worker_(core_worker) {
+      : StreamingWriter(runtime_context_), core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
                           reinterpret_cast<uint64_t>(core_worker_));
     transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);

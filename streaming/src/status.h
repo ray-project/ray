@@ -1,21 +1,8 @@
-#ifndef RAY_STREAMING_H
-#define RAY_STREAMING_H
-#include <boost/asio.hpp>
-#include <boost/thread/thread.hpp>
+#ifndef RAY_STREAMING_STATUS_H
+#define RAY_STREAMING_STATUS_H
 #include <ostream>
 #include <sstream>
 #include <string>
-
-#include "queue/queue_interface.h"
-#include "ray/common/id.h"
-#include "ray/protobuf/common.pb.h"
-#include "ray/raylet/raylet_client.h"
-#include "ray/util/util.h"
-
-#include "channel.h"
-#include "config/streaming_config.h"
-#include "util/streaming_logging.h"
-#include "util/streaming_util.h"
 
 namespace ray {
 namespace streaming {
@@ -46,13 +33,6 @@ static inline std::ostream &operator<<(std::ostream &os, const StreamingStatus &
   return os;
 }
 
-enum class StreamingChannelState : uint8_t {
-  Init = 0,
-  Running = 1,
-  Interrupted = 2,
-  Rescaling = 3
-};
-
 #define RETURN_IF_NOT_OK(STATUS_EXP)    \
   {                                     \
     StreamingStatus state = STATUS_EXP; \
@@ -61,21 +41,7 @@ enum class StreamingChannelState : uint8_t {
     }                                   \
   }
 
-class StreamingCommon {
- public:
-  StreamingCommon();
-  virtual ~StreamingCommon();
-  virtual StreamingConfig GetConfig() const;
-  virtual void SetConfig(const StreamingConfig &config);
-  virtual void SetConfig(const uint8_t *, uint32_t buffer_len);
-  StreamingChannelState GetChannelState();
-
- protected:
-  StreamingConfig config_;
-  StreamingChannelState channel_state_;
-};
-
 }  // namespace streaming
 }  // namespace ray
 
-#endif  // RAY_STREAMING_H
+#endif  // RAY_STREAMING_STATUS_H

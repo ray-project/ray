@@ -28,7 +28,8 @@ class StreamingConfig {
   uint32_t empty_message_time_interval_ =
       DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
 
-  streaming::proto::OperatorType operator_type_ = streaming::proto::OperatorType::TRANSFORM;
+  streaming::proto::OperatorType operator_type_ =
+      streaming::proto::OperatorType::TRANSFORM;
 
   std::string job_name_ = "DEFAULT_JOB_NAME";
 
@@ -37,7 +38,6 @@ class StreamingConfig {
   std::string worker_name_ = "DEFAULT_WORKER_NAME";
 
   std::string task_job_id_ = "ffffffff";
-
 
  public:
   void FromProto(const uint8_t *, uint32_t size);

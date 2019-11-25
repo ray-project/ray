@@ -37,8 +37,9 @@ TEST(StreamingMockTransfer, mock_produce_consume) {
 class StreamingTransferTest : public ::testing::Test {
  public:
   StreamingTransferTest() {
-    writer = std::make_shared<StreamingWriter>();
-    reader = std::make_shared<StreamingReader>();
+    std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
+    writer = std::make_shared<StreamingWriter>(runtime_context);
+    reader = std::make_shared<StreamingReader>(runtime_context);
   }
   virtual ~StreamingTransferTest() = default;
   void InitTransfer(int channel_num = 1) {

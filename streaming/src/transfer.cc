@@ -64,8 +64,7 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel(
 
 StreamingStatus StreamingQueueProducer::CreateQueue(ProducerChannelInfo &channel_info) {
   auto &channel_id = channel_info.channel_id;
-  queue_writer_->CreateQueue(channel_id, channel_info.queue_size,
-                                      channel_info.actor_id);
+  queue_writer_->CreateQueue(channel_id, channel_info.queue_size, channel_info.actor_id);
 
   STREAMING_LOG(INFO) << "q id => " << channel_id << ", queue size => "
                       << channel_info.queue_size;

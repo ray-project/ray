@@ -4,7 +4,6 @@
 #include "queue/queue_client.h"
 #include "ray/core_worker/core_worker.h"
 
-#include "streaming.h"
 #include "message/message.h"
 #include "message/message_bundle.h"
 #include "data_reader.h"

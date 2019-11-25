@@ -38,10 +38,9 @@ void StreamingReader::InitTransfer() {
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   ray::JobID job_id =
-      JobID::FromBinary(Util::Hexqid2str(config_.GetTaskJobId()));
+      JobID::FromBinary(Util::Hexqid2str(runtime_context_->GetConfig().GetTaskJobId()));
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
-  transfer_config_->Set(ConfigEnum::CURRENT_DRIVER_ID, job_id);
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
 
   this->InitTransfer();
@@ -82,7 +81,7 @@ StreamingStatus StreamingReader::InitChannel() {
       STREAMING_LOG(ERROR) << "Initialize queue failed, id => " << input_channel;
     }
   }
-  channel_state_ = StreamingChannelState::Running;
+  runtime_context_->SetRuntimeStatus(RuntimeStatus::Running);
   STREAMING_LOG(INFO) << "[Reader] Reader construction done!";
   return StreamingStatus::OK;
 }
@@ -122,7 +121,8 @@ StreamingStatus StreamingReader::GetMessageFromChannel(
   auto &qid = channel_info.channel_id;
   last_read_q_id_ = qid;
   STREAMING_LOG(DEBUG) << "[Reader] send get request queue seq id => " << qid;
-  while (StreamingChannelState::Running == channel_state_ && !message->data) {
+  while (RuntimeStatus::Running == runtime_context_->GetRuntimeStatus() &&
+         !message->data) {
     auto status =
         transfer_->ConsumeItemFromChannel(channel_info, message->seq_id, message->data,
                                           message->data_size, kReadItemTimeout);
@@ -134,7 +134,7 @@ StreamingStatus StreamingReader::GetMessageFromChannel(
       // TODO(lingxuan.zlx): notify consumed when it's timeout.
     }
   }
-  if (StreamingChannelState::Interrupted == channel_state_) {
+  if (RuntimeStatus::Interrupted == runtime_context_->GetRuntimeStatus()) {
     return StreamingStatus::Interrupted;
   }
   STREAMING_LOG(DEBUG) << "[Reader] recevied queue seq id => " << message->seq_id
@@ -214,7 +214,7 @@ StreamingStatus StreamingReader::GetBundle(
   bool is_valid_break = false;
   uint32_t empty_bundle_cnt = 0;
   while (!is_valid_break) {
-    if (StreamingChannelState::Interrupted == channel_state_) {
+    if (RuntimeStatus::Interrupted == runtime_context_->GetRuntimeStatus()) {
       return StreamingStatus::Interrupted;
     }
     // checking timeout
@@ -276,13 +276,16 @@ void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
   }
 }
 
-StreamingReader::StreamingReader() { transfer_config_ = std::make_shared<Config>(); }
+StreamingReader::StreamingReader(std::shared_ptr<RuntimeContext> &runtime_context)
+    : transfer_config_(new Config()), runtime_context_(runtime_context) {}
 
 StreamingReader::~StreamingReader() {
   STREAMING_LOG(INFO) << "Streaming reader deconstruct.";
 }
 
-void StreamingReader::Stop() { channel_state_ = StreamingChannelState::Interrupted; }
+void StreamingReader::Stop() {
+  runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
+}
 
 bool StreamingReaderMsgPtrComparator::operator()(
     const std::shared_ptr<StreamingReaderBundle> &a,

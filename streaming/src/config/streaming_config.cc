@@ -12,7 +12,7 @@ uint32_t StreamingConfig::DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL = 20;
 // Time to force clean if barrier in queue, default 0ms
 const uint32_t StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE = 2048;
 
-void StreamingConfig::FromProto(const uint8_t * data, uint32_t size) {
+void StreamingConfig::FromProto(const uint8_t *data, uint32_t size) {
   proto::StreamingConfig config;
   STREAMING_CHECK(config.ParseFromArray(data, size)) << "Parse streaming conf failed";
   if (!config.job_name().empty()) {

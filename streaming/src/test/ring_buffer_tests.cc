@@ -5,7 +5,6 @@
 #include <iostream>
 #include <set>
 #include <thread>
-#include "streaming.h"
 #include "message/message.h"
 #include "ring_buffer.h"
 

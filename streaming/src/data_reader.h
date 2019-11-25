@@ -8,9 +8,9 @@
 #include <unordered_map>
 #include <vector>
 
+#include "message/message_priority_queue.h"
 #include "message/message_bundle.h"
-#include "message/priority_queue.h"
-#include "streaming.h"
+#include "runtime_context.h"
 #include "transfer.h"
 
 namespace ray {
@@ -31,7 +31,7 @@ struct StreamingReaderMsgPtrComparator {
                   const std::shared_ptr<StreamingReaderBundle> &b);
 };
 
-class StreamingReader : public StreamingCommon {
+class StreamingReader {
  private:
   std::vector<ObjectID> input_queue_ids_;
 
@@ -57,6 +57,7 @@ class StreamingReader : public StreamingCommon {
   std::shared_ptr<ConsumerTransfer> transfer_;
   std::unordered_map<ObjectID, ConsumerChannelInfo> channel_info_map_;
   std::shared_ptr<Config> transfer_config_;
+  std::shared_ptr<RuntimeContext> runtime_context_;
 
  public:
   ///  Init Streaming reader. For exception status throwing, we do not init
@@ -85,7 +86,7 @@ class StreamingReader : public StreamingCommon {
 
   void Stop();
 
-  StreamingReader();
+  StreamingReader(std::shared_ptr<RuntimeContext> &runtime_context);
   virtual ~StreamingReader();
 
   ///  Notify input queues to clear data its seq id is equal or less than offset.
@@ -118,11 +119,12 @@ class StreamingReader : public StreamingCommon {
 
 class StreamingReaderDirectCall : public StreamingReader {
  public:
-  StreamingReaderDirectCall(CoreWorker *core_worker,
+  StreamingReaderDirectCall(std::shared_ptr<RuntimeContext> &runtime_context,
+                            CoreWorker *core_worker,
                             const std::vector<ObjectID> &queue_ids,
                             const std::vector<ActorID> &actor_ids, RayFunction async_func,
                             RayFunction sync_func)
-      : core_worker_(core_worker) {
+      : StreamingReader(runtime_context), core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
                           reinterpret_cast<uint64_t>(core_worker_));
     transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);

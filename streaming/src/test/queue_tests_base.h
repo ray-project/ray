@@ -121,8 +121,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     Status st = driver.SerializeActorHandle(peer_actor_id, &forked_serialized_str);
     STREAMING_CHECK(st.ok());
     STREAMING_LOG(INFO) << "forked_serialized_str: " << forked_serialized_str;
-    TestInitMessage msg(role, self_actor_id, peer_actor_id, forked_serialized_str, queue_ids,
-                    rescale_queue_ids, suite_name, test_name, param);
+    TestInitMessage msg(role, self_actor_id, peer_actor_id, forked_serialized_str,
+                        queue_ids, rescale_queue_ids, suite_name, test_name, param);
 
     std::vector<TaskArg> args;
     args.emplace_back(
@@ -199,9 +199,10 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_CHECK(*magic_num == Message::MagicNum);
 
     p_cur += sizeof(Message::MagicNum);
-    queue::protobuf::StreamingQueueMessageType *type = (queue::protobuf::StreamingQueueMessageType *)p_cur;
-    STREAMING_CHECK(*type ==
-                    queue::protobuf::StreamingQueueMessageType::StreamingQueueTestCheckStatusRspMsgType);
+    queue::protobuf::StreamingQueueMessageType *type =
+        (queue::protobuf::StreamingQueueMessageType *)p_cur;
+    STREAMING_CHECK(*type == queue::protobuf::StreamingQueueMessageType::
+                                 StreamingQueueTestCheckStatusRspMsgType);
     std::shared_ptr<TestCheckStatusRspMsg> message =
         TestCheckStatusRspMsg::FromBytes(bytes);
     STREAMING_CHECK(message->TestName() == test_name);

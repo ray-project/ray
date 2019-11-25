@@ -196,8 +196,8 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
       std::list<StreamingMessagePtr> message_list;
       bundlePtr->GetMessageList(message_list);
       STREAMING_LOG(INFO) << "message size => " << message_list.size()
-                           << " from queue id => " << msg->from.Hex()
-                           << " last message id => " << msg->meta->GetLastMessageId();
+                          << " from queue id => " << msg->from.Hex()
+                          << " last message id => " << msg->meta->GetLastMessageId();
 
       recevied_message_cnt += message_list.size();
       for (auto &item : message_list) {
@@ -285,10 +285,10 @@ class StreamingWorker {
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
                   const gcs::GcsClientOptions &gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
-    worker_ = std::make_shared<CoreWorker>(WorkerType::WORKER, Language::PYTHON,
-                                           store_socket, raylet_socket, JobID::FromInt(1),
-                                           gcs_options, "", "127.0.0.1",
-                                           std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8));
+    worker_ = std::make_shared<CoreWorker>(
+        WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
+        JobID::FromInt(1), gcs_options, "", "127.0.0.1",
+        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8));
 
     ActorID actor_id = worker_->GetWorkerContext().GetCurrentActorID();
     std::shared_ptr<ray::streaming::QueueManager> queue_manager =
@@ -303,7 +303,7 @@ class StreamingWorker {
   }
 
  private:
-   Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
+  Status ExecuteTask(TaskType task_type, const RayFunction &ray_function,
                      const std::unordered_map<std::string, double> &required_resources,
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
@@ -319,7 +319,8 @@ class StreamingWorker {
     std::string func_name = function_descriptor[0];
     if (func_name == "init") {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
-        std::make_shared<LocalMemoryBuffer>(args[0]->GetData()->Data(), args[0]->GetData()->Size(), true);
+          std::make_shared<LocalMemoryBuffer>(args[0]->GetData()->Data(),
+                                              args[0]->GetData()->Size(), true);
       HandleInitTask(local_buffer);
     } else if (func_name == "execute_test") {
       STREAMING_LOG(INFO) << "Test name: " << function_descriptor[1];
@@ -333,7 +334,8 @@ class StreamingWorker {
         return Status::OK();
       }
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
-        std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(), args[1]->GetData()->Size(), true);
+          std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
+                                              args[1]->GetData()->Size(), true);
       auto result_buffer = queue_client_->OnMessageSync(local_buffer);
       results->push_back(std::make_shared<RayObject>(result_buffer, nullptr));
     } else if (func_name == "async_call_func") {
@@ -342,7 +344,8 @@ class StreamingWorker {
         return Status::OK();
       }
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
-        std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(), args[1]->GetData()->Size(), true);
+          std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
+                                              args[1]->GetData()->Size(), true);
       queue_client_->OnMessage(local_buffer);
     } else {
       STREAMING_LOG(WARNING) << "Invalid function name " << func_name;
@@ -359,8 +362,11 @@ class StreamingWorker {
     STREAMING_CHECK(*magic_num == Message::MagicNum);
 
     p_cur += sizeof(Message::MagicNum);
-    queue::protobuf::StreamingQueueMessageType *type = (queue::protobuf::StreamingQueueMessageType *)p_cur;
-    STREAMING_CHECK(*type == queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType);
+    queue::protobuf::StreamingQueueMessageType *type =
+        (queue::protobuf::StreamingQueueMessageType *)p_cur;
+    STREAMING_CHECK(
+        *type ==
+        queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType);
     std::shared_ptr<TestInitMessage> message = TestInitMessage::FromBytes(bytes);
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();
@@ -368,7 +374,8 @@ class StreamingWorker {
     worker_->DeserializeAndRegisterActorHandle(actor_handle_serialized);
     std::shared_ptr<ActorHandle> actor_handle(new ActorHandle(actor_handle_serialized));
     STREAMING_CHECK(actor_handle != nullptr);
-    STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();;
+    STREAMING_LOG(INFO) << " actor id from handle: " << actor_handle->GetActorID();
+    ;
 
     // STREAMING_LOG(INFO) << "actor_handle_serialized: " << actor_handle_serialized;
     // peer_actor_handle_ =
