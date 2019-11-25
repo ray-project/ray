@@ -74,7 +74,7 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
   }
 
  private:
-  void TestWriteMessageToBufferRing(std::shared_ptr<StreamingWriter> writer_client,
+  void TestWriteMessageToBufferRing(std::shared_ptr<DataWriter> writer_client,
                                     std::vector<ray::ObjectID> &q_list) {
     // const uint8_t temp_data[] = {1, 2, 4, 5};
 
@@ -109,8 +109,8 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
 
-    std::shared_ptr<StreamingWriter> streaming_writer_client(
-        new StreamingWriterDirectCall(runtime_context, core_worker_.get(), queue_ids_,
+    std::shared_ptr<DataWriter> streaming_writer_client(
+        new DirectCallDataWriter(runtime_context, core_worker_.get(), queue_ids_,
                                       actor_ids, async_call_func, sync_call_func));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
@@ -152,8 +152,8 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
   }
 
  private:
-  void ReaderLoopForward(std::shared_ptr<StreamingReader> reader_client,
-                         std::shared_ptr<StreamingWriter> writer_client,
+  void ReaderLoopForward(std::shared_ptr<DataReader> reader_client,
+                         std::shared_ptr<DataWriter> writer_client,
                          std::vector<ray::ObjectID> &queue_id_vec) {
     uint64_t recevied_message_cnt = 0;
     std::unordered_map<ray::ObjectID, uint64_t> queue_last_cp_id;
@@ -163,7 +163,7 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     }
     STREAMING_LOG(INFO) << "Start read message bundle";
     while (true) {
-      std::shared_ptr<StreamingReaderBundle> msg;
+      std::shared_ptr<DataBundle> msg;
       StreamingStatus st = reader_client->GetBundle(100, msg);
 
       if (st != StreamingStatus::OK || !msg->data) {
@@ -233,8 +233,8 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
-    std::shared_ptr<StreamingReader> reader(
-        new StreamingReaderDirectCall(runtime_context, core_worker_.get(), queue_ids_,
+    std::shared_ptr<DataReader> reader(
+        new DirectCallDataReader(runtime_context, core_worker_.get(), queue_ids_,
                                       actor_ids, async_call_func, sync_call_func));
 
     reader->Init(queue_ids_, -1);

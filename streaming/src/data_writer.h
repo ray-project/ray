@@ -15,7 +15,7 @@
 namespace ray {
 namespace streaming {
 
-class StreamingWriter {
+class DataWriter {
  private:
   std::shared_ptr<std::thread> loop_thread_;
   // One channel have unique identity.
@@ -36,8 +36,8 @@ class StreamingWriter {
   ///
   ///  Two conditions in this function:
   ///  1. Send the transient buffer to channel if there is already some data in.
-  ///  2. Colleting data from ring buffer, then put them into a bundle and
-  ///     serilizing it to bytes object in transient buffer. Finally do 1.
+  ///  2. Collecting data from ring buffer, then put them into a bundle and
+  ///     serializing it to bytes object in transient buffer. Finally do 1.
   StreamingStatus WriteBufferToChannel(ProducerChannelInfo &channel_info,
                                        uint64_t &buffer_remain);
 
@@ -70,8 +70,8 @@ class StreamingWriter {
                               uint64_t queue_size);
 
  public:
-  StreamingWriter(std::shared_ptr<RuntimeContext> &runtime_context);
-  virtual ~StreamingWriter();
+  explicit DataWriter(std::shared_ptr<RuntimeContext> &runtime_context);
+  virtual ~DataWriter();
 
   /// Streaming writer client initialization.
   /// \param queue_id_vec queue id vector
@@ -101,14 +101,13 @@ class StreamingWriter {
   void Stop();
 };
 
-class StreamingWriterDirectCall : public StreamingWriter {
+class DirectCallDataWriter : public DataWriter {
  public:
-  StreamingWriterDirectCall(std::shared_ptr<RuntimeContext> &runtime_context_,
-                            CoreWorker *core_worker,
-                            const std::vector<ObjectID> &queue_ids,
-                            const std::vector<ActorID> &actor_ids, RayFunction async_func,
-                            RayFunction sync_func)
-      : StreamingWriter(runtime_context_), core_worker_(core_worker) {
+  DirectCallDataWriter(std::shared_ptr<RuntimeContext> &runtime_context_,
+                       CoreWorker *core_worker, const std::vector<ObjectID> &queue_ids,
+                       const std::vector<ActorID> &actor_ids, RayFunction async_func,
+                       RayFunction sync_func)
+      : DataWriter(runtime_context_), core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
                           reinterpret_cast<uint64_t>(core_worker_));
     transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);
@@ -119,7 +118,7 @@ class StreamingWriterDirectCall : public StreamingWriter {
     }
   }
 
-  virtual ~StreamingWriterDirectCall() { core_worker_ = nullptr; }
+  ~DirectCallDataWriter() override { core_worker_ = nullptr; }
 
  private:
   CoreWorker *core_worker_;

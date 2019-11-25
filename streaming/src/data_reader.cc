@@ -15,9 +15,9 @@
 namespace ray {
 namespace streaming {
 
-const uint32_t StreamingReader::kReadItemTimeout = 1000;
+const uint32_t DataReader::kReadItemTimeout = 1000;
 
-void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
+void DataReader::Init(const std::vector<ObjectID> &input_ids,
                            const std::vector<uint64_t> &queue_seq_ids,
                            const std::vector<uint64_t> &streaming_msg_ids,
                            int64_t timer_interval) {
@@ -30,7 +30,7 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   }
 }
 
-void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
+void DataReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
@@ -60,7 +60,7 @@ void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
   InitChannel();
 }
 
-StreamingStatus StreamingReader::InitChannel() {
+StreamingStatus DataReader::InitChannel() {
   STREAMING_LOG(INFO) << "[Reader] Getting queues. total queue num "
                       << input_queue_ids_.size() << ", unready queue num => "
                       << unready_queue_ids_.size();
@@ -85,12 +85,12 @@ StreamingStatus StreamingReader::InitChannel() {
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingReader::InitChannelMerger() {
+StreamingStatus DataReader::InitChannelMerger() {
   STREAMING_LOG(INFO) << "[Reader] Initializing queue merger.";
   // Init reader merger when it's first created
   StreamingReaderMsgPtrComparator comparator;
   if (!reader_merger_) {
-    reader_merger_.reset(new PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+    reader_merger_.reset(new PriorityQueue<std::shared_ptr<DataBundle>,
                                            StreamingReaderMsgPtrComparator>(comparator));
   }
 
@@ -103,8 +103,8 @@ StreamingStatus StreamingReader::InitChannelMerger() {
   }
   // heap initialization
   for (auto &input_queue : unready_queue_ids_) {
-    std::shared_ptr<StreamingReaderBundle> msg =
-        std::make_shared<StreamingReaderBundle>();
+    std::shared_ptr<DataBundle> msg =
+        std::make_shared<DataBundle>();
     RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info_map_[input_queue], msg));
     channel_info_map_[msg->from].current_seq_id = msg->seq_id;
     channel_info_map_[msg->from].current_message_id = msg->meta->GetLastMessageId();
@@ -114,8 +114,8 @@ StreamingStatus StreamingReader::InitChannelMerger() {
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingReader::GetMessageFromChannel(
-    ConsumerChannelInfo &channel_info, std::shared_ptr<StreamingReaderBundle> &message) {
+StreamingStatus DataReader::GetMessageFromChannel(
+    ConsumerChannelInfo &channel_info, std::shared_ptr<DataBundle> &message) {
   auto &qid = channel_info.channel_id;
   last_read_q_id_ = qid;
   STREAMING_LOG(DEBUG) << "[Reader] send get request queue seq id => " << qid;
@@ -142,11 +142,11 @@ StreamingStatus StreamingReader::GetMessageFromChannel(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingReader::StashNextMessage(
-    std::shared_ptr<StreamingReaderBundle> &message) {
+StreamingStatus DataReader::StashNextMessage(
+    std::shared_ptr<DataBundle> &message) {
   // push new message into priority queue
-  std::shared_ptr<StreamingReaderBundle> new_msg =
-      std::make_shared<StreamingReaderBundle>();
+  std::shared_ptr<DataBundle> new_msg =
+      std::make_shared<DataBundle>();
   auto &channel_info = channel_info_map_[message->from];
   reader_merger_->pop();
   int64_t cur_time = current_time_ms();
@@ -158,8 +158,8 @@ StreamingStatus StreamingReader::StashNextMessage(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingReader::GetMergedMessageBundle(
-    std::shared_ptr<StreamingReaderBundle> &message, bool &is_valid_break) {
+StreamingStatus DataReader::GetMergedMessageBundle(
+    std::shared_ptr<DataBundle> &message, bool &is_valid_break) {
   int64_t cur_time = current_time_ms();
   if (last_fetched_queue_item_) {
     RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_));
@@ -197,8 +197,8 @@ StreamingStatus StreamingReader::GetMergedMessageBundle(
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingReader::GetBundle(
-    const uint32_t timeout_ms, std::shared_ptr<StreamingReaderBundle> &message) {
+StreamingStatus DataReader::GetBundle(
+    const uint32_t timeout_ms, std::shared_ptr<DataBundle> &message) {
   // Notify consumed every item in this mode.
   if (last_fetched_queue_item_) {
     NotifyConsumedItem(channel_info_map_[last_fetched_queue_item_->from],
@@ -255,7 +255,7 @@ StreamingStatus StreamingReader::GetBundle(
   return StreamingStatus::OK;
 }
 
-void StreamingReader::GetOffsetInfo(
+void DataReader::GetOffsetInfo(
     std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map) {
   offset_map = &channel_info_map_;
   for (auto &offset_info : channel_info_map_) {
@@ -265,7 +265,7 @@ void StreamingReader::GetOffsetInfo(
   }
 }
 
-void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
+void DataReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
                                          uint64_t offset) {
   channel_map_[channel_info.channel_id]->NotifyChannelConsumed(offset);
   if (offset == channel_info.queue_info.last_seq_id) {
@@ -273,20 +273,20 @@ void StreamingReader::NotifyConsumedItem(ConsumerChannelInfo &channel_info,
   }
 }
 
-StreamingReader::StreamingReader(std::shared_ptr<RuntimeContext> &runtime_context)
+DataReader::DataReader(std::shared_ptr<RuntimeContext> &runtime_context)
     : transfer_config_(new Config()), runtime_context_(runtime_context) {}
 
-StreamingReader::~StreamingReader() {
+DataReader::~DataReader() {
   STREAMING_LOG(INFO) << "Streaming reader deconstruct.";
 }
 
-void StreamingReader::Stop() {
+void DataReader::Stop() {
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
 }
 
 bool StreamingReaderMsgPtrComparator::operator()(
-    const std::shared_ptr<StreamingReaderBundle> &a,
-    const std::shared_ptr<StreamingReaderBundle> &b) {
+    const std::shared_ptr<DataBundle> &a,
+    const std::shared_ptr<DataBundle> &b) {
   STREAMING_CHECK(a->meta);
   // we proposed push id for stability of message in sorting
   if (a->meta->GetMessageBundleTs() == b->meta->GetMessageBundleTs()) {

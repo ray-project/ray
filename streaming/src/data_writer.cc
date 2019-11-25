@@ -1,3 +1,7 @@
+#include <memory>
+
+#include <memory>
+
 #include <signal.h>
 #include <unistd.h>
 #include <chrono>
@@ -12,7 +16,7 @@
 namespace ray {
 namespace streaming {
 
-void StreamingWriter::WriterLoopForward() {
+void DataWriter::WriterLoopForward() {
   STREAMING_CHECK(RuntimeStatus::Running == runtime_context_->GetRuntimeStatus());
   while (true) {
     int64_t min_passby_message_ts = std::numeric_limits<int64_t>::max();
@@ -56,8 +60,8 @@ void StreamingWriter::WriterLoopForward() {
   }
 }
 
-StreamingStatus StreamingWriter::WriteChannelProcess(ProducerChannelInfo &channel_info,
-                                                     bool *is_empty_message) {
+StreamingStatus DataWriter::WriteChannelProcess(ProducerChannelInfo &channel_info,
+                                                bool *is_empty_message) {
   // no message in buffer, empty message will be sent to downstream queue
   uint64_t buffer_remain = 0;
   StreamingStatus write_queue_flag = WriteBufferToChannel(channel_info, buffer_remain);
@@ -73,8 +77,8 @@ StreamingStatus StreamingWriter::WriteChannelProcess(ProducerChannelInfo &channe
   return write_queue_flag;
 }
 
-StreamingStatus StreamingWriter::WriteBufferToChannel(ProducerChannelInfo &channel_info,
-                                                      uint64_t &buffer_remain) {
+StreamingStatus DataWriter::WriteBufferToChannel(ProducerChannelInfo &channel_info,
+                                                 uint64_t &buffer_remain) {
   StreamingRingBufferPtr &buffer_ptr = channel_info.writer_ring_buffer;
   if (!IsMessageAvailableInBuffer(channel_info)) {
     return StreamingStatus::EmptyRingBuffer;
@@ -91,14 +95,14 @@ StreamingStatus StreamingWriter::WriteBufferToChannel(ProducerChannelInfo &chann
   return WriteTransientBufferToChannel(channel_info);
 }
 
-void StreamingWriter::Run() {
+void DataWriter::Run() {
   STREAMING_LOG(INFO) << "WriterLoopForward start";
-  loop_thread_ = std::make_shared<std::thread>(&StreamingWriter::WriterLoopForward, this);
+  loop_thread_ = std::make_shared<std::thread>(&DataWriter::WriterLoopForward, this);
 }
 
-uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
-                                                   uint32_t data_size,
-                                                   StreamingMessageType message_type) {
+uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *data,
+                                              uint32_t data_size,
+                                              StreamingMessageType message_type) {
   STREAMING_LOG(DEBUG) << "WriteMessageToBufferRing q_id: " << q_id
                        << " data_size: " << data_size;
   // TODO(lingxuan.zlx): currently, unsafe in multithreads
@@ -111,7 +115,7 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
   while (ring_buffer_ptr->IsFull() &&
          runtime_context_->GetRuntimeStatus() == RuntimeStatus::Running) {
     std::this_thread::sleep_for(
-        std::chrono::milliseconds(runtime_context_->GetConfig().TIME_WAIT_UINT));
+        std::chrono::milliseconds(StreamingConfig::TIME_WAIT_UINT));
   }
   if (runtime_context_->GetRuntimeStatus() != RuntimeStatus::Running) {
     STREAMING_LOG(WARNING) << "stop in write message to ringbuffer";
@@ -123,9 +127,8 @@ uint64_t StreamingWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t
   return write_message_id;
 }
 
-StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
-                                             uint64_t channel_message_id,
-                                             uint64_t queue_size) {
+StreamingStatus DataWriter::InitChannel(const ObjectID &q_id, uint64_t channel_message_id,
+                                        uint64_t queue_size) {
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
   channel_info.current_message_id = channel_message_id;
   channel_info.channel_id = q_id;
@@ -139,20 +142,20 @@ StreamingStatus StreamingWriter::InitChannel(const ObjectID &q_id,
   std::shared_ptr<ProducerChannel> channel;
 
   if (runtime_context_->IsMockTest()) {
-    channel.reset(new MockProducer(transfer_config_, channel_info));
+    channel = std::make_shared<MockProducer>(transfer_config_, channel_info);
   } else {
-    channel.reset(new StreamingQueueProducer(transfer_config_, channel_info));
+    channel = std::make_shared<StreamingQueueProducer>(transfer_config_, channel_info);
   }
 
   channel_map_.emplace(q_id, channel);
-  RETURN_IF_NOT_OK(channel->CreateTransferChannel());
+  RETURN_IF_NOT_OK(channel->CreateTransferChannel())
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
-                                      const std::vector<uint64_t> &channel_message_id_vec,
-                                      const std::vector<uint64_t> &queue_size_vec) {
-  STREAMING_CHECK(queue_id_vec.size() && channel_message_id_vec.size());
+StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
+                                 const std::vector<uint64_t> &channel_message_id_vec,
+                                 const std::vector<uint64_t> &queue_size_vec) {
+  STREAMING_CHECK(!queue_id_vec.empty() && !channel_message_id_vec.empty());
 
   ray::JobID job_id =
       JobID::FromBinary(Util::Hexqid2str(runtime_context_->GetConfig().GetTaskJobId()));
@@ -174,10 +177,10 @@ StreamingStatus StreamingWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   return StreamingStatus::OK;
 }
 
-StreamingWriter::StreamingWriter(std::shared_ptr<RuntimeContext> &runtime_context)
+DataWriter::DataWriter(std::shared_ptr<RuntimeContext> &runtime_context)
     : transfer_config_(new Config()), runtime_context_(runtime_context) {}
 
-StreamingWriter::~StreamingWriter() {
+DataWriter::~DataWriter() {
   // Return if fail to init streaming writer
   if (runtime_context_->GetRuntimeStatus() == RuntimeStatus::Init) {
     return;
@@ -190,12 +193,12 @@ StreamingWriter::~StreamingWriter() {
   STREAMING_LOG(INFO) << "Writer client queue disconnect.";
 }
 
-bool StreamingWriter::IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info) {
+bool DataWriter::IsMessageAvailableInBuffer(ProducerChannelInfo &channel_info) {
   return channel_info.writer_ring_buffer->IsTransientAvaliable() ||
          !channel_info.writer_ring_buffer->IsEmpty();
 }
 
-StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_info) {
+StreamingStatus DataWriter::WriteEmptyMessage(ProducerChannelInfo &channel_info) {
   auto &q_id = channel_info.channel_id;
   if (channel_info.message_last_commit_id < channel_info.current_message_id) {
     // Abort to send empty message if ring buffer is not empty now.
@@ -219,18 +222,18 @@ StreamingStatus StreamingWriter::WriteEmptyMessage(ProducerChannelInfo &channel_
                        << bundle_ptr->ToString();
 
   q_ringbuffer->FreeTransientBuffer();
-  RETURN_IF_NOT_OK(status);
+  RETURN_IF_NOT_OK(status)
   channel_info.current_seq_id++;
   channel_info.message_pass_by_ts = current_time_ms();
   return StreamingStatus::OK;
 }
 
-StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
+StreamingStatus DataWriter::WriteTransientBufferToChannel(
     ProducerChannelInfo &channel_info) {
   StreamingRingBufferPtr &buffer_ptr = channel_info.writer_ring_buffer;
   StreamingStatus status = channel_map_[channel_info.channel_id]->ProduceItemToChannel(
       buffer_ptr->GetTransientBufferMutable(), buffer_ptr->GetTransientBufferSize());
-  RETURN_IF_NOT_OK(status);
+  RETURN_IF_NOT_OK(status)
   channel_info.current_seq_id++;
   auto transient_bundle_meta =
       StreamingMessageBundleMeta::FromBytes(buffer_ptr->GetTransientBuffer());
@@ -242,8 +245,8 @@ StreamingStatus StreamingWriter::WriteTransientBufferToChannel(
   return StreamingStatus::OK;
 }
 
-bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
-                                            uint64_t &buffer_remain) {
+bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
+                                       uint64_t &buffer_remain) {
   StreamingRingBufferPtr &buffer_ptr = channel_info.writer_ring_buffer;
   auto &q_id = channel_info.channel_id;
 
@@ -289,7 +292,7 @@ bool StreamingWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
   return true;
 }
 
-void StreamingWriter::Stop() {
+void DataWriter::Stop() {
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
 }
 }  // namespace streaming

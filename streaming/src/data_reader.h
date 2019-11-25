@@ -8,15 +8,15 @@
 #include <unordered_map>
 #include <vector>
 
-#include "channel.h"
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
 #include "runtime_context.h"
+#include "transfer.h"
 
 namespace ray {
 namespace streaming {
 
-struct StreamingReaderBundle {
+struct DataBundle {
   // it's immutable data point
   uint8_t *data = nullptr;
   uint32_t data_size;
@@ -26,22 +26,22 @@ struct StreamingReaderBundle {
 };
 
 struct StreamingReaderMsgPtrComparator {
-  StreamingReaderMsgPtrComparator(){};
-  bool operator()(const std::shared_ptr<StreamingReaderBundle> &a,
-                  const std::shared_ptr<StreamingReaderBundle> &b);
+  StreamingReaderMsgPtrComparator()= default;;
+  bool operator()(const std::shared_ptr<DataBundle> &a,
+                  const std::shared_ptr<DataBundle> &b);
 };
 
-class StreamingReader {
+class DataReader {
  private:
   std::vector<ObjectID> input_queue_ids_;
 
   std::vector<ObjectID> unready_queue_ids_;
 
-  std::unique_ptr<PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+  std::unique_ptr<PriorityQueue<std::shared_ptr<DataBundle>,
                                 StreamingReaderMsgPtrComparator>>
       reader_merger_;
 
-  std::shared_ptr<StreamingReaderBundle> last_fetched_queue_item_;
+  std::shared_ptr<DataBundle> last_fetched_queue_item_;
 
   int64_t timer_interval_;
   int64_t last_bundle_ts_;
@@ -77,8 +77,8 @@ class StreamingReader {
   ///  Get latest message from input queues
   ///  \param timeout_ms
   ///  \param message, return the latest message
-  StreamingStatus GetBundle(const uint32_t timeout_ms,
-                            std::shared_ptr<StreamingReaderBundle> &message);
+  StreamingStatus GetBundle(uint32_t timeout_ms,
+                            std::shared_ptr<DataBundle> &message);
 
   ///  Get offset infomation about channels for checkpoint.
   ///  \param offset_map (return value)
@@ -86,8 +86,8 @@ class StreamingReader {
 
   void Stop();
 
-  StreamingReader(std::shared_ptr<RuntimeContext> &runtime_context);
-  virtual ~StreamingReader();
+  explicit DataReader(std::shared_ptr<RuntimeContext> &runtime_context);
+  virtual ~DataReader();
 
   ///  Notify input queues to clear data its seq id is equal or less than offset.
   ///  It's used when checkpoint is done.
@@ -95,6 +95,9 @@ class StreamingReader {
   ///  \param offset
   ///
   void NotifyConsumedItem(ConsumerChannelInfo &channel_info, uint64_t offset);
+
+ protected:
+  virtual void InitTransfer();
 
  private:
   /// One item from every channel will be popped out, then collecting
@@ -105,23 +108,22 @@ class StreamingReader {
 
   StreamingStatus InitChannelMerger();
 
-  StreamingStatus StashNextMessage(std::shared_ptr<StreamingReaderBundle> &message);
+  StreamingStatus StashNextMessage(std::shared_ptr<DataBundle> &message);
 
   StreamingStatus GetMessageFromChannel(ConsumerChannelInfo &channel_info,
-                                        std::shared_ptr<StreamingReaderBundle> &message);
+                                        std::shared_ptr<DataBundle> &message);
 
-  StreamingStatus GetMergedMessageBundle(std::shared_ptr<StreamingReaderBundle> &message,
+  StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                          bool &is_valid_break);
 };
 
-class StreamingReaderDirectCall : public StreamingReader {
+class DirectCallDataReader : public DataReader {
  public:
-  StreamingReaderDirectCall(std::shared_ptr<RuntimeContext> &runtime_context,
-                            CoreWorker *core_worker,
-                            const std::vector<ObjectID> &queue_ids,
-                            const std::vector<ActorID> &actor_ids, RayFunction async_func,
-                            RayFunction sync_func)
-      : StreamingReader(runtime_context), core_worker_(core_worker) {
+  DirectCallDataReader(std::shared_ptr<RuntimeContext> &runtime_context,
+                       CoreWorker *core_worker, const std::vector<ObjectID> &queue_ids,
+                       const std::vector<ActorID> &actor_ids, RayFunction async_func,
+                       RayFunction sync_func)
+      : DataReader(runtime_context), core_worker_(core_worker) {
     transfer_config_->Set(ConfigEnum::CORE_WORKER,
                           reinterpret_cast<uint64_t>(core_worker_));
     transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);
@@ -132,7 +134,7 @@ class StreamingReaderDirectCall : public StreamingReader {
     }
   }
 
-  virtual ~StreamingReaderDirectCall() { core_worker_ = nullptr; }
+  ~DirectCallDataReader() override { core_worker_ = nullptr; }
 
  private:
   CoreWorker *core_worker_;

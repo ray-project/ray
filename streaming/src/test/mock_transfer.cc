@@ -118,8 +118,8 @@ class StreamingTransferTest : public ::testing::Test {
   StreamingTransferTest() {
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->MarkMockTest();
-    writer = std::make_shared<StreamingWriter>(runtime_context);
-    reader = std::make_shared<StreamingReader>(runtime_context);
+    writer = std::make_shared<DataWriter>(runtime_context);
+    reader = std::make_shared<DataReader>(runtime_context);
   }
   virtual ~StreamingTransferTest() = default;
   void InitTransfer(int channel_num = 1) {
@@ -137,8 +137,8 @@ class StreamingTransferTest : public ::testing::Test {
   }
 
  protected:
-  std::shared_ptr<StreamingWriter> writer;
-  std::shared_ptr<StreamingReader> reader;
+  std::shared_ptr<DataWriter> writer;
+  std::shared_ptr<DataReader> reader;
   std::vector<ObjectID> queue_vec;
 };
 
@@ -148,7 +148,7 @@ TEST_F(StreamingTransferTest, exchange_single_channel_test) {
   uint8_t data[4] = {1, 2, 3, 0xff};
   uint32_t data_size = 4;
   writer->WriteMessageToBufferRing(queue_vec[0], data, data_size);
-  std::shared_ptr<StreamingReaderBundle> msg;
+  std::shared_ptr<DataBundle> msg;
   reader->GetBundle(5000, msg);
   StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
   auto &message_list = bundle_ptr->GetMessageList();
@@ -164,7 +164,7 @@ TEST_F(StreamingTransferTest, exchange_multichannel_test) {
     uint8_t data[4] = {1, 2, 3, (uint8_t)i};
     uint32_t data_size = 4;
     writer->WriteMessageToBufferRing(queue_vec[i], data, data_size);
-    std::shared_ptr<StreamingReaderBundle> msg;
+    std::shared_ptr<DataBundle> msg;
     reader->GetBundle(5000, msg);
     EXPECT_EQ(msg->from, queue_vec[i]);
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
@@ -191,7 +191,7 @@ TEST_F(StreamingTransferTest, exchange_consumed_test) {
 
   std::list<StreamingMessagePtr> read_message_list;
   while (read_message_list.size() < num) {
-    std::shared_ptr<StreamingReaderBundle> msg;
+    std::shared_ptr<DataBundle> msg;
     reader->GetBundle(5000, msg);
     StreamingMessageBundlePtr bundle_ptr = StreamingMessageBundle::FromBytes(msg->data);
     auto &message_list = bundle_ptr->GetMessageList();
