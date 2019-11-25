@@ -15,6 +15,10 @@ DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
 echo "Using Docker image" $DOCKER_SHA
 
+######################## RLLIB TESTS #################################
+
+source $ROOT_DIR/run_rllib_tests.sh
+
 ######################## EXAMPLE TESTS #################################
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
@@ -31,10 +35,6 @@ $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} 
 
 $SUPPRESS_OUTPUT docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
     python /ray/doc/examples/doc_code/tf_example.py
-
-######################## RLLIB TESTS #################################
-
-source $ROOT_DIR/run_rllib_tests.sh
 
 ######################## TUNE TESTS #################################
 

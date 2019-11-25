@@ -28,11 +28,6 @@ void BuildCommonTaskSpec(
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
-      // TODO(ekl) remove this check once we deprecate TaskTransportType::RAYLET
-      if (transport_type == ray::TaskTransportType::RAYLET) {
-        RAY_CHECK(!arg.GetReference().IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
       builder.AddByRefArg(arg.GetReference());
     } else {
       builder.AddByValueArg(arg.GetValue());
@@ -169,6 +164,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+  resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -621,7 +617,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-  return raylet_client_->SubmitTask(task_spec);
+  // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
+  // need to manually resolve direct call args here.
+  resolver_->ResolveDependencies(task_spec, [this, task_spec]() {
+    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
+  });
+  return Status::OK();
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -874,7 +875,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args->at(i) = std::make_shared<RayObject>(data, metadata);
+      args->at(i) = std::make_shared<RayObject>(data, metadata, /*copy_data*/ true);
       arg_reference_ids->at(i) = ObjectID::Nil();
     }
   }
