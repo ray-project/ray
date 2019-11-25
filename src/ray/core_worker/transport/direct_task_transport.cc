@@ -136,12 +136,12 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
   auto status = client.PushNormalTask(
       std::move(request),
       [this, task_id, addr](Status status, const rpc::PushTaskReply &reply) {
-        OnWorkerIdle(addr, /*error=*/!status.ok());
         if (!status.ok()) {
           task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
+        OnWorkerIdle(addr, /*error=*/!status.ok());
       });
   if (!status.ok()) {
     // TODO(swang): add unit test for this.
