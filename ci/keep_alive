@@ -10,7 +10,6 @@ watchdog() {
         echo "This command has been running for more than $i minutes..."
     done
     echo "Command timed out after 2.5h, dumping logs:"
-    cat $TMPFILE
     echo "TIMED OUT"
     kill -SIGKILL $PID
 }
