@@ -208,7 +208,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_));
+          memory_store_, RayConfig::instance().worker_lease_timeout_milliseconds()));
 }
 
 CoreWorker::~CoreWorker() {

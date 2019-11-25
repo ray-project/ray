@@ -27,7 +27,9 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
           std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
       RAY_LOG(INFO) << "Connected to " << addr.first << ":" << addr.second;
     }
-    worker_to_lease_client_[addr] = std::move(lease_client);
+    int64_t expiration = current_time_ms() + lease_timeout_ms_;
+    worker_to_lease_client_.emplace(addr,
+                                    std::make_pair(std::move(lease_client), expiration));
   }
 
   // Try to assign it work.
@@ -37,10 +39,10 @@ void CoreWorkerDirectTaskSubmitter::HandleWorkerLeaseGranted(
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
                                                  bool was_error) {
   absl::MutexLock lock(&mu_);
-  if (queued_tasks_.empty() || was_error) {
-    auto lease_client = std::move(worker_to_lease_client_[addr]);
+  auto entry = worker_to_lease_client_[addr];
+  if (was_error || queued_tasks_.empty() || current_time_ms() > entry.second) {
+    RAY_CHECK_OK(entry.first->ReturnWorker(addr.second, was_error));
     worker_to_lease_client_.erase(addr);
-    RAY_CHECK_OK(lease_client->ReturnWorker(addr.second, was_error));
   } else {
     auto &client = *client_cache_[addr];
     PushNormalTask(addr, client, queued_tasks_.front());
