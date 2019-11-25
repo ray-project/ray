@@ -761,6 +761,14 @@ class FunctionActorManager(object):
                         self._save_and_log_checkpoint(actor)
                 return method_returns
 
+        # Set method_name and method as attributes to the executor clusore
+        # so we can make decision based on these attributes in task executor.
+        # Precisely, asyncio support requires to know whether:
+        # - the method is a ray internal method: starts with __ray
+        # - the method is a coroutine function: defined by async def
+        actor_method_executor.name = method_name
+        actor_method_executor.method = method
+
         return actor_method_executor
 
     def _save_and_log_checkpoint(self, actor):
