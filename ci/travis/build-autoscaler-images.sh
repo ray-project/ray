@@ -8,8 +8,8 @@ ROOT_DIR=$(cd $SCRIPT_DIR/../../; pwd)
 DOCKER_USERNAME="raytravisbot"
 
 # We will only build and push when we are building branch build.
-# if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
-    #echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
+    echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
     docker build -q -t ray-project/base-deps docker/base-deps
 
@@ -22,15 +22,15 @@ DOCKER_USERNAME="raytravisbot"
         --build-arg WHEEL_NAME=$wheel \
         -t ray-project/autoscaler:$commit_sha \
         $ROOT_DIR/docker/autoscaler
-    echo "docker push ray-project/autoscaler:$commit_sha"
-
-    docker tag ray-project/autoscaler:$commit_sha ray-project/autoscaler:latest
-    echo "docker push ray-project/autoscaler:latest"
+    docker push ray-project/autoscaler:$commit_sha
 
     # We have a branch build, e.g. release/v0.7.0
-    # if [[ "$TRAVIS_BRANCH" != "master" ]] then
-        docker tag ray-project/autoscaler:$commit_sha ray-project/autoscaler:$TRAVIS_BRANCH
-        echo "docker push ray-project/autoscaler:$TRAVIS_BRANCH"
-    # fi
-# fi
+    if [[ "$TRAVIS_BRANCH" != "master" ]] then
+       docker tag ray-project/autoscaler:$commit_sha ray-project/autoscaler:$TRAVIS_BRANCH
+       docker push ray-project/autoscaler:$TRAVIS_BRANCH
+    else
+       docker tag ray-project/autoscaler:$commit_sha ray-project/autoscaler:latest
+       docker push ray-project/autoscaler:latest
+    fi
+fi
 
