@@ -30,7 +30,6 @@ class JobWorker(object):
     """
     def __init__(self, worker_id, operator,
                  input_channels, output_channels):
-        print("OperatorInstance worker_id", worker_id)
         self.env = None
         self.worker_id = worker_id
         self.operator = operator

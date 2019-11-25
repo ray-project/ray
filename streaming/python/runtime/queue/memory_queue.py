@@ -16,9 +16,8 @@ class MemQueueMessageImpl(QueueMessage):
     """
     memory queue message impl
     """
-    def __init__(self,
-                 queue_id,
-                 body):
+    def __init__(self, queue_id, body):
+        super().__init__()
         self.__queue_id = queue_id
         self.__body = body
 

@@ -15,7 +15,8 @@ class QueueID:
     """
     def __init__(self, str_qid: str):
         """
-        :param str_qid: string representation of queue id
+        Args:
+            str_qid: string representation of queue id
         """
         self.str_qid = str_qid
         self.object_qid = ray.ObjectID(queue_utils.qid_str_to_bytes(str_qid))
@@ -47,16 +48,13 @@ class QueueItem:
 
     @abstractmethod
     def body(self):
-        """
-        Queue item data
+        """Get queue item data
         """
         pass
 
     @abstractmethod
     def timestamp(self):
-        """
-        Timestamp when item is written by upstream StreamingWriter
-        :return:
+        """Get timestamp when item is written by upstream StreamingWriter
         """
         pass
 
@@ -69,8 +67,7 @@ class QueueMessage(QueueItem):
 
     @abstractmethod
     def queue_id(self):
-        """
-        :return: id of queue where data is coming from
+        """Get id of queue where data is coming from
         """
         pass
 
@@ -99,21 +96,23 @@ class QueueLink:
 
     @abstractmethod
     def register_queue_consumer(self, input_queue_ids, from_actors):
-        """
-        Get queue consumer of input queues
-        :param input_queue_ids:  input queue ids
-        :param from_actors:  upstream input actors
-        :return:  queue consumer
+        """Get queue consumer of input queues
+        Args:
+            input_queue_ids:  input queue ids
+            from_actors:  upstream input actors
+        Returns:
+            queue consumer
         """
         pass
 
     @abstractmethod
     def register_queue_producer(self, output_queue_ids, to_actors):
-        """
-        Get queue producer of output queue ids
-        :param output_queue_ids: output queue ids
-        :param to_actors: downstream output actors
-        :return:  queue producer
+        """Get queue producer of output queue ids
+        Args:
+            output_queue_ids: output queue ids
+            to_actors: downstream output actors
+        Returns:
+            queue producer
         """
         pass
 
@@ -132,31 +131,26 @@ class QueueProducer:
     """
     Queue producer interface
     """
-
     __metaclass__ = ABCMeta
 
     @abstractmethod
     def produce(self, queue_id: QueueID, item):
-        """
-        Produce msg into the downstream queue
-        :param queue_id:  the downstream queue id
-        :param item:  the data message
-
+        """Produce msg into the downstream queue
+        Args:
+            queue_id:  the downstream queue id
+            item:  the data message
         """
         pass
 
     @abstractmethod
     def stop(self):
-        """
-        stop producer to avoid blocking
-        :return: None
+        """Stop producer to avoid blocking
         """
         pass
 
     @abstractmethod
     def close(self):
-        """
-        Close the queue producer to release resource
+        """Close the queue producer to release resource
         """
         pass
 
@@ -165,15 +159,15 @@ class QueueConsumer:
     """
     Queue consumer interface
     """
-
     __metaclass__ = ABCMeta
 
     @abstractmethod
     def pull(self, timeout_millis):
-        """
-        pull data from queue
-        :param timeout_millis: timeout millis when there is no data in queue for this duration
-        :return: queue item
+        """Pull data from queue
+        Args:
+            timeout_millis: timeout millis when there is no data in queue for this duration
+        Returns:
+            queue item
         """
         pass
 

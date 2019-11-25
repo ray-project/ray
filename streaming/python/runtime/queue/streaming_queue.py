@@ -68,7 +68,7 @@ class QueueLinkImpl(QueueLink):
 
     def register_queue_producer(self, output_queues, to_actors: List[ActorHandle]):
         assert len(output_queues) > 0
-        py_output_queues = qutils.qid_str_list_to_bytes_list(output_queues)
+        py_output_queues = [qutils.qid_str_to_bytes(qid_str) for qid_str in output_queues]
         output_actor_ids: List[ActorID] = [handle._ray_actor_id for handle in to_actors]
         queue_size = self.__configuration.get(Config.QUEUE_SIZE, Config.QUEUE_SIZE_DEFAULT)
         py_seq_ids = [0 for _ in range(len(output_queues))]
@@ -87,7 +87,7 @@ class QueueLinkImpl(QueueLink):
 
     def register_queue_consumer(self, input_queue_ids, from_actors: List[ActorHandle]):
         assert len(input_queue_ids) > 0
-        py_input_queues = qutils.qid_str_list_to_bytes_list(input_queue_ids)
+        py_input_queues = [qutils.qid_str_to_bytes(qid_str) for qid_str in input_queue_ids]
         input_actor_ids: List[ActorID] = [handle._ray_actor_id for handle in from_actors]
         py_seq_ids = [0 for _ in range(len(input_queue_ids))]
         py_msg_ids = [0 for _ in range(len(input_queue_ids))]
