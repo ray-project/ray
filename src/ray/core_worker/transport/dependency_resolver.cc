@@ -42,7 +42,7 @@ void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> valu
   RAY_CHECK(found) << "obj id " << obj_id << " not found";
 }
 
-void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
+void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
                                                   std::function<void()> on_complete) {
   absl::flat_hash_set<ObjectID> local_dependencies;
   for (size_t i = 0; i < task.NumArgs(); i++) {

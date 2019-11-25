@@ -522,6 +522,9 @@ class CoreWorker {
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
 
+  /// Resolve local and remote dependencies for actor creation.
+  std::unique_ptr<LocalDependencyResolver> resolver_;
+
   ///
   /// Fields related to task execution.
   ///
