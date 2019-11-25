@@ -619,7 +619,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
   // need to manually resolve direct call args here.
   resolver_->ResolveDependencies(task_spec, [this, task_spec]() {
-    raylet_client_->SubmitTask(task_spec);
+    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
   });
   return Status::OK();
 }
