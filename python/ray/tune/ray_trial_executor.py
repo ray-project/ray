@@ -94,7 +94,7 @@ class RayTrialExecutor(TrialExecutor):
         if self._cached_actor:
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
-            self._cached_actor.stop.remote()
+            ray.get(self._cached_actor.stop.remote())
             self._cached_actor.__ray_terminate__.remote()
             self._cached_actor = None
 
@@ -187,7 +187,7 @@ class RayTrialExecutor(TrialExecutor):
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
-                    trial.runner.stop.remote()
+                    ray.get(trial.runner.stop.remote())
                     trial.runner.__ray_terminate__.remote()
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
