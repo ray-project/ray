@@ -309,6 +309,42 @@ class FunctionActorManager(object):
             job_id = ray.JobID.nil()
         return self._num_task_executions[job_id][function_id]
 
+    def compute_collision_identifier(self, function_or_class):
+        """The identifier is used to detect excessive duplicate exports.
+
+        The identifier is used to determine when the same function or class is
+        exported many times. This can yielf false positives.
+
+        Args:
+            function_or_class: The function or class to compute an identifier
+                for.
+
+        Returns:
+            The identifier. Note that different functions or classes can give
+                rise to same identifier. However, the same function should
+                hopefully always give rise to the same identifier. TODO(rkn):
+                verify if this is actually the case. Note that if the
+                identifier is incorrect in any way, then we may give warnings
+                unnecessarily or fail to give warnings, but the application's
+                behavior won't change.
+        """
+        if sys.version_info[0] >= 3:
+            import io
+            string_file = io.StringIO()
+            if sys.version_info[1] >= 7:
+                dis.dis(function_or_class, file=string_file, depth=2)
+            else:
+                dis.dis(function_or_class, file=string_file)
+            collision_identifier = (
+                function_or_class.__name__ + ":" + string_file.getvalue())
+        else:
+            collision_identifier = function_or_class.__name__
+
+        # Return a hash of the identifier in case it is too large.
+        hasher = hashlib.sha1()
+        hasher.update(collision_identifier.encode("ascii"))
+        return hasher.digest()
+
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
 
@@ -323,13 +359,6 @@ class FunctionActorManager(object):
         function = remote_function._function
         pickled_function = pickle.dumps(function)
 
-        # If we are running a script or are in IPython, store the bytecode in
-        # Redis. This is just used to print good error messages if the user
-        # exports the same remote function a bunch of times.
-        function_bytecode = dis.Bytecode(function).dis()
-        if sys.version_info[0] >= 3:
-            function_bytecode = function_bytecode.encode()
-
         check_oversized_pickle(pickled_function,
                                remote_function._function_name,
                                "remote function", self._worker)
@@ -343,7 +372,8 @@ class FunctionActorManager(object):
                 "name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
-                "function_bytecode": function_bytecode,
+                "collision_identifier": self.compute_collision_identifier(
+                    function),
                 "max_calls": remote_function._max_calls
             })
         self._worker.redis_client.rpush("Exports", key)
@@ -551,6 +581,7 @@ class FunctionActorManager(object):
             "module": Class.__module__,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
+            "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
