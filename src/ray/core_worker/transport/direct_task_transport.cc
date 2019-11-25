@@ -41,12 +41,16 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
     auto lease_client = std::move(worker_to_lease_client_[addr]);
     worker_to_lease_client_.erase(addr);
     RAY_CHECK_OK(lease_client->ReturnWorker(addr.second, was_error));
-  } else {
+  } else if (!queued_tasks_.empty()) {
     auto &client = *client_cache_[addr];
     PushNormalTask(addr, client, queued_tasks_.front());
     queued_tasks_.pop_front();
   }
-  RequestNewWorkerIfNeeded(queued_tasks_.front());
+
+  // There are more tasks to run, so try to get another worker.
+  if (!queued_tasks_.empty()) {
+    RequestNewWorkerIfNeeded(queued_tasks_.front());
+  }
 }
 
 std::shared_ptr<WorkerLeaseInterface>

@@ -1,4 +1,3 @@
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "ray/common/task/task_spec.h"
@@ -9,8 +8,6 @@
 #include "src/ray/util/test_util.h"
 
 namespace ray {
-
-using ::testing::_;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -28,8 +25,15 @@ class MockTaskFinisher : public TaskFinisherInterface {
  public:
   MockTaskFinisher() {}
 
-  MOCK_METHOD2(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &));
-  MOCK_METHOD2(FailPendingTask, void(const TaskID &task_id, rpc::ErrorType error_type));
+  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) {
+    num_tasks_complete++;
+  }
+  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) {
+    num_tasks_failed++;
+  }
+
+  int num_tasks_complete = 0;
+  int num_tasks_failed = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -213,14 +217,16 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
-  EXPECT_CALL(task_finisher, CompletePendingTask(TaskID::Nil(), _));
-  EXPECT_CALL(task_finisher, FailPendingTask(_, _)).Times(0);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
 
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
@@ -237,12 +243,12 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
-  EXPECT_CALL(task_finisher, FailPendingTask(TaskID::Nil(), _));
-  EXPECT_CALL(task_finisher, CompletePendingTask(_, _)).Times(0);
   worker_client->callbacks[0](Status::IOError("oops"), rpc::PushTaskReply());
   ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 1);
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
@@ -281,12 +287,13 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // All workers returned.
-  EXPECT_CALL(task_finisher, CompletePendingTask(_, _)).Times(3);
   for (const auto &cb : worker_client->callbacks) {
     cb(Status::OK(), rpc::PushTaskReply());
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 3);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
@@ -308,7 +315,6 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_TRUE(submitter.SubmitTask(task3).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
-  EXPECT_CALL(task_finisher, CompletePendingTask(_, _)).Times(3);
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
@@ -333,6 +339,8 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
@@ -351,8 +359,6 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   ASSERT_TRUE(submitter.SubmitTask(task2).ok());
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
-  EXPECT_CALL(task_finisher, CompletePendingTask(_, _));
-  EXPECT_CALL(task_finisher, FailPendingTask(_, _));
 
   // Task 1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
@@ -371,6 +377,8 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 1);
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
@@ -399,8 +407,6 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(remote_lease_clients.size(), 0);
-  EXPECT_CALL(task_finisher, CompletePendingTask(_, _));
-  EXPECT_CALL(task_finisher, FailPendingTask(_, _)).Times(0);
 
   // Spillback to a remote node.
   auto remote_raylet_id = ClientID::FromRandom();
@@ -417,9 +423,10 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 1);
-
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher.num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher.num_tasks_failed, 0);
 }
 
 }  // namespace ray

@@ -38,7 +38,7 @@ auth:
 # For more documentation on available fields, see:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
-    InstanceType: m4.16xlarge
+    InstanceType: m4.4xlarge
     ImageId: ami-0def3275  # Default Ubuntu 16.04 AMI.
 
     # Set primary volume to 25 GiB
