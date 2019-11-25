@@ -99,6 +99,18 @@ class ImportThread(object):
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()
 
+    def _get_import_info_for_collision_detection(self, key):
+        """Retrieve the collision identifier, type, and name of the import."""
+        if key.startswith(b"RemoteFunction"):
+            collision_identifier, function_name = (self.redis_client.hmget(
+                key, ["collision_identifier", "function_name"]))
+            return (collision_identifier, ray.utils.decode(function_name),
+                    "remote function")
+        elif key.startswith(b"ActorClass"):
+            collision_identifier, class_name = self.redis_client.hmget(
+                key, ["collision_identifier", "class_name"])
+            return collision_identifier, ray.utils.decode(class_name), "actor"
+
     def _process_key(self, key):
         """Process the given export key from redis."""
         # Handle the driver case first.
@@ -113,43 +125,24 @@ class ImportThread(object):
             # of many times. TODO(rkn): We may want to push this to the driver
             # through Redis so that it can be displayed in the dashboard more
             # easily.
-            else:
-                error_message = (
-                    "The %s '%s' has been exported %s times. It's possible "
-                    "that this warning is accidental, but this may indicate "
-                    "that the same remote function is being defined "
-                    "repeatedly from within many tasks and exported to all of "
-                    "the workers. This can be a performance issue and can be "
-                    "resolved by defining the remote function on the driver "
-                    "instead. See "
-                    "https://github.com/ray-project/ray/issues/6240 for more "
-                    "discussion.")
-
-                if key.startswith(b"RemoteFunction"):
-                    collision_identifier, function_name = (
-                        self.redis_client.hmget(
-                            key, ["collision_identifier", "function_name"]))
-                    self.imported_collision_identifiers[
-                        collision_identifier] += 1
-                    if (self.imported_collision_identifiers[
-                            collision_identifier] ==
-                            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD):
-                        logger.warning(
-                            error_message, "remote function",
-                            ray.utils.decode(function_name),
-                            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
-                elif key.startswith(b"ActorClass"):
-                    collision_identifier, class_name = self.redis_client.hmget(
-                        key, ["collision_identifier", "class_name"])
-                    self.imported_collision_identifiers[
-                        collision_identifier] += 1
-                    if (self.imported_collision_identifiers[
-                            collision_identifier] ==
-                            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD):
-                        logger.warning(
-                            error_message, "actor class",
-                            ray.utils.decode(class_name),
-                            ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
+            elif (key.startswith(b"RemoteFunction")
+                  or key.startswith(b"ActorClass")):
+                collision_identifier, name, import_type = (
+                    self._get_import_info_for_collision_detection(key))
+                self.imported_collision_identifiers[collision_identifier] += 1
+                if (self.imported_collision_identifiers[collision_identifier]
+                        == ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD):
+                    logger.warning(
+                        "The %s '%s' has been exported %s times. It's "
+                        "possible that this warning is accidental, but this "
+                        "may indicate that the same remote function is being "
+                        "defined repeatedly from within many tasks and "
+                        "exported to all of the workers. This can be a "
+                        "performance issue and can be resolved by defining "
+                        "the remote function on the driver instead. See "
+                        "https://github.com/ray-project/ray/issues/6240 for "
+                        "more discussion.", import_type, name,
+                        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD)
 
             # Return because FunctionsToRun are the only things that
             # the driver should import.
