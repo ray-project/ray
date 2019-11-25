@@ -7,10 +7,10 @@
 #include <thread>
 #include <vector>
 
+#include "channel.h"
 #include "config/streaming_config.h"
 #include "message/message_bundle.h"
 #include "runtime_context.h"
-#include "channel.h"
 #include "transfer.h"
 
 namespace ray {

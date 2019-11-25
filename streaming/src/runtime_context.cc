@@ -4,7 +4,6 @@
 
 #include "runtime_context.h"
 #include "util/streaming_logging.h"
-#include "util/streaming_utility.h"
 
 namespace ray {
 namespace streaming {

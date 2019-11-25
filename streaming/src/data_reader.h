@@ -8,8 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "message/message_priority_queue.h"
 #include "message/message_bundle.h"
+#include "message/priority_queue.h"
 #include "runtime_context.h"
 #include "transfer.h"
 
@@ -38,7 +38,7 @@ class StreamingReader {
   std::vector<ObjectID> unready_queue_ids_;
 
   std::unique_ptr<PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
-                                         StreamingReaderMsgPtrComparator>>
+                                StreamingReaderMsgPtrComparator>>
       reader_merger_;
 
   std::shared_ptr<StreamingReaderBundle> last_fetched_queue_item_;

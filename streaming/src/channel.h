@@ -3,7 +3,6 @@
 
 #include "config/streaming_config.h"
 #include "ring_buffer.h"
-#include "streaming.h"
 
 namespace ray {
 namespace streaming {

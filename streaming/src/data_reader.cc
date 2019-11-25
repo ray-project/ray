@@ -37,8 +37,6 @@ void StreamingReader::InitTransfer() {
 
 void StreamingReader::Init(const std::vector<ObjectID> &input_ids,
                            int64_t timer_interval) {
-  ray::JobID job_id =
-      JobID::FromBinary(Util::Hexqid2str(runtime_context_->GetConfig().GetTaskJobId()));
   STREAMING_LOG(INFO) << input_ids.size() << " queue to init.";
 
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, input_ids);
@@ -91,9 +89,8 @@ StreamingStatus StreamingReader::InitChannelMerger() {
   // Init reader merger when it's first created
   StreamingReaderMsgPtrComparator comparator;
   if (!reader_merger_) {
-    reader_merger_.reset(
-        new PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
-                                   StreamingReaderMsgPtrComparator>(comparator));
+    reader_merger_.reset(new PriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+                                           StreamingReaderMsgPtrComparator>(comparator));
   }
 
   // An old item in merger vector must be evicted before new queue item has been
