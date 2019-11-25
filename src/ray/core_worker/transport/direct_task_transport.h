@@ -107,8 +107,10 @@ class CoreWorkerDirectTaskSubmitter {
   // Whether we have a request to the Raylet to acquire a new worker in flight.
   bool worker_request_pending_ GUARDED_BY(mu_) = false;
 
-  // Tasks that are queued for execution in this submitter..
-  std::deque<TaskSpecification> queued_tasks_ GUARDED_BY(mu_);
+  // Tasks that are queued for execution in this submitter. We keep individual queues per
+  // scheduling class to ensure fairness.
+  absl::flat_hash_map<SchedulingClass,
+  std::deque<TaskSpecification> queued_tasks_> GUARDED_BY(mu_);
 };
 
 };  // namespace ray

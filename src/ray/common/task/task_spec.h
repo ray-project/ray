@@ -19,7 +19,7 @@ namespace ray {
 
 typedef std::vector<std::string> FunctionDescriptor;
 typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClassDescriptor;
-typedef int SchedulingClass;
+typedef uint32_t SchedulingClass;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
