@@ -21,7 +21,7 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &
 class CoreWorkerDirectTaskSubmitter {
  public:
   CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
-                                ClientFactoryFn client_factory,
+                                rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
                                 std::shared_ptr<CoreWorkerMemoryStore> store,
                                 int64_t lease_timeout_ms)
@@ -100,7 +100,7 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Map from worker address to the lease client through which it should be
   /// returned and its lease expiration time.
-  absl::flat_hash_map<WorkerAddress,
+  absl::flat_hash_map<rpc::WorkerAddress,
                       std::pair<std::shared_ptr<WorkerLeaseInterface>, int64_t>>
       worker_to_lease_client_ GUARDED_BY(mu_);
 
