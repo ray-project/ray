@@ -47,6 +47,14 @@ py_test(
 )
 
 py_test(
+    name = "test_advanced",
+    size = "large",
+    srcs = ["test_advanced.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_component_failures",
     size = "large",
     srcs = ["test_component_failures.py"],
