@@ -5,12 +5,9 @@
 #include <memory>
 #include <thread>
 
-#include "ray/raylet/raylet_client.h"
-
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-#include "message/streaming_message_bundle.h"
 #include "streaming_reader.h"
 
 namespace ray {
@@ -93,8 +90,8 @@ StreamingStatus StreamingReader::InitChannelMerger() {
   StreamingReaderMsgPtrComparator comparator;
   if (!reader_merger_) {
     reader_merger_.reset(
-        new StreamingMessageMerger<std::shared_ptr<StreamingReaderBundle>,
-                                   StreamingReaderMsgPtrComparator>(comparator));
+        new MessagePriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+                                 StreamingReaderMsgPtrComparator>(comparator));
   }
 
   // An old item in merger vector must be evicted before new queue item has been

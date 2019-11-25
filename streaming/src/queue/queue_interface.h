@@ -25,7 +25,7 @@ std::shared_ptr<StreamingQueueReader> CreateQueueReader(
     const std::vector<ObjectID> &queue_ids, CoreWorker *core_worker,
     ray::RayFunction &async_func, ray::RayFunction &sync_func);
 
-/// code below is interface implementation of streaming queue
+/// Code below is interface implementation of streaming queue.
 class StreamingQueueWriter {
  public:
   StreamingQueueWriter(CoreWorker *core_worker, RayFunction &async_func,

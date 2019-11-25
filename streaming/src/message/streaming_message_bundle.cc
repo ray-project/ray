@@ -3,8 +3,8 @@
 
 #include "ray/common/status.h"
 
-#include "streaming_message_bundle.h"
 #include "config/streaming_config.h"
+#include "streaming_message_bundle.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
@@ -23,7 +23,8 @@ StreamingMessageBundleMeta::StreamingMessageBundleMeta(
       last_message_id_(last_offset_seq_id),
       message_list_size_(message_list_size),
       bundle_type_(bundle_type) {
-  STREAMING_CHECK(message_list_size <= StreamingConfig::STREAMING_MESSAGE_BUNDLE_MAX_SIZE);
+  STREAMING_CHECK(message_list_size <=
+                  StreamingConfig::STREAMING_MESSAGE_BUNDLE_MAX_SIZE);
 }
 
 STREAMING_SERIALIZATION_IMP(StreamingMessageBundleMeta, bytes) {

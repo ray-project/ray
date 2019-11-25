@@ -8,9 +8,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "streaming.h"
+#include "message/message_priority_queue.h"
 #include "message/streaming_message_bundle.h"
-#include "message/streaming_message_merger.h"
+#include "streaming.h"
 #include "streaming_transfer.h"
 
 namespace ray {
@@ -37,8 +37,8 @@ class StreamingReader : public StreamingCommon {
 
   std::vector<ObjectID> unready_queue_ids_;
 
-  std::unique_ptr<StreamingMessageMerger<std::shared_ptr<StreamingReaderBundle>,
-                                         StreamingReaderMsgPtrComparator>>
+  std::unique_ptr<MessagePriorityQueue<std::shared_ptr<StreamingReaderBundle>,
+                                       StreamingReaderMsgPtrComparator>>
       reader_merger_;
 
   std::shared_ptr<StreamingReaderBundle> last_fetched_queue_item_;
