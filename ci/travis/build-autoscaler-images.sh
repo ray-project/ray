@@ -17,7 +17,7 @@ DOCKER_USERNAME="raytravisbot"
     commit_sha=$(echo $TRAVIS_COMMIT | head -c 6)
     cp -r $ROOT_DIR/.whl $ROOT_DIR/docker/autoscaler/.whl
 
-    docker build -q \
+    docker build \
         --build-arg WHEEL_PATH=".whl/$wheel" \
         --build-arg WHEEL_NAME=$wheel \
         -t ray-project/autoscaler:$commit_sha \
