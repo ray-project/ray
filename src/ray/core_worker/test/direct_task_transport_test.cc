@@ -234,7 +234,6 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-
   std::unordered_map<std::string, double> empty_resources;
   TaskSpecification task = BuildTaskSpec(empty_resources);
 
@@ -254,7 +253,6 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
                                           kLongTimeout);
-
   std::unordered_map<std::string, double> empty_resources;
   TaskSpecification task1 = BuildTaskSpec(empty_resources);
   TaskSpecification task2 = BuildTaskSpec(empty_resources);
