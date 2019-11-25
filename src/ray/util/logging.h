@@ -6,13 +6,16 @@
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related headers you need manually. (https://stackoverflow.com/a/8294669)
+#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
+                             // headers you need manually.
+                             // (https://stackoverflow.com/a/8294669)
 #define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
 #endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
 #endif
 #ifdef ERROR  // Should be true unless someone else undef'd it already
-#undef ERROR  // Windows GDI defines this macro; make it a global enum so it doesn't conflict with our code
+#undef ERROR  // Windows GDI defines this macro; make it a global enum so it doesn't
+              // conflict with our code
 enum { ERROR = 0 };
 #endif
 #endif
