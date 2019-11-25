@@ -55,6 +55,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_experiment.py"],
     deps = [":tune_lib"],
+    flaky = 1,
 )
 
 py_test(
