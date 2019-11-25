@@ -33,17 +33,13 @@ class Task {
   /// \param message The protobuf message.
   explicit Task(const rpc::Task &message)
       : task_spec_(message.task_spec()),
-        task_execution_spec_(message.task_execution_spec()) {
-    ComputeDependencies();
-  }
+        task_execution_spec_(message.task_execution_spec()) {}
 
   /// Construct a `Task` object from a `TaskSpecification` and a
   /// `TaskExecutionSpecification`.
   Task(TaskSpecification task_spec, TaskExecutionSpecification task_execution_spec)
       : task_spec_(std::move(task_spec)),
-        task_execution_spec_(std::move(task_execution_spec)) {
-    ComputeDependencies();
-  }
+        task_execution_spec_(std::move(task_execution_spec)) {}
 
   /// Override dispatch behaviour.
   void OnDispatchInstead(const DispatchTaskCallback &callback) {
@@ -69,8 +65,7 @@ class Task {
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
 
-  /// Get the task's object dependencies. This comprises the immutable task
-  /// arguments and the mutable execution dependencies.
+  /// Get the task's object dependencies.
   ///
   /// \return The object dependencies.
   const std::vector<ObjectID> &GetDependencies() const;
@@ -88,8 +83,6 @@ class Task {
   std::string DebugString() const;
 
  private:
-  void ComputeDependencies();
-
   /// Task specification object, consisting of immutable information about this
   /// task determined at submission time. Includes resource demand, object
   /// dependencies, etc.
@@ -97,10 +90,6 @@ class Task {
   /// Task execution specification, consisting of all dynamic/mutable
   /// information about this task determined at execution time.
   TaskExecutionSpecification task_execution_spec_;
-  /// A cached copy of the task's object dependencies, including arguments from
-  /// the TaskSpecification and execution dependencies from the
-  /// TaskExecutionSpecification.
-  std::vector<ObjectID> dependencies_;
 
   /// For direct task calls, overrides the dispatch behaviour to send an RPC
   /// back to the submitting worker.

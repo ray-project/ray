@@ -70,6 +70,29 @@ const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   return sched_cls_id_;
 }
 
+const std::vector<ObjectID> &TaskSpecification::GetDependencies() const {
+  return dependencies_;
+}
+
+void TaskSpecification::ComputeDependencies() {
+  dependencies_.clear();
+  dependency_hash_ = 0;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    for (int j = 0; j < ArgIdCount(i); j++) {
+      ObjectID arg = ArgId(i, j);
+      dependencies_.push_back(arg);
+      dependency_hash_ ^= arg.Hash();
+    }
+  }
+  if (IsActorTask()) {
+    ObjectID arg = PreviousActorTaskDummyObjectId();
+    dependencies_.push_back(arg);
+    dependency_hash_ ^= arg.Hash();
+  }
+}
+
+size_t TaskSpecification::GetDependencyHash() const { return dependency_hash_; }
+
 size_t TaskSpecification::NumArgs() const { return message_->args_size(); }
 
 size_t TaskSpecification::NumReturns() const { return message_->num_returns(); }
