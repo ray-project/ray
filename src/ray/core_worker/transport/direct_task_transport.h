@@ -23,12 +23,14 @@ class CoreWorkerDirectTaskSubmitter {
   CoreWorkerDirectTaskSubmitter(std::shared_ptr<WorkerLeaseInterface> lease_client,
                                 rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
-                                std::shared_ptr<CoreWorkerMemoryStore> store)
+                                std::shared_ptr<CoreWorkerMemoryStore> store,
+                                int64_t lease_timeout_ms)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
         in_memory_store_(store),
-        resolver_(in_memory_store_) {}
+        resolver_(in_memory_store_),
+        lease_timeout_ms_(lease_timeout_ms) {}
 
   /// Schedule a task for direct submission to a worker.
   ///
@@ -85,6 +87,10 @@ class CoreWorkerDirectTaskSubmitter {
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
 
+  /// The timeout for worker leases; after this duration, workers will be returned
+  /// to the raylet.
+  int64_t lease_timeout_ms_;
+
   // Protects task submission state below.
   absl::Mutex mu_;
 
@@ -93,8 +99,9 @@ class CoreWorkerDirectTaskSubmitter {
       client_cache_ GUARDED_BY(mu_);
 
   /// Map from worker address to the lease client through which it should be
-  /// returned.
-  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<WorkerLeaseInterface>>
+  /// returned and its lease expiration time.
+  absl::flat_hash_map<rpc::WorkerAddress,
+                      std::pair<std::shared_ptr<WorkerLeaseInterface>, int64_t>>
       worker_to_lease_client_ GUARDED_BY(mu_);
 
   // Whether we have a request to the Raylet to acquire a new worker in flight.
