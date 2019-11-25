@@ -18,7 +18,7 @@ namespace gcs {
 class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
-  friend class ActorStateAccessor;
+  friend class RedisActorStateAccessor;
   friend class SubscriptionExecutorTest;
 
  public:

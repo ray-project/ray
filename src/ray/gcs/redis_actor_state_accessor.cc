@@ -1,4 +1,4 @@
-#include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/redis_actor_state_accessor.h"
 #include <boost/none.hpp>
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
@@ -7,10 +7,10 @@ namespace ray {
 
 namespace gcs {
 
-ActorStateAccessor::ActorStateAccessor(RedisGcsClient &client_impl)
+RedisActorStateAccessor::RedisActorStateAccessor(RedisGcsClient &client_impl)
     : client_impl_(client_impl), actor_sub_executor_(client_impl_.actor_table()) {}
 
-Status ActorStateAccessor::AsyncGet(
+Status RedisActorStateAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -26,8 +26,8 @@ Status ActorStateAccessor::AsyncGet(
   return actor_table.Lookup(JobID::Nil(), actor_id, on_done);
 }
 
-Status ActorStateAccessor::AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                                         const StatusCallback &callback) {
+Status RedisActorStateAccessor::AsyncRegister(
+    const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
     if (callback != nullptr) {
@@ -48,9 +48,9 @@ Status ActorStateAccessor::AsyncRegister(const std::shared_ptr<ActorTableData> &
                               /*log_length*/ 0);
 }
 
-Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
-                                       const std::shared_ptr<ActorTableData> &data_ptr,
-                                       const StatusCallback &callback) {
+Status RedisActorStateAccessor::AsyncUpdate(
+    const ActorID &actor_id, const std::shared_ptr<ActorTableData> &data_ptr,
+    const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
   // of (RECONSTRUCTING, ALIVE) entries, where N is the maximum number of
   // reconstructions. This is followed optionally by a DEAD entry.
@@ -90,22 +90,22 @@ Status ActorStateAccessor::AsyncUpdate(const ActorID &actor_id,
                               log_length);
 }
 
-Status ActorStateAccessor::AsyncSubscribe(
+Status RedisActorStateAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);
 }
 
-Status ActorStateAccessor::AsyncSubscribe(
+Status RedisActorStateAccessor::AsyncSubscribe(
     const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
 }
 
-Status ActorStateAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                            const StatusCallback &done) {
+Status RedisActorStateAccessor::AsyncUnsubscribe(const ActorID &actor_id,
+                                                 const StatusCallback &done) {
   return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
 }
 

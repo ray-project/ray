@@ -2,6 +2,7 @@
 #define RAY_GCS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
+#include "ray/gcs/actor_state_accessor_interface.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
@@ -12,15 +13,15 @@ namespace gcs {
 
 class RedisGcsClient;
 
-/// \class ActorStateAccessor
-/// ActorStateAccessor class encapsulates the implementation details of
+/// \class RedisActorStateAccessor
+/// RedisActorStateAccessor class encapsulates the implementation details of
 /// reading or writing or subscribing of actor's specification (immutable fields which
 /// determined at submission time, and mutable fields which are determined at runtime).
-class ActorStateAccessor {
+class RedisActorStateAccessor : public ActorStateAccessorInterface {
  public:
-  explicit ActorStateAccessor(RedisGcsClient &client_impl);
+  explicit RedisActorStateAccessor(RedisGcsClient &client_impl);
 
-  ~ActorStateAccessor() {}
+  virtual ~RedisActorStateAccessor() {}
 
   /// Get actor specification from GCS asynchronously.
   ///
@@ -28,7 +29,7 @@ class ActorStateAccessor {
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
   Status AsyncGet(const ActorID &actor_id,
-                  const OptionalItemCallback<ActorTableData> &callback);
+                  const OptionalItemCallback<ActorTableData> &callback) override;
 
   /// Register an actor to GCS asynchronously.
   ///
@@ -37,7 +38,7 @@ class ActorStateAccessor {
   /// to the GCS.
   /// \return Status
   Status AsyncRegister(const std::shared_ptr<ActorTableData> &data_ptr,
-                       const StatusCallback &callback);
+                       const StatusCallback &callback) override;
 
   /// Update dynamic states of actor in GCS asynchronously.
   ///
@@ -49,7 +50,7 @@ class ActorStateAccessor {
   /// updating dynamic states.
   Status AsyncUpdate(const ActorID &actor_id,
                      const std::shared_ptr<ActorTableData> &data_ptr,
-                     const StatusCallback &callback);
+                     const StatusCallback &callback) override;
 
   /// Subscribe to any register or update operations of actors.
   ///
@@ -58,8 +59,8 @@ class ActorStateAccessor {
   /// \param done Callback that will be called when subscription is complete and we
   /// are ready to receive notification.
   /// \return Status
-  Status AsyncSubscribe(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
-                        const StatusCallback &done);
+  Status AsyncSubscribeAll(const SubscribeCallback<ActorID, ActorTableData> &subscribe,
+                           const StatusCallback &done) override;
 
   /// Subscribe to any update operations of an actor.
   ///
@@ -69,14 +70,14 @@ class ActorStateAccessor {
   /// \return Status
   Status AsyncSubscribe(const ActorID &actor_id,
                         const SubscribeCallback<ActorID, ActorTableData> &subscribe,
-                        const StatusCallback &done);
+                        const StatusCallback &done) override;
 
   /// Cancel subscription to an actor.
   ///
   /// \param actor_id The ID of the actor to be unsubscribed to.
   /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done);
+  Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
 
  private:
   RedisGcsClient &client_impl_;

@@ -30,7 +30,7 @@ class ActorStateAccessorTest : public AccessorTestBase<ActorID, ActorTableData> 
 };
 
 TEST_F(ActorStateAccessorTest, RegisterAndGet) {
-  ActorStateAccessor &actor_accessor = gcs_client_->Actors();
+  ActorStateAccessorInterface &actor_accessor = gcs_client_->Actors();
   // register
   for (const auto &elem : id_to_data_) {
     const auto &actor = elem.second;
@@ -60,7 +60,7 @@ TEST_F(ActorStateAccessorTest, RegisterAndGet) {
 }
 
 TEST_F(ActorStateAccessorTest, Subscribe) {
-  ActorStateAccessor &actor_accessor = gcs_client_->Actors();
+  ActorStateAccessorInterface &actor_accessor = gcs_client_->Actors();
   // subscribe
   std::atomic<int> sub_pending_count(0);
   std::atomic<int> do_sub_pending_count(0);
@@ -76,7 +76,7 @@ TEST_F(ActorStateAccessorTest, Subscribe) {
   };
 
   ++do_sub_pending_count;
-  RAY_CHECK_OK(actor_accessor.AsyncSubscribe(subscribe, done));
+  RAY_CHECK_OK(actor_accessor.AsyncSubscribeAll(subscribe, done));
   // Wait until subscribe finishes.
   WaitPendingDone(do_sub_pending_count, wait_pending_timeout_);
 

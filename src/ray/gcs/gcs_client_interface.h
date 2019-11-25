@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 #include "ray/common/status.h"
-#include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/actor_state_accessor_interface.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -80,9 +80,9 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Get ActorStateAccessor for reading or writing or subscribing to
+  /// Get ActorStateAccessorInterface for reading or writing or subscribing to
   /// actors. This function is thread safe.
-  ActorStateAccessor &Actors() {
+  ActorStateAccessorInterface &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
@@ -98,7 +98,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Whether this client is connected to GCS.
   bool is_connected_{false};
 
-  std::unique_ptr<ActorStateAccessor> actor_accessor_;
+  std::unique_ptr<ActorStateAccessorInterface> actor_accessor_;
 };
 
 }  // namespace gcs
