@@ -28,11 +28,12 @@ from ray.streaming.includes.libstreaming cimport (
     CStreamingStatus,
     CStreamingMessage,
     CStreamingMessageBundle,
-    CStreamingReaderBundle,
-    CStreamingWriter,
-    CStreamingWriterDirectCall,
-    CStreamingReader,
-    CStreamingReaderDirectCall,
+    CRuntimeContext,
+    CDataBundle,
+    CDataWriter,
+    CDirectCallDataWriter,
+    CDataReader,
+    CDirectCallDataReader,
     CQueueManager,
     CQueueClient,
     CLocalMemoryBuffer,
@@ -83,7 +84,7 @@ cdef class QueueLink:
             c_vector[uint64_t] seq_ids
             CRayFunction async_native_func
             CRayFunction sync_native_func
-            CStreamingWriter *writer
+            CDataWriter *writer
             cdef const unsigned char[:] config_data
         for actor_id in output_actor_ids:
             actor_ids.push_back((<ActorID>actor_id).data)
@@ -93,12 +94,15 @@ cdef class QueueLink:
             LANGUAGE_PYTHON, string_vector_from_list(async_func.get_function_descriptor_list()))
         sync_native_func = CRayFunction(
             LANGUAGE_PYTHON, string_vector_from_list(sync_func.get_function_descriptor_list()))
-        writer = new CStreamingWriterDirectCall(self.core_worker, queue_id_vec, actor_ids,
-                                                async_native_func, sync_native_func)
+
+        cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
         if config_bytes:
             config_data = config_bytes
             queue_logger.info("load config, config bytes size: %s", config_data.nbytes)
-            writer.SetConfig(<uint8_t *>(&config_data[0]), config_data.nbytes)
+            ctx.get().SetConfig(<uint8_t *>(&config_data[0]), config_data.nbytes)
+        writer = new CDirectCallDataWriter(ctx, self.core_worker, queue_id_vec, actor_ids,
+                                                async_native_func, sync_native_func)
+
         cdef:
             c_vector[CObjectID] remain_id_vec
             c_vector[uint64_t] queue_size_vec
@@ -138,7 +142,7 @@ cdef class QueueLink:
             c_vector[uint64_t] msg_ids
             CRayFunction async_native_func
             CRayFunction sync_native_func
-            CStreamingWriter *writer
+            CDataWriter *writer
             cdef const unsigned char[:] config_data
         for actor_id in input_actor_ids:
             actor_ids.push_back((<ActorID>actor_id).data)
@@ -150,12 +154,14 @@ cdef class QueueLink:
             LANGUAGE_PYTHON, string_vector_from_list(async_func.get_function_descriptor_list()))
         sync_native_func = CRayFunction(
             LANGUAGE_PYTHON, string_vector_from_list(sync_func.get_function_descriptor_list()))
-        reader = new CStreamingReaderDirectCall(self.core_worker, queue_id_vec, actor_ids,
-                                                async_native_func, sync_native_func)
+        cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
         if config_bytes:
             config_data = config_bytes
             queue_logger.info("load config, config bytes size: %s", config_data.nbytes)
-            reader.SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
+            ctx.get().SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
+        reader = new CDirectCallDataReader(ctx, self.core_worker, queue_id_vec, actor_ids,
+                                                async_native_func, sync_native_func)
+
         reader.Init(queue_id_vec, seq_ids, msg_ids, timer_interval)
         self.consumer = QueueConsumer()
         queue_logger.info("create native consumer succeed")
@@ -186,7 +192,7 @@ cdef class QueueLink:
 
 cdef class QueueProducer:
     cdef:
-        CStreamingWriter *writer
+        CDataWriter *writer
 
     def __cinit__(self):
         pass
@@ -214,7 +220,7 @@ cdef class QueueProducer:
 
 cdef class QueueConsumer:
     cdef:
-        CStreamingReader *reader
+        CDataReader *reader
         readonly bytes meta
         readonly bytes data
 
@@ -229,7 +235,7 @@ cdef class QueueConsumer:
 
     def pull(self, uint32_t timeout_millis):
         cdef:
-            shared_ptr[CStreamingReaderBundle] bundle
+            shared_ptr[CDataBundle] bundle
             CStreamingStatus status
         with nogil:
             status = self.reader.GetBundle(timeout_millis, bundle)

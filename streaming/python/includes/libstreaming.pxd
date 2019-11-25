@@ -34,7 +34,7 @@ from ray.includes.unique_ids cimport (
 )
 from ray.includes.libcoreworker cimport CCoreWorker
 
-cdef extern from "streaming.h" namespace "ray::streaming" nogil:
+cdef extern from "status.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingStatus "ray::streaming::StreamingStatus":
         pass
     cdef CStreamingStatus StatusOK "ray::streaming::StreamingStatus::OK"
@@ -56,6 +56,12 @@ cdef extern from "streaming.h" namespace "ray::streaming" nogil:
 
     cdef cppclass CStreamingCommon "ray::streaming::StreamingCommon":
         void SetConfig(const uint8_t *, uint32_t size)
+
+
+cdef extern from "runtime_context.h" namespace "ray::streaming" nogil:
+    cdef cppclass CRuntimeContext "ray::streaming::RuntimeContext":
+        CRuntimeContext()
+        void SetConfig(const uint8_t *data, uint32_t size);
 
 cdef extern from "message/message.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageType "ray::streaming::StreamingMessageType":
@@ -97,31 +103,33 @@ cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
                                         c_list[shared_ptr[CStreamingMessage]] &msg_list);
 
 cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
-    cdef cppclass CStreamingReaderBundle "ray::streaming::StreamingReaderBundle":
+    cdef cppclass CDataBundle "ray::streaming::DataBundle":
         uint8_t *data
         uint32_t data_size
         CObjectID c_from "from"
         uint64_t seq_id
         CStreamingMessageBundleMetaPtr meta
 
-    cdef cppclass CStreamingReader "ray::streaming::StreamingReader"(CStreamingCommon):
+    cdef cppclass CDataReader "ray::streaming::DataReader"(CStreamingCommon):
         void Init(const c_vector[CObjectID] &input_ids,
                   const c_vector[uint64_t] &seq_ids,
                   const c_vector[uint64_t] &streaming_msg_ids,
                   int64_t timer_interval);
         CStreamingStatus GetBundle(const uint32_t timeout_ms,
-                                   shared_ptr[CStreamingReaderBundle] &message)
+                                   shared_ptr[CDataBundle] &message)
         void Stop()
 
-    cdef cppclass CStreamingReaderDirectCall "ray::streaming::StreamingReaderDirectCall"(CStreamingReader):
-        CStreamingReaderDirectCall(CCoreWorker *core_worker,
-                                   const c_vector[CObjectID] &queue_ids,
-                                   const c_vector[CActorID] &actor_ids,
-                                   CRayFunction async_func,
-                                   CRayFunction sync_func)
+    cdef cppclass CDirectCallDataReader "ray::streaming::DirectCallDataReader"(CDataReader):
+        CDirectCallDataReader(
+                shared_ptr[CRuntimeContext] &runtime_context,
+                CCoreWorker *core_worker,
+                const c_vector[CObjectID] &queue_ids,
+                const c_vector[CActorID] &actor_ids,
+                CRayFunction async_func,
+                CRayFunction sync_func)
 
 cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
-    cdef cppclass CStreamingWriter "ray::streaming::StreamingWriter"(CStreamingCommon):
+    cdef cppclass CDataWriter "ray::streaming::DataWriter"(CStreamingCommon):
         long WriteMessageToBufferRing(
                 const CObjectID &q_id, uint8_t *data, uint32_t data_size)
         CStreamingStatus Init(c_vector[CObjectID] &queue_ids,
@@ -130,12 +138,14 @@ cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
         void Run()
         void Stop()
 
-    cdef cppclass CStreamingWriterDirectCall "ray::streaming::StreamingWriterDirectCall"(CStreamingWriter):
-        CStreamingWriterDirectCall(CCoreWorker *core_worker,
-                                   const c_vector[CObjectID] &queue_ids,
-                                   const c_vector[CActorID] &actor_ids,
-                                   CRayFunction async_func,
-                                   CRayFunction sync_func)
+    cdef cppclass CDirectCallDataWriter "ray::streaming::DirectCallDataWriter"(CDataWriter):
+        CDirectCallDataWriter(
+                shared_ptr[CRuntimeContext] &runtime_context,
+                CCoreWorker *core_worker,
+                const c_vector[CObjectID] &queue_ids,
+                const c_vector[CActorID] &actor_ids,
+                CRayFunction async_func,
+                CRayFunction sync_func)
 
 cdef extern from "ray/common/buffer.h" nogil:
     cdef cppclass CLocalMemoryBuffer "ray::LocalMemoryBuffer":

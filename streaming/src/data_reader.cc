@@ -69,9 +69,9 @@ StreamingStatus DataReader::InitChannel() {
     auto &channel_info = channel_info_map_[input_channel];
     std::shared_ptr<ConsumerChannel> channel;
     if (runtime_context_->IsMockTest()) {
-      channel.reset(new MockConsumer(transfer_config_, channel_info));
+      channel = std::make_shared<MockConsumer>(transfer_config_, channel_info);
     } else {
-      channel.reset(new StreamingQueueConsumer(transfer_config_, channel_info));
+      channel = std::make_shared<StreamingQueueConsumer>(transfer_config_, channel_info);
     }
 
     channel_map_.emplace(input_channel, channel);
@@ -96,16 +96,16 @@ StreamingStatus DataReader::InitChannelMerger() {
 
   // An old item in merger vector must be evicted before new queue item has been
   // pushed.
-  if (unready_queue_ids_.size() > 0 && last_fetched_queue_item_) {
+  if (!unready_queue_ids_.empty() && last_fetched_queue_item_) {
     STREAMING_LOG(INFO) << "pop old item from => " << last_fetched_queue_item_->from;
-    RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_));
+    RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_))
     last_fetched_queue_item_.reset();
   }
   // heap initialization
   for (auto &input_queue : unready_queue_ids_) {
     std::shared_ptr<DataBundle> msg =
         std::make_shared<DataBundle>();
-    RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info_map_[input_queue], msg));
+    RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info_map_[input_queue], msg))
     channel_info_map_[msg->from].current_seq_id = msg->seq_id;
     channel_info_map_[msg->from].current_message_id = msg->meta->GetLastMessageId();
     reader_merger_->push(msg);
@@ -150,7 +150,7 @@ StreamingStatus DataReader::StashNextMessage(
   auto &channel_info = channel_info_map_[message->from];
   reader_merger_->pop();
   int64_t cur_time = current_time_ms();
-  RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info, new_msg));
+  RETURN_IF_NOT_OK(GetMessageFromChannel(channel_info, new_msg))
   reader_merger_->push(new_msg);
   channel_info.last_queue_item_delay =
       new_msg->meta->GetMessageBundleTs() - message->meta->GetMessageBundleTs();
@@ -162,7 +162,7 @@ StreamingStatus DataReader::GetMergedMessageBundle(
     std::shared_ptr<DataBundle> &message, bool &is_valid_break) {
   int64_t cur_time = current_time_ms();
   if (last_fetched_queue_item_) {
-    RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_));
+    RETURN_IF_NOT_OK(StashNextMessage(last_fetched_queue_item_))
   }
   message = reader_merger_->top();
   last_fetched_queue_item_ = message;
@@ -220,7 +220,7 @@ StreamingStatus DataReader::GetBundle(
     if (dur > timeout_ms) {
       return StreamingStatus::GetBundleTimeOut;
     }
-    if (unready_queue_ids_.size() > 0) {
+    if (!unready_queue_ids_.empty()) {
       StreamingStatus status = InitChannel();
       switch (status) {
       case StreamingStatus::InitQueueFailed:
@@ -235,7 +235,7 @@ StreamingStatus DataReader::GetBundle(
       if (StreamingStatus::OK != status) {
         return status;
       }
-      RETURN_IF_NOT_OK(InitChannelMerger());
+      RETURN_IF_NOT_OK(InitChannelMerger())
       unready_queue_ids_.clear();
       auto &merge_vec = reader_merger_->getRawVector();
       for (auto &bundle : merge_vec) {

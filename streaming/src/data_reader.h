@@ -80,7 +80,7 @@ class DataReader {
   StreamingStatus GetBundle(uint32_t timeout_ms,
                             std::shared_ptr<DataBundle> &message);
 
-  ///  Get offset infomation about channels for checkpoint.
+  ///  Get offset information about channels for checkpoint.
   ///  \param offset_map (return value)
   void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
 
