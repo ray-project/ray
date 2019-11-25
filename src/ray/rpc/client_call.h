@@ -198,8 +198,12 @@ class ClientCallManager {
       auto status = cqs_[index].AsyncNext(&got_tag, &ok, deadline);
       if (status == grpc::CompletionQueue::SHUTDOWN) {
         break;
-      }
-      if (status != grpc::CompletionQueue::TIMEOUT) {
+      } else if (status == grpc::CompletionQueue::TIMEOUT && shutdown_) {
+        // If we timed out and shutdown, then exit immediately. This should not
+        // be needed, but gRPC seems to not return SHUTDOWN correctly in these
+        // cases (e.g., test_wait will hang on shutdown without this check).
+        break;
+      } else if (status != grpc::CompletionQueue::TIMEOUT) {
         auto tag = reinterpret_cast<ClientCallTag *>(got_tag);
         if (ok && !main_service_.stopped() && !shutdown_) {
           // Post the callback to the main event loop.

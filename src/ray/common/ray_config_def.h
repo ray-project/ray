@@ -50,6 +50,10 @@ RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
 /// this many milliseconds.
 RAY_CONFIG(int64_t, initial_reconstruction_timeout_milliseconds, 10000)
 
+/// The maximum duration that workers can hold on to another worker's lease
+/// for direct task submission until it must be returned to the raylet.
+RAY_CONFIG(int64_t, worker_lease_timeout_milliseconds, 500)
+
 /// The duration between heartbeats sent from the workers to the raylet.
 /// If set to a negative value, the heartbeats will not be sent.
 /// These are used to report active object IDs for garbage collection and
