@@ -50,7 +50,7 @@ void ObjectStoreNotificationManager::ProcessStoreLength(
                    << boost_to_ray_status(error).ToString()
                    << ", most likely plasma store is down, raylet will exit";
     // Exit raylet process.
-     _exit(kRayletStoreErrorExitCode);
+    _exit(kRayletStoreErrorExitCode);
   }
   boost::asio::async_read(
       socket_, boost::asio::buffer(notification_),
