@@ -28,6 +28,7 @@ from ray.tune.trial import ExportFormat
 from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
+from ray.rllib.env.normalize_actions import NormalizeActionWrapper
 
 tf = try_import_tf()
 
@@ -101,6 +102,8 @@ COMMON_CONFIG = {
     "env_config": {},
     # Environment name can also be passed via config.
     "env": None,
+    # Unsquash actions to the upper and lower bounds of env's action space
+    "normalize_actions": False,
     # Whether to clip rewards prior to experience postprocessing. Setting to
     # None means clip for Atari only.
     "clip_rewards": None,
@@ -493,7 +496,12 @@ class Trainer(Trainable):
                 self.env_creator = _global_registry.get(ENV_CREATOR, env)
             else:
                 import gym  # soft dependency
-                self.env_creator = lambda env_config: gym.make(env)
+                env_ = gym.make(env)
+                act_wrap = NormalizeActionWrapper
+                if config["normalize_actions"]:
+                    env_ = act_wrap(env_.env)
+                self.env_creator = lambda env_config: env_
+
         else:
             self.env_creator = lambda env_config: None
 

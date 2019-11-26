@@ -70,10 +70,7 @@ class ReplayBuffer(object):
 
     @DeveloperAPI
     def sample_idxes(self, batch_size):
-        return [
-            random.randint(0,
-                           len(self._storage) - 1) for _ in range(batch_size)
-        ]
+        return np.random.randint(0, len(self._storage), batch_size)
 
     @DeveloperAPI
     def sample_with_idxes(self, idxes):
