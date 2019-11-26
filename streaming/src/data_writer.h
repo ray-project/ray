@@ -66,7 +66,7 @@ class DataWriter {
   StreamingStatus WriteChannelProcess(ProducerChannelInfo &channel_info,
                                       bool *is_empty_message);
 
-  StreamingStatus InitChannel(const ObjectID &q_id, uint64_t channel_message_id,
+  StreamingStatus InitChannel(const ObjectID &q_id, const ActorID &actor_id, uint64_t channel_message_id,
                               uint64_t queue_size);
 
  public:
@@ -79,6 +79,7 @@ class DataWriter {
   /// \param queue_size queue size (memory size not length)
 
   StreamingStatus Init(const std::vector<ObjectID> &queue_id_vec,
+                       const std::vector<ActorID> &actor_ids,
                        const std::vector<uint64_t> &channel_message_id_vec,
                        const std::vector<uint64_t> &queue_size_vec);
 
@@ -100,30 +101,6 @@ class DataWriter {
 
   void Stop();
 };
-
-class DirectCallDataWriter : public DataWriter {
- public:
-  DirectCallDataWriter(std::shared_ptr<RuntimeContext> &runtime_context_,
-                       CoreWorker *core_worker, const std::vector<ObjectID> &queue_ids,
-                       const std::vector<ActorID> &actor_ids, RayFunction async_func,
-                       RayFunction sync_func)
-      : DataWriter(runtime_context_), core_worker_(core_worker) {
-    transfer_config_->Set(ConfigEnum::CORE_WORKER,
-                          reinterpret_cast<uint64_t>(core_worker_));
-    transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);
-    transfer_config_->Set(ConfigEnum::SYNC_FUNCTION, sync_func);
-    for (size_t i = 0; i < queue_ids.size(); ++i) {
-      auto &q_id = queue_ids[i];
-      channel_info_map_[q_id].actor_id = actor_ids[i];
-    }
-  }
-
-  ~DirectCallDataWriter() override { core_worker_ = nullptr; }
-
- private:
-  CoreWorker *core_worker_;
-};
-
 }  // namespace streaming
 }  // namespace ray
 #endif  // RAY_DATA_WRITER_H

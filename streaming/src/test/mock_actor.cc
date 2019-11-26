@@ -104,17 +104,14 @@ class StreamingQueueWriterTestSuite : public StreamingQueueTestSuite {
     std::vector<ActorID> actor_ids(queue_ids_.size(), peer_actor_id_);
     STREAMING_LOG(INFO) << "writer actor_ids size: " << actor_ids.size()
                         << " actor_id: " << peer_actor_id_;
-    RayFunction async_call_func{ray::Language::PYTHON, {"async_call_func"}};
-    RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
+
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
 
-    std::shared_ptr<DataWriter> streaming_writer_client(
-        new DirectCallDataWriter(runtime_context, core_worker_.get(), queue_ids_,
-                                      actor_ids, async_call_func, sync_call_func));
+    std::shared_ptr<DataWriter> streaming_writer_client(new DataWriter(runtime_context));
     uint64_t queue_size = 10 * 1000 * 1000;
     std::vector<uint64_t> channel_seq_id_vec(queue_ids_.size(), 0);
-    streaming_writer_client->Init(queue_ids_, channel_seq_id_vec,
+    streaming_writer_client->Init(queue_ids_, actor_ids, channel_seq_id_vec,
                                   std::vector<uint64_t>(queue_ids_.size(), queue_size));
     STREAMING_LOG(INFO) << "streaming_writer_client Init done";
 
@@ -229,15 +226,11 @@ class StreamingQueueReaderTestSuite : public StreamingQueueTestSuite {
     std::vector<ActorID> actor_ids(queue_ids_.size(), peer_actor_id_);
     STREAMING_LOG(INFO) << "reader actor_ids size: " << actor_ids.size()
                         << " actor_id: " << peer_actor_id_;
-    RayFunction async_call_func{ray::Language::PYTHON, {"async_call_func"}};
-    RayFunction sync_call_func{ray::Language::PYTHON, {"sync_call_func"}};
     std::shared_ptr<RuntimeContext> runtime_context(new RuntimeContext());
     runtime_context->SetConfig(config);
-    std::shared_ptr<DataReader> reader(
-        new DirectCallDataReader(runtime_context, core_worker_.get(), queue_ids_,
-                                      actor_ids, async_call_func, sync_call_func));
+    std::shared_ptr<DataReader> reader(new DataReader(runtime_context));
 
-    reader->Init(queue_ids_, -1);
+    reader->Init(queue_ids_, actor_ids, -1);
     ReaderLoopForward(reader, nullptr, queue_ids_);
 
     STREAMING_LOG(INFO) << "Reader exit";
@@ -294,10 +287,13 @@ class StreamingWorker {
         JobID::FromInt(1), gcs_options, "", "127.0.0.1",
         std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8));
 
-    ActorID actor_id = worker_->GetWorkerContext().GetCurrentActorID();
-    std::shared_ptr<ray::streaming::QueueManager> queue_manager =
-        ray::streaming::QueueManager::GetInstance(actor_id);
-    queue_client_ = std::make_shared<QueueClient>(queue_manager);
+    RayFunction reader_async_call_func{ray::Language::PYTHON, {"reader_async_call_func"}};
+    RayFunction reader_sync_call_func{ray::Language::PYTHON, {"reader_sync_call_func"}};
+    RayFunction writer_async_call_func{ray::Language::PYTHON, {"writer_async_call_func"}};
+    RayFunction writer_sync_call_func{ray::Language::PYTHON, {"writer_sync_call_func"}};
+
+    reader_client_ = std::make_shared<ReaderClient>(worker_.get(), reader_async_call_func, reader_sync_call_func);
+    writer_client_ = std::make_shared<WriterClient>(worker_.get(), writer_async_call_func, writer_sync_call_func);
     STREAMING_LOG(INFO) << "StreamingWorker constructor";
   }
 
@@ -332,7 +328,7 @@ class StreamingWorker {
     } else if (func_name == "check_current_test_status") {
       results->push_back(
           std::make_shared<RayObject>(test_suite_->CheckCurTestStatus(), nullptr));
-    } else if (func_name == "sync_call_func") {
+    } else if (func_name == "reader_sync_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
         return Status::OK();
@@ -340,9 +336,9 @@ class StreamingWorker {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
-      auto result_buffer = queue_client_->OnMessageSync(local_buffer);
+      auto result_buffer = reader_client_->OnReaderMessageSync(local_buffer);
       results->push_back(std::make_shared<RayObject>(result_buffer, nullptr));
-    } else if (func_name == "async_call_func") {
+    } else if (func_name == "reader_async_call_func") {
       if (test_suite_->TestDone()) {
         STREAMING_LOG(WARNING) << "Test has done!!";
         return Status::OK();
@@ -350,7 +346,26 @@ class StreamingWorker {
       std::shared_ptr<LocalMemoryBuffer> local_buffer =
           std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
                                               args[1]->GetData()->Size(), true);
-      queue_client_->OnMessage(local_buffer);
+      reader_client_->OnReaderMessage(local_buffer);
+    } else if (func_name == "writer_sync_call_func") {
+      if (test_suite_->TestDone()) {
+        STREAMING_LOG(WARNING) << "Test has done!!";
+        return Status::OK();
+      }
+      std::shared_ptr<LocalMemoryBuffer> local_buffer =
+          std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
+                                              args[1]->GetData()->Size(), true);
+      auto result_buffer = writer_client_->OnWriterMessageSync(local_buffer);
+      results->push_back(std::make_shared<RayObject>(result_buffer, nullptr));
+    } else if (func_name == "writer_async_call_func") {
+      if (test_suite_->TestDone()) {
+        STREAMING_LOG(WARNING) << "Test has done!!";
+        return Status::OK();
+      }
+      std::shared_ptr<LocalMemoryBuffer> local_buffer =
+          std::make_shared<LocalMemoryBuffer>(args[1]->GetData()->Data(),
+                                              args[1]->GetData()->Size(), true);
+      writer_client_->OnWriterMessage(local_buffer);
     } else {
       STREAMING_LOG(WARNING) << "Invalid function name " << func_name;
     }
@@ -399,7 +414,8 @@ class StreamingWorker {
 
  private:
   std::shared_ptr<CoreWorker> worker_;
-  std::shared_ptr<QueueClient> queue_client_;
+  std::shared_ptr<ReaderClient> reader_client_;
+  std::shared_ptr<WriterClient> writer_client_;
   std::shared_ptr<std::thread> test_thread_;
   std::shared_ptr<StreamingQueueTestSuite> test_suite_;
   std::shared_ptr<ActorHandle> peer_actor_handle_;

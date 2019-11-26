@@ -16,15 +16,8 @@ StreamingQueueProducer::StreamingQueueProducer(std::shared_ptr<Config> &transfer
     : ProducerChannel(transfer_config, p_channel_info) {
   STREAMING_LOG(INFO) << "Producer Init";
 
-  CoreWorker *core_worker = reinterpret_cast<CoreWorker *>(boost::any_cast<uint64_t>(
-      transfer_config_->Get(ConfigEnum::CORE_WORKER, (uint64_t)0)));
-  RayFunction async_func = boost::any_cast<RayFunction>(transfer_config_->Get(
-      ConfigEnum::ASYNC_FUNCTION, RayFunction{ray::Language::JAVA, {}}));
-  RayFunction sync_func = boost::any_cast<RayFunction>(transfer_config_->Get(
-      ConfigEnum::SYNC_FUNCTION, RayFunction{ray::Language::JAVA, {}}));
-
   queue_writer_ =
-      std::make_shared<StreamingQueueWriter>(core_worker, async_func, sync_func);
+      std::make_shared<StreamingQueueWriter>(p_channel_info.actor_id);
 }
 
 StreamingQueueProducer::~StreamingQueueProducer() {
@@ -116,15 +109,8 @@ StreamingQueueConsumer::StreamingQueueConsumer(std::shared_ptr<Config> &transfer
     : ConsumerChannel(transfer_config, c_channel_info) {
   STREAMING_LOG(INFO) << "Consumer Init";
 
-  CoreWorker *core_worker = reinterpret_cast<CoreWorker *>(boost::any_cast<uint64_t>(
-      transfer_config_->Get(ConfigEnum::CORE_WORKER, (uint64_t)0)));
-  RayFunction async_func = boost::any_cast<RayFunction>(transfer_config_->Get(
-      ConfigEnum::ASYNC_FUNCTION, RayFunction{ray::Language::JAVA, {}}));
-  RayFunction sync_func = boost::any_cast<RayFunction>(transfer_config_->Get(
-      ConfigEnum::SYNC_FUNCTION, RayFunction{ray::Language::JAVA, {}}));
-
   queue_reader_ =
-      std::make_shared<StreamingQueueReader>(core_worker, async_func, sync_func);
+      std::make_shared<StreamingQueueReader>(c_channel_info.actor_id);
 }
 
 StreamingQueueConsumer::~StreamingQueueConsumer() {

@@ -197,34 +197,24 @@ class TestCheckStatusRspMsg : public Message {
 
 class Transport {
  public:
-  Transport(CoreWorker* worker,
-                      ActorID &actor_id, RayFunction &async_func,
-                      RayFunction &sync_func)
+  Transport(CoreWorker* worker, const ActorID &actor_id)
       : core_worker_(worker),
-        peer_actor_id_(actor_id),
-        async_func_(async_func),
-        sync_func_(sync_func) {
+        peer_actor_id_(actor_id) {
   }
   virtual ~Transport() = default;
 
-  virtual void WriterSend(std::unique_ptr<LocalMemoryBuffer> buffer) {
-    Send(std::move(buffer));
-  }
-
   virtual void Destroy() {}
 
-  virtual void Send(std::unique_ptr<LocalMemoryBuffer> buffer);
+  virtual void Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function);
   virtual std::shared_ptr<LocalMemoryBuffer> SendForResult(
-      std::shared_ptr<LocalMemoryBuffer> buffer, int64_t timeout_ms);
+      std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int64_t timeout_ms);
   std::shared_ptr<LocalMemoryBuffer> SendForResultWithRetry(
-      std::unique_ptr<LocalMemoryBuffer> buffer, int retry_cnt, int64_t timeout_ms);
+      std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt, int64_t timeout_ms);
   virtual std::shared_ptr<LocalMemoryBuffer> Recv();
 
  private:
   CoreWorker* core_worker_;
   ActorID peer_actor_id_;
-  RayFunction async_func_;
-  RayFunction sync_func_;
 };
 }  // namespace streaming
 }  // namespace ray

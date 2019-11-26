@@ -69,10 +69,11 @@ class DataReader {
   ///  \param raylet_client
   ///
   void Init(const std::vector<ObjectID> &input_ids,
+            const std::vector<ActorID> &actor_ids,
             const std::vector<uint64_t> &queue_seq_ids,
             const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval);
 
-  void Init(const std::vector<ObjectID> &input_ids, int64_t timer_interval);
+  void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids, int64_t timer_interval);
 
   ///  Get latest message from input queues
   ///  \param timeout_ms
@@ -113,30 +114,6 @@ class DataReader {
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                          bool &is_valid_break);
 };
-
-class DirectCallDataReader : public DataReader {
- public:
-  DirectCallDataReader(std::shared_ptr<RuntimeContext> &runtime_context,
-                       CoreWorker *core_worker, const std::vector<ObjectID> &queue_ids,
-                       const std::vector<ActorID> &actor_ids, RayFunction async_func,
-                       RayFunction sync_func)
-      : DataReader(runtime_context), core_worker_(core_worker) {
-    transfer_config_->Set(ConfigEnum::CORE_WORKER,
-                          reinterpret_cast<uint64_t>(core_worker_));
-    transfer_config_->Set(ConfigEnum::ASYNC_FUNCTION, async_func);
-    transfer_config_->Set(ConfigEnum::SYNC_FUNCTION, sync_func);
-    for (size_t i = 0; i < queue_ids.size(); ++i) {
-      auto &q_id = queue_ids[i];
-      channel_info_map_[q_id].actor_id = actor_ids[i];
-    }
-  }
-
-  ~DirectCallDataReader() override { core_worker_ = nullptr; }
-
- private:
-  CoreWorker *core_worker_;
-};
-
 }  // namespace streaming
 }  // namespace ray
 #endif  // RAY_DATA_READER_H

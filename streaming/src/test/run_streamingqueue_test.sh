@@ -21,8 +21,8 @@ if [ -z "$RAY_ROOT" ] ; then
 fi
 
 bazel build "//:core_worker_test" "//:mock_worker"  "//:raylet" "//:libray_redis_module.so" "@plasma//:plasma_store_server"
-bazel build //streaming/src:streaming_test_worker
-bazel build //streaming/src:streamingqueue_tests
+bazel build //streaming:streaming_test_worker
+bazel build //streaming:streamingqueue_tests
 
 # Ensure we're in the right directory.
 if [ ! -d "$RAY_ROOT/python" ]; then
@@ -34,7 +34,7 @@ REDIS_MODULE="./bazel-bin/libray_redis_module.so"
 LOAD_MODULE_ARGS="--loadmodule ${REDIS_MODULE}"
 STORE_EXEC="./bazel-bin/external/plasma/plasma_store_server"
 RAYLET_EXEC="./bazel-bin/raylet"
-STREAMING_TEST_WORKER_EXEC="./bazel-bin/streaming/src/streaming_test_worker"
+STREAMING_TEST_WORKER_EXEC="./bazel-bin/streaming/streaming_test_worker"
 
 # Allow cleanup commands to fail.
 bazel run //:redis-cli -- -p 6379 shutdown || true
@@ -46,7 +46,7 @@ sleep 2s
 bazel run //:redis-server -- --loglevel warning ${LOAD_MODULE_ARGS} --port 6380 &
 sleep 2s
 # Run tests.
-./bazel-bin/streaming/src/streamingqueue_tests $STORE_EXEC $RAYLET_EXEC $STREAMING_TEST_WORKER_EXEC
+./bazel-bin/streaming/streamingqueue_tests $STORE_EXEC $RAYLET_EXEC $STREAMING_TEST_WORKER_EXEC
 sleep 1s
 bazel run //:redis-cli -- -p 6379 shutdown
 bazel run //:redis-cli -- -p 6380 shutdown

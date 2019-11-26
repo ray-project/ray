@@ -50,8 +50,10 @@ class StreamingTransferTest : public ::testing::Test {
     }
     std::vector<uint64_t> channel_id_vec(queue_vec.size(), 0);
     std::vector<uint64_t> queue_size_vec(queue_vec.size(), 10000);
-    writer->Init(queue_vec, channel_id_vec, queue_size_vec);
-    reader->Init(queue_vec, channel_id_vec, queue_size_vec, -1);
+    // actor ids are not used in this test, so we can just use Nil.
+    std::vector<ActorID> actor_id_vec(queue_vec.size(), ActorID::NilFromJob(JobID::FromInt(0)));
+    writer->Init(queue_vec, actor_id_vec, channel_id_vec, queue_size_vec);
+    reader->Init(queue_vec, actor_id_vec, channel_id_vec, queue_size_vec, -1);
   }
   void DestroyTransfer() {
     writer.reset();

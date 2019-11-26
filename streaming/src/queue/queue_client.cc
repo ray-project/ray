@@ -3,13 +3,22 @@
 namespace ray {
 namespace streaming {
 
-void QueueClient::OnMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
-  manager_->DispatchMessage(buffer);
+void WriterClient::OnWriterMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
+  upstream_service_->DispatchMessage(buffer);
 }
 
-std::shared_ptr<LocalMemoryBuffer> QueueClient::OnMessageSync(
+std::shared_ptr<LocalMemoryBuffer> WriterClient::OnWriterMessageSync(
     std::shared_ptr<LocalMemoryBuffer> buffer) {
-  return manager_->DispatchMessageSync(buffer);
+  return upstream_service_->DispatchMessageSync(buffer);
+}
+
+void ReaderClient::OnReaderMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
+  downstream_service_->DispatchMessage(buffer);
+}
+
+std::shared_ptr<LocalMemoryBuffer> ReaderClient::OnReaderMessageSync(
+    std::shared_ptr<LocalMemoryBuffer> buffer) {
+  return downstream_service_->DispatchMessageSync(buffer);
 }
 
 }  // namespace streaming

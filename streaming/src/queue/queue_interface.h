@@ -4,7 +4,7 @@
 #include "ray/common/status.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/util/util.h"
-#include "queue/queue_manager.h"
+#include "queue/queue_service.h"
 
 #include <iterator>
 #include <limits>
@@ -20,8 +20,7 @@ class StreamingQueueWriter {
   /// \param[in] core_worker The C++ pointer point to CoreWorker object of current Actor, obtained in Python/Java
   /// \param[in] async_func peer's asynchronous entry point function descriptor for direct call in Python/Java
   /// \param[in] sync_func peer's synchronous entry point function descriptor for direct call in Python/Java
-  StreamingQueueWriter(CoreWorker *core_worker, RayFunction &async_func,
-                       RayFunction &sync_func);
+  StreamingQueueWriter(const ActorID& actor_id);
   ~StreamingQueueWriter() {}
 
   /// Create a upstream queue, using \param queue_id to identify this queue
@@ -52,12 +51,8 @@ class StreamingQueueWriter {
   Status DeleteQueue(const ObjectID &queue_id);
 
  private:
-  std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
+  std::shared_ptr<ray::streaming::UpstreamService> upstream_service_;
   ActorID actor_id_;
-
-  CoreWorker *core_worker_;
-  RayFunction async_func_;
-  RayFunction sync_func_;
 };
 
 /// The interfaces streaming queue exposed to DataReader. 
@@ -66,8 +61,7 @@ class StreamingQueueReader {
   /// \param[in] core_worker The C++ pointer point to CoreWorker object of current Actor, obtained in Python/Java
   /// \param[in] async_func peer's asynchronous entry point function descriptor for direct call in Python/Java
   /// \param[in] sync_func peer's synchronous entry point function descriptor for direct call in Python/Java
-  StreamingQueueReader(CoreWorker *core_worker, RayFunction &async_func,
-                       RayFunction &sync_func);
+  StreamingQueueReader(const ActorID& actor_id);
   ~StreamingQueueReader() {}
 
   /// Create a downstream queue, using \param queue_id to identify this queue
@@ -93,11 +87,8 @@ class StreamingQueueReader {
   Status DeleteQueue(const ObjectID &queue_id);
 
  private:
-  std::shared_ptr<ray::streaming::QueueManager> queue_manager_;
+  std::shared_ptr<ray::streaming::DownstreamService> downstream_service_;
   ActorID actor_id_;
-  CoreWorker *core_worker_;
-  RayFunction async_func_;
-  RayFunction sync_func_;
 };
 
 }  // namespace streaming

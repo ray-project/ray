@@ -2,6 +2,7 @@
 #include <chrono>
 #include <thread>
 #include "util/streaming_util.h"
+#include "queue_service.h"
 
 namespace ray {
 namespace streaming {
@@ -136,7 +137,7 @@ void WriterQueue::Send() {
                     item.IsRaw());
     std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
     STREAMING_CHECK(transport_ != nullptr);
-    transport_->Send(std::move(buffer));
+    transport_->Send(std::move(buffer), DownstreamService::PEER_ASYNC_FUNCTION);
   }
 }
 
@@ -188,7 +189,7 @@ void ReaderQueue::Notify(uint64_t seq_id) {
   NotificationMessage msg(actor_id_, peer_actor_id_, queue_id_, seq_id);
   std::unique_ptr<LocalMemoryBuffer> buffer = msg.ToBytes();
 
-  transport_->Send(std::move(buffer));
+  transport_->Send(std::move(buffer), UpstreamService::PEER_ASYNC_FUNCTION);
 }
 
 void ReaderQueue::CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args) {}
