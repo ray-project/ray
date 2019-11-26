@@ -25,6 +25,28 @@ cc_proto_library(
     deps = ["streaming_queue_proto"],
 )
 
+# ray shared lib
+cc_binary(
+    name = "ray_util.so",
+    visibility = ["//visibility:public"],
+    linkshared=1,
+    deps = ["//:ray_util"],
+)
+
+cc_binary(
+    name = "ray_common.so",
+    visibility = ["//visibility:public"],
+    linkshared=1,
+    deps = ["//:ray_common"],
+)
+
+cc_binary(
+    name = "core_worker_lib.so",
+    linkshared=1,
+    deps = ["//:core_worker_lib"],
+)
+
+
 cc_library(
     name = "streaming_util",
     srcs = glob([
@@ -38,7 +60,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//:ray_util",
+        "ray_util.so",
         "@boost//:any",
         "@com_google_googletest//:gtest",
     ],
@@ -55,7 +77,7 @@ cc_library(
     deps = [
         ":streaming_cc_proto",
         ":streaming_util",
-        "//:ray_common",
+        "ray_common.so",
     ],
 )
 
@@ -70,7 +92,7 @@ cc_library(
     deps = [
         ":streaming_config",
         ":streaming_util",
-        "//:ray_common",
+        "ray_common.so",
     ],
 )
 
@@ -87,10 +109,9 @@ cc_library(
         ":streaming_message",
         ":streaming_queue_cc_proto",
         ":streaming_util",
-        "//:core_worker_lib",
-        "//:ray_common",
-        "//:ray_util",
-        "//:raylet_lib",
+        "core_worker_lib.so",
+        "ray_common.so",
+        "ray_util.so",
         "@boost//:asio",
         "@boost//:thread",
     ],
@@ -113,12 +134,18 @@ cc_library(
         ":streaming_message",
         ":streaming_queue",
         ":streaming_util",
-        "//:ray_common",
-        "//:ray_util",
-        "//:raylet_lib",
+        "ray_common.so",
+        "ray_util.so",
         "@boost//:circular_buffer",
     ],
 )
+
+test_common_deps = [
+    ":streaming_lib",
+    "//:ray_common",
+    "//:ray_util",
+    "//:core_worker_lib",
+]
 
 cc_binary(
     name = "streaming_test_worker",
@@ -129,9 +156,7 @@ cc_binary(
     includes = [
         "streaming/src/test",
     ],
-    deps = [
-        ":streaming_lib",
-    ],
+    deps = test_common_deps
 )
 
 cc_binary(
@@ -142,9 +167,7 @@ cc_binary(
     includes = [
         "streaming/src/test",
     ],
-    deps = [
-        ":streaming_lib",
-    ],
+    deps = test_common_deps
 )
 
 cc_binary(
@@ -152,9 +175,7 @@ cc_binary(
     srcs = [
         "src/test/message_serialization_tests.cc",
     ],
-    deps = [
-        ":streaming_lib",
-    ],
+    deps = test_common_deps
 )
 
 cc_binary(
@@ -162,9 +183,7 @@ cc_binary(
     srcs = [
         "src/test/mock_transfer_tests.cc",
     ],
-    deps = [
-        ":streaming_lib",
-    ],
+    deps = test_common_deps
 )
 
 cc_binary(
@@ -174,9 +193,7 @@ cc_binary(
         "src/test/streamingqueue_tests.cc",
     ],
     copts = ["-Isrc/test/"],
-    deps = [
-        ":streaming_lib",
-    ],
+    deps = test_common_deps
 )
 
 cc_binary(
@@ -184,9 +201,7 @@ cc_binary(
     srcs = [
         "src/test/streaming_util_tests.cc",
     ],
-    deps = [
-        ":streaming_lib",
-    ],
+    deps = test_common_deps
 )
 
 genrule(

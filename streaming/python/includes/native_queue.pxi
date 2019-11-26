@@ -39,6 +39,7 @@ from ray.streaming.includes.libstreaming cimport (
     CLocalMemoryBuffer,
 )
 
+import logging
 from ray.function_manager import FunctionDescriptor
 from ray.streaming.runtime.queue.queue_interface import QueueInitException, QueueInterruptException
 

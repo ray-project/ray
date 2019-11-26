@@ -4,6 +4,7 @@ from typing import List
 
 import ray
 import ray.streaming as streaming
+import ray.streaming._streaming as _streaming
 import ray.streaming.generated.streaming_pb2 as streaming_pb
 import ray.streaming.runtime.queue.queue_utils as qutils
 from ray.actor import ActorHandle, ActorID
@@ -56,7 +57,7 @@ class QueueLinkImpl(QueueLink):
         self.__configuration = dict()
         core_worker = ray.worker.global_worker.core_worker
         logger.info("current worker actor id %s", core_worker.get_actor_id())
-        self.queue_link = streaming.QueueLink(core_worker)
+        self.queue_link = _streaming.QueueLink(core_worker)
         self.producer = None
         self.consumer = None
         self.sync_func = sync_func

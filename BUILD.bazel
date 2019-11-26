@@ -755,15 +755,11 @@ pyx_library(
         "python/ray/_raylet.pyx",
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
-        "python/ray/streaming/__init__.pxd",
-        "python/ray/streaming/includes/*.pxd",
-        "python/ray/streaming/includes/*.pxi",
     ]),
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
-        "//streaming:streaming_lib",
     ],
 )
 
@@ -884,6 +880,7 @@ genrule(
     name = "ray_pkg",
     srcs = [
         "python/ray/_raylet.so",
+        "python/ray/streaming/_streaming.so",
         "//:python_sources",
         "//:all_py_proto",
         "//:redis-server",
@@ -899,6 +896,7 @@ genrule(
         set -x &&
         WORK_DIR=$$(pwd) &&
         cp -f $(location python/ray/_raylet.so) $$WORK_DIR/python/ray &&
+        cp -f $(location python/ray/streaming/_streaming.so) $$WORK_DIR/python/ray/streaming &&
         mkdir -p $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
         cp -f $(location //:redis-server) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
         cp -f $(location //:redis-cli) $$WORK_DIR/python/ray/core/src/ray/thirdparty/redis/src/ &&
@@ -920,4 +918,21 @@ genrule(
         echo $$WORK_DIR > $@
     """,
     local = 1,
+)
+
+pyx_library(
+    name = "_streaming",
+    srcs = glob([
+        "python/ray/streaming/_streaming.pyx",
+        "python/ray/__init__.py",
+        "python/ray/_raylet.pxd",
+        "python/ray/includes/*.pxd",
+        "python/ray/includes/*.pxi",
+        "python/ray/streaming/__init__.pxd",
+        "python/ray/streaming/includes/*.pxd",
+        "python/ray/streaming/includes/*.pxi",
+    ]),
+    deps = [
+        "//streaming:streaming_lib",
+    ],
 )
