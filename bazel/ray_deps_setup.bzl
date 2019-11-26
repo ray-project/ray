@@ -187,9 +187,9 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_grpc_grpc",
-        commit = "93e8830070e9afcbaa992c75817009ee3f4b63a0",
+        commit = "4790ab6d97e634a1ede983be393f3bb3c132b2f7",
         remote = "https://github.com/grpc/grpc",
-        sha256 = "b391a327429279f6f29b9ae7e5317cd80d5e9d49cc100e6d682221af73d984a6",
+        sha256 = "723853c36ea6d179d32a4f9f2f8691dbe0e28d5bbc521c954b34355a1c952ba5",
         patches = [
             "//thirdparty/patches:grpc-cython-copts.patch",
         ],
