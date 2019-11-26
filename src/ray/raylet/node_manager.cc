@@ -2636,17 +2636,9 @@ void NodeManager::ForwardTask(
   // have it queued locally. Once the ForwardTaskRequest has been sent, the
   // task will get re-queued, depending on whether the message succeeded or
   // not.
-  local_queues_.QueueTasks({task}, TaskState::SWAP);
-  client->ForwardTask(request, [this, on_error, task_id, node_id](
+  client->ForwardTask(request, [this, on_error, task, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
     // Remove the FORWARDING task from the SWAP queue.
-    Task task;
-    TaskState state;
-    if (!local_queues_.RemoveTask(task_id, &task, &state)) {
-      return;
-    }
-    RAY_CHECK(state == TaskState::SWAP);
-
     if (status.ok()) {
       const auto &spec = task.GetTaskSpecification();
       // Mark as forwarded so that the task and its lineage are not
