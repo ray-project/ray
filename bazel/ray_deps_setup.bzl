@@ -178,9 +178,9 @@ def ray_deps_setup():
     # OpenCensus depends on jupp0r/prometheus-cpp
     github_repository(
         name = "com_github_jupp0r_prometheus_cpp",
-        commit = "1533c143744dc1d964aee38586ab293cee0516f1",
+        commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
         remote = "https://github.com/jupp0r/prometheus-cpp",
-        sha256 = "de664293c5971b1bc6abb85ff1c6d57e6c7db0d50b59a9dacb81469fcf531f8b",
+        sha256 = "9756bd2d573e7722f97dbe6d35934e43b9a79e6a87fc5e1da79774a621cddd8e",
         patches = [
             # https://github.com/jupp0r/prometheus-cpp/pull/225
             "//thirdparty/patches:prometheus-windows-zlib.patch",
