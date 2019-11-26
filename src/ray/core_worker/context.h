@@ -1,6 +1,8 @@
 #ifndef RAY_CORE_WORKER_CONTEXT_H
 #define RAY_CORE_WORKER_CONTEXT_H
 
+#include <boost/thread.hpp>
+
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
 
@@ -28,34 +30,45 @@ class WorkerContext {
 
   void SetCurrentTask(const TaskSpecification &task_spec);
 
+  void ResetCurrentTask(const TaskSpecification &task_spec);
+
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const;
 
-  bool CurrentActorUseDirectCall() const;
+  /// Returns whether the current thread is the main worker thread.
+  bool CurrentThreadIsMain() const;
+
+  /// Returns whether we are in a direct call actor.
+  bool CurrentActorIsDirectCall() const;
+
+  /// Returns whether we are in a direct call task. This encompasses both direct
+  /// actor and normal tasks.
+  bool CurrentTaskIsDirectCall() const;
+
+  int CurrentActorMaxConcurrency() const;
+
+  bool CurrentActorIsAsync() const;
 
   int GetNextTaskIndex();
 
   int GetNextPutIndex();
 
  private:
-  /// Type of the worker.
   const WorkerType worker_type_;
-
-  /// ID for this worker.
   const WorkerID worker_id_;
-
-  /// Job ID for this worker.
   JobID current_job_id_;
-
-  /// ID of current actor.
   ActorID current_actor_id_;
+  bool current_actor_is_direct_call_ = false;
+  bool current_task_is_direct_call_ = false;
+  int current_actor_max_concurrency_ = 1;
+  bool current_actor_is_asyncio_ = false;
 
-  /// Whether current actor accepts direct calls.
-  bool current_actor_use_direct_call_;
+  /// The id of the (main) thread that constructed this worker context.
+  boost::thread::id main_thread_id_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  static WorkerThreadContext &GetThreadContext(bool for_main_thread = false);
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

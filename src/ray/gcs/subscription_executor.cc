@@ -149,6 +149,7 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncSubscribe(
 template <typename ID, typename Data, typename Table>
 Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
     const ClientID &client_id, const ID &id, const StatusCallback &done) {
+  SubscribeCallback<ID, Data> subscribe = nullptr;
   {
     std::unique_lock<std::mutex> lock(mutex_);
     const auto it = id_to_callback_map_.find(id);
@@ -156,14 +157,25 @@ Status SubscriptionExecutor<ID, Data, Table>::AsyncUnsubscribe(
       RAY_LOG(DEBUG) << "Invalid Unsubscribe! id " << id << " client_id " << client_id;
       return Status::Invalid("Invalid Unsubscribe, no existing subscription found.");
     }
+    subscribe = std::move(it->second);
+    id_to_callback_map_.erase(it);
   }
 
-  auto on_done = [this, id, done](Status status) {
-    if (status.ok()) {
+  RAY_CHECK(subscribe != nullptr);
+  auto on_done = [this, id, subscribe, done](Status status) {
+    if (!status.ok()) {
       std::unique_lock<std::mutex> lock(mutex_);
       const auto it = id_to_callback_map_.find(id);
       if (it != id_to_callback_map_.end()) {
-        id_to_callback_map_.erase(it);
+        // The initial AsyncUnsubscribe deleted the callback, but the client
+        // has subscribed again in the meantime. This new callback will be
+        // called if we receive more notifications.
+        RAY_LOG(WARNING)
+            << "Client called AsyncSubscribe on " << id
+            << " while AsyncUnsubscribe was pending, but the unsubscribe failed.";
+      } else {
+        // The Unsubscribe failed, so restore the initial callback.
+        id_to_callback_map_[id] = subscribe;
       }
     }
     if (done != nullptr) {

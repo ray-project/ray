@@ -335,7 +335,9 @@ def test_receiving_on_two_returns(ray_start_regular):
             or (x == results[1][0] and y == results[0][0]))
 
 
-def test_serial_tasks_reading_same_signal(ray_start_regular):
+def test_serial_tasks_reading_same_signal(shutdown_only):
+    ray.init(num_cpus=2)
+
     @ray.remote
     def send_signal(value):
         signal.send(UserSignal(value))
@@ -385,3 +387,9 @@ def test_small_receive_timeout(ray_start_regular):
     result_list = ray.experimental.signal.receive([a], timeout=small_timeout)
 
     assert len(result_list) == 1
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

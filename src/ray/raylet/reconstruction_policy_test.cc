@@ -1,5 +1,6 @@
 #include <list>
 
+#include "absl/time/clock.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -338,7 +339,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionSuppressed) {
   // Acquire the task lease for a period longer than the test period.
   auto task_lease_data = std::make_shared<TaskLeaseData>();
   task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
-  task_lease_data->set_acquired_at(current_sys_time_ms());
+  task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
   task_lease_data->set_timeout(2 * test_period);
   mock_gcs_.Add(JobID::Nil(), task_id, task_lease_data);
 
@@ -366,7 +367,7 @@ TEST_F(ReconstructionPolicyTest, TestReconstructionContinuallySuppressed) {
   SetPeriodicTimer(reconstruction_timeout_ms_ / 2, [this, task_id]() {
     auto task_lease_data = std::make_shared<TaskLeaseData>();
     task_lease_data->set_node_manager_id(ClientID::FromRandom().Binary());
-    task_lease_data->set_acquired_at(current_sys_time_ms());
+    task_lease_data->set_acquired_at(absl::GetCurrentTimeNanos() / 1000000);
     task_lease_data->set_timeout(reconstruction_timeout_ms_);
     mock_gcs_.Add(JobID::Nil(), task_id, task_lease_data);
   });
