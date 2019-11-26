@@ -4,32 +4,13 @@
 
 namespace ray {
 
-// Utility function to return dependencies for the provided task spec that have
-// TaskTransportType::RAYLET.
-//
-std::vector<ObjectID> RayletDependencies(const TaskSpecification &task_spec) {
-  std::vector<ObjectID> dependencies;
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    // NOTE: Multi-args are not currently supported.
-    if (task_spec.ArgIdCount(i) > 0) {
-      const ObjectID &dependency = task_spec.ArgId(i, 0);
-      if (dependency.GetTransportType() ==
-          static_cast<uint8_t>(TaskTransportType::RAYLET)) {
-        dependencies.push_back(dependency);
-      }
-    }
-  }
-  return dependencies;
-}
-
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     absl::MutexLock lock(&mu_);
-    // Only consider dependencies in plasma for scheduling tasks to workers
-    // (denoted by TaskTransportType::RAYLET). Note that the correct transport types
-    // are set in the task spec by the dependency resolver.
+    // Note that the dependencies in the task spec are mutated to only contain
+    // plasma dependencies after ResolveDependencies finishes.
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
-                                       RayletDependencies(task_spec));
+                                       task_spec.GetDependencies());
     auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
       it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
