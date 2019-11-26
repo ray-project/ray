@@ -137,7 +137,6 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_google_glog",
-        build_file = "@//bazel:BUILD.glog",
         commit = "96a2f23dca4cc7180821ca5f32e526314395d26a",
         remote = "https://github.com/google/glog",
         sha256 = "6281aa4eeecb9e932d7091f99872e7b26fa6aacece49c15ce5b14af2b7ec050f",
