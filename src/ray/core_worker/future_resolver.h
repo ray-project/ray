@@ -10,8 +10,8 @@
 
 namespace ray {
 
-/// Max time between requests to the owner to check whether the object has been
-/// evicted.
+/// Max time between requests to the owner to check whether the object is still
+/// being computed.
 const int kWaitObjectEvictionMilliseconds = 100;
 
 // Resolve values for futures that were given to us before the value

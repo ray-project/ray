@@ -120,9 +120,16 @@ class CoreWorker {
     }
   }
 
-  /// Serialize an ObjectID. This will promote the object to plasma. If it
-  /// already exists locally, it will be put into the plasma store. If it
-  /// doesn't yet exist, it will be spilled to plasma once available.
+  /// Promote an object to plasma and get its owner information. This should be
+  /// called when serializing an object ID, and the returned information should
+  /// be stored with the serialized object ID. For plasma promotion, if the
+  /// object already exists locally, it will be put into the plasma store. If
+  /// it doesn't yet exist, it will be spilled to plasma once available.
+  ///
+  /// This can only be called on object IDs that we created via task
+  /// submission, ray.put, or object IDs that we deserialized. It cannot be
+  /// called on object IDs that were created randomly, e.g.,
+  /// ObjectID::FromRandom.
   ///
   /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
   ///
@@ -131,22 +138,23 @@ class CoreWorker {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  /// \return Whether we had the object's owner or not. If we don't have the
-  /// object's owner, then calling ray.get on the deserialized object ID may
-  /// hang if the object is evicted.
-  bool SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
-                         rpc::Address *owner_address);
+  /// \return Void.
+  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id, TaskID *owner_id,
+                                          rpc::Address *owner_address);
 
   /// Add a reference to an ObjectID that was deserialized by the language
-  /// frontend. When Get is called on such an object, the worker will
-  /// periodically contact the object's owner to determine whether the object
-  /// has been evicted.
+  /// frontend. This will also start the process to resolve the future.
+  /// Specifically, we will periodically contact the owner, until we learn that
+  /// the object has been created or the owner is no longer reachable. This
+  /// will then unblock any Gets or submissions of tasks dependent on the
+  /// object.
   ///
   /// \param[in] object_id The object ID to deserialize.
   /// \param[out] owner_id The ID of the object's owner.
   /// \param[out] owner_address The address of the object's owner.
-  void DeserializeObjectId(const ObjectID &object_id, const TaskID &owner_id,
-                           const rpc::Address &owner_address);
+  void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
+                                             const TaskID &owner_id,
+                                             const rpc::Address &owner_address);
 
   ///
   /// Public methods related to storing and retrieving objects.

@@ -283,8 +283,9 @@ void CoreWorker::ReportActiveObjectIDs() {
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
 }
 
-bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
-                                   rpc::Address *owner_address) {
+void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
+                                                    TaskID *owner_id,
+                                                    rpc::Address *owner_address) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
@@ -293,37 +294,24 @@ bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
-  if (!has_owner) {
-    // TODO(swang): Once ref counting is fully implemented, this should be an
-    // assertion.
-    RAY_LOG(ERROR) << "Tried to serialize object ID " << object_id
-                   << ", but we don't know its owner. Calling ray.get on this object may "
-                      "throw an error if the object takes too long to create.";
-  }
-  return has_owner;
+  RAY_CHECK(has_owner)
+      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be serialized because we do not know their "
+         "owner. If this was not how your object ID was generated, please file an issue "
+         "at https://github.com/ray-project/ray/issues/";
 }
 
-void CoreWorker::DeserializeObjectId(const ObjectID &object_id, const TaskID &owner_id,
-                                     const rpc::Address &owner_address) {
+void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
+    const ObjectID &object_id, const TaskID &owner_id,
+    const rpc::Address &owner_address) {
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
 
-  // TODO: Set the object as in plasma immediately if owner is nil.
-  if (owner_id.IsNil()) {
-    // No owner found so we cannot find out the object's status. Store an
-    // IsInPlasmaError immediately so that the caller will try to fetch it via
-    // plasma.
-    // NOTE(swang): For objects that do not have owners, this may cause
-    // ray.gets to timeout with UnreconstructableError if the task that is
-    // supposed to create the object is too slow.
-    RAY_CHECK_OK(
-        memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
-  } else {
-    // We will ask the owner about the object until the object is
-    // created or we can no longer reach the owner.
-    future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
-  }
+  RAY_CHECK(!owner_id.IsNil());
+  // We will ask the owner about the object until the object is
+  // created or we can no longer reach the owner.
+  future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
