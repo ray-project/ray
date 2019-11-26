@@ -62,7 +62,7 @@ class RayObject {
   bool HasMetadata() const { return metadata_ != nullptr; }
 
   /// Whether the object represents an exception.
-  bool IsException() const;
+  bool IsException(rpc::ErrorType *error_type = nullptr) const;
 
   /// Whether the object has been promoted to plasma (i.e., since it was too
   /// large to return directly as part of a gRPC response).
