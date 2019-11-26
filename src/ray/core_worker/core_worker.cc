@@ -335,6 +335,8 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
+  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_,
+                                     std::make_shared<std::vector<ObjectID>>());
   return Put(object, *object_id);
 }
 

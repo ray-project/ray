@@ -891,16 +891,32 @@ def test_direct_call_serialized_id(ray_start_cluster):
         return 1
 
     @ray.remote
-    def get(obj_ids):
+    def dependent_task(x):
+        return
+
+    @ray.remote
+    def get(obj_ids, test_dependent_task):
         print("get", obj_ids)
         obj_id = obj_ids[0]
-        assert ray.get(obj_id) == 1
+        if test_dependent_task:
+            assert ray.get(dependent_task.remote(obj_id)) == 1
+        else:
+            assert ray.get(obj_id) == 1
 
     small_object = small_object.options(is_direct_call=True)
     get = get.options(is_direct_call=True)
 
     obj = small_object.remote()
-    ray.get(get.remote([obj]))
+    ray.get(get.remote([obj], False))
+
+    obj = small_object.remote()
+    ray.get(get.remote([obj], True))
+
+    obj = ray.put(1)
+    ray.get(get.remote([obj], False))
+
+    obj = ray.put(1)
+    ray.get(get.remote([obj], True))
 
 
 if __name__ == "__main__":
