@@ -3,17 +3,11 @@ From: easy <g-easy@users.noreply.github.com>
 Date: Wed, 14 Nov 2018 16:49:24 +1100
 Subject: [PATCH] Rename net_zlib_zlib to com_github_madler_zlib to match gRPC.
 
----
- README.md        | 2 +-
- pull/BUILD.bazel | 2 +-
- repositories.bzl | 7 ++++---
- 3 files changed, 6 insertions(+), 5 deletions(-)
-
 diff --git README.md README.md
-index 8cded0b..ef63c97 100644
+index be8e683..1dbc917 100644
 --- README.md
 +++ README.md
-@@ -130,7 +130,7 @@ you introduce the following dependencies, if they do not exist yet, to your proj
+@@ -139,7 +139,7 @@ you introduce the following dependencies, if they do not exist yet, to your proj
  * `load_com_google_googletest()` to load `com_google_googletest` rules for Google gtest
  * `load_com_google_googlebenchmark()` to load `com_github_google_benchmark` rules for Googlebenchmark
  * `load_com_github_curl()` to load `com_github_curl` rules for curl
@@ -23,10 +17,10 @@ index 8cded0b..ef63c97 100644
  The list of dependencies is also available from file `repositories.bzl`.
  
 diff --git pull/BUILD.bazel pull/BUILD.bazel
-index a5ae5df..8bb2dbe 100644
+index 6d90c23..d35f63e 100644
 --- pull/BUILD.bazel
 +++ pull/BUILD.bazel
-@@ -15,6 +15,6 @@ cc_library(
+@@ -23,6 +23,6 @@ cc_library(
      deps = [
          "//core",
          "@civetweb",
@@ -34,27 +28,18 @@ index a5ae5df..8bb2dbe 100644
 +        "@com_github_madler_zlib//:z",
      ],
  )
-diff --git repositories.bzl repositories.bzl
-index 8696657..9924383 100644
---- repositories.bzl
-+++ repositories.bzl
-@@ -43,9 +43,10 @@ def load_com_github_google_benchmark():
-         ],
-     )
+diff --git bazel/repositories.bzl bazel/repositories.bzl
+index 258b73f..91398cf 100644
+--- bazel/repositories.bzl
++++ bazel/repositories.bzl
+@@ -47,7 +47,8 @@ def prometheus_cpp_repositories():
  
--def load_net_zlib_zlib():
-+def load_com_github_madler_zlib():
-+    # Named "com_github_madler_zlib" to match gRPC's import of zlib.
-     http_archive(
+     maybe(
+         http_archive,
 -        name = "net_zlib_zlib",
++        # Named "com_github_madler_zlib" to match gRPC's import of zlib.
 +        name = "com_github_madler_zlib",
          sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
          strip_prefix = "zlib-1.2.11",
          urls = [
-@@ -60,4 +61,4 @@ def prometheus_cpp_repositories():
-     if "com_google_googletest" not in native.existing_rules(): load_com_google_googletest()
-     if "com_github_google_benchmark" not in native.existing_rules(): load_com_github_google_benchmark()
-     if "com_github_curl" not in native.existing_rules(): load_com_github_curl()
--    if "net_zlib_zlib" not in native.existing_rules(): load_net_zlib_zlib()
-+    if "com_github_madler_zlib" not in native.existing_rules(): load_com_github_madler_zlib()
 -- 
