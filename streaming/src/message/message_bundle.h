@@ -56,7 +56,7 @@ constexpr uint32_t kMessageBundleMetaHeaderSize = sizeof(uint32_t) + sizeof(uint
 constexpr uint32_t kMessageBundleHeaderSize =
     kMessageBundleMetaHeaderSize + sizeof(uint32_t);
 
-class StreamingMessageBundleMeta : public StreamingSerializable {
+class StreamingMessageBundleMeta {
  public:
   static const uint32_t StreamingMessageBundleMagicNum = 0xCAFEBABA;
 
