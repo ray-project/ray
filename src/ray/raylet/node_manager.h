@@ -342,6 +342,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param actor_id The actor ID of the actor whose state was updated.
   /// \param actor_registration The ActorRegistration object that represents actor's
   /// new state.
+  /// \param was_local Whether the disconnected was on this local node.
   /// \return Void.
   void HandleActorStateTransition(const ActorID &actor_id,
                                   ActorRegistration &&actor_registration,
