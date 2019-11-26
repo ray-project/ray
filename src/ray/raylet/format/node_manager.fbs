@@ -157,6 +157,8 @@ table FetchOrReconstruct {
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
+  // False for direct actor call tasks.
+  mark_worker_blocked: bool;
   // The current task ID. If fetch_only is false, then this task is blocked.
   task_id: string;
 }

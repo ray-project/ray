@@ -247,12 +247,13 @@ ray::Status RayletClient::TaskDone() {
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                             bool fetch_only,
+                                             bool fetch_only, bool mark_worker_blocked,
                                              const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
+      fbb, object_ids_message, fetch_only, mark_worker_blocked,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
   return status;
