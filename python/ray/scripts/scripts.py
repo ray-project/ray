@@ -420,7 +420,12 @@ def start(node_ip_address, redis_address, address, redis_port,
     "--force",
     is_flag=True,
     help="If set, ray will send SIGKILL instead of SIGTERM.")
-def stop(force):
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="If set, ray prints out more information about processes to kill.")
+def stop(force, verbose):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
@@ -440,7 +445,7 @@ def stop(force):
         ["monitor.py", False],
         ["redis-server", True],
         ["default_worker.py", False],  # Python worker.
-        ["ray_", True],  # Python worker.
+        ["ray::", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
@@ -463,13 +468,19 @@ def stop(force):
                                  str(len(keyword)) + ". Filter: " + keyword)
         else:
             ps_format = "pid,args"
+
+        debug_operator = "| tee /dev/stderr" if verbose else ""
+
         command = (
-            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep | grep ray | "
+            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} | grep ray |"
             "awk '{{ print $1 }}') 2> /dev/null".format(
                 # ^^ This is how you escape braces in python format string.
                 signal_name,
                 ps_format,
-                keyword))
+                keyword,
+                debug_operator))
+        if verbose:
+            logger.info("Calling '{}'".format(command))
         subprocess.call([command], shell=True)
 
 
