@@ -26,6 +26,7 @@ RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 30.0  # seconds
+TRIAL_RECOVERY_ATTEMPTS = 3
 
 
 class _LocalWrapper(object):
@@ -80,8 +81,8 @@ class RayTrialExecutor(TrialExecutor):
 
         if (self._reuse_actors and reuse_allowed
                 and self._cached_actor is not None):
-            logger.debug("Reusing cached runner {} for {}".format(
-                self._cached_actor, trial.trial_id))
+            logger.debug("Trial %s: Reusing cached runner {}",
+                         self._cached_actor)
             existing_runner = self._cached_actor
             self._cached_actor = None
             trial.runner = existing_runner
@@ -134,7 +135,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._running[remote] = trial
 
-    def _start_trial(self, trial, checkpoint=None):
+    def _start_trial(self, trial, checkpoint=None, runner=None):
         """Starts trial and restores last result if trial was paused.
 
         Raises:
@@ -142,13 +143,13 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
-        trial.runner = self._setup_remote_runner(
-            trial,
-            reuse_allowed=checkpoint is not None or trial.has_checkpoint())
-        if not self.restore(trial, checkpoint):
-            if trial.status == Trial.ERROR:
-                raise RuntimeError(
-                    "Trial {}: Restore from checkpoint failed.".format(trial))
+
+        checkpoint = checkpoint or trial.checkpoint
+        attempt_restore = checkpoint.value is not None
+        trial.runner = runner or self._setup_remote_runner(
+            trial, reuse_allowed=attempt_restore)
+        if attempt_restore:
+            self.restore(trial, checkpoint)
 
         previous_run = self._find_item(self._paused, trial)
         if prior_status == Trial.PAUSED and previous_run:
@@ -206,34 +207,44 @@ class RayTrialExecutor(TrialExecutor):
                 of trial.
         """
         self._commit_resources(trial.resources)
-        try:
-            self._start_trial(trial, checkpoint)
-        except AbortTrialExecution:
-            logger.exception("Trial %s: Error starting runner, aborting!",
-                             trial)
-            time.sleep(2)
-            error_msg = traceback.format_exc()
-            self._stop_trial(trial, error=True, error_msg=error_msg)
-            return  # don't retry fatal Tune errors
-        except Exception:
-            logger.exception(
-                "Trial %s: Error starting runner. Attempting "
-                "restart without checkpoint.", trial)
-            time.sleep(2)
-            error_msg = traceback.format_exc()
-            self._stop_trial(trial, error=True, error_msg=error_msg)
+        remote_runner = None
+        attempts = 0
+        while attempts < TRIAL_RECOVERY_ATTEMPTS:
+            attempts += 1
+            if attempts > 1:
+                logger.warning("Trial %s: Start attempt #%s...", trial,
+                               attempts)
             try:
-                # This forces the trial to not start from checkpoint.
-                trial.clear_checkpoint()
-                self._start_trial(trial)
-            except Exception:
-                logger.exception(
-                    "Trial %s: Error starting runner on second "
-                    "attempt, aborting!", trial)
+                self._start_trial(trial, checkpoint, remote_runner)
+                logger.debug("Trial %s: Started successfully!")
+                break
+            except AbortTrialExecution:
+                logger.exception("Trial %s: Error starting runner, aborting!",
+                                 trial)
+                time.sleep(2)
                 error_msg = traceback.format_exc()
                 self._stop_trial(trial, error=True, error_msg=error_msg)
+                break  # don't retry fatal Tune errors
+            except RayTimeoutError:
+                logger.warning(
+                    "Trial %s: Runner task timed out. This could be due to "
+                    "slow worker startup.", trial)
+                # Do not stop trial, reuse the existing runner.
+                remote_runner = trial.runner
+            except Exception:
+                logger.exception("Trial %s: Error starting runner.", trial)
+                time.sleep(2)
+                error_msg = traceback.format_exc()
+                self._stop_trial(trial, error=True, error_msg=error_msg)
+                remote_runner = None
+                # This forces the trial to not start from checkpoint.
+                checkpoint = None
+                trial.clear_checkpoint()
                 # Note that we don't return the resources, since they may
                 # have been lost. TODO(ujvl): is this the right thing to do?
+        else:
+            logger.exception("Trial %s: Error starting runner, aborting!",
+                             trial)
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
@@ -563,47 +574,24 @@ class RayTrialExecutor(TrialExecutor):
         This will also sync the trial results to a new location
         if restoring on a different node.
         """
-        if checkpoint is None or checkpoint.value is None:
-            checkpoint = trial.checkpoint
-        if checkpoint is None or checkpoint.value is None:
-            return True
         if trial.runner is None:
-            logger.error(
-                "Trial %s: Unable to restore - no runner. "
-                "Setting status to ERROR.", trial)
-            self.set_status(trial, Trial.ERROR)
-            return False
-        try:
-            value = checkpoint.value
-            if checkpoint.storage == Checkpoint.MEMORY:
-                assert type(value) != Checkpoint, type(value)
-                trial.runner.restore_from_object.remote(value)
-            else:
-                logger.info("Trial %s: Attempting restoration from %s", trial,
-                            checkpoint.value)
-                with warn_if_slow("get_current_ip"):
-                    worker_ip = ray.get(trial.runner.current_ip.remote(),
-                                        DEFAULT_GET_TIMEOUT)
-                with warn_if_slow("sync_to_new_location"):
-                    trial.sync_logger_to_new_location(worker_ip)
-                with warn_if_slow("restore_from_disk"):
-                    ray.get(
-                        trial.runner.restore.remote(value),
-                        DEFAULT_GET_TIMEOUT)
-        except RayTimeoutError:
-            logger.exception(
-                "Trial %s: Unable to restore - runner task timed "
-                "out. Setting status to ERROR", trial)
-            self.set_status(trial, Trial.ERROR)
-            return False
-        except Exception:
-            logger.exception(
-                "Trial %s: Unable to restore. Setting status to ERROR", trial)
-            self.set_status(trial, Trial.ERROR)
-            return False
-
+            raise RuntimeError(
+                "Trial {}: Unable to restore - no runner found.".format(trial))
+        value = checkpoint.value
+        if checkpoint.storage == Checkpoint.MEMORY:
+            assert type(value) != Checkpoint, type(value)
+            trial.runner.restore_from_object.remote(value)
+        else:
+            logger.info("Trial %s: Attempting restore from %s", trial, value)
+            with warn_if_slow("get_current_ip"):
+                worker_ip = ray.get(trial.runner.current_ip.remote(),
+                                    DEFAULT_GET_TIMEOUT)
+            with warn_if_slow("sync_to_new_location"):
+                trial.sync_logger_to_new_location(worker_ip)
+            with warn_if_slow("restore_from_disk"):
+                ray.get(
+                    trial.runner.restore.remote(value), DEFAULT_GET_TIMEOUT)
         trial.last_result = checkpoint.result
-        return True
 
     def export_trial_if_needed(self, trial):
         """Exports model of this trial based on trial.export_formats.
