@@ -2632,10 +2632,6 @@ void NodeManager::ForwardTask(
         task_entry.second.TaskData().GetTaskExecutionSpec().GetMessage());
   }
 
-  // Move the FORWARDING task to the SWAP queue so that we remember that we
-  // have it queued locally. Once the ForwardTaskRequest has been sent, the
-  // task will get re-queued, depending on whether the message succeeded or
-  // not.
   client->ForwardTask(request, [this, on_error, task, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
     // Remove the FORWARDING task from the SWAP queue.
