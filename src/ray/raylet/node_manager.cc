@@ -916,8 +916,8 @@ void NodeManager::ProcessClientMessage(
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    AsyncResolveFinish(client, from_flatbuf<TaskID>(*message->task_id()),
-                       /*was_blocked*/ true);
+    AsyncResolveObjectsFinish(client, from_flatbuf<TaskID>(*message->task_id()),
+                              /*was_blocked*/ true);
   } break;
   case protocol::MessageType::WaitRequest: {
     ProcessWaitRequestMessage(client, message_data);
@@ -1108,10 +1108,10 @@ void NodeManager::ProcessDisconnectClientMessage(
     } else {
       // Clean up any open ray.get calls that the worker made.
       while (!worker->GetBlockedTaskIds().empty()) {
-        // NOTE(swang): AsyncResolveFinish will modify the worker, so it is
+        // NOTE(swang): AsyncResolveObjectsFinish will modify the worker, so it is
         // not safe to pass in the iterator directly.
         const TaskID task_id = *worker->GetBlockedTaskIds().begin();
-        AsyncResolveFinish(client, task_id, true);
+        AsyncResolveObjectsFinish(client, task_id, true);
       }
       // Clean up any open ray.wait calls that the worker made.
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
@@ -1278,7 +1278,7 @@ void NodeManager::ProcessWaitRequestMessage(
         if (status.ok()) {
           // The client is unblocked now because the wait call has returned.
           if (resolve_objects) {
-            AsyncResolveFinish(client, current_task_id, was_blocked);
+            AsyncResolveObjectsFinish(client, current_task_id, was_blocked);
           }
         } else {
           // We failed to write to the client, so disconnect the client.
@@ -1911,6 +1911,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
                .ToString();
   }
   worker->MarkUnblocked();
+  task_dependency_manager_.UnsubscribeGetDependencies(task_id);
 }
 
 void NodeManager::AsyncResolveObjects(
@@ -1958,16 +1959,20 @@ void NodeManager::AsyncResolveObjects(
   // fetched and/or reconstructed as necessary, until the objects become local
   // or are unsubscribed.
   if (ray_get) {
-    task_dependency_manager_.SubscribeGetDependencies(current_task_id,
-                                                      required_object_ids);
+    // TODO(ekl) using the assigned task id is a hack to handle unsubscription for
+    // HandleDirectCallUnblocked.
+    task_dependency_manager_.SubscribeGetDependencies(
+        mark_worker_blocked ? current_task_id : worker->GetAssignedTaskId(),
+        required_object_ids);
   } else {
     task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
                                                        required_object_ids);
   }
 }
 
-void NodeManager::AsyncResolveFinish(const std::shared_ptr<LocalClientConnection> &client,
-                                     const TaskID &current_task_id, bool was_blocked) {
+void NodeManager::AsyncResolveObjectsFinish(
+    const std::shared_ptr<LocalClientConnection> &client, const TaskID &current_task_id,
+    bool was_blocked) {
   std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
 
   // TODO(swang): Because the object dependencies are tracked in the task

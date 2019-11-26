@@ -331,8 +331,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param worker_was_blocked Whether we previously marked the worker as
   ///                           blocked in AsyncResolveObjects().
   /// \return Void.
-  void AsyncResolveFinish(const std::shared_ptr<LocalClientConnection> &client,
-                          const TaskID &current_task_id, bool was_blocked);
+  void AsyncResolveObjectsFinish(const std::shared_ptr<LocalClientConnection> &client,
+                                 const TaskID &current_task_id, bool was_blocked);
 
   /// Handle a direct call task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
