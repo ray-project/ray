@@ -167,12 +167,12 @@ class SerializationContext(object):
             def object_id_serializer(obj):
                 owner_address = ""
                 if obj.is_direct_call_type():
-                    obj, owner_address = (
+                    obj, owner_id, owner_address = (
                         self.worker.core_worker.serialize_object_id(obj))
-                return (id_serializer(obj), owner_address)
+                return (id_serializer(obj), owner_id, owner_address)
 
             def object_id_deserializer(serialized_obj):
-                obj_id, owner_address = serialized_obj
+                obj_id, owner_id, owner_address = serialized_obj
                 obj_id = id_deserializer(obj_id)
                 return obj_id
 
@@ -215,13 +215,15 @@ class SerializationContext(object):
             def object_id_serializer(obj):
                 owner_address = ""
                 if obj.is_direct_call_type():
-                    obj, owner_address = (
+                    obj, owner_id, owner_address = (
                         self.worker.core_worker.serialize_object_id(obj))
-                return (id_serializer(obj), owner_address)
+                return (id_serializer(obj), id_serializer(owner_id),
+                        owner_address)
 
             def object_id_deserializer(serialized_obj):
-                obj_id, owner_address = serialized_obj
+                obj_id, owner_id, owner_address = serialized_obj
                 obj_id = id_deserializer(obj_id)
+                owner_id = id_deserializer(owner_id)
                 return obj_id
 
             for id_type in ray._raylet._ID_TYPES:

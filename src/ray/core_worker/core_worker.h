@@ -125,12 +125,15 @@ class CoreWorker {
   /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
   ///
   /// \param[in] object_id The object ID to serialize.
+  /// \param[out] owner_id The ID of the object's owner. This should be
+  /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
   /// \return Whether we had the object's owner or not. If we don't have the
   /// object's owner, then calling ray.get on the deserialized object ID may
-  /// hang.
-  bool SerializeObjectId(const ObjectID &object_id, rpc::Address *owner_address);
+  /// hang if the object is evicted.
+  bool SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
+                         rpc::Address *owner_address);
 
   ///
   /// Public methods related to storing and retrieving objects.

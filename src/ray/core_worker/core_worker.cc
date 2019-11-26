@@ -281,7 +281,7 @@ void CoreWorker::ReportActiveObjectIDs() {
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
 }
 
-bool CoreWorker::SerializeObjectId(const ObjectID &object_id,
+bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
                                    rpc::Address *owner_address) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
@@ -290,13 +290,13 @@ bool CoreWorker::SerializeObjectId(const ObjectID &object_id,
         plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
   }
 
-  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
+  auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
   if (!has_owner) {
     // TODO(swang): Once ref counting is fully implemented, this should be an
     // assertion.
-    RAY_LOG(WARNING)
-        << "Tried to serialize object ID " << object_id
-        << ", but we don't know its owner. Calling ray.get on the object may hang.";
+    RAY_LOG(ERROR) << "Tried to serialize object ID " << object_id
+                   << ", but we don't know its owner. Calling ray.get on this object may "
+                      "hang if the object is evicted.";
   }
   return has_owner;
 }

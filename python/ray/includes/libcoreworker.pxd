@@ -118,6 +118,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void RemoveObjectIDReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
         c_bool SerializeObjectId(const CObjectID &object_id,
+                                 CTaskID *owner_id,
                                  CAddress *owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)

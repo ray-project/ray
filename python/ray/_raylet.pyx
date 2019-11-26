@@ -1057,13 +1057,15 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_object_id = object_id.native()
             CAddress owner_address = CAddress()
+            CTaskID c_owner_id
         has_owner = self.core_worker.get().SerializeObjectId(
-                c_object_id, &owner_address)
+                c_object_id, &c_owner_id, &owner_address)
         serialized_owner_address = ""
         if has_owner:
             serialized_owner_address = (
                     owner_address.SerializeAsString())
         return (object_id.with_plasma_transport_type(),
+                TaskID(c_owner_id.Binary()),
                 serialized_owner_address)
 
     # TODO: handle noreturn better

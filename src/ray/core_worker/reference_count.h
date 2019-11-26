@@ -63,8 +63,8 @@ class ReferenceCounter {
   void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
-  bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address) const
-      LOCKS_EXCLUDED(mutex_);
+  bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
+                rpc::Address *owner_address) const LOCKS_EXCLUDED(mutex_);
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);

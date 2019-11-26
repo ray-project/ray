@@ -68,7 +68,7 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::GetOwner(const ObjectID &object_id,
+bool ReferenceCounter::GetOwner(const ObjectID &object_id, TaskID *owner_id,
                                 rpc::Address *owner_address) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -77,6 +77,7 @@ bool ReferenceCounter::GetOwner(const ObjectID &object_id,
   }
 
   if (it->second.owner.has_value()) {
+    *owner_id = it->second.owner.value().first;
     *owner_address = it->second.owner.value().second;
     return true;
   } else {
