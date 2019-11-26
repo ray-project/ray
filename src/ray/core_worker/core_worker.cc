@@ -709,9 +709,9 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
           it->second->Reset();
         }
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(actor_id, nullptr));
         // We cannot erase the actor handle here because clients can still
-        // submit tasks to dead actors.
+        // submit tasks to dead actors. This also means we defer unsubscription,
+        // otherwise we crash when bulk unsubscribing all actor handles.
       }
 
       direct_actor_submitter_->HandleActorUpdate(actor_id, actor_data);
