@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 import org.ray.api.BaseActor;
 import org.ray.api.id.ActorId;
@@ -228,21 +229,27 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
 
       if (unreadyObjects.isEmpty()) {
         // If all dependencies are ready, execute this task.
+        ExecutorService executorService;
         if (taskSpec.getType() == TaskType.ACTOR_CREATION_TASK) {
-          ExecutorService actorExecutorService = Executors.newSingleThreadExecutor();
+          executorService = Executors.newSingleThreadExecutor();
           synchronized (actorTaskExecutorServices) {
-            actorTaskExecutorServices.put(getActorId(taskSpec), actorExecutorService);
+            actorTaskExecutorServices.put(getActorId(taskSpec), executorService);
           }
-          actorExecutorService.submit(runnable);
         } else if (taskSpec.getType() == TaskType.ACTOR_TASK) {
           synchronized (actorTaskExecutorServices) {
-            ExecutorService actorExecutorService =
-                actorTaskExecutorServices.get(getActorId(taskSpec));
-            actorExecutorService.submit(runnable);
+            executorService = actorTaskExecutorServices.get(getActorId(taskSpec));
           }
         } else {
           // Normal task.
-          normalTaskExecutorService.submit(runnable);
+          executorService = normalTaskExecutorService;
+        }
+        try {
+          executorService.submit(runnable);
+        } catch (RejectedExecutionException e) {
+          if (executorService.isShutdown()) {
+            LOGGER.warn("Ignore task submission due to the ExecutorService is shutdown. Task: {}",
+                taskSpec);
+          }
         }
       } else {
         // If some dependencies aren't ready yet, put this task in waiting list.
