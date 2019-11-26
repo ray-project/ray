@@ -13,7 +13,7 @@ TEST(StreamingSerializationTest, streaming_message_serialization_test) {
   uint8_t data[] = {9, 1, 3};
   StreamingMessagePtr message =
       std::make_shared<StreamingMessage>(data, 3, 7, StreamingMessageType::Message);
-  uint32_t message_length = GET_STREAMING_SERIALIZATION_LENGTH(message);
+  uint32_t message_length = message->ClassBytesSize();
   uint8_t *bytes = new uint8_t[message_length];
   message->ToBytes(bytes);
   StreamingMessagePtr new_message = StreamingMessage::FromBytes(bytes);
@@ -24,7 +24,7 @@ TEST(StreamingSerializationTest, streaming_message_serialization_test) {
 TEST(StreamingSerializationTest, streaming_message_empty_bundle_serialization_test) {
   for (int i = 0; i < 10; ++i) {
     StreamingMessageBundle bundle(i, i);
-    uint64_t bundle_size = GET_STREAMING_SERIALIZATION_LENGTH((&bundle));
+    uint64_t bundle_size = bundle.ClassBytesSize();
     uint8_t *bundle_bytes = new uint8_t[bundle_size];
     bundle.ToBytes(bundle_bytes);
     StreamingMessageBundlePtr bundle_ptr =
@@ -64,7 +64,7 @@ TEST(StreamingSerializationTest, streaming_message_barrier_bundle_serialization_
 
     StreamingMessageBundle bundle(message_list_cpy, i, i,
                                   StreamingMessageBundleType::Barrier);
-    uint64_t bundle_size = GET_STREAMING_SERIALIZATION_LENGTH((&bundle));
+    uint64_t bundle_size = bundle.ClassBytesSize();
     uint8_t *bundle_bytes = new uint8_t[bundle_size];
     bundle.ToBytes(bundle_bytes);
     StreamingMessageBundlePtr bundle_ptr =
@@ -105,7 +105,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_serialization_test) {
     }
     StreamingMessageBundle messageBundle(message_list, 0, 1,
                                          StreamingMessageBundleType::Bundle);
-    size_t message_length = GET_STREAMING_SERIALIZATION_LENGTH((&messageBundle));
+    size_t message_length = messageBundle.ClassBytesSize();
     uint8_t *bytes = new uint8_t[message_length];
     messageBundle.ToBytes(bytes);
 
@@ -158,7 +158,7 @@ TEST(StreamingSerializationTest, streaming_message_bundle_equal_test) {
                                                 StreamingMessageBundleType::Bundle);
   EXPECT_TRUE(message_bundle_same == message_bundle);
   EXPECT_FALSE(message_bundle_reverse == message_bundle);
-  size_t message_length = GET_STREAMING_SERIALIZATION_LENGTH((&message_bundle));
+  size_t message_length = message_bundle.ClassBytesSize();
   uint8_t *bytes = new uint8_t[message_length];
   message_bundle.ToBytes(bytes);
 

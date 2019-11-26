@@ -3,8 +3,8 @@
 #include <cstring>
 #include <string>
 
-#include "ray/common/status.h"
 #include "message.h"
+#include "ray/common/status.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
@@ -38,7 +38,8 @@ StreamingMessage::StreamingMessage(const StreamingMessage &msg) {
   message_type_ = msg.message_type_;
 }
 
-STREAMING_DESERIALIZATION_IMP(StreamingMessage, StreamingMessagePtr, bytes) {
+StreamingMessagePtr StreamingMessage::FromBytes(const uint8_t *bytes,
+                                                bool verifer_check) {
   uint32_t byte_offset = 0;
   uint32_t data_size = *reinterpret_cast<const uint32_t *>(bytes + byte_offset);
   byte_offset += sizeof(data_size);
@@ -56,7 +57,7 @@ STREAMING_DESERIALIZATION_IMP(StreamingMessage, StreamingMessagePtr, bytes) {
   return std::make_shared<StreamingMessage>(data_ptr, data_size, seq_id, msg_type);
 }
 
-STREAMING_SERIALIZATION_IMP(StreamingMessage, serlizable_data) {
+void StreamingMessage::ToBytes(uint8_t *serlizable_data) {
   uint32_t byte_offset = 0;
   std::memcpy(serlizable_data + byte_offset, reinterpret_cast<char *>(&data_size_),
               sizeof(data_size_));

@@ -26,7 +26,7 @@ StreamingMessageBundleMeta::StreamingMessageBundleMeta(
   STREAMING_CHECK(message_list_size <= StreamingConfig::MESSAGE_BUNDLE_MAX_SIZE);
 }
 
-STREAMING_SERIALIZATION_IMP(StreamingMessageBundleMeta, bytes) {
+void StreamingMessageBundleMeta::ToBytes(uint8_t *bytes) {
   uint32_t byte_offset = 0;
 
   uint32_t magicNum = StreamingMessageBundleMeta::StreamingMessageBundleMagicNum;
@@ -84,7 +84,7 @@ StreamingMessageBundleMetaPtr StreamingMessageBundleMeta::FromBytes(const uint8_
 
   auto result = std::make_shared<StreamingMessageBundleMeta>(
       message_bundle_ts, last_message_id, messageListSize, messageBundleType);
-  STREAMING_CHECK(byte_offset == GET_STREAMING_SERIALIZATION_LENGTH(result));
+  STREAMING_CHECK(byte_offset == result->ClassBytesSize());
   return result;
 }
 
@@ -143,7 +143,7 @@ StreamingMessageBundle::StreamingMessageBundle(StreamingMessageBundle &bundle) {
   message_list_ = bundle.message_list_;
 }
 
-STREAMING_SERIALIZATION_IMP(StreamingMessageBundle, bytes) {
+void StreamingMessageBundle::ToBytes(uint8_t *bytes) {
   uint32_t byte_offset = 0;
   StreamingMessageBundleMeta::ToBytes(bytes + byte_offset);
 
@@ -158,11 +158,12 @@ STREAMING_SERIALIZATION_IMP(StreamingMessageBundle, bytes) {
   }
 }
 
-STREAMING_DESERIALIZATION_IMP(StreamingMessageBundle, StreamingMessageBundlePtr, bytes) {
+StreamingMessageBundlePtr StreamingMessageBundle::FromBytes(const uint8_t *bytes,
+                                                            bool verifer_check) {
   uint32_t byte_offset = 0;
   StreamingMessageBundleMetaPtr meta_ptr =
       StreamingMessageBundleMeta::FromBytes(bytes + byte_offset);
-  byte_offset += GET_STREAMING_SERIALIZATION_LENGTH(meta_ptr);
+  byte_offset += meta_ptr->ClassBytesSize();
 
   uint32_t raw_data_size = *reinterpret_cast<const uint32_t *>(bytes + byte_offset);
   byte_offset += sizeof(uint32_t);

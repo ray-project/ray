@@ -5,7 +5,6 @@
 #include <mutex>
 #include <queue>
 
-#include "message/serializable.h"
 #include "protobuf/streaming_queue.pb.h"
 #include "ray/common/id.h"
 #include "ray/core_worker/core_worker.h"

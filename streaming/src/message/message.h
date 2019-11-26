@@ -3,8 +3,6 @@
 
 #include <memory>
 
-#include "serializable.h"
-
 namespace ray {
 namespace streaming {
 
@@ -35,7 +33,7 @@ constexpr uint32_t kMessageHeaderSize =
 ///      | Data=var       |
 ///      +----------------+
 
-class StreamingMessage : public StreamingSerializable {
+class StreamingMessage {
  private:
   std::shared_ptr<uint8_t> message_data_;
   uint32_t data_size_;
@@ -83,10 +81,10 @@ class StreamingMessage : public StreamingSerializable {
 
   bool operator==(const StreamingMessage &) const;
 
-  STREAMING_SERIALIZATION
-  STREAMING_DESERIALIZATION(StreamingMessagePtr)
+  virtual void ToBytes(uint8_t *data);
+  static StreamingMessagePtr FromBytes(const uint8_t *data, bool verifer_check = true);
 
-  STREAMING_SERIALIZATION_LENGTH { return kMessageHeaderSize + data_size_; };
+  inline virtual uint32_t ClassBytesSize() { return kMessageHeaderSize + data_size_; }
 };
 
 }  // namespace streaming

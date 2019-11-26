@@ -6,7 +6,6 @@
 #include <numeric>
 
 #include "message.h"
-#include "serializable.h"
 
 namespace ray {
 namespace streaming {
@@ -95,9 +94,10 @@ class StreamingMessageBundleMeta : public StreamingSerializable {
   inline bool IsBarrier() { return StreamingMessageBundleType::Barrier == bundle_type_; }
   inline bool IsBundle() { return StreamingMessageBundleType::Bundle == bundle_type_; }
 
-  STREAMING_SERIALIZATION
-  STREAMING_DESERIALIZATION(StreamingMessageBundleMetaPtr)
-  STREAMING_SERIALIZATION_LENGTH { return kMessageBundleMetaHeaderSize; };
+  virtual void ToBytes(uint8_t *data);
+  static StreamingMessageBundleMetaPtr FromBytes(const uint8_t *data,
+                                                 bool verifer_check = true);
+  inline virtual uint32_t ClassBytesSize() { return kMessageBundleMetaHeaderSize; }
 
   std::string ToString() {
     return std::to_string(last_message_id_) + "," + std::to_string(message_list_size_) +
@@ -142,10 +142,12 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 
   const std::list<StreamingMessagePtr> &GetMessageList() const { return message_list_; }
 
-  STREAMING_SERIALIZATION
-  STREAMING_DESERIALIZATION(StreamingMessageBundlePtr)
-
-  STREAMING_SERIALIZATION_LENGTH { return kMessageBundleHeaderSize + raw_bundle_size_; };
+  virtual void ToBytes(uint8_t *data);
+  static StreamingMessageBundlePtr FromBytes(const uint8_t *data,
+                                             bool verifer_check = true);
+  inline virtual uint32_t ClassBytesSize() {
+    return kMessageBundleHeaderSize + raw_bundle_size_;
+  };
 
   static void GetMessageListFromRawData(const uint8_t *bytes, uint32_t bytes_size,
                                         uint32_t message_list_size,
