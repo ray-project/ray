@@ -892,7 +892,7 @@ def test_direct_call_serialized_id(ray_start_cluster):
 
     @ray.remote
     def dependent_task(x):
-        return
+        return x
 
     @ray.remote
     def get(obj_ids, test_dependent_task):
@@ -904,6 +904,7 @@ def test_direct_call_serialized_id(ray_start_cluster):
             assert ray.get(obj_id) == 1
 
     small_object = small_object.options(is_direct_call=True)
+    dependent_task = dependent_task.options(is_direct_call=True)
     get = get.options(is_direct_call=True)
 
     obj = small_object.remote()
