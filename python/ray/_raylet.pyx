@@ -1056,17 +1056,30 @@ cdef class CoreWorker:
     def serialize_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-            CAddress owner_address = CAddress()
-            CTaskID c_owner_id
+            CTaskID c_owner_id = CTaskID.Nil()
+            CAddress c_owner_address = CAddress()
         has_owner = self.core_worker.get().SerializeObjectId(
-                c_object_id, &c_owner_id, &owner_address)
+                c_object_id, &c_owner_id, &c_owner_address)
         serialized_owner_address = ""
         if has_owner:
             serialized_owner_address = (
-                    owner_address.SerializeAsString())
+                    c_owner_address.SerializeAsString())
         return (object_id.with_plasma_transport_type(),
                 TaskID(c_owner_id.Binary()),
                 serialized_owner_address)
+
+    def deserialize_object_id(self, const c_string &object_id_binary,
+                              const c_string &owner_id_binary,
+                              const c_string &serialized_owner_address):
+        cdef:
+            CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
+            CAddress c_owner_address = CAddress()
+        c_owner_address.ParseFromString(serialized_owner_address)
+        self.core_worker.get().DeserializeObjectId(
+                c_object_id,
+                c_owner_id,
+                c_owner_address)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(

@@ -135,6 +135,17 @@ class CoreWorker {
   bool SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
                          rpc::Address *owner_address);
 
+  /// Add a reference to an ObjectID that was deserialized by the language
+  /// frontend. When Get is called on such an object, the worker will
+  /// periodically contact the object's owner to determine whether the object
+  /// has been evicted.
+  ///
+  /// \param[in] object_id The object ID to deserialize.
+  /// \param[out] owner_id The ID of the object's owner.
+  /// \param[out] owner_address The address of the object's owner.
+  void DeserializeObjectId(const ObjectID &object_id, const TaskID &owner_id,
+                           const rpc::Address &owner_address);
+
   ///
   /// Public methods related to storing and retrieving objects.
   ///

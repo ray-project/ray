@@ -301,6 +301,11 @@ bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
   return has_owner;
 }
 
+void CoreWorker::DeserializeObjectId(const ObjectID &object_id, const TaskID &owner_id,
+                                     const rpc::Address &owner_address) {
+  reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
+}
+
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
   // Currently only the Plasma store supports client options.
   return plasma_store_provider_->SetClientOptions(name, limit_bytes);

@@ -135,6 +135,7 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString()
+        void ParseFromString(const c_string &serialized)
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding

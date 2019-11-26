@@ -165,14 +165,27 @@ class SerializationContext(object):
                 return pickle.loads(serialized_obj)
 
             def object_id_serializer(obj):
+                owner_id = ""
                 owner_address = ""
                 if obj.is_direct_call_type():
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
                     obj, owner_id, owner_address = (
-                        self.worker.core_worker.serialize_object_id(obj))
-                return (id_serializer(obj), owner_id, owner_address)
+                        worker.core_worker.serialize_object_id(obj))
+                obj = id_serializer(obj)
+                owner_id = id_serializer(owner_id) if owner_id else owner_id
+                return (obj, owner_id, owner_address)
 
             def object_id_deserializer(serialized_obj):
                 obj_id, owner_id, owner_address = serialized_obj
+                # Must deserialize the object in the core worker before we
+                # create the ObjectID to ensure that the reference is added
+                # before we increment its count to 1.
+                if owner_id:
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
+                    worker.core_worker.deserialize_object_id(
+                        *obj_id[1], *owner_id[1], owner_address)
                 obj_id = id_deserializer(obj_id)
                 return obj_id
 
@@ -213,17 +226,28 @@ class SerializationContext(object):
                 return serialized_obj[0](*serialized_obj[1])
 
             def object_id_serializer(obj):
+                owner_id = ""
                 owner_address = ""
                 if obj.is_direct_call_type():
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
                     obj, owner_id, owner_address = (
-                        self.worker.core_worker.serialize_object_id(obj))
-                return (id_serializer(obj), id_serializer(owner_id),
-                        owner_address)
+                        worker.core_worker.serialize_object_id(obj))
+                obj = id_serializer(obj)
+                owner_id = id_serializer(owner_id) if owner_id else owner_id
+                return (obj, owner_id, owner_address)
 
             def object_id_deserializer(serialized_obj):
                 obj_id, owner_id, owner_address = serialized_obj
+                # Must deserialize the object in the core worker before we
+                # create the ObjectID to ensure that the reference is added
+                # before we increment its count to 1.
+                if owner_id:
+                    worker = ray.worker.get_global_worker()
+                    worker.check_connected()
+                    worker.core_worker.deserialize_object_id(
+                        *obj_id[1], *owner_id[1], owner_address)
                 obj_id = id_deserializer(obj_id)
-                owner_id = id_deserializer(owner_id)
                 return obj_id
 
             for id_type in ray._raylet._ID_TYPES:
