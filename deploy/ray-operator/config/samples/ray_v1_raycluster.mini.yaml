@@ -1,0 +1,150 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  labels:
+    controller-tools.k8s.io: "1.0"
+  name: raycluster-sample
+spec:
+  clusterName: raycluster-sample
+  images:
+    defaultImage: "docker-image"
+  imagePullPolicy: "Always"
+
+  extensions:
+    - size: 2
+      groupName: group1
+      type: worker
+      idList: ["raycluster-sample-group1-worker-0","raycluster-sample-group1-worker-1"]
+
+      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      labels:
+        raycluster.group.name: group1
+
+      # resource requirements
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+          ephemeral-storage: 2Gi
+        requests:
+          cpu: 1000m
+          memory: 2Gi
+          ephemeral-storage: 2Gi
+
+      # environment variables to set in the container
+      containerEnv:
+        - name: CLUSTER_NAME
+          value: raycluster-sample
+        - name: POD_READY_FILEPATH
+          value: /path/to/log
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      # head service suffix
+      headServiceSuffix: "ray-operator.svc"
+
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+
+      volumeMounts:
+        - mountPath: /path/to/log
+          name: log-volume
+
+    - size: 1
+      groupName: group2
+      type: worker
+      idList: ["raycluster-sample-group2-worker-0"]
+
+      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      labels:
+        raycluster.group.name: group2
+
+      # resource requirements
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+          ephemeral-storage: 4Gi
+        requests:
+          cpu: 2000m
+          memory: 4Gi
+          ephemeral-storage: 4Gi
+
+      # environment variables to set in the container
+      containerEnv:
+        - name: CLUSTER_NAME
+          value: raycluster-sample
+        - name: POD_READY_FILEPATH
+          value: /path/to/log
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      # head service suffix
+      headServiceSuffix: "ray-operator.svc"
+
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+
+      volumeMounts:
+        - mountPath: /path/to/log
+          name: log-volume
+
+    - size: 1
+      groupName: headgroup1
+      type: head
+      idList: ["raycluster-sample-group2-head-0"]
+
+      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      labels:
+        raycluster.group.name: headgroup1
+
+      # resource requirements
+      resources:
+        limits:
+          cpu: 2000m
+          memory: 4Gi
+          ephemeral-storage: 4Gi
+        requests:
+          cpu: 2000m
+          memory: 4Gi
+          ephemeral-storage: 4Gi
+
+      # environment variables to set in the container
+      containerEnv:
+        - name: CLUSTER_NAME
+          value: raycluster-sample
+        - name: POD_READY_FILEPATH
+          value: /path/to/log
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+
+      # head service suffix
+      headServiceSuffix: "ray-operator.svc"
+
+      volumes:
+        - name: log-volume
+          emptyDir: {}
+
+      volumeMounts:
+        - mountPath: /path/to/log
+          name: log-volume
