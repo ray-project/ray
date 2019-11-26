@@ -281,13 +281,24 @@ void CoreWorker::ReportActiveObjectIDs() {
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
 }
 
-void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
+bool CoreWorker::SerializeObjectId(const ObjectID &object_id,
+                                   rpc::Address *owner_address) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
     RAY_CHECK_OK(
         plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
   }
+
+  auto has_owner = reference_counter_->GetOwner(object_id, owner_address);
+  if (!has_owner) {
+    // TODO(swang): Once ref counting is fully implemented, this should be an
+    // assertion.
+    RAY_LOG(WARNING)
+        << "Tried to serialize object ID " << object_id
+        << ", but we don't know its owner. Calling ray.get on the object may hang.";
+  }
+  return has_owner;
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -557,7 +568,8 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
 
   // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
   for (size_t i = 0; i < num_returns; i++) {
-    reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type), task_deps);
+    reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type),
+                                       GetCallerId(), rpc_address_, task_deps);
   }
 }
 

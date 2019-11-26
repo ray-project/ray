@@ -118,14 +118,19 @@ class CoreWorker {
     }
   }
 
-  /// Promote an object to plasma. If it already exists locally, it will be
-  /// put into the plasma store. If it doesn't yet exist, it will be spilled to
-  /// plasma once available.
+  /// Serialize an ObjectID. This will promote the object to plasma. If it
+  /// already exists locally, it will be put into the plasma store. If it
+  /// doesn't yet exist, it will be spilled to plasma once available.
   ///
   /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
   ///
-  /// \param[in] object_id The object ID to promote to plasma.
-  void PromoteObjectToPlasma(const ObjectID &object_id);
+  /// \param[in] object_id The object ID to serialize.
+  /// \param[out] owner_address The address of the object's owner. This should
+  /// be appended to the serialized object ID.
+  /// \return Whether we had the object's owner or not. If we don't have the
+  /// object's owner, then calling ray.get on the deserialized object ID may
+  /// hang.
+  bool SerializeObjectId(const ObjectID &object_id, rpc::Address *owner_address);
 
   ///
   /// Public methods related to storing and retrieving objects.

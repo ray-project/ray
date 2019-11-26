@@ -158,18 +158,37 @@ class SerializationContext(object):
 
             def id_serializer(obj):
                 if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
-                    obj = self.worker.core_worker.promote_object_to_plasma(obj)
+                    obj = self.worker.core_worker.serialize_object_id(obj)
                 return pickle.dumps(obj)
 
             def id_deserializer(serialized_obj):
                 return pickle.loads(serialized_obj)
 
+            def object_id_serializer(obj):
+                owner_address = ""
+                if obj.is_direct_call_type():
+                    obj, owner_address = (
+                        self.worker.core_worker.serialize_object_id(obj))
+                return (id_serializer(obj), owner_address)
+
+            def object_id_deserializer(serialized_obj):
+                obj_id, owner_address = serialized_obj
+                obj_id = id_deserializer(obj_id)
+                return obj_id
+
             for id_type in ray._raylet._ID_TYPES:
-                serialization_context.register_type(
-                    id_type,
-                    "{}.{}".format(id_type.__module__, id_type.__name__),
-                    custom_serializer=id_serializer,
-                    custom_deserializer=id_deserializer)
+                if id_type == ray._raylet.ObjectID:
+                    serialization_context.register_type(
+                        id_type,
+                        "{}.{}".format(id_type.__module__, id_type.__name__),
+                        custom_serializer=object_id_serializer,
+                        custom_deserializer=object_id_deserializer)
+                else:
+                    serialization_context.register_type(
+                        id_type,
+                        "{}.{}".format(id_type.__module__, id_type.__name__),
+                        custom_serializer=id_serializer,
+                        custom_deserializer=id_deserializer)
 
             # We register this serializer on each worker instead of calling
             # _register_custom_serializer from the driver so that isinstance
@@ -188,16 +207,30 @@ class SerializationContext(object):
                 custom_deserializer=actor_handle_deserializer)
 
             def id_serializer(obj):
-                if isinstance(obj, ray.ObjectID) and obj.is_direct_call_type():
-                    obj = self.worker.core_worker.promote_object_to_plasma(obj)
                 return obj.__reduce__()
 
             def id_deserializer(serialized_obj):
                 return serialized_obj[0](*serialized_obj[1])
 
+            def object_id_serializer(obj):
+                owner_address = ""
+                if obj.is_direct_call_type():
+                    obj, owner_address = (
+                        self.worker.core_worker.serialize_object_id(obj))
+                return (id_serializer(obj), owner_address)
+
+            def object_id_deserializer(serialized_obj):
+                obj_id, owner_address = serialized_obj
+                obj_id = id_deserializer(obj_id)
+                return obj_id
+
             for id_type in ray._raylet._ID_TYPES:
-                self._register_cloudpickle_serializer(id_type, id_serializer,
-                                                      id_deserializer)
+                if id_type == ray._raylet.ObjectID:
+                    self._register_cloudpickle_serializer(
+                        id_type, object_id_serializer, object_id_deserializer)
+                else:
+                    self._register_cloudpickle_serializer(
+                        id_type, id_serializer, id_deserializer)
 
     def initialize(self):
         """ Register custom serializers """

@@ -17,6 +17,7 @@ from ray.includes.unique_ids cimport (
     CObjectID,
 )
 from ray.includes.common cimport (
+    CAddress,
     CActorCreationOptions,
     CBuffer,
     CRayFunction,
@@ -116,6 +117,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void AddObjectIDReference(const CObjectID &object_id)
         void RemoveObjectIDReference(const CObjectID &object_id)
         void PromoteObjectToPlasma(const CObjectID &object_id)
+        c_bool SerializeObjectId(const CObjectID &object_id,
+                                 CAddress *owner_address)
 
         CRayStatus SetClientOptions(c_string client_name, int64_t limit)
         CRayStatus Put(const CRayObject &object, CObjectID *object_id)

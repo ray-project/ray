@@ -11,7 +11,8 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
 }
 
 void ReferenceCounter::AddOwnedObject(
-    const ObjectID &object_id, std::shared_ptr<std::vector<ObjectID>> dependencies) {
+    const ObjectID &object_id, const TaskID &owner_id, const rpc::Address &owner_address,
+    std::shared_ptr<std::vector<ObjectID>> dependencies) {
   absl::MutexLock lock(&mutex_);
 
   for (const ObjectID &dependency_id : *dependencies) {
@@ -23,7 +24,7 @@ void ReferenceCounter::AddOwnedObject(
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
-  object_id_refs_.emplace(object_id, Reference(dependencies));
+  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address, dependencies));
 }
 
 void ReferenceCounter::AddLocalReferenceInternal(const ObjectID &object_id) {
@@ -34,6 +35,11 @@ void ReferenceCounter::AddLocalReferenceInternal(const ObjectID &object_id) {
     entry = object_id_refs_.emplace(object_id, Reference()).first;
   }
   entry->second.local_ref_count++;
+}
+
+void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  AddLocalReferenceInternal(object_id);
 }
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
@@ -62,7 +68,23 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id,
   }
 }
 
-bool ReferenceCounter::HasReference(const ObjectID &object_id) {
+bool ReferenceCounter::GetOwner(const ObjectID &object_id,
+                                rpc::Address *owner_address) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+
+  if (it->second.owner.has_value()) {
+    *owner_address = it->second.owner.value().second;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+bool ReferenceCounter::HasReference(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }

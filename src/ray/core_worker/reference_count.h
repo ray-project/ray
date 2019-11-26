@@ -40,8 +40,17 @@ class ReferenceCounter {
   /// reference count for the ObjectID is set to zero and the reference count
   /// for each dependency is incremented.
   ///
+  /// TODO(swang): We could avoid copying the owner_id and owner_address since
+  /// we are the owner, but it is easier to store a copy for now, since the
+  /// owner ID will change for workers executing normal tasks and it is
+  /// possible to have leftover references after a task has finished.
+  ///
   /// \param[in] object_id The ID of the object that we own.
-  void AddOwnedObject(const ObjectID &object_id,
+  /// \param[in] owner_id The ID of the object's owner.
+  /// \param[in] owner_address The address of the object's owner.
+  /// \param[in] dependencies The obnects that the object depends on.
+  void AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
+                      const rpc::Address &owner_address,
                       std::shared_ptr<std::vector<ObjectID>> dependencies)
       LOCKS_EXCLUDED(mutex_);
 
@@ -54,11 +63,14 @@ class ReferenceCounter {
   void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
+  bool GetOwner(const ObjectID &object_id, rpc::Address *owner_address) const
+      LOCKS_EXCLUDED(mutex_);
+
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether this object has an active reference.
-  bool HasReference(const ObjectID &object_id) LOCKS_EXCLUDED(mutex_);
+  bool HasReference(const ObjectID &object_id) const LOCKS_EXCLUDED(mutex_);
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
@@ -72,8 +84,11 @@ class ReferenceCounter {
     /// Constructor for a reference whose origin is unknown.
     Reference() : owned_by_us(false) {}
     /// Constructor for a reference that we created.
-    Reference(std::shared_ptr<std::vector<ObjectID>> deps)
-        : dependencies(std::move(deps)), owned_by_us(true) {}
+    Reference(const TaskID &owner_id, const rpc::Address &owner_address,
+              std::shared_ptr<std::vector<ObjectID>> deps)
+        : dependencies(std::move(deps)),
+          owned_by_us(true),
+          owner({owner_id, owner_address}) {}
     /// Constructor for a reference that was given to us.
     Reference(const TaskID &owner_id, const rpc::Address &owner_address)
         : owned_by_us(false), owner({owner_id, owner_address}) {}
@@ -90,8 +105,8 @@ class ReferenceCounter {
     /// (see task_manager.h).
     bool owned_by_us;
     /// The object's owner, if we know it. This has no value if the object is
-    /// owned by us or if we do not know the object's owner (because
-    /// distributed ref counting is not yet implemented).
+    /// if we do not know the object's owner (because distributed ref counting
+    /// is not yet implemented).
     const absl::optional<std::pair<TaskID, rpc::Address>> owner;
   };
 

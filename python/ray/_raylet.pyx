@@ -41,6 +41,7 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
+    CAddress,
     CLanguage,
     CRayObject,
     CRayStatus,
@@ -1052,11 +1053,18 @@ cdef class CoreWorker:
         # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveObjectIDReference(c_object_id)
 
-    def promote_object_to_plasma(self, ObjectID object_id):
+    def serialize_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        self.core_worker.get().PromoteObjectToPlasma(c_object_id)
-        return object_id.with_plasma_transport_type()
+            CAddress owner_address = CAddress()
+        has_owner = self.core_worker.get().SerializeObjectId(
+                c_object_id, &owner_address)
+        serialized_owner_address = ""
+        if has_owner:
+            serialized_owner_address = (
+                    owner_address.SerializeAsString())
+        return (object_id.with_plasma_transport_type(),
+                serialized_owner_address)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(
