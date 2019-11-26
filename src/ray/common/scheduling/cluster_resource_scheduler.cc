@@ -13,36 +13,13 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   AddOrUpdateNode(local_node_id, local_node_resources);
 }
 
+
 void ClusterResourceScheduler::AddOrUpdateNode(
     const std::string& node_id,
-    const std::unordered_map<std::string, double>& node_resources_map) {
+    const std::unordered_map<std::string, double>& node_resource_map) {
 
-  RAY_LOG(ERROR) << "CLUSTER node id is " << node_id;
   NodeResources node_resources;
-  node_resources.capacities.resize(PredefinedResources_MAX);
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    node_resources.capacities[i].total = node_resources.capacities[i].total = 0;
-  }
-
-  for (auto it = node_resources_map.begin(); it != node_resources_map.end(); ++it) {
-    ResourceCapacity resource_capacity;
-    resource_capacity.total = resource_capacity.available = (int64_t)it->second;
-    if (it->first == "CPU") {
-      node_resources.capacities[CPU] = resource_capacity;
-      RAY_LOG(ERROR) << "CPU total initialized with " << resource_capacity.total;
-      RAY_LOG(ERROR) << "CPU available initialized with " << resource_capacity.available;
-    } else if (it->first == "memory") {
-      node_resources.capacities[MEM] = resource_capacity;
-      RAY_LOG(ERROR) << "MEM total initialized with " << resource_capacity.total;
-      RAY_LOG(ERROR) << "MEM available initialized with " << resource_capacity.available;
-    } else {
-      // This is a custom resource.
-      node_resources.custom_resources.emplace(string_to_int_map_.Insert(it->first), resource_capacity);
-      RAY_LOG(ERROR) << "custom resource name " << it->first;
-      RAY_LOG(ERROR) << "custom total initialized with " << resource_capacity.total;
-      RAY_LOG(ERROR) << "custom available initialized with " << resource_capacity.available;
-    }
-  }
+  ResourceMapToNodeResources(node_resource_map, &node_resources);
   AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
 }
 
@@ -196,36 +173,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   return best_node;
 }
 
-void ClusterResourceScheduler::ResourceMapToTaskRequest(
-    const std::unordered_map<std::string, double>& resource_map,
-    TaskRequest *task_request) {
-
-  size_t i = 0;
-  task_request->predefined_resources.resize(PredefinedResources_MAX);
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    task_request->predefined_resources[0].demand = 0;
-    task_request->predefined_resources[0].soft = false;
-  }
-
-  for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
-    if (it->first == "CPU") {
-      task_request->predefined_resources[CPU].demand = it->second;
-      RAY_LOG(ERROR) << "TASK request: CPU " << it->second;
-    } else if (it->first == "memory") {
-      task_request->predefined_resources[MEM].demand = it->second;
-      RAY_LOG(ERROR) << "TASK request: MEM " << it->second;
-    } else {
-      // This is a custom resource.
-      task_request->custom_resources[i].id = string_to_int_map_.Insert(it->first);
-      task_request->custom_resources[i].req.demand = it->second;
-      task_request->custom_resources[i].req.soft = false;
-      RAY_LOG(ERROR) << "TASK request: custom ID " << task_request->custom_resources[i].id;
-      RAY_LOG(ERROR) << "  TASK request: custom demand " << task_request->custom_resources[i].req.demand;
-      RAY_LOG(ERROR) << "  TASK request: soft " << task_request->custom_resources[i].req.soft;
-      i++;
-    }
-  }
-}
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const std::unordered_map<std::string, double>& task_resources,
@@ -328,3 +275,51 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 }
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+
+void ClusterResourceScheduler::ResourceMapToNodeResources(
+    const std::unordered_map<std::string, double>& resource_map,
+    NodeResources *node_resources) {
+  node_resources->capacities.resize(PredefinedResources_MAX);
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    node_resources->capacities[i].total = node_resources->capacities[i].total = 0;
+  }
+
+  for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
+    ResourceCapacity resource_capacity;
+    resource_capacity.total = resource_capacity.available = (int64_t)it->second;
+    if (it->first == "CPU") {
+      node_resources->capacities[CPU] = resource_capacity;
+    } else if (it->first == "memory") {
+      node_resources->capacities[MEM] = resource_capacity;
+    } else {
+      // This is a custom resource.
+      node_resources->custom_resources.emplace(string_to_int_map_.Insert(it->first), resource_capacity);
+    }
+  }
+}
+
+void ClusterResourceScheduler::ResourceMapToTaskRequest(
+    const std::unordered_map<std::string, double>& resource_map,
+    TaskRequest *task_request) {
+
+  size_t i = 0;
+  task_request->predefined_resources.resize(PredefinedResources_MAX);
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    task_request->predefined_resources[0].demand = 0;
+    task_request->predefined_resources[0].soft = false;
+  }
+
+  for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
+    if (it->first == "CPU") {
+      task_request->predefined_resources[CPU].demand = it->second;
+    } else if (it->first == "memory") {
+      task_request->predefined_resources[MEM].demand = it->second;
+    } else {
+      // This is a custom resource.
+      task_request->custom_resources[i].id = string_to_int_map_.Insert(it->first);
+      task_request->custom_resources[i].req.demand = it->second;
+      task_request->custom_resources[i].req.soft = false;
+      i++;
+    }
+  }
+}

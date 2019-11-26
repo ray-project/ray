@@ -127,26 +127,11 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   if (USE_NEW_SCHEDULER) {
     SchedulingResources &local_resources = cluster_resource_map_[local_client_id];
-    // std::string local_client_id_string = client_id_.Binary();
     new_resource_scheduler_ = std::shared_ptr<ClusterResourceScheduler>(
         new ClusterResourceScheduler(client_id_.Binary(),
           local_resources.GetTotalResources().GetResourceMap()));
-
-    auto &resource_pair = local_resources.GetTotalResources().GetResourceMap();
-    for (auto it = resource_pair.begin(); it != resource_pair.end(); ++it) {
-      RAY_LOG(ERROR) << "RESOURCES:1 " << it->first;
-      RAY_LOG(ERROR) << "RESOURCES:2 " << it->second;
-      if (it->first == kCPU_ResourceLabel) {
-        RAY_LOG(ERROR) << "RESOURCES:CPU " << it->first;
-      }
-      if (it->first == "memory") {
-        RAY_LOG(ERROR) << "RESOURCES:mem " << it->first;
-      }
-    }
-    RAY_LOG(ERROR) << "Local client id " << local_client_id;
-    RAY_LOG(ERROR) << "Local client id (1) " << client_id_;
-    RAY_LOG(ERROR) << "Local resources " << config.resource_config.ToString();
   }
+
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
@@ -1498,7 +1483,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         task);
 
     // Scheduled locally.
-    RAY_LOG(ERROR) << "node string id was " << node_id_string; // XXX
+    // RAY_LOG(ERROR) << "node string id was " << node_id_string; 
     if (node_id_string == std::to_string(-1)) {
       new_pending_queue_.push_back(work);
     } else {

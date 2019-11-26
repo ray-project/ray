@@ -89,9 +89,10 @@ class ClusterResourceScheduler {
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
-  /// \param node_resources: The total and the available resources associated
+  /// \param local_node_resources: The total and the available resources associated
   /// with the local node.
-  ClusterResourceScheduler(int64_t local_node_id, const NodeResources &node_resources);
+  ClusterResourceScheduler(int64_t local_node_id,
+    const NodeResources &local_node_resources);
   ClusterResourceScheduler(const std::string& local_node_id,
     const std::unordered_map<std::string, double>& local_node_resources);
 
@@ -142,22 +143,19 @@ class ClusterResourceScheduler {
   ///
   ///  Finally, if no such node exists, return -1.
   ///
-  ///  \param task_req: Task to be scheduled.
+  ///  \param task_request: Task to be scheduled.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule task_req is found).
   ///
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
-  int64_t GetBestSchedulableNode(const TaskRequest &task_req, int64_t *violations);
+  int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
   std::string GetBestSchedulableNode(
-      const std::unordered_map<std::string, double>& task_resources,
+      const std::unordered_map<std::string, double>& task_request,
       int64_t *violations);
-  void ResourceMapToTaskRequest(
-      const std::unordered_map<std::string, double>& resource_map,
-      TaskRequest *task_request);
 
-  /// Update the available resources of a node when a task request is
+  /// Decrease the available resources of a node when a task request is
   /// scheduled on the given node.
   ///
   /// \param node_id: ID of node on which request is being scheduled.
@@ -165,14 +163,23 @@ class ClusterResourceScheduler {
   ///
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
-  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
+  bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
   bool SubtractNodeAvailableResources(
       const std::string& node_id,
-      const std::unordered_map<std::string, double>& task_resources);
-  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
+      const std::unordered_map<std::string, double>& task_request);
+
+  /// Increase available resources of a node when a worker has Finished
+  /// a task.
+  ///
+  /// \param node_id: ID of node on which request is being scheduled.
+  /// \param task_request: resource requests of the task finishing execution.
+  ///
+  /// \return true, if task_req can be indeed scheduled on the node,
+  /// and false otherwise.
+  bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_request);
   bool AddNodeAvailableResources(
       const std::string& node_id,
-      const std::unordered_map<std::string, double>& task_resources);
+      const std::unordered_map<std::string, double>& task_request);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -180,6 +187,16 @@ class ClusterResourceScheduler {
 
   /// Get number of nodes in the cluster.
   int64_t NumNodes();
+
+  /// Convert a map of resources to a TaskRequest data structure.
+  void ResourceMapToTaskRequest(
+      const std::unordered_map<std::string, double>& resource_map,
+      TaskRequest *task_request);
+
+  /// Convert a map of resources to a TaskRequest data structure.
+  void ResourceMapToNodeResources(
+      const std::unordered_map<std::string, double>& resource_map,
+      NodeResources *node_resources);
 };
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H
