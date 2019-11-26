@@ -304,6 +304,13 @@ bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
 void CoreWorker::DeserializeObjectId(const ObjectID &object_id, const TaskID &owner_id,
                                      const rpc::Address &owner_address) {
   reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
+
+  // The object ID was serialized, so it was promoted to plasma. Store an
+  // IsInPlasmaError to indicate this to the caller.
+  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+  RAY_CHECK_OK(memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {

@@ -1064,7 +1064,7 @@ cdef class CoreWorker:
         if has_owner:
             serialized_owner_address = (
                     c_owner_address.SerializeAsString())
-        return (object_id.with_plasma_transport_type(),
+        return (object_id,
                 TaskID(c_owner_id.Binary()),
                 serialized_owner_address)
 
