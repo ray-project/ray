@@ -9,6 +9,7 @@
 
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/protobuf/common.pb.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 
 using ray::ActorCheckpointID;
@@ -70,7 +71,7 @@ class WorkerLeaseInterface {
   /// \param resource_spec Resources that should be allocated for the worker.
   /// \return ray::Status
   virtual ray::Status RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const ray::TaskSpecification &resource_spec, const ray::rpc::Address &owner_address,
       const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
 
   /// Returns a worker to the raylet.
@@ -227,7 +228,7 @@ class RayletClient : public WorkerLeaseInterface {
 
   /// Implements WorkerLeaseInterface.
   ray::Status RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const ray::TaskSpecification &resource_spec, const ray::rpc::Address &owner_address,
       const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
 
   /// Implements WorkerLeaseInterface.

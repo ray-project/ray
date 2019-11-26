@@ -94,7 +94,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   TaskSpecification resource_spec_copy(resource_spec.GetMessage());
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   RAY_CHECK_OK(lease_client->RequestWorkerLease(
-      resource_spec_copy,
+      resource_spec_copy, local_address_,
       [this, resource_spec_copy, lease_client](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
         if (status.ok()) {

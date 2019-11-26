@@ -27,12 +27,13 @@ class CoreWorkerDirectTaskSubmitter {
                                 LeaseClientFactoryFn lease_client_factory,
                                 std::shared_ptr<CoreWorkerMemoryStore> store,
                                 std::shared_ptr<TaskFinisherInterface> task_finisher,
-                                int64_t lease_timeout_ms)
+                                rpc::Address local_address, int64_t lease_timeout_ms)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
         resolver_(store),
         task_finisher_(task_finisher),
+        local_address_(local_address),
         lease_timeout_ms_(lease_timeout_ms) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -89,6 +90,10 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Used to complete tasks.
   std::shared_ptr<TaskFinisherInterface> task_finisher_;
+
+  /// Our local address. Passed with worker lease requests so that the raylet
+  /// can clean up leases if we die.
+  const rpc::Address local_address_;
 
   /// The timeout for worker leases; after this duration, workers will be returned
   /// to the raylet.

@@ -402,10 +402,11 @@ ray::Status RayletClient::ReportActiveObjectIDs(
 }
 
 ray::Status RayletClient::RequestWorkerLease(
-    const ray::TaskSpecification &resource_spec,
+    const ray::TaskSpecification &resource_spec, const ray::rpc::Address &owner_address,
     const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) {
   ray::rpc::WorkerLeaseRequest request;
   request.mutable_resource_spec()->CopyFrom(resource_spec.GetMessage());
+  request.mutable_owner_address()->CopyFrom(owner_address);
   return grpc_client_->RequestWorkerLease(request, callback);
 }
 
