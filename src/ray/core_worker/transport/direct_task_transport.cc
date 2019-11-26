@@ -159,26 +159,24 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
                                                    const SchedulingKey &scheduling_key,
                                                    TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
-  auto num_returns = task_spec.NumReturns();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   auto status = client.PushNormalTask(
-      std::move(request), [this, task_id, scheduling_key, num_returns, addr](
+      std::move(request), [this, task_id, scheduling_key, addr](
                               Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mu_);
           OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok());
         }
         if (!status.ok()) {
-          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
-                            in_memory_store_);
-          return;
+          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
+        } else {
+          task_finisher_->CompletePendingTask(task_id, reply);
         }
-        WriteObjectsToMemoryStore(reply, in_memory_store_);
       });
   if (!status.ok()) {
-    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
-                      in_memory_store_);
+    // TODO(swang): add unit test for this.
+    task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
   }
 }
 };  // namespace ray

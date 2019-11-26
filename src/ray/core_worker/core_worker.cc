@@ -28,11 +28,6 @@ void BuildCommonTaskSpec(
   // Set task arguments.
   for (const auto &arg : args) {
     if (arg.IsPassedByReference()) {
-      // TODO(ekl) remove this check once we deprecate TaskTransportType::RAYLET
-      if (transport_type == ray::TaskTransportType::RAYLET) {
-        RAY_CHECK(!arg.GetReference().IsDirectCallType())
-            << "Passing direct call objects to non-direct tasks is not allowed.";
-      }
       builder.AddByRefArg(arg.GetReference());
     } else {
       builder.AddByValueArg(arg.GetValue());
@@ -169,6 +164,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+  task_manager_.reset(new TaskManager(memory_store_));
+  resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -197,7 +194,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         new rpc::CoreWorkerClient(addr.first, addr.second, *client_call_manager_));
   };
   direct_actor_submitter_ = std::unique_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_));
+      new CoreWorkerDirectActorTaskSubmitter(client_factory, memory_store_,
+                                             task_manager_));
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
@@ -208,7 +206,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_, RayConfig::instance().worker_lease_timeout_milliseconds()));
+          memory_store_, task_manager_,
+          RayConfig::instance().worker_lease_timeout_milliseconds()));
 }
 
 CoreWorker::~CoreWorker() {
@@ -581,6 +580,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
+    task_manager_->AddPendingTask(task_spec);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
@@ -621,7 +621,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
   PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-  return raylet_client_->SubmitTask(task_spec);
+  // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
+  // need to manually resolve direct call args here.
+  resolver_->ResolveDependencies(task_spec, [this, task_spec]() {
+    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
+  });
+  return Status::OK();
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -658,6 +663,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   Status status;
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
+    task_manager_->AddPendingTask(task_spec);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {
@@ -874,7 +880,7 @@ Status CoreWorker::BuildArgsForExecutor(const TaskSpecification &task,
         metadata = std::make_shared<LocalMemoryBuffer>(
             const_cast<uint8_t *>(task.ArgMetadata(i)), task.ArgMetadataSize(i));
       }
-      args->at(i) = std::make_shared<RayObject>(data, metadata);
+      args->at(i) = std::make_shared<RayObject>(data, metadata, /*copy_data*/ true);
       arg_reference_ids->at(i) = ObjectID::Nil();
     }
   }
