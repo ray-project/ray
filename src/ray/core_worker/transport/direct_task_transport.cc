@@ -43,12 +43,16 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
   if (was_error || queued_tasks_.empty() || current_time_ms() > entry.second) {
     RAY_CHECK_OK(entry.first->ReturnWorker(addr.second, was_error));
     worker_to_lease_client_.erase(addr);
-  } else {
+  } else if (!queued_tasks_.empty()) {
     auto &client = *client_cache_[addr];
     PushNormalTask(addr, client, queued_tasks_.front());
     queued_tasks_.pop_front();
   }
-  RequestNewWorkerIfNeeded(queued_tasks_.front());
+
+  // There are more tasks to run, so try to get another worker.
+  if (!queued_tasks_.empty()) {
+    RequestNewWorkerIfNeeded(queued_tasks_.front());
+  }
 }
 
 std::shared_ptr<WorkerLeaseInterface>
@@ -129,23 +133,21 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
                                                    rpc::CoreWorkerClientInterface &client,
                                                    TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
-  auto num_returns = task_spec.NumReturns();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   auto status = client.PushNormalTask(
       std::move(request),
-      [this, task_id, num_returns, addr](Status status, const rpc::PushTaskReply &reply) {
+      [this, task_id, addr](Status status, const rpc::PushTaskReply &reply) {
         OnWorkerIdle(addr, /*error=*/!status.ok());
         if (!status.ok()) {
-          TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
-                            in_memory_store_);
-          return;
+          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
+        } else {
+          task_finisher_->CompletePendingTask(task_id, reply);
         }
-        WriteObjectsToMemoryStore(reply, in_memory_store_);
       });
   if (!status.ok()) {
-    TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,
-                      in_memory_store_);
+    // TODO(swang): add unit test for this.
+    task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
   }
 }
 };  // namespace ray

@@ -3,10 +3,12 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
+
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/raylet/raylet_client.h"
@@ -24,12 +26,13 @@ class CoreWorkerDirectTaskSubmitter {
                                 rpc::ClientFactoryFn client_factory,
                                 LeaseClientFactoryFn lease_client_factory,
                                 std::shared_ptr<CoreWorkerMemoryStore> store,
+                                std::shared_ptr<TaskFinisherInterface> task_finisher,
                                 int64_t lease_timeout_ms)
       : local_lease_client_(lease_client),
         client_factory_(client_factory),
         lease_client_factory_(lease_client_factory),
-        in_memory_store_(store),
-        resolver_(in_memory_store_),
+        resolver_(store),
+        task_finisher_(task_finisher),
         lease_timeout_ms_(lease_timeout_ms) {}
 
   /// Schedule a task for direct submission to a worker.
@@ -81,11 +84,11 @@ class CoreWorkerDirectTaskSubmitter {
   /// Factory for producing new clients to request leases from remote nodes.
   LeaseClientFactoryFn lease_client_factory_;
 
-  /// The store provider.
-  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
-
   /// Resolve local and remote dependencies;
   LocalDependencyResolver resolver_;
+
+  /// Used to complete tasks.
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   /// The timeout for worker leases; after this duration, workers will be returned
   /// to the raylet.
