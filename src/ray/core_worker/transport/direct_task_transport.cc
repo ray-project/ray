@@ -4,17 +4,38 @@
 
 namespace ray {
 
+// Utility function to return dependencies for the provided task spec that have
+// TaskTransportType::RAYLET.
+//
+std::vector<ObjectID> RayletDependencies(const TaskSpecification &task_spec) {
+  std::vector<ObjectID> dependencies;
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    // NOTE: Multi-args are not currently supported.
+    if (task_spec.ArgIdCount(i) > 0) {
+      const ObjectID &dependency = task_spec.ArgId(i, 0);
+      if (dependency.GetTransportType() ==
+          static_cast<uint8_t>(TaskTransportType::RAYLET)) {
+        dependencies.push_back(dependency);
+      }
+    }
+  }
+  return dependencies;
+}
+
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     absl::MutexLock lock(&mu_);
-    const TaskQueueKey queue_key(task_spec.GetSchedulingClass(),
-                                 task_spec.GetDependencies());
-    auto it = task_queues_.find(queue_key);
+    // Only consider dependencies in plasma for scheduling tasks to workers
+    // (denoted by TaskTransportType::RAYLET). Note that the correct transport types
+    // are set in the task spec by the dependency resolver.
+    const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
+                                       RayletDependencies(task_spec));
+    auto it = task_queues_.find(scheduling_key);
     if (it == task_queues_.end()) {
-      it = task_queues_.emplace(queue_key, std::deque<TaskSpecification>()).first;
+      it = task_queues_.emplace(scheduling_key, std::deque<TaskSpecification>()).first;
     }
     it->second.push_back(task_spec);
-    RequestNewWorkerIfNeeded(queue_key);
+    RequestNewWorkerIfNeeded(scheduling_key);
   });
   return Status::OK();
 }
@@ -33,10 +54,10 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
 }
 
 void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
-                                                 const TaskQueueKey &queue_key,
+                                                 const SchedulingKey &scheduling_key,
                                                  bool was_error) {
   auto lease_entry = worker_to_lease_client_[addr];
-  auto queue_entry = task_queues_.find(queue_key);
+  auto queue_entry = task_queues_.find(scheduling_key);
   // Return the worker if there was an error executing the previous task,
   // there are no more applicable queued tasks, or the lease is expired.
   if (was_error || queue_entry == task_queues_.end() ||
@@ -45,7 +66,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
     worker_to_lease_client_.erase(addr);
   } else {
     auto &client = *client_cache_[addr];
-    PushNormalTask(addr, client, queue_key, queue_entry->second.front());
+    PushNormalTask(addr, client, scheduling_key, queue_entry->second.front());
     queue_entry->second.pop_front();
     // Delete the queue if it's now empty. Note that the queue cannot already be empty
     // because this is the only place tasks are removed from it.
@@ -53,7 +74,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(const rpc::WorkerAddress &addr,
       task_queues_.erase(queue_entry);
     }
   }
-  RequestNewWorkerIfNeeded(queue_key);
+  RequestNewWorkerIfNeeded(scheduling_key);
 }
 
 std::shared_ptr<WorkerLeaseInterface>
@@ -79,13 +100,14 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
 }
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
-    const TaskQueueKey &queue_key, const rpc::Address *raylet_address) {
-  if (pending_lease_requests_.find(queue_key) != pending_lease_requests_.end()) {
+    const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
+  if (pending_lease_requests_.find(scheduling_key) != pending_lease_requests_.end()) {
+    // There's already an outstanding lease request for this type of task.
     return;
   }
-  auto it = task_queues_.find(queue_key);
+  auto it = task_queues_.find(scheduling_key);
   if (it == task_queues_.end()) {
-    // We don't have any tasks to run, so no need to request a worker.
+    // We don't have any of this type of task to run.
     return;
   }
 
@@ -94,52 +116,58 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   TaskID task_id = resource_spec.TaskId();
   RAY_CHECK_OK(lease_client->RequestWorkerLease(
       resource_spec,
-      [this, lease_client, task_id, queue_key](
+      [this, lease_client, task_id, scheduling_key](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
         absl::MutexLock lock(&mu_);
-        pending_lease_requests_.erase(queue_key);
+        pending_lease_requests_.erase(scheduling_key);
         if (status.ok()) {
           if (!reply.worker_address().raylet_id().empty()) {
+            // We got a lease for a worker. Add the lease client state and try to
+            // assign work to the worker.
             RAY_LOG(DEBUG) << "Lease granted " << task_id;
             rpc::WorkerAddress addr(reply.worker_address().ip_address(),
                                     reply.worker_address().port());
             AddWorkerLeaseClient(addr, std::move(lease_client));
-            OnWorkerIdle(addr, queue_key, /*error=*/false);
+            OnWorkerIdle(addr, scheduling_key, /*error=*/false);
           } else {
-            RequestNewWorkerIfNeeded(queue_key, &reply.retry_at_raylet_address());
+            // The raylet redirected us to a different raylet to retry at.
+            RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
           }
         } else {
           RAY_LOG(DEBUG) << "Retrying lease request " << task_id;
           if (lease_client != local_lease_client_) {
-            // A remote request failed. Retry the worker lease request locally
-            // if it's still in the queue.
+            // A lease request to a remote raylet failed. Retry locally if the lease is
+            // still needed.
             // TODO(swang): Fail after some number of retries?
             RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
                            << status.ToString();
-            RequestNewWorkerIfNeeded(queue_key);
+            RequestNewWorkerIfNeeded(scheduling_key);
           } else {
+            // A local request failed. This shouldn't happen if the raylet is still alive
+            // and we don't currently handle raylet failures, so treat it as a fatal
+            // error.
             RAY_LOG(FATAL) << "Lost connection with local raylet. Error: "
                            << status.ToString();
           }
         }
       }));
-  pending_lease_requests_.insert(queue_key);
+  pending_lease_requests_.insert(scheduling_key);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &addr,
                                                    rpc::CoreWorkerClientInterface &client,
-                                                   const TaskQueueKey &queue_key,
+                                                   const SchedulingKey &scheduling_key,
                                                    TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
   auto num_returns = task_spec.NumReturns();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
   auto status = client.PushNormalTask(
-      std::move(request), [this, task_id, queue_key, num_returns, addr](
+      std::move(request), [this, task_id, scheduling_key, num_returns, addr](
                               Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mu_);
-          OnWorkerIdle(addr, queue_key, /*error=*/!status.ok());
+          OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok());
         }
         if (!status.ok()) {
           TreatTaskAsFailed(task_id, num_returns, rpc::ErrorType::WORKER_DIED,

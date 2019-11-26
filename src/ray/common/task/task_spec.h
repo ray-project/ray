@@ -19,7 +19,7 @@ namespace ray {
 
 typedef std::vector<std::string> FunctionDescriptor;
 typedef std::pair<ResourceSet, FunctionDescriptor> SchedulingClassDescriptor;
-typedef uint32_t SchedulingClass;
+typedef int SchedulingClass;
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
 /// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
@@ -35,7 +35,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \param message The protobuf message.
   explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
     ComputeResources();
-    ComputeDependencies();
   }
 
   /// Construct from a protobuf message shared_ptr.
@@ -44,7 +43,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
       : MessageWrapper(message) {
     ComputeResources();
-    ComputeDependencies();
   }
 
   /// Construct from protobuf-serialized binary.
@@ -53,7 +51,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   explicit TaskSpecification(const std::string &serialized_binary)
       : MessageWrapper(serialized_binary) {
     ComputeResources();
-    ComputeDependencies();
   }
 
   // TODO(swang): Finalize and document these methods.
@@ -97,11 +94,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \return The scheduling class used for fair task queueing.
   const SchedulingClass GetSchedulingClass() const;
-
-  /// Get the task's object dependencies.
-  ///
-  /// \return The object dependencies.
-  const std::vector<ObjectID> &GetDependencies() const;
 
   /// Return the resources that are to be acquired during the execution of this
   /// task.
@@ -171,8 +163,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
  private:
-  void ComputeDependencies();
-
   void ComputeResources();
 
   /// Field storing required resources. Initalized in constructor.
@@ -183,8 +173,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
-  /// A cached copy of the task's object dependencies.
-  std::vector<ObjectID> dependencies_;
 
   /// Keep global static id mappings for SchedulingClass for performance.
   static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_;
