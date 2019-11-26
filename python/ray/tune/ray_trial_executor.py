@@ -26,7 +26,7 @@ RESOURCE_REFRESH_PERIOD = 0.5  # Refresh resources every 500 ms
 BOTTLENECK_WARN_PERIOD_S = 60
 NONTRIVIAL_WAIT_TIME_THRESHOLD_S = 1e-3
 DEFAULT_GET_TIMEOUT = 30.0  # seconds
-TRIAL_RECOVERY_ATTEMPTS = 3
+TRIAL_START_ATTEMPTS = 3
 
 
 class _LocalWrapper(object):
@@ -143,13 +143,10 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
-
-        checkpoint = checkpoint or trial.checkpoint
-        attempt_restore = checkpoint.value is not None
         trial.runner = runner or self._setup_remote_runner(
-            trial, reuse_allowed=attempt_restore)
-        if attempt_restore:
-            self.restore(trial, checkpoint)
+            trial,
+            reuse_allowed=checkpoint is not None or trial.has_checkpoint())
+        self.restore(trial, checkpoint)
 
         previous_run = self._find_item(self._paused, trial)
         if prior_status == Trial.PAUSED and previous_run:
@@ -209,14 +206,13 @@ class RayTrialExecutor(TrialExecutor):
         self._commit_resources(trial.resources)
         remote_runner = None
         attempts = 0
-        while attempts < TRIAL_RECOVERY_ATTEMPTS:
+        while attempts < TRIAL_START_ATTEMPTS:
             attempts += 1
             if attempts > 1:
                 logger.warning("Trial %s: Start attempt #%s...", trial,
                                attempts)
             try:
                 self._start_trial(trial, checkpoint, remote_runner)
-                logger.debug("Trial %s: Started successfully!")
                 break
             except AbortTrialExecution:
                 logger.exception("Trial %s: Error starting runner, aborting!",
@@ -229,8 +225,11 @@ class RayTrialExecutor(TrialExecutor):
                 logger.warning(
                     "Trial %s: Runner task timed out. This could be due to "
                     "slow worker startup.", trial)
-                # Do not stop trial, reuse the existing runner.
+                # Reuse the existing runner on retries.
                 remote_runner = trial.runner
+                if attempts == TRIAL_START_ATTEMPTS:
+                    error_msg = traceback.format_exc()
+                    self._stop_trial(trial, error=True, error_msg=error_msg)
             except Exception:
                 logger.exception("Trial %s: Error starting runner.", trial)
                 time.sleep(2)
@@ -574,6 +573,10 @@ class RayTrialExecutor(TrialExecutor):
         This will also sync the trial results to a new location
         if restoring on a different node.
         """
+        if not checkpoint or checkpoint.value is None:
+            checkpoint = trial.checkpoint
+        if checkpoint.value is None:
+            return True
         if trial.runner is None:
             raise RuntimeError(
                 "Trial {}: Unable to restore - no runner found.".format(trial))
