@@ -33,6 +33,10 @@ def wait_for_sync():
         syncer.wait()
 
 
+def no_op(source, target):
+    return
+
+
 class SyncClient(object):
     def sync_up(self, source, target):
         """Sync up from source to target.
@@ -79,6 +83,9 @@ class FunctionBasedClient(SyncClient):
     def sync_down(self, source, target):
         self.sync_down_func(source, target)
         return True
+
+
+NOOP = FunctionBasedClient(no_op, no_op)
 
 
 class CommandBasedClient(SyncClient):
@@ -151,9 +158,6 @@ class CommandBasedClient(SyncClient):
             raise ValueError("Sync template missing '{source}'.")
         if "{target}" not in sync_string:
             raise ValueError("Sync template missing '{target}'.")
-
-
-NOOP = FunctionBasedClient(lambda s, t: None, lambda s, t: None)
 
 
 class Syncer(object):
@@ -286,8 +290,8 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
     return _syncers[key]
 
 
-def get_log_syncer(local_dir, remote_dir=None, sync_function=None):
-    """Returns a log Syncer.
+def get_syncer(local_dir, remote_dir=None, sync_function=None):
+    """Returns a Syncer between two directories.
 
     Args:
         local_dir (str): Source directory for syncing.

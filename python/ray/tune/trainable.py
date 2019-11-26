@@ -82,6 +82,7 @@ class Trainable(object):
                 prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
             self._result_logger = UnifiedLogger(
                 self.config, self._logdir, loggers=None)
+        self._checkpoint_dir = None
 
         self._iteration = 0
         self._time_total = 0.0
@@ -104,6 +105,11 @@ class Trainable(object):
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
+    def init_checkpoint_dir(self, checkpoint_dir):
+        self._checkpoint_dir = checkpoint_dir
+        if not os.path.exists(self._checkpoint_dir):
+            os.makedirs(self._checkpoint_dir)
+
     @classmethod
     def default_resource_request(cls, config):
         """Returns the resource requirement for the given configuration.
@@ -119,7 +125,6 @@ class Trainable(object):
             >>>         extra_cpu=config["workers"],
             >>>         extra_gpu=int(config["use_gpu"]) * config["workers"])
         """
-
         return None
 
     @classmethod
@@ -251,7 +256,7 @@ class Trainable(object):
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-        checkpoint_dir = os.path.join(checkpoint_dir or self.logdir,
+        checkpoint_dir = os.path.join(checkpoint_dir or self.checkpoint_dir,
                                       "checkpoint_{}".format(self._iteration))
 
         if not os.path.exists(checkpoint_dir):
@@ -294,7 +299,7 @@ class Trainable(object):
         Returns:
             Object holding checkpoint data.
         """
-        tmpdir = tempfile.mkdtemp("save_to_object", dir=self.logdir)
+        tmpdir = tempfile.mkdtemp("save_to_object", dir=self.checkpoint_dir)
         checkpoint_path = self.save(tmpdir)
         # Save all files in subtree.
         data = {}
@@ -388,7 +393,7 @@ class Trainable(object):
         Returns:
             A dict that maps ExportFormats to successfully exported models.
         """
-        export_dir = export_dir or self.logdir
+        export_dir = export_dir or self.checkpoint_dir
         return self._export_model(export_formats, export_dir)
 
     def reset_config(self, new_config):
@@ -407,6 +412,15 @@ class Trainable(object):
         """
         return False
 
+    @property
+    def checkpoint_dir(self):
+        """Directory of the checkpoints for this Trainable.
+
+        Tune will automatically sync this folder with the driver if execution
+        is distributed.
+        """
+        return self._checkpoint_dir
+
     def stop(self):
         """Releases all resources used by this trainable."""
         self._result_logger.flush()
@@ -415,13 +429,12 @@ class Trainable(object):
 
     @property
     def logdir(self):
-        """Directory of the results and checkpoints for this Trainable.
+        """Directory of the results for this Trainable.
 
         Tune will automatically sync this folder with the driver if execution
         is distributed.
 
         Note that the current working directory will also be changed to this.
-
         """
         return self._logdir
 
@@ -512,16 +525,16 @@ class Trainable(object):
             class Example(Trainable):
                 def _save(self, checkpoint_path):
                     print(checkpoint_path)
-                    return os.path.join(checkpoint_path, "my/check/point")
+                    return os.path.join(checkpoint_path, "my/checkpoint")
 
                 def _restore(self, checkpoint):
                     print(checkpoint)
 
             >>> trainer = Example()
             >>> obj = trainer.save_to_object()  # This is used when PAUSED.
-            <logdir>/tmpc8k_c_6hsave_to_object/checkpoint_0/my/check/point
+            <checkpoint_dir>/tmpc8kchsave_to_object/checkpoint_0/my/checkpoint
             >>> trainer.restore_from_object(obj)  # Note the different prefix.
-            <logdir>/tmpb87b5axfrestore_from_object/checkpoint_0/my/check/point
+            <checkpoint_dir>/tmpb8axfrestore_from_object/checkpoint_0/my/checkpoint
 
 
         Args:

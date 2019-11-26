@@ -18,7 +18,7 @@ _log_sync_warned = False
 
 
 def log_sync_template(options=""):
-    """Syncs the local_dir between driver and worker if possible.
+    """Template enabling syncs between driver and worker when possible.
 
     Requires ray cluster to be started with the autoscaler. Also requires
     rsync to be installed.
@@ -27,11 +27,12 @@ def log_sync_template(options=""):
         options (str): Addtional rsync options.
 
     Returns:
-        Sync template with source and target parameters.
+        Sync template with source and target parameters. None if rsync
+        unavailable.
     """
     if not distutils.spawn.find_executable("rsync"):
         logger.error("Log sync requires rsync to be installed.")
-        return
+        return None
     global _log_sync_warned
     ssh_key = get_ssh_key()
     if ssh_key is None:
@@ -39,7 +40,7 @@ def log_sync_template(options=""):
             logger.debug("Log sync requires cluster to be setup with "
                          "`ray up`.")
             _log_sync_warned = True
-        return
+        return None
 
     rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
     rsh = rsh.format(ssh_key=quote(ssh_key))

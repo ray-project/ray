@@ -14,7 +14,7 @@ import numpy as np
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.util import flatten_dict
-from ray.tune.syncer import get_log_syncer
+from ray.tune.syncer import get_syncer
 from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
                              TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
                              EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
@@ -411,7 +411,7 @@ class UnifiedLogger(Logger):
             except Exception as exc:
                 logger.warning("Could not instantiate %s: %s.", cls.__name__,
                                str(exc))
-        self._log_syncer = get_log_syncer(
+        self._log_syncer = get_syncer(
             self.logdir,
             remote_dir=self.logdir,
             sync_function=self._sync_function)

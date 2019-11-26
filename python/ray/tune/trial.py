@@ -14,6 +14,7 @@ from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.logger import pretty_print, UnifiedLogger
+from ray.tune.syncer import get_syncer, no_op
 from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -46,6 +47,46 @@ class Location(object):
             return "pid={}".format(self.pid)
         else:
             return "{}:{}".format(self.hostname, self.pid)
+
+
+class TrialDirectory(object):
+    """Describes the Trial's directory structure.
+
+    trial_dir/
+      logdir/
+      trainable_logdir/
+      checkpoints/
+    """
+
+    def __init__(self, identifier, local_dir):
+        local_dir = os.path.expanduser(local_dir)
+        os.makedirs(local_dir, exist_ok=True)
+        self.root_dir = tempfile.mkdtemp(
+            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            dir=local_dir)
+        self.mkdir()
+
+    def mkdir(self):
+        if not os.path.exists(self.root_dir):
+            os.makedirs(self.root_dir)
+        if not os.path.exists(self.logdir):
+            os.makedirs(self.logdir)
+        if not os.path.exists(self.remote_logdir):
+            os.makedirs(self.remote_logdir)
+        if not os.path.exists(self.checkpoint_dir):
+            os.makedirs(self.checkpoint_dir)
+
+    @property
+    def logdir(self):
+        return os.path.join(self.root_dir, "driver_logs")
+
+    @property
+    def remote_logdir(self):
+        return os.path.join(self.root_dir, "remote_logs")
+
+    @property
+    def checkpoint_dir(self):
+        return os.path.join(self.root_dir, "checkpoints")
 
 
 class ExportFormat(object):
@@ -162,14 +203,17 @@ class Trial(object):
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
-        self.logdir = None
+        self.trial_dir = None
         self.runner = None
-        self.result_logger = None
         self.last_debug = 0
         self.error_file = None
         self.error_msg = None
         self.num_failures = 0
         self.custom_trial_name = None
+
+        self.result_logger = None
+        self.checkpoint_syncer = None
+        self.remote_logdir_syncer = None
 
         # AutoML fields
         self.results = None
@@ -201,30 +245,27 @@ class Trial(object):
     def generate_id(cls):
         return str(uuid.uuid1().hex)[:8]
 
-    @classmethod
-    def create_logdir(cls, identifier, local_dir):
-        local_dir = os.path.expanduser(local_dir)
-        if not os.path.exists(local_dir):
-            os.makedirs(local_dir)
-        return tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
-            dir=local_dir)
+    @property
+    def logdir(self):
+        return self.trial_dir.logdir
 
-    def init_logger(self):
-        """Init logger."""
-
+    def init_syncers(self):
+        """Initialize the trial directory and syncing primitives."""
         if not self.result_logger:
-            if not self.logdir:
-                self.logdir = Trial.create_logdir(str(self), self.local_dir)
-            elif not os.path.exists(self.logdir):
-                os.makedirs(self.logdir)
-
+            if not self.trial_dir:
+                self.trial_dir = TrialDirectory(str(self), self.local_dir)
+            else:
+                self.trial_dir.mkdir()
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
                 trial=self,
                 loggers=self.loggers,
-                sync_function=self.sync_to_driver_fn)
+                sync_function=no_op)
+            self.checkpoint_syncer = get_syncer(
+                self.trial_dir.checkpoint_dir, self.trial_dir.checkpoint_dir)
+            self.remote_logdir_syncer = get_syncer(
+                self.trial_dir.remote_logdir, self.trial_dir.remote_logdir)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -310,13 +351,10 @@ class Trial(object):
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if self.sync_on_checkpoint and checkpoint.storage == Checkpoint.DISK:
-            # Wait for any other syncs to finish. We need to sync again after
-            # this to handle checkpoints taken mid-sync.
-            self.result_logger.wait()
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
-            if self.result_logger.sync_down():
-                self.result_logger.wait()
+            if self.checkpoint_syncer.sync_down():
+                self.checkpoint_syncer.wait()
             else:
                 logger.error(
                     "Trial %s: Checkpoint sync skipped. "
@@ -346,6 +384,7 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+        self.remote_logdir_syncer.sync_down()
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
@@ -425,4 +464,4 @@ class Trial(object):
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
         if logger_started:
-            self.init_logger()
+            self.init_syncers()
