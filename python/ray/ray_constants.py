@@ -51,6 +51,10 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7
 
+# If remote functions with the same source are imported this many times, then
+# print a warning.
+DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
+
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
