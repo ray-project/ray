@@ -7,8 +7,6 @@ using namespace std::placeholders;
 
 namespace ray {
 
-const std::string c_get_pid_string("GET_MOCK_WORKER_PID");
-
 /// A mock C++ worker used by core_worker_test.cc to verify the task submission/execution
 /// interfaces in both single node and cross-nodes scenarios. As the raylet client can
 /// only
@@ -37,16 +35,19 @@ class MockWorker {
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
-    RAY_CHECK(return_ids.size() >= 0);
+    const std::vector<std::string> &function_descriptor = ray_function.GetFunctionDescriptor();
+    RAY_CHECK(return_ids.size() >= 0 && 1 == function_descriptor.size());
 
-    // Get mock worker pid
-    if (args.size() == 1 && args[0]->GetData()->Size() == c_get_pid_string.size() &&
-        memcmp(args[0]->GetData()->Data(), c_get_pid_string.data(),
-               c_get_pid_string.size()) == 0) {
+    if ("actor creation task" == function_descriptor[0]) {
+      return Status::OK();
+    } else if ("GetWorkerPid" == function_descriptor[0]) {
+      // Get mock worker pid
       return GetWorkerPid(results);
-    } else {
+    } else if ("MergeInputArgsAsOutput" == function_descriptor[0]) {
       // Merge input args and write the merged content to each of return ids
       return MergeInputArgsAsOutput(args, return_ids, results);
+    } else {
+      return Status::TypeError("Unknown function descriptor: " + function_descriptor[0]);
     }
   }
 

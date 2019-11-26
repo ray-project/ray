@@ -27,8 +27,6 @@
 
 namespace {
 
-const std::string c_get_pid_string("GET_MOCK_WORKER_PID");
-
 std::string store_executable;
 std::string raylet_executable;
 int node_manager_port = 0;
@@ -215,17 +213,10 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
 int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
                                 std::unordered_map<std::string, double> &resources,
                                 bool is_direct_call) {
-  auto get_pid_ptr =
-      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(c_get_pid_string.data()));
-  auto buffer1 =
-      std::make_shared<LocalMemoryBuffer>(get_pid_ptr, c_get_pid_string.size(), true);
-
   std::vector<TaskArg> args;
-  args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
-
   TaskOptions options{1, is_direct_call, resources};
   std::vector<ObjectID> return_ids;
-  RayFunction func{Language::PYTHON, {}};
+  RayFunction func{Language::PYTHON, {"GetWorkerPid"}};
 
   RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -262,7 +253,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
       TaskOptions options;
       options.is_direct_call = true;
 
@@ -309,7 +300,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -349,7 +340,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {});
+    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_TRUE(status.ok());
 
@@ -414,7 +405,7 @@ void CoreWorkerTest::TestActorReconstruction(
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -459,7 +450,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -601,7 +592,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {});
+    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
