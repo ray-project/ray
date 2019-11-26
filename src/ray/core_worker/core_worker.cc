@@ -298,7 +298,7 @@ bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
     // assertion.
     RAY_LOG(ERROR) << "Tried to serialize object ID " << object_id
                    << ", but we don't know its owner. Calling ray.get on this object may "
-                      "hang if the object is evicted.";
+                      "throw an error if the object takes too long to create.";
   }
   return has_owner;
 }
