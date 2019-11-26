@@ -117,17 +117,6 @@ const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {
   return *required_placement_resources_;
 }
 
-const TaskRequest TaskSpecification::GetTaskResourceRequest() const {
-  TaskRequest request;
-  ResourceRequest cpu = {1, false};
-  ResourceRequest none = {0, false};
-  request.predefined_resources.push_back(cpu);
-  request.predefined_resources.push_back(none);
-  request.predefined_resources.push_back(none);
-  request.predefined_resources.push_back(none);
-  return request;
-}
-
 bool TaskSpecification::IsDriverTask() const {
   // Driver tasks are empty tasks that have no function ID set.
   return FunctionDescriptor().empty();

@@ -4,6 +4,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/util/logging.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+
 
 #include <iostream>
 #include <vector>
@@ -63,6 +65,9 @@ class ClusterResourceScheduler {
   absl::flat_hash_map<int64_t, NodeResources> nodes_;
   /// ID of local node.
   int64_t local_node_id_;
+  /// Keep the mapping between node and resource IDs in string representation
+  /// to integer representation. Used for improving map performance.
+  StringIdMap string_to_int_map_;
 
   /// Set predefined resources.
   ///
@@ -87,12 +92,16 @@ class ClusterResourceScheduler {
   /// \param node_resources: The total and the available resources associated
   /// with the local node.
   ClusterResourceScheduler(int64_t local_node_id, const NodeResources &node_resources);
+  ClusterResourceScheduler(const std::string& local_node_id,
+    const std::unordered_map<std::string, double>& local_node_resources);
 
   /// Add a new node or overwrite the resources of an existing node.
   ///
   /// \param node_id: Node ID.
   /// \param node_resources: Up to date total and available resources of the node.
   void AddOrUpdateNode(int64_t node_id, const NodeResources &node_resources);
+  void AddOrUpdateNode(const std::string& node_id,
+      const std::unordered_map<std::string, double>& node_resources_map);
 
   /// Remove node from the cluster data structure. This happens
   /// when a node fails or it is removed from the cluster.
@@ -141,6 +150,12 @@ class ClusterResourceScheduler {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_req, int64_t *violations);
+  std::string GetBestSchedulableNode(
+      const std::unordered_map<std::string, double>& task_resources,
+      int64_t *violations);
+  void ResourceMapToTaskRequest(
+      const std::unordered_map<std::string, double>& resource_map,
+      TaskRequest *task_request);
 
   /// Update the available resources of a node when a task request is
   /// scheduled on the given node.
@@ -151,7 +166,13 @@ class ClusterResourceScheduler {
   /// \return true, if task_req can be indeed scheduled on the node,
   /// and false otherwise.
   bool SubtractNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
+  bool SubtractNodeAvailableResources(
+      const std::string& node_id,
+      const std::unordered_map<std::string, double>& task_resources);
   bool AddNodeAvailableResources(int64_t node_id, const TaskRequest &task_req);
+  bool AddNodeAvailableResources(
+      const std::string& node_id,
+      const std::unordered_map<std::string, double>& task_resources);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.

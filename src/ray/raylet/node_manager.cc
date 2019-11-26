@@ -125,19 +125,28 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  // Setup the new resource scheduler.
-  NodeResources current_node;
-  {
-    ResourceCapacity cpu = {2, 2};
-    ResourceCapacity none = {0, 0};
-    current_node.capacities.push_back(cpu);
-    current_node.capacities.push_back(none);
-    current_node.capacities.push_back(none);
-    current_node.capacities.push_back(none);  // TODO(ekl) initialize resources properly
-  }
-  new_resource_scheduler_ = std::shared_ptr<ClusterResourceScheduler>(
-      new ClusterResourceScheduler(0, current_node));
+  if (USE_NEW_SCHEDULER) {
+    SchedulingResources &local_resources = cluster_resource_map_[local_client_id];
+    // std::string local_client_id_string = client_id_.Binary();
+    new_resource_scheduler_ = std::shared_ptr<ClusterResourceScheduler>(
+        new ClusterResourceScheduler(client_id_.Binary(),
+          local_resources.GetTotalResources().GetResourceMap()));
 
+    auto &resource_pair = local_resources.GetTotalResources().GetResourceMap();
+    for (auto it = resource_pair.begin(); it != resource_pair.end(); ++it) {
+      RAY_LOG(ERROR) << "RESOURCES:1 " << it->first;
+      RAY_LOG(ERROR) << "RESOURCES:2 " << it->second;
+      if (it->first == kCPU_ResourceLabel) {
+        RAY_LOG(ERROR) << "RESOURCES:CPU " << it->first;
+      }
+      if (it->first == "memory") {
+        RAY_LOG(ERROR) << "RESOURCES:mem " << it->first;
+      }
+    }
+    RAY_LOG(ERROR) << "Local client id " << local_client_id;
+    RAY_LOG(ERROR) << "Local client id (1) " << client_id_;
+    RAY_LOG(ERROR) << "Local resources " << config.resource_config.ToString();
+  }
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
@@ -1469,11 +1478,13 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   Task task(task_message);
 
   if (USE_NEW_SCHEDULER) {
-    auto request = task.GetTaskSpecification().GetTaskResourceRequest();
+    auto request_resources = task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t violations = 0;
-    int node = new_resource_scheduler_->GetBestSchedulableNode(request, &violations);
+    std::string node_id_string =
+      new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
+
     auto work = std::make_pair(
-        [this, request, reply, send_reply_callback](std::shared_ptr<Worker> worker) {
+        [this, request_resources, reply, send_reply_callback](std::shared_ptr<Worker> worker) {
           reply->mutable_worker_address()->set_ip_address(
               initial_config_.node_manager_address);
           reply->mutable_worker_address()->set_port(worker->Port());
@@ -1482,17 +1493,18 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
           send_reply_callback(Status::OK(), nullptr, nullptr);
           RAY_CHECK(leased_workers_.find(worker->Port()) == leased_workers_.end());
           leased_workers_[worker->Port()] = worker;
-          leased_worker_resources_[worker->Port()] = request;
+          leased_worker_resources_[worker->Port()] = request_resources;
         },
         task);
 
     // Scheduled locally.
-    RAY_LOG(ERROR) << "node id was " << node;
-    if (node == -1) {
+    RAY_LOG(ERROR) << "node string id was " << node_id_string; // XXX
+    if (node_id_string == std::to_string(-1)) {
       new_pending_queue_.push_back(work);
     } else {
-      RAY_CHECK(node == 0);
-      new_resource_scheduler_->SubtractNodeAvailableResources(node, request);
+      RAY_CHECK(node_id_string == client_id_.Binary());
+      new_resource_scheduler_->SubtractNodeAvailableResources(node_id_string,
+          task.GetTaskSpecification().GetRequiredResources().GetResourceMap());
       new_runnable_queue_.push_back(work);
       DispatchDirectCallTasks();
     }
@@ -1541,7 +1553,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   if (USE_NEW_SCHEDULER) {
     auto it = leased_worker_resources_.find(worker_port);
     RAY_CHECK(it != leased_worker_resources_.end());
-    new_resource_scheduler_->AddNodeAvailableResources(0, it->second);
+    new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
     leased_worker_resources_.erase(it);
   }
 

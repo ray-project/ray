@@ -114,8 +114,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The resources that are required to place a task on a node.
   const ResourceSet &GetRequiredPlacementResources() const;
 
-  const TaskRequest GetTaskResourceRequest() const;
-
   bool IsDriverTask() const;
 
   Language GetLanguage() const;

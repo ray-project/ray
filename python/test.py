@@ -10,6 +10,6 @@ def f_simple():
     return 1
 
 
-for i in range(100):
+for i in range(10):
     print(i)
     assert ray.get(f_simple.remote()) == 1
