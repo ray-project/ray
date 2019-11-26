@@ -178,11 +178,14 @@ def ray_deps_setup():
     # OpenCensus depends on jupp0r/prometheus-cpp
     github_repository(
         name = "com_github_jupp0r_prometheus_cpp",
-        commit = "5c45ba7ddc0585d765a43d136764dd2a542bd495",
-        remote = "https://github.com/ray-project/prometheus-cpp",
-        # TODO(qwang): We should use the repository of `jupp0r` here when this PR
-        # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
-        sha256 = "c80293276166d405188b1af62cd11178fbcec0f1a8ab0dbece19d4bdc79d45e7",
+        commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
+        remote = "https://github.com/jupp0r/prometheus-cpp",
+        sha256 = "9756bd2d573e7722f97dbe6d35934e43b9a79e6a87fc5e1da79774a621cddd8e",
+        patches = [
+            # https://github.com/jupp0r/prometheus-cpp/pull/225
+            "//thirdparty/patches:prometheus-windows-zlib.patch",
+            "//thirdparty/patches:prometheus-windows-pollfd.patch",
+        ]
     )
 
     github_repository(
