@@ -93,7 +93,7 @@ class ReferenceCounter {
     Reference(const TaskID &owner_id, const rpc::Address &owner_address)
         : owned_by_us(false), owner({owner_id, owner_address}) {}
     /// The local ref count for the ObjectID in the language frontend.
-    size_t local_ref_count;
+    size_t local_ref_count = 0;
     /// The objects that this object depends on. Tracked only by the owner of
     /// the object. Dependencies are stored as shared_ptrs because the same set
     /// of dependencies can be shared among multiple entries. For example, when

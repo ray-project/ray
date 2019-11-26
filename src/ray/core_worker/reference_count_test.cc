@@ -20,19 +20,19 @@ class ReferenceCountTest : public ::testing::Test {
 TEST_F(ReferenceCountTest, TestBasic) {
   std::vector<ObjectID> out;
   ObjectID id = ObjectID::FromRandom();
-  rc->AddReference(id);
+  rc->AddLocalReference(id);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  rc->AddReference(id);
+  rc->AddLocalReference(id);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  rc->AddReference(id);
+  rc->AddLocalReference(id);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  rc->RemoveReference(id, &out);
-  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
-  ASSERT_EQ(out.size(), 0);
-  rc->RemoveReference(id, &out);
+  rc->RemoveLocalReference(id, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 0);
-  rc->RemoveReference(id, &out);
+  rc->RemoveLocalReference(id, &out);
+  ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
+  ASSERT_EQ(out.size(), 0);
+  rc->RemoveLocalReference(id, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 1);
 }
@@ -49,21 +49,21 @@ TEST_F(ReferenceCountTest, TestDependencies) {
   std::shared_ptr<std::vector<ObjectID>> deps = std::make_shared<std::vector<ObjectID>>();
   deps->push_back(id2);
   deps->push_back(id3);
-  rc->SetDependencies(id1, deps);
+  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps);
 
-  rc->AddReference(id1);
-  rc->AddReference(id1);
-  rc->AddReference(id3);
+  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id3);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
 
-  rc->RemoveReference(id1, &out);
+  rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
   ASSERT_EQ(out.size(), 0);
-  rc->RemoveReference(id1, &out);
+  rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 2);
 
-  rc->RemoveReference(id3, &out);
+  rc->RemoveLocalReference(id3, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 3);
 }
@@ -82,22 +82,22 @@ TEST_F(ReferenceCountTest, TestSharedDependencies) {
   std::shared_ptr<std::vector<ObjectID>> deps = std::make_shared<std::vector<ObjectID>>();
   deps->push_back(id3);
   deps->push_back(id4);
-  rc->SetDependencies(id1, deps);
-  rc->SetDependencies(id2, deps);
+  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps);
+  rc->AddOwnedObject(id2, TaskID::Nil(), rpc::Address(), deps);
 
-  rc->AddReference(id1);
-  rc->AddReference(id2);
-  rc->AddReference(id4);
+  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id2);
+  rc->AddLocalReference(id4);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
 
-  rc->RemoveReference(id1, &out);
+  rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
   ASSERT_EQ(out.size(), 1);
-  rc->RemoveReference(id2, &out);
+  rc->RemoveLocalReference(id2, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 3);
 
-  rc->RemoveReference(id4, &out);
+  rc->RemoveLocalReference(id4, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 4);
 }
@@ -113,30 +113,30 @@ TEST_F(ReferenceCountTest, TestRecursiveDependencies) {
   ObjectID id3 = ObjectID::FromRandom();
   ObjectID id4 = ObjectID::FromRandom();
 
-  std::shared_ptr<std::vector<ObjectID>> deps1 =
-      std::make_shared<std::vector<ObjectID>>();
-  deps1->push_back(id2);
-  rc->SetDependencies(id1, deps1);
-
   std::shared_ptr<std::vector<ObjectID>> deps2 =
       std::make_shared<std::vector<ObjectID>>();
   deps2->push_back(id3);
   deps2->push_back(id4);
-  rc->SetDependencies(id2, deps2);
+  rc->AddOwnedObject(id2, TaskID::Nil(), rpc::Address(), deps2);
 
-  rc->AddReference(id1);
-  rc->AddReference(id2);
-  rc->AddReference(id4);
+  std::shared_ptr<std::vector<ObjectID>> deps1 =
+      std::make_shared<std::vector<ObjectID>>();
+  deps1->push_back(id2);
+  rc->AddOwnedObject(id1, TaskID::Nil(), rpc::Address(), deps1);
+
+  rc->AddLocalReference(id1);
+  rc->AddLocalReference(id2);
+  rc->AddLocalReference(id4);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
 
-  rc->RemoveReference(id2, &out);
+  rc->RemoveLocalReference(id2, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
   ASSERT_EQ(out.size(), 0);
-  rc->RemoveReference(id1, &out);
+  rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 3);
 
-  rc->RemoveReference(id4, &out);
+  rc->RemoveLocalReference(id4, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 4);
 }
@@ -157,7 +157,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
-  rc->AddReference(id1);
+  rc->AddLocalReference(id1);
   RAY_CHECK_OK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;

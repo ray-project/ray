@@ -63,7 +63,7 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id,
         RemoveReferenceRecursive(pending_task_object_id, deleted);
       }
     }
-    object_id_refs_.erase(object_id);
+    object_id_refs_.erase(entry);
     deleted->push_back(object_id);
   }
 }
