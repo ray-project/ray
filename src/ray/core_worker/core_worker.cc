@@ -164,6 +164,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+
   task_manager_.reset(new TaskManager(memory_store_));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
@@ -208,6 +209,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           },
           memory_store_, task_manager_,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
+  future_resolver_.reset(new FutureResolver(memory_store_, client_factory, io_service_));
 }
 
 CoreWorker::~CoreWorker() {
@@ -303,14 +305,25 @@ bool CoreWorker::SerializeObjectId(const ObjectID &object_id, TaskID *owner_id,
 
 void CoreWorker::DeserializeObjectId(const ObjectID &object_id, const TaskID &owner_id,
                                      const rpc::Address &owner_address) {
+  // Add the object's owner to the local metadata in case it gets serialized
+  // again.
   reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
 
-  // The object ID was serialized, so it was promoted to plasma. Store an
-  // IsInPlasmaError to indicate this to the caller.
-  std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-  auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-  auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-  RAY_CHECK_OK(memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+  // TODO: Set the object as in plasma immediately if owner is nil.
+  if (owner_id.IsNil()) {
+    // No owner found so we cannot find out the object's status. Store an
+    // IsInPlasmaError immediately so that the caller will try to fetch it via
+    // plasma.
+    // NOTE(swang): For objects that do not have owners, this may cause
+    // ray.gets to timeout with UnreconstructableError if the task that is
+    // supposed to create the object is too slow.
+    RAY_CHECK_OK(
+        memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  } else {
+    // We will ask the owner about the object until the object is
+    // created or we can no longer reach the owner.
+    future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
+  }
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -950,6 +963,27 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
                                                                 send_reply_callback);
   });
+}
+
+void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
+                                       rpc::GetObjectStatusReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  TaskID owner_id = TaskID::FromBinary(request.owner_id());
+  if (owner_id != GetCallerId()) {
+    // We may have owned this object in the past, but we are now executing some
+    // other task or actor.
+    reply->set_status(rpc::GetObjectStatusReply::WRONG_OWNER);
+  } else {
+    if (task_manager_->IsTaskPending(object_id.TaskId())) {
+      reply->set_status(rpc::GetObjectStatusReply::PENDING);
+    } else {
+      // TODO: We could probably just send the object value if it is small
+      // enough and we have it local.
+      reply->set_status(rpc::GetObjectStatusReply::CREATED);
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

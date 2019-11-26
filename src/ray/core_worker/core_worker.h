@@ -7,6 +7,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -25,10 +26,11 @@
 /// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
 /// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
 /// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS          \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)  \
-  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999) \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 100)
 
 namespace ray {
 
@@ -373,6 +375,11 @@ class CoreWorker {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
+  void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
+                             rpc::GetObjectStatusReply *reply,
+                             rpc::SendReplyCallback send_reply_callback);
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -527,6 +534,8 @@ class CoreWorker {
 
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
+
+  std::unique_ptr<FutureResolver> future_resolver_;
 
   ///
   /// Fields related to task submission.

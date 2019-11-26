@@ -42,6 +42,8 @@ class RayObject {
     RAY_CHECK(data_ || metadata_) << "Data and metadata cannot both be empty.";
   }
 
+  RayObject(rpc::ErrorType error_type);
+
   /// Return the data of the ray object.
   const std::shared_ptr<Buffer> &GetData() const { return data_; };
 

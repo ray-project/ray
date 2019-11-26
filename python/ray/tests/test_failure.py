@@ -873,8 +873,6 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
     ray.get(get.remote([obj]))
 
 
-@pytest.mark.skip(
-    "Uncomment once eviction errors for serialized IDs are implemented")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 2,
