@@ -2,7 +2,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
 
 namespace ray {
 
@@ -109,8 +108,11 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
-    std::shared_ptr<ReferenceCounter> counter)
-    : store_in_plasma_(store_in_plasma), ref_counter_(counter) {}
+    std::shared_ptr<ReferenceCounter> counter,
+    std::shared_ptr<RayletClient> raylet_client)
+    : store_in_plasma_(store_in_plasma),
+      ref_counter_(counter),
+      raylet_client_(raylet_client) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -147,7 +149,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetOrPromoteToPlasma(
   return nullptr;
 }
 
-Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &object) {
+Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   RAY_CHECK(object_id.IsDirectCallType());
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
   auto object_entry =
@@ -158,7 +160,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
 
     auto iter = objects_.find(object_id);
     if (iter != objects_.end()) {
-      return Status::ObjectExists("object already exists in the memory store");
+      return Status::OK();  // Object already exists in the store, which is fine.
     }
 
     auto async_callback_it = object_async_get_requests_.find(object_id);
@@ -171,7 +173,11 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
     auto promoted_it = promoted_to_plasma_.find(object_id);
     if (promoted_it != promoted_to_plasma_.end()) {
       RAY_CHECK(store_in_plasma_ != nullptr);
-      store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      if (!object.IsInPlasmaError()) {
+        // Only need to promote to plasma if it wasn't already put into plasma
+        // by the task that created the object.
+        store_in_plasma_(object, object_id.WithTransportType(TaskTransportType::RAYLET));
+      }
       promoted_to_plasma_.erase(promoted_it);
     }
 
@@ -208,7 +214,7 @@ Status CoreWorkerMemoryStore::Put(const ObjectID &object_id, const RayObject &ob
 
 Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                   int num_objects, int64_t timeout_ms,
-                                  bool remove_after_get,
+                                  const WorkerContext &ctx, bool remove_after_get,
                                   std::vector<std::shared_ptr<RayObject>> *results) {
   (*results).resize(object_ids.size(), nullptr);
 
@@ -260,8 +266,20 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     }
   }
 
+  // Only send block/unblock IPCs for non-actor tasks on the main thread.
+  // TODO(ekl) support non-lifetime resources for direct actor calls.
+  bool should_notify_raylet =
+      (raylet_client_ != nullptr && !ctx.CurrentActorIsDirectCall() &&
+       ctx.CurrentThreadIsMain());
+
   // Wait for remaining objects (or timeout).
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+  }
   bool done = get_request->Wait(timeout_ms);
+  if (should_notify_raylet) {
+    RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+  }
 
   {
     absl::MutexLock lock(&mu_);
@@ -298,6 +316,68 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
   }
 }
 
+Status CoreWorkerMemoryStore::Get(
+    const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const WorkerContext &ctx,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    bool *got_exception) {
+  const std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<std::shared_ptr<RayObject>> result_objects;
+  RAY_RETURN_NOT_OK(
+      Get(id_vector, id_vector.size(), timeout_ms, ctx, true, &result_objects));
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i] != nullptr) {
+      (*results)[id_vector[i]] = result_objects[i];
+      if (result_objects[i]->IsException() && !result_objects[i]->IsInPlasmaError()) {
+        // Can return early if an object value contains an exception.
+        // InPlasmaError does not count as an exception because then the object
+        // value should then be found in plasma.
+        *got_exception = true;
+      }
+    }
+  }
+  return Status::OK();
+}
+
+Status CoreWorkerMemoryStore::Wait(const absl::flat_hash_set<ObjectID> &object_ids,
+                                   int num_objects, int64_t timeout_ms,
+                                   const WorkerContext &ctx,
+                                   absl::flat_hash_set<ObjectID> *ready) {
+  std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
+  std::vector<std::shared_ptr<RayObject>> result_objects;
+  RAY_CHECK(object_ids.size() == id_vector.size());
+  auto status = Get(id_vector, num_objects, timeout_ms, ctx, false, &result_objects);
+  // Ignore TimedOut statuses since we return ready objects explicitly.
+  if (!status.IsTimedOut()) {
+    RAY_RETURN_NOT_OK(status);
+  }
+
+  for (size_t i = 0; i < id_vector.size(); i++) {
+    if (result_objects[i] != nullptr) {
+      ready->insert(id_vector[i]);
+    }
+  }
+
+  return Status::OK();
+}
+
+void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_ids,
+                                   absl::flat_hash_set<ObjectID> *plasma_ids_to_delete) {
+  absl::MutexLock lock(&mu_);
+  for (const auto &object_id : object_ids) {
+    auto it = objects_.find(object_id);
+    if (it != objects_.end()) {
+      if (it->second->IsInPlasmaError()) {
+        plasma_ids_to_delete->insert(
+            object_id.WithTransportType(TaskTransportType::RAYLET));
+      } else {
+        objects_.erase(it);
+      }
+    }
+  }
+}
+
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
@@ -308,6 +388,9 @@ void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
 bool CoreWorkerMemoryStore::Contains(const ObjectID &object_id) {
   absl::MutexLock lock(&mu_);
   auto it = objects_.find(object_id);
+  if (it != objects_.end() && it->second->IsInPlasmaError()) {
+    return false;
+  }
   return it != objects_.end();
 }
 

@@ -186,17 +186,24 @@ ObjectID TaskSpecification::ActorDummyObject() const {
   return ReturnId(NumReturns() - 1, TaskTransportType::RAYLET);
 }
 
-bool TaskSpecification::IsDirectCall() const {
+bool TaskSpecification::IsDirectCall() const { return message_->is_direct_call(); }
+
+bool TaskSpecification::IsDirectActorCreationCall() const {
   if (IsActorCreationTask()) {
     return message_->actor_creation_task_spec().is_direct_call();
   } else {
-    return message_->is_direct_call();
+    return false;
   }
 }
 
 int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();
+}
+
+bool TaskSpecification::IsAsyncioActor() const {
+  RAY_CHECK(IsActorCreationTask());
+  return message_->actor_creation_task_spec().is_asyncio();
 }
 
 bool TaskSpecification::IsDetachedActor() const {
@@ -229,6 +236,8 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
            << ", max_reconstructions=" << MaxActorReconstructions()
            << ", is_direct_call=" << IsDirectCall()
+           << ", max_concurrency=" << MaxActorConcurrency()
+           << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
   } else if (IsActorTask()) {
     // Print actor task spec.

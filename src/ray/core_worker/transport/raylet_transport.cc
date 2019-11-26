@@ -17,7 +17,8 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     rpc::SendReplyCallback send_reply_callback) {
   const Task task(request.task());
   const auto &task_spec = task.GetTaskSpecification();
-  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId() << " is create "
+                 << task_spec.IsActorCreationTask();
 
   // Set the resource IDs for this task.
   // TODO: convert the resource map to protobuf and change this.

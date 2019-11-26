@@ -17,7 +17,7 @@ from ray.autoscaler.autoscaler import StandardAutoscaler, LoadMetrics, \
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED
 from ray.autoscaler.node_provider import NODE_PROVIDERS, NodeProvider
-from ray.tests.utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException
 import pytest
 
 
@@ -1084,4 +1084,5 @@ class AutoscalingTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

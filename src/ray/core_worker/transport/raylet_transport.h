@@ -31,7 +31,8 @@ class CoreWorkerRayletTaskReceiver {
                         rpc::SendReplyCallback send_reply_callback);
 
  private:
-  /// Raylet client.
+  /// Reference to the core worker's raylet client. This is a pointer ref so that it
+  /// can be initialized by core worker after this class is constructed.
   std::shared_ptr<RayletClient> &raylet_client_;
   /// The callback function to process a task.
   TaskHandler task_handler_;

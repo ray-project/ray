@@ -8,7 +8,7 @@ import random
 import ray
 
 
-# TODO: callbacks not working
+# TODO: implement callbacks
 class AsyncResult(object):
     def __init__(self, object_ids, callback=None, result_callback=None):
         self._object_ids = object_ids
@@ -67,10 +67,12 @@ class OrderedIMapIterator(IMapIterator):
     def next(self, timeout=None):
         if self._index == len(self._object_ids):
             raise StopIteration
+
         try:
             result = ray.get(self._object_ids[self._index], timeout=timeout)
         except ray.exceptions.RayTimeoutError:
             raise TimeoutError
+
         self._index += 1
         return result
 
@@ -79,6 +81,7 @@ class UnorderedIMapIterator(IMapIterator):
     def next(self, timeout=None):
         if self._index == len(self._object_ids):
             raise StopIteration
+
         ready_ids, _ = ray.wait(
             self._object_ids[self._index:], timeout=timeout)
         if len(ready_ids == 0):
@@ -91,9 +94,7 @@ class UnorderedIMapIterator(IMapIterator):
 @ray.remote
 class PoolActor(object):
     def __init__(self, initializer=None, *initargs):
-        print("init actor")
         if initializer:
-            print("\tinitializer")
             initializer(*initargs)
 
     def run(self, func, *args, **kwargs):
@@ -103,7 +104,6 @@ class PoolActor(object):
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
 class Pool(object):
     # TODO: what about context argument?
-    # TODO: maxtasksperchild doesn't quite map correctly
     def __init__(self,
                  processes=None,
                  initializer=None,
@@ -139,7 +139,8 @@ class Pool(object):
             raise ValueError("Pool not running")
 
     def _new_actor_entry(self):
-        return (PoolActor.remote(self._initializer, *self._initargs), 0)
+        return (PoolActor._remote(
+            self._initializer, *self._initargs, is_direct_call=True), 0)
 
     def _run(self, actor_index, func, args=None, kwargs=None):
         if not args:
@@ -162,7 +163,6 @@ class Pool(object):
     def apply(self, func, args=None, kwargs=None):
         return self.apply_async(func, args, kwargs).get()
 
-    # TODO: do callbacks in background thread?
     def apply_async(self,
                     func,
                     args=None,
@@ -222,21 +222,19 @@ class Pool(object):
                 self._run(i % len(self._actor_pool), func, args=args))
         return AsyncResult(object_ids, callback, error_callback)
 
-    # TODO: this shouldn't actually submit everything at once for memory
-    # considerations. should just submit as we get results in iterator?
-    # TODO
+    # TODO: shouldn't actually submit everything at once for memory
+    # considerations.
     def imap(self, func, iterable, chunksize=None):
         self._check_running()
         remote_func = self._decorator(func)
         object_ids = [remote_func.remote(arg) for arg in iterable]
-        return IMapIterator(object_ids, in_order=False)
+        return OrderedIMapIterator(object_ids)
 
-    # TODO
     def imap_unordered(self, func, iterable, chunksize=None):
         self._check_running()
         remote_func = self._decorator(func)
         object_ids = [remote_func.remote(arg) for arg in iterable]
-        return IMapIterator(object_ids, in_order=False)
+        return UnorderedIMapIterator(object_ids)
 
     def close(self):
         for actor, _ in self._actor_pool:
