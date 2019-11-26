@@ -26,10 +26,20 @@ class FutureResolver {
         io_service_(io_service),
         wait_object_eviction_milliseconds_(wait_object_eviction_milliseconds) {}
 
+  /// Resolve the value for a future. This will periodically contact the given
+  /// owner until the owner dies or the owner has finished creating the object.
+  /// In either case, this will put an OBJECT_IN_PLASMA error as the future's
+  /// value.
+  ///
+  /// \param[in] object_id The ID of the future to resolve.
+  /// \param[in] owner_id The ID of the task or actor that owns the future.
+  /// \param[in] owner_address The address of the task or actor that owns the
+  /// future.
   void ResolveFutureAsync(const ObjectID &object_id, const TaskID &owner_id,
                           const rpc::Address &owner_address);
 
  private:
+  // Attempt to contact the owner to ask about the future's current status.
   void AttemptFutureResolution(const ObjectID &object_id, const TaskID &owner_id,
                                std::shared_ptr<boost::asio::deadline_timer> timer)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
