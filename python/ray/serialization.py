@@ -171,12 +171,12 @@ class SerializationContext(object):
                     obj, owner_id, owner_address = (
                         worker.core_worker.serialize_and_promote_object_id(obj)
                     )
-                obj = id_serializer(obj)
-                owner_id = id_serializer(owner_id) if owner_id else owner_id
-                return (obj, owner_id, owner_address)
+                obj = obj.__reduce__()
+                owner_id = owner_id.__reduce__() if owner_id else owner_id
+                return pickle.dumps((obj, owner_id, owner_address))
 
             def object_id_deserializer(serialized_obj):
-                obj_id, owner_id, owner_address = serialized_obj
+                obj_id, owner_id, owner_address = pickle.loads(serialized_obj)
                 # Must deserialize the object in the core worker before we
                 # create the ObjectID to ensure that the reference is added
                 # before we increment its count to 1.
@@ -184,8 +184,8 @@ class SerializationContext(object):
                     worker = ray.worker.get_global_worker()
                     worker.check_connected()
                     worker.core_worker.deserialize_and_register_object_id(
-                        *obj_id[1], *owner_id[1], owner_address)
-                obj_id = id_deserializer(obj_id)
+                        obj_id[1][0], owner_id[1][0], owner_address)
+                obj_id = obj_id[0](obj_id[1][0])
                 return obj_id
 
             for id_type in ray._raylet._ID_TYPES:
@@ -246,7 +246,7 @@ class SerializationContext(object):
                     worker = ray.worker.get_global_worker()
                     worker.check_connected()
                     worker.core_worker.deserialize_and_register_object_id(
-                        *obj_id[1], *owner_id[1], owner_address)
+                        obj_id[1][0], owner_id[1][0], owner_address)
                 obj_id = id_deserializer(obj_id)
                 return obj_id
 
