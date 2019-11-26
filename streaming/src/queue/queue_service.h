@@ -33,7 +33,6 @@ class QueueService {
   void DispatchMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   std::shared_ptr<LocalMemoryBuffer> DispatchMessageSync(std::shared_ptr<LocalMemoryBuffer> buffer);
 
-  void AddOutTransport(const ObjectID &actor_id, std::shared_ptr<Transport> transport);
   std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
 
   virtual void DispatchMessageInternal(

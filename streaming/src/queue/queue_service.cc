@@ -70,11 +70,6 @@ std::shared_ptr<LocalMemoryBuffer> QueueService::DispatchMessageSync(
   return result;
 }
 
-void QueueService::AddOutTransport(const ObjectID &queue_id,
-                                   std::shared_ptr<Transport> transport) {
-  out_transports_.emplace(queue_id, transport);
-}
-
 std::shared_ptr<Transport> QueueService::GetOutTransport(const ObjectID &queue_id) {
   auto it = out_transports_.find(queue_id);
   if (it == out_transports_.end()) return nullptr;

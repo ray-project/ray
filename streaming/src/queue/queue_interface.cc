@@ -19,10 +19,6 @@ void StreamingQueueWriter::CreateQueue(const ObjectID &queue_id, int64_t max_siz
     return;
   }
 
-  // upstream_service_->AddOutTransport(
-  //     queue_id, std::make_shared<ray::streaming::Transport>(
-  //                   core_worker_, peer_actor_id));
-
   upstream_service_->AddPeerActor(queue_id, peer_actor_id);
   auto queue = upstream_service_->CreateUpstreamQueue(queue_id, actor_id_, peer_actor_id, max_size);
   STREAMING_CHECK(queue != nullptr);
@@ -93,9 +89,6 @@ bool StreamingQueueReader::GetQueue(const ObjectID &queue_id,
     return true;
   }
 
-  // downstream_service_->AddOutTransport(
-  //     queue_id, std::make_shared<ray::streaming::Transport>(
-  //                   core_worker_, peer_actor_id));
   downstream_service_->AddPeerActor(queue_id, peer_actor_id);
 
   STREAMING_LOG(INFO) << "Create ReaderQueue " << queue_id
