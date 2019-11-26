@@ -153,15 +153,16 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   CoreWorkerMemoryStore store(nullptr, rc);
 
   // Tests putting an object with no references is ignored.
-  RAY_CHECK_OK(store.Put(id2, buffer));
+  RAY_CHECK_OK(store.Put(buffer, id2));
   ASSERT_EQ(store.Size(), 0);
 
   // Tests ref counting overrides remove after get option.
   rc->AddReference(id1);
-  RAY_CHECK_OK(store.Put(id1, buffer));
+  RAY_CHECK_OK(store.Put(buffer, id1));
   ASSERT_EQ(store.Size(), 1);
   std::vector<std::shared_ptr<RayObject>> results;
-  RAY_CHECK_OK(store.Get({id1}, /*num_objects*/ 1, /*timeout_ms*/ -1,
+  WorkerContext ctx(WorkerType::WORKER, JobID::Nil());
+  RAY_CHECK_OK(store.Get({id1}, /*num_objects*/ 1, /*timeout_ms*/ -1, ctx,
                          /*remove_after_get*/ true, &results));
   ASSERT_EQ(results.size(), 1);
   ASSERT_EQ(store.Size(), 1);

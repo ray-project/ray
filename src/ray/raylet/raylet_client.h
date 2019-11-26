@@ -75,8 +75,9 @@ class WorkerLeaseInterface {
 
   /// Returns a worker to the raylet.
   /// \param worker_port The local port of the worker on the raylet node.
+  /// \param disconnect_worker Whether the raylet should disconnect the worker.
   /// \return ray::Status
-  virtual ray::Status ReturnWorker(int worker_port) = 0;
+  virtual ray::Status ReturnWorker(int worker_port, bool disconnect_worker) = 0;
 
   virtual ~WorkerLeaseInterface(){};
 };
@@ -126,11 +127,24 @@ class RayletClient : public WorkerLeaseInterface {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
                                  const TaskID &current_task_id);
+
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
   ray::Status NotifyUnblocked(const TaskID &current_task_id);
+
+  /// Notify the raylet that this client is blocked. This is only used for direct task
+  /// calls. Note that ordering of this with respect to Unblock calls is important.
+  ///
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked();
+
+  /// Notify the raylet that this client is unblocked. This is only used for direct task
+  /// calls. Note that ordering of this with respect to Block calls is important.
+  ///
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskUnblocked();
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -217,7 +231,7 @@ class RayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
 
   /// Implements WorkerLeaseInterface.
-  ray::Status ReturnWorker(int worker_port) override;
+  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override;
 
   WorkerID GetWorkerID() const { return worker_id_; }
 

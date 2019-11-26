@@ -409,8 +409,8 @@ class UnifiedLogger(Logger):
             try:
                 self._loggers.append(cls(self.config, self.logdir, self.trial))
             except Exception as exc:
-                logger.warning("Could not instantiate {}: {}.".format(
-                    cls.__name__, str(exc)))
+                logger.warning("Could not instantiate %s: %s.", cls.__name__,
+                               str(exc))
         self._log_syncer = get_log_syncer(
             self.logdir,
             remote_dir=self.logdir,
@@ -429,12 +429,21 @@ class UnifiedLogger(Logger):
     def close(self):
         for _logger in self._loggers:
             _logger.close()
-        self._log_syncer.sync_down()
 
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        self._log_syncer.sync_down()
+        if not self._log_syncer.sync_down():
+            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
+
+    def sync_up(self):
+        return self._log_syncer.sync_up()
+
+    def sync_down(self):
+        return self._log_syncer.sync_down()
+
+    def wait(self):
+        self._log_syncer.wait()
 
     def sync_results_to_new_location(self, worker_ip):
         """Sends the current log directory to the remote node.
@@ -443,13 +452,19 @@ class UnifiedLogger(Logger):
         with the Ray autoscaler.
         """
         if worker_ip != self._log_syncer.worker_ip:
-            logger.info("Syncing (blocking) results to {}".format(worker_ip))
+            logger.info("Trial %s: Syncing (blocking) results to %s",
+                        self.trial, worker_ip)
             self._log_syncer.reset()
             self._log_syncer.set_worker_ip(worker_ip)
-            self._log_syncer.sync_up()
-            # TODO: change this because this is blocking. But failures
-            # are rare, so maybe this is OK?
+            if not self._log_syncer.sync_up():
+                logger.error(
+                    "Trial %s: Sync up to new location skipped. "
+                    "This should not occur.", self.trial)
             self._log_syncer.wait()
+        else:
+            logger.error(
+                "Trial %s: Sync attempted to same IP %s. This "
+                "should not occur.", self.trial, worker_ip)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

@@ -204,7 +204,7 @@ You can also set a timeout to return early from a ``get`` that's blocking for to
 
 .. code-block:: python
 
-    from ray.exceptions import RayTimeoutException
+    from ray.exceptions import RayTimeoutError
 
     @ray.remote
     def long_running_function()

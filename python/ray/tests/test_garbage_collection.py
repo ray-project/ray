@@ -10,8 +10,8 @@ import logging
 import pytest
 
 import ray
-import ray.tests.cluster_utils
-import ray.tests.utils
+import ray.cluster_utils
+import ray.test_utils
 
 logger = logging.getLogger(__name__)
 
@@ -78,3 +78,9 @@ def test_pending_task_dependency(shutdown_only):
         ray.put(np_array)
 
     ray.get(oid)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

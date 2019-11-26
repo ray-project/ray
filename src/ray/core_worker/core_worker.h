@@ -9,7 +9,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
@@ -354,6 +354,14 @@ class CoreWorker {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
+  ///
+  /// Public methods related to async actor call. This should only be used when
+  /// the actor is (1) direct actor and (2) using asyncio mode.
+  ///
+
+  /// Block current fiber until event is triggered.
+  void YieldCurrentFiber(FiberEvent &event);
+
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
   void RunIOService();
@@ -495,18 +503,18 @@ class CoreWorker {
   /// Fields related to storing and retrieving objects.
   ///
 
-  /// In-memory store for return objects. This is used for `MEMORY` store provider.
+  /// In-memory store for return objects.
   std::shared_ptr<CoreWorkerMemoryStore> memory_store_;
 
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
-  /// In-memory store interface.
-  std::shared_ptr<CoreWorkerMemoryStoreProvider> memory_store_provider_;
-
   ///
   /// Fields related to task submission.
   ///
+
+  // Tracks the currently pending tasks.
+  std::shared_ptr<TaskManager> task_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
@@ -516,6 +524,9 @@ class CoreWorker {
 
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+
+  /// Resolve local and remote dependencies for actor creation.
+  std::unique_ptr<LocalDependencyResolver> resolver_;
 
   ///
   /// Fields related to task execution.

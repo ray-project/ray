@@ -230,6 +230,14 @@ RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> gr
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   ray::rpc::SubmitTaskRequest request;
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
+            << "Passing direct call objects to non-direct tasks is not allowed.";
+      }
+    }
+  }
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
 }
@@ -256,6 +264,20 @@ ray::Status RayletClient::NotifyUnblocked(const TaskID &current_task_id) {
       ray::protocol::CreateNotifyUnblocked(fbb, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   return conn_->WriteMessage(MessageType::NotifyUnblocked, &fbb);
+}
+
+ray::Status RayletClient::NotifyDirectCallTaskBlocked() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyDirectCallTaskBlocked(fbb);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskBlocked, &fbb);
+}
+
+ray::Status RayletClient::NotifyDirectCallTaskUnblocked() {
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateNotifyDirectCallTaskUnblocked(fbb);
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::NotifyDirectCallTaskUnblocked, &fbb);
 }
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
@@ -387,11 +409,14 @@ ray::Status RayletClient::RequestWorkerLease(
   return grpc_client_->RequestWorkerLease(request, callback);
 }
 
-ray::Status RayletClient::ReturnWorker(int worker_port) {
+ray::Status RayletClient::ReturnWorker(int worker_port, bool disconnect_worker) {
   ray::rpc::ReturnWorkerRequest request;
   request.set_worker_port(worker_port);
+  request.set_disconnect_worker(disconnect_worker);
   return grpc_client_->ReturnWorker(
       request, [](const ray::Status &status, const ray::rpc::ReturnWorkerReply &reply) {
-        RAY_CHECK_OK(status);
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "Error returning worker: " << status;
+        }
       });
 }

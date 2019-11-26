@@ -2,13 +2,17 @@
 
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/store_provider/memory_store_provider.h"
 #include "ray/core_worker/transport/direct_task_transport.h"
 #include "ray/raylet/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "src/ray/util/test_util.h"
 
 namespace ray {
+
+// Used to prevent leases from timing out when not testing that logic. It would
+// be better to use a mock clock or lease manager interface, but that's high
+// overhead for the very simple timeout logic we currently have.
+int64_t kLongTimeout = 1024 * 1024 * 1024;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -19,13 +23,42 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return Status::OK();
   }
 
-  std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+  bool ReplyPushTask(Status status = Status::OK()) {
+    if (callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = callbacks.front();
+    callback(status, rpc::PushTaskReply());
+    callbacks.pop_front();
+    return true;
+  }
+
+  std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+};
+
+class MockTaskFinisher : public TaskFinisherInterface {
+ public:
+  MockTaskFinisher() {}
+
+  void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) override {
+    num_tasks_complete++;
+  }
+  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) override {
+    num_tasks_failed++;
+  }
+
+  int num_tasks_complete = 0;
+  int num_tasks_failed = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
  public:
-  ray::Status ReturnWorker(int worker_port) override {
-    num_workers_returned += 1;
+  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override {
+    if (disconnect_worker) {
+      num_workers_disconnected++;
+    } else {
+      num_workers_returned++;
+    }
     return Status::OK();
   }
 
@@ -64,17 +97,18 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   int num_workers_requested = 0;
   int num_workers_returned = 0;
+  int num_workers_disconnected = 0;
   std::list<rpc::ClientCallback<rpc::WorkerLeaseReply>> callbacks = {};
 };
 
 TEST(TestMemoryStore, TestPromoteToPlasma) {
   bool num_plasma_puts = 0;
-  auto mem = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore(
-      [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; }));
+  auto mem = std::make_shared<CoreWorkerMemoryStore>(
+      [&](const RayObject &obj, const ObjectID &obj_id) { num_plasma_puts += 1; });
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   auto data = GenerateRandomObject();
-  ASSERT_TRUE(mem->Put(obj1, *data).ok());
+  ASSERT_TRUE(mem->Put(*data, obj1).ok());
 
   // Test getting an already existing object.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj1) != nullptr);
@@ -83,7 +117,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
   // Testing getting an object that doesn't exist yet causes promotion.
   ASSERT_TRUE(mem->GetOrPromoteToPlasma(obj2) == nullptr);
   ASSERT_TRUE(num_plasma_puts == 0);
-  ASSERT_TRUE(mem->Put(obj2, *data).ok());
+  ASSERT_TRUE(mem->Put(*data, obj2).ok());
   ASSERT_TRUE(num_plasma_puts == 1);
 
   // The next time you get it, it's already there so no need to promote.
@@ -92,8 +126,7 @@ TEST(TestMemoryStore, TestPromoteToPlasma) {
 }
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
   LocalDependencyResolver resolver(store);
   TaskSpecification task;
   bool ok = false;
@@ -102,8 +135,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::RAYLET);
   TaskSpecification task;
@@ -116,8 +148,7 @@ TEST(LocalDependencyResolverTest, TestIgnorePlasmaDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
@@ -138,8 +169,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
@@ -162,8 +192,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
   LocalDependencyResolver resolver(store);
   ObjectID obj1 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
   ObjectID obj2 = ObjectID::FromRandom().WithTransportType(TaskTransportType::DIRECT);
@@ -189,11 +218,12 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 
 TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, kLongTimeout);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
@@ -204,36 +234,46 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
 
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 
-  worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
+  ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, kLongTimeout);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, ClientID::Nil()));
   // Simulate a system failure, i.e., worker died unexpectedly.
-  worker_client->callbacks[0](Status::IOError("oops"), rpc::PushTaskReply());
-  ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("oops")));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 }
 
 TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, kLongTimeout);
   TaskSpecification task1;
   TaskSpecification task2;
   TaskSpecification task3;
@@ -262,19 +302,23 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   ASSERT_EQ(raylet_client->num_workers_requested, 3);
 
   // All workers returned.
-  for (const auto &cb : worker_client->callbacks) {
-    cb(Status::OK(), rpc::PushTaskReply());
+  while (!worker_client->callbacks.empty()) {
+    ASSERT_TRUE(worker_client->ReplyPushTask());
   }
   ASSERT_EQ(raylet_client->num_workers_returned, 3);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, kLongTimeout);
   TaskSpecification task1;
   TaskSpecification task2;
   TaskSpecification task3;
@@ -293,31 +337,36 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Task 1 finishes, Task 2 is scheduled on the same worker.
-  worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
-  ASSERT_EQ(worker_client->callbacks.size(), 2);
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
 
   // Task 2 finishes, Task 3 is scheduled on the same worker.
-  worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
-  ASSERT_EQ(worker_client->callbacks.size(), 3);
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
 
   // Task 3 finishes, the worker is returned.
-  worker_client->callbacks[2](Status::OK(), rpc::PushTaskReply());
+  ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 1);
 
   // The second lease request is returned immediately.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 3);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
 }
 
 TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
-  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store);
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher, kLongTimeout);
   TaskSpecification task1;
   TaskSpecification task2;
   task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
@@ -333,23 +382,25 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Task 1 finishes with failure; the worker is returned.
-  worker_client->callbacks[0](Status::IOError("worker dead"), rpc::PushTaskReply());
-  ASSERT_EQ(worker_client->callbacks.size(), 1);
-  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 
   // Task 2 runs successfully on the second worker.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
-  ASSERT_EQ(worker_client->callbacks.size(), 2);
-  worker_client->callbacks[1](Status::OK(), rpc::PushTaskReply());
-  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
 }
 
 TEST(DirectTaskTransportTest, TestSpillback) {
   auto raylet_client = std::make_shared<MockRayletClient>();
-  auto worker_client = std::shared_ptr<MockWorkerClient>(new MockWorkerClient());
-  auto ptr = std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore());
-  auto store = std::make_shared<CoreWorkerMemoryStoreProvider>(ptr);
-  auto factory = [&](WorkerAddress addr) { return worker_client; };
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
 
   std::unordered_map<ClientID, std::shared_ptr<MockRayletClient>> remote_lease_clients;
   auto lease_client_factory = [&](const rpc::Address &addr) {
@@ -360,8 +411,9 @@ TEST(DirectTaskTransportTest, TestSpillback) {
     remote_lease_clients[raylet_id] = client;
     return client;
   };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
   CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, lease_client_factory,
-                                          store);
+                                          store, task_finisher, kLongTimeout);
   TaskSpecification task;
   task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
 
@@ -380,12 +432,63 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   // Trigger retry at the remote node.
   ASSERT_TRUE(remote_lease_clients[remote_raylet_id]->GrantWorkerLease("remote", 1234,
                                                                        ClientID::Nil()));
-  ASSERT_EQ(worker_client->callbacks.size(), 1);
 
   // The worker is returned to the remote node, not the local one.
-  worker_client->callbacks[0](Status::OK(), rpc::PushTaskReply());
+  ASSERT_TRUE(worker_client->ReplyPushTask());
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
+  ASSERT_EQ(remote_lease_clients[remote_raylet_id]->num_workers_disconnected, 0);
+  ASSERT_EQ(task_finisher->num_tasks_complete, 1);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+}
+
+TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto factory = [&](const rpc::WorkerAddress &addr) { return worker_client; };
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  CoreWorkerDirectTaskSubmitter submitter(raylet_client, factory, nullptr, store,
+                                          task_finisher,
+                                          /*lease_timeout_ms=*/5);
+  TaskSpecification task1;
+  TaskSpecification task2;
+  TaskSpecification task3;
+  task1.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  task2.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  task3.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1 is pushed.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, ClientID::Nil()));
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Task 1 finishes with failure; the worker is returned due to the error even though
+  // it hasn't timed out.
+  ASSERT_TRUE(worker_client->ReplyPushTask(Status::IOError("worker dead")));
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+
+  // Task 2 runs successfully on the second worker; the worker is returned due to the
+  // timeout.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, ClientID::Nil()));
+  usleep(10 * 1000);  // Sleep for 10ms, causing the lease to time out.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
+
+  // Task 3 runs successfully on the third worker; the worker is returned even though it
+  // hasn't timed out.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1002, ClientID::Nil()));
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(raylet_client->num_workers_disconnected, 1);
 }
 
 }  // namespace ray

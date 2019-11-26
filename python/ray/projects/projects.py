@@ -105,9 +105,9 @@ class ProjectDefinition:
                         "Parameter {} has type {} which is not supported. "
                         "Type must be one of {}".format(
                             name, param["type"], list(types.keys())))
-            parser.add_argument("--" + name, **param)
+            parser.add_argument("--" + name, dest=name, **param)
 
-        parsed_args = parser.parse_args(list(args)).__dict__
+        parsed_args = vars(parser.parse_args(list(args)))
 
         if wildcards:
             for key, val in parsed_args.items():

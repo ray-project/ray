@@ -31,7 +31,12 @@ void RedisAsyncContext::ResetRawRedisAsyncContext() {
 }
 
 void RedisAsyncContext::RedisAsyncHandleRead() {
-  // `redisAsyncHandleRead` is already thread-safe, so no lock here.
+  // `redisAsyncHandleRead` will mutate `redis_async_context_`, use a lock to protect
+  // it.
+  // This function will execute the callbacks which are registered by
+  // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
+  std::lock_guard<std::mutex> lock(mutex_);
+
   redisAsyncHandleRead(redis_async_context_);
 }
 
