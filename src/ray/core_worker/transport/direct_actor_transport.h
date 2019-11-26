@@ -16,6 +16,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/grpc_server.h"
@@ -27,25 +28,6 @@ namespace ray {
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
-
-/// Treat a task as failed.
-///
-/// \param[in] task_id The ID of a task.
-/// \param[in] num_returns Number of return objects.
-/// \param[in] error_type The type of the specific error.
-/// \param[in] in_memory_store The memory store to write to.
-/// \return Void.
-void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
-                       const rpc::ErrorType &error_type,
-                       std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store);
-
-/// Write return objects to the memory store.
-///
-/// \param[in] reply Proto response to a direct actor or task call.
-/// \param[in] in_memory_store The memory store to write to.
-/// \return Void.
-void WriteObjectsToMemoryStore(const rpc::PushTaskReply &reply,
-                               std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store);
 
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
@@ -66,10 +48,11 @@ struct ActorStateData {
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
-                                     std::shared_ptr<CoreWorkerMemoryStore> store)
+                                     std::shared_ptr<CoreWorkerMemoryStore> store,
+                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
-        in_memory_store_(store),
-        resolver_(in_memory_store_) {}
+        resolver_(store),
+        task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.
   ///
@@ -138,14 +121,11 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// actor.
   std::unordered_map<ActorID, int64_t> next_sequence_number_;
 
-  /// Map from actor id to the tasks that are waiting for reply.
-  std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
-
-  /// The in-memory store.
-  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
-
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
+
+  /// Used to complete tasks.
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   friend class CoreWorkerTest;
 };

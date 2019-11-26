@@ -1,3 +1,4 @@
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "ray/common/task/task_spec.h"
@@ -8,6 +9,8 @@
 #include "src/ray/util/test_util.h"
 
 namespace ray {
+
+using ::testing::_;
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
@@ -20,8 +23,26 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return Status::OK();
   }
 
-  std::vector<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
+  bool ReplyPushTask(Status status = Status::OK()) {
+    if (callbacks.size() == 0) {
+      return false;
+    }
+    auto callback = callbacks.front();
+    callback(status, rpc::PushTaskReply());
+    callbacks.pop_front();
+    return true;
+  }
+
+  std::list<rpc::ClientCallback<rpc::PushTaskReply>> callbacks;
   uint64_t counter = 0;
+};
+
+class MockTaskFinisher : public TaskFinisherInterface {
+ public:
+  MockTaskFinisher() {}
+
+  MOCK_METHOD2(CompletePendingTask, void(const TaskID &, const rpc::PushTaskReply &));
+  MOCK_METHOD2(FailPendingTask, void(const TaskID &task_id, rpc::ErrorType error_type));
 };
 
 TaskSpecification CreateActorTaskHelper(ActorID actor_id, int64_t counter) {
@@ -38,11 +59,13 @@ class DirectActorTransportTest : public ::testing::Test {
   DirectActorTransportTest()
       : worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
-        submitter_([&](const rpc::WorkerAddress &addr) { return worker_client_; },
-                   store_) {}
+        task_finisher_(std::make_shared<MockTaskFinisher>()),
+        submitter_([&](const rpc::WorkerAddress &addr) { return worker_client_; }, store_,
+                   task_finisher_) {}
 
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
+  std::shared_ptr<MockTaskFinisher> task_finisher_;
   CoreWorkerDirectActorTaskSubmitter submitter_;
 };
 
@@ -60,6 +83,13 @@ TEST_F(DirectActorTransportTest, TestSubmitTask) {
   task = CreateActorTaskHelper(actor_id, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
+
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _))
+      .Times(worker_client_->callbacks.size());
+  EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(0);
+  while (!worker_client_->callbacks.empty()) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask());
+  }
 }
 
 TEST_F(DirectActorTransportTest, TestDependencies) {
@@ -117,6 +147,27 @@ TEST_F(DirectActorTransportTest, TestOutOfOrderDependencies) {
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
   ASSERT_TRUE(store_->Put(*data, obj1).ok());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
+}
+
+TEST_F(DirectActorTransportTest, TestActorFailure) {
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  gcs::ActorTableData actor_data;
+  submitter_.HandleActorUpdate(actor_id, actor_data);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+
+  // Create two tasks for the actor.
+  auto task1 = CreateActorTaskHelper(actor_id, 0);
+  auto task2 = CreateActorTaskHelper(actor_id, 1);
+  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_EQ(worker_client_->callbacks.size(), 2);
+
+  // Simulate the actor dying. All submitted tasks should get failed.
+  EXPECT_CALL(*task_finisher_, FailPendingTask(_, _)).Times(2);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _)).Times(0);
+  while (!worker_client_->callbacks.empty()) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
+  }
 }
 
 }  // namespace ray

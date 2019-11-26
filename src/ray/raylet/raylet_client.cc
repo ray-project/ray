@@ -230,6 +230,14 @@ RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> gr
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
   ray::rpc::SubmitTaskRequest request;
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
+            << "Passing direct call objects to non-direct tasks is not allowed.";
+      }
+    }
+  }
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
 }
