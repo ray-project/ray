@@ -141,6 +141,37 @@ TEST_F(ReferenceCountTest, TestRecursiveDependencies) {
   ASSERT_EQ(out.size(), 4);
 }
 
+// Tests that we can get the owner address correctly for objects that we own,
+// objects that we borrowed via a serialized object ID, and objects whose
+// origin we do not know.
+TEST_F(ReferenceCountTest, TestOwnerAddress) {
+  auto object_id = ObjectID::FromRandom();
+  TaskID task_id = TaskID::ForFakeTask();
+  rpc::Address address;
+  address.set_ip_address("1234");
+  auto deps = std::make_shared<std::vector<ObjectID>>();
+  rc->AddOwnedObject(object_id, task_id, address, deps);
+
+  TaskID added_id;
+  rpc::Address added_address;
+  ASSERT_TRUE(rc->GetOwner(object_id, &added_id, &added_address));
+  ASSERT_EQ(task_id, added_id);
+  ASSERT_EQ(address.ip_address(), added_address.ip_address());
+
+  auto object_id2 = ObjectID::FromRandom();
+  task_id = TaskID::ForFakeTask();
+  address.set_ip_address("5678");
+  rc->AddOwnedObject(object_id2, task_id, address, deps);
+  ASSERT_TRUE(rc->GetOwner(object_id2, &added_id, &added_address));
+  ASSERT_EQ(task_id, added_id);
+  ASSERT_EQ(address.ip_address(), added_address.ip_address());
+
+  auto object_id3 = ObjectID::FromRandom();
+  ASSERT_FALSE(rc->GetOwner(object_id3, &added_id, &added_address));
+  rc->AddLocalReference(object_id3);
+  ASSERT_FALSE(rc->GetOwner(object_id3, &added_id, &added_address));
+}
+
 // Tests that the ref counts are properly integrated into the local
 // object memory store.
 TEST(MemoryStoreIntegrationTest, TestSimple) {
