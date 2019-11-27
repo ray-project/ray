@@ -330,7 +330,8 @@ def start_ray_process(command,
                       use_perftools_profiler=False,
                       use_tmux=False,
                       stdout_file=None,
-                      stderr_file=None):
+                      stderr_file=None,
+                      pipe_stdin=False):
     """Start one of the Ray processes.
 
     TODO(rkn): We need to figure out how these commands interact. For example,
@@ -357,6 +358,8 @@ def start_ray_process(command,
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+        pipe_stdin: If true, subprocess.PIPE will be passed to the process as
+            stdin.
 
     Returns:
         Information about the process that was started including a handle to
@@ -438,13 +441,23 @@ def start_ray_process(command,
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", "{}".format(" ".join(command))]
 
+    # Block sigint for spawned processes so they aren't killed by the SIGINT
+    # propagated from the shell on Ctrl-C so we can handle KeyboardInterrupts
+    # in interactive sessions. This is only supported in Python 3.3 and above.
+    def block_sigint():
+        import signal
+        import sys
+        if sys.version_info >= (3, 3):
+            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+
     process = subprocess.Popen(
         command,
         env=modified_env,
         cwd=cwd,
         stdout=stdout_file,
         stderr=stderr_file,
-        preexec_fn=os.setsid)
+        stdin=subprocess.PIPE if pipe_stdin else None,
+        preexec_fn=block_sigint)
 
     return ProcessInfo(
         process=process,
@@ -561,6 +574,37 @@ def check_version_info(redis_client):
             raise Exception(error_message)
         else:
             logger.warning(error_message)
+
+
+def start_reaper():
+    """Start the reaper process.
+
+    This is a lightweight process that simply
+    waits for its parent process to die and then terminates its own
+    process group. This allows us to ensure that ray processes are always
+    terminated properly so long as that process itself isn't SIGKILLed.
+
+    Returns:
+        ProcessInfo for the process that was started.
+    """
+    # Make ourselves a process group leader so that the reaper can clean
+    # up other ray processes without killing the process group of the
+    # process that started us.
+    try:
+        os.setpgrp()
+    except OSError as e:
+        logger.warning("setpgrp failed, processes may not be "
+                       "cleaned up properly: {}.".format(e))
+        # Don't start the reaper in this case as it could result in killing
+        # other user processes.
+        return None
+
+    reaper_filepath = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "ray_process_reaper.py")
+    command = [sys.executable, "-u", reaper_filepath]
+    process_info = start_ray_process(
+        command, ray_constants.PROCESS_TYPE_REAPER, pipe_stdin=True)
+    return process_info
 
 
 def start_redis(node_ip_address,
