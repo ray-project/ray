@@ -137,10 +137,12 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_google_glog",
-        build_file = "@//bazel:BUILD.glog",
-        commit = "96a2f23dca4cc7180821ca5f32e526314395d26a",
+        commit = "925858d9969d8ee22aabc3635af00a37891f4e25",
         remote = "https://github.com/google/glog",
-        sha256 = "6281aa4eeecb9e932d7091f99872e7b26fa6aacece49c15ce5b14af2b7ec050f",
+        sha256 = "dbe787f2a7cf1146f748a191c99ae85d6b931dd3ebdcc76aa7ccae3699149c67",
+        patches = [
+            "//thirdparty/patches:glog-stack-trace.patch",
+        ],
     )
 
     github_repository(
@@ -178,11 +180,14 @@ def ray_deps_setup():
     # OpenCensus depends on jupp0r/prometheus-cpp
     github_repository(
         name = "com_github_jupp0r_prometheus_cpp",
-        commit = "5c45ba7ddc0585d765a43d136764dd2a542bd495",
-        remote = "https://github.com/ray-project/prometheus-cpp",
-        # TODO(qwang): We should use the repository of `jupp0r` here when this PR
-        # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
-        sha256 = "c80293276166d405188b1af62cd11178fbcec0f1a8ab0dbece19d4bdc79d45e7",
+        commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
+        remote = "https://github.com/jupp0r/prometheus-cpp",
+        sha256 = "9756bd2d573e7722f97dbe6d35934e43b9a79e6a87fc5e1da79774a621cddd8e",
+        patches = [
+            # https://github.com/jupp0r/prometheus-cpp/pull/225
+            "//thirdparty/patches:prometheus-windows-zlib.patch",
+            "//thirdparty/patches:prometheus-windows-pollfd.patch",
+        ]
     )
 
     github_repository(
@@ -191,6 +196,7 @@ def ray_deps_setup():
         remote = "https://github.com/grpc/grpc",
         sha256 = "723853c36ea6d179d32a4f9f2f8691dbe0e28d5bbc521c954b34355a1c952ba5",
         patches = [
+            "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
         ],
     )

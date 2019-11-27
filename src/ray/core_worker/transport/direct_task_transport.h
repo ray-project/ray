@@ -19,6 +19,13 @@ namespace ray {
 typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const rpc::Address &)>
     LeaseClientFactoryFn;
 
+// The task queues are keyed on resource shape & function descriptor
+// (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
+// and ensure fairness between different tasks, as well as plasma task dependencies as
+// a performance optimization because the raylet will fetch plasma dependencies to the
+// scheduled worker.
+using SchedulingKey = std::pair<SchedulingClass, std::vector<ObjectID>>;
+
 // This class is thread-safe.
 class CoreWorkerDirectTaskSubmitter {
  public:
@@ -44,7 +51,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
   /// processing the worker, we don't attempt to re-use the worker.
-  void OnWorkerIdle(const rpc::WorkerAddress &addr, bool was_error);
+  void OnWorkerIdle(const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key,
+                    bool was_error) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
@@ -56,20 +64,19 @@ class CoreWorkerDirectTaskSubmitter {
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
   /// worker should be requested from the local raylet.
-  void RequestNewWorkerIfNeeded(const TaskSpecification &resource_spec,
+  void RequestNewWorkerIfNeeded(const SchedulingKey &task_queue_key,
                                 const rpc::Address *raylet_address = nullptr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Callback for when the raylet grants us a worker lease. The worker is returned
-  /// to the raylet via the given lease client once the task queue is empty.
-  /// TODO: Implement a lease term by which we need to return the worker.
-  void HandleWorkerLeaseGranted(const rpc::WorkerAddress &addr,
-                                std::shared_ptr<WorkerLeaseInterface> lease_client);
+  /// Set up client state for newly granted worker lease.
+  void AddWorkerLeaseClient(const rpc::WorkerAddress &addr,
+                            std::shared_ptr<WorkerLeaseInterface> lease_client)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
-                      TaskSpecification &task_spec);
+                      const SchedulingKey &task_queue_key, TaskSpecification &task_spec);
 
   // Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;
@@ -107,11 +114,14 @@ class CoreWorkerDirectTaskSubmitter {
                       std::pair<std::shared_ptr<WorkerLeaseInterface>, int64_t>>
       worker_to_lease_client_ GUARDED_BY(mu_);
 
-  // Whether we have a request to the Raylet to acquire a new worker in flight.
-  bool worker_request_pending_ GUARDED_BY(mu_) = false;
+  // Keeps track of pending worker lease requests to the raylet.
+  absl::flat_hash_set<SchedulingKey> pending_lease_requests_ GUARDED_BY(mu_);
 
-  // Tasks that are queued for execution in this submitter..
-  std::deque<TaskSpecification> queued_tasks_ GUARDED_BY(mu_);
+  // Tasks that are queued for execution. We keep individual queues per
+  // scheduling class to ensure fairness.
+  // Invariant: if a queue is in this map, it has at least one task.
+  absl::flat_hash_map<SchedulingKey, std::deque<TaskSpecification>> task_queues_
+      GUARDED_BY(mu_);
 };
 
 };  // namespace ray
