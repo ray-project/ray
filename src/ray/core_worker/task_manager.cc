@@ -2,10 +2,11 @@
 
 namespace ray {
 
-void TaskManager::AddPendingTask(const TaskSpecification &spec) {
+void TaskManager::AddPendingTask(const TaskSpecification &spec, int num_retries_allowed) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), spec.NumReturns()).second);
+  std::pair<int64_t, int> entry = {spec.NumReturns(), num_retries_allowed};
+  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -56,7 +57,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    num_returns = it->second;
+    num_returns = it->second.first;
     pending_tasks_.erase(it);
   }
 

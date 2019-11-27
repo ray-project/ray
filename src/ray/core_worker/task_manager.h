@@ -31,8 +31,10 @@ class TaskManager : public TaskFinisherInterface {
   /// Add a task that is pending execution.
   ///
   /// \param[in] spec The spec of the pending task.
+  /// \param[in] num_retries_allowed Number of times this task may be retried
+  /// on failure.
   /// \return Void.
-  void AddPendingTask(const TaskSpecification &spec);
+  void AddPendingTask(const TaskSpecification &spec, int num_retries_allowed);
 
   /// Return whether the task is pending.
   ///
@@ -64,9 +66,10 @@ class TaskManager : public TaskFinisherInterface {
   /// Protects below fields.
   absl::Mutex mu_;
 
-  /// Map from task ID to the task's number of return values. This map contains
-  /// one entry per pending task that we submitted.
-  absl::flat_hash_map<TaskID, int64_t> pending_tasks_ GUARDED_BY(mu_);
+  /// Map from task ID to a pair of:
+  ///   {task's number of return values, number of allowed retries left}
+  /// This map contains one entry per pending task that we submitted.
+  absl::flat_hash_map<TaskID, std::pair<int64_t, int>> pending_tasks_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray
