@@ -22,22 +22,21 @@ class JobStateAccessor {
 
   ~JobStateAccessor() {}
 
-  /// Register a job to GCS asynchronously.
+  /// Add a job to GCS asynchronously.
   ///
-  /// \param data_ptr The job that will be registered to GCS.
+  /// \param data_ptr The job that will be add to GCS.
   /// \param callback Callback that will be called after job has been registered
   /// to GCS.
   /// \return Status
-  Status AsyncRegister(const std::shared_ptr<JobTableData> &data_ptr,
-                       const StatusCallback &callback);
+  Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
+                  const StatusCallback &callback);
 
-  /// Update dynamic states of job in GCS asynchronously.
+  /// Mark job as finished in GCS asynchronously.
   ///
-  /// \param data_ptr The job that will be updated to GCS.
+  /// \param job_id ID of the job that will be make finished to GCS.
   /// \param callback Callback that will be called after update finishes.
   /// \return Status
-  Status AsyncUpdate(const std::shared_ptr<JobTableData> &data_ptr,
-                     const StatusCallback &callback);
+  Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback);
 
   /// Subscribe to any update operations of jobs.
   ///
@@ -45,8 +44,9 @@ class JobStateAccessor {
   /// or updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribeAll(const SubscribeCallback<JobID, JobTableData> &subscribe,
-                           const StatusCallback &done);
+  Status AsyncSubscribeToFinishedJobs(
+      const SubscribeCallback<JobID, JobTableData> &subscribe,
+      const StatusCallback &done);
 
  private:
   /// Register or update job information to GCS asynchronously.
@@ -55,8 +55,8 @@ class JobStateAccessor {
   /// \param callback Callback that will be called after job has been registered
   /// or updated to GCS.
   /// \return Status
-  Status DoAsyncRegisterOrUpdate(const std::shared_ptr<JobTableData> &data_ptr,
-                                 const StatusCallback &callback);
+  Status DoAsyncAppend(const std::shared_ptr<JobTableData> &data_ptr,
+                       const StatusCallback &callback);
 
   RedisGcsClient &client_impl_;
 

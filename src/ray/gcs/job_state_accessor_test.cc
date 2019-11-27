@@ -26,19 +26,13 @@ class JobStateAccessorTest : public AccessorTestBase<JobID, JobTableData> {
   size_t total_job_number_{100};
 };
 
-TEST_F(JobStateAccessorTest, RegisterAndSubscribeAll) {
+TEST_F(JobStateAccessorTest, AddAndSubscribe) {
   JobStateAccessor &job_accessor = gcs_client_->Jobs();
   // SubscribeAll
   auto on_subscribe = [this](const JobID &job_id, const JobTableData &data) {
     const auto it = id_to_data_.find(job_id);
     RAY_CHECK(it != id_to_data_.end());
-    static size_t notify_count = 0;
-    ++notify_count;
-    if (notify_count <= total_job_number_) {
-      ASSERT_FALSE(data.is_dead()) << notify_count;
-    } else {
-      ASSERT_TRUE(data.is_dead()) << notify_count;
-    }
+    ASSERT_TRUE(data.is_dead());
     --subscribe_pending_count_;
   };
 
@@ -48,7 +42,7 @@ TEST_F(JobStateAccessorTest, RegisterAndSubscribeAll) {
   };
 
   ++pending_count_;
-  RAY_CHECK_OK(job_accessor.AsyncSubscribeAll(on_subscribe, on_done));
+  RAY_CHECK_OK(job_accessor.AsyncSubscribeToFinishedJobs(on_subscribe, on_done));
 
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(subscribe_pending_count_, wait_pending_timeout_);
@@ -56,8 +50,7 @@ TEST_F(JobStateAccessorTest, RegisterAndSubscribeAll) {
   // Register
   for (const auto &item : id_to_data_) {
     ++pending_count_;
-    ++subscribe_pending_count_;
-    RAY_CHECK_OK(job_accessor.AsyncRegister(item.second, [this](Status status) {
+    RAY_CHECK_OK(job_accessor.AsyncAdd(item.second, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     }));
@@ -67,11 +60,9 @@ TEST_F(JobStateAccessorTest, RegisterAndSubscribeAll) {
 
   // Update
   for (auto &item : id_to_data_) {
-    auto &job_data = item.second;
-    job_data->set_is_dead(true);
     ++pending_count_;
     ++subscribe_pending_count_;
-    RAY_CHECK_OK(job_accessor.AsyncUpdate(job_data, [this](Status status) {
+    RAY_CHECK_OK(job_accessor.AsyncMarkFinished(item.first, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     }));

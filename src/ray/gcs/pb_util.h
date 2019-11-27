@@ -1,11 +1,13 @@
-#ifndef RAY_COMMON_PB_UTIL_H
-#define RAY_COMMON_PB_UTIL_H
+#ifndef RAY_GCS_PB_UTIL_H
+#define RAY_GCS_PB_UTIL_H
 
 #include <memory>
 #include "ray/common/id.h"
 #include "ray/protobuf/gcs.pb.h"
 
 namespace ray {
+
+namespace gcs {
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
@@ -15,7 +17,7 @@ namespace ray {
 /// \param node_manager_address Address of the node this job was started on.
 /// \param driver_pid Process ID of the driver running this job.
 /// \return The job table data created by this method.
-std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
+inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id, bool is_dead, int64_t timestamp,
     const std::string &node_manager_address, int64_t driver_pid) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
@@ -27,6 +29,8 @@ std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   return job_info_ptr;
 }
 
+}  // namespace gcs
+
 }  // namespace ray
 
-#endif  // RAY_COMMON_PB_UTIL_H
+#endif  // RAY_GCS_PB_UTIL_H
