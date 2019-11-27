@@ -1483,13 +1483,12 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         task);
 
     // Scheduled locally.
-    // RAY_LOG(ERROR) << "node string id was " << node_id_string; 
     if (node_id_string == std::to_string(-1)) {
       new_pending_queue_.push_back(work);
     } else {
       RAY_CHECK(node_id_string == client_id_.Binary());
       new_resource_scheduler_->SubtractNodeAvailableResources(node_id_string,
-          task.GetTaskSpecification().GetRequiredResources().GetResourceMap());
+          request_resources);
       new_runnable_queue_.push_back(work);
       DispatchDirectCallTasks();
     }
