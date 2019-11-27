@@ -10,7 +10,7 @@ py_test(
     name = "test_actor_direct",
     size = "medium",
     srcs = ["test_actor_direct.py", "test_actor.py"],
-    tags = ["exclusive", "manual"],
+    tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
