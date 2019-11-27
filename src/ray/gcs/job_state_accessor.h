@@ -38,10 +38,9 @@ class JobStateAccessor {
   /// \return Status
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback);
 
-  /// Subscribe to any update operations of jobs.
+  /// Subscribe to finished jobs.
   ///
-  /// \param subscribe Callback that will be called each time when an job is registered
-  /// or updated.
+  /// \param subscribe Callback that will be called each time when a job finished.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
   Status AsyncSubscribeToFinishedJobs(
@@ -49,11 +48,10 @@ class JobStateAccessor {
       const StatusCallback &done);
 
  private:
-  /// Register or update job information to GCS asynchronously.
+  /// Append job information to GCS asynchronously.
   ///
-  /// \param data_ptr The job that will be registered or updated to GCS.
-  /// \param callback Callback that will be called after job has been registered
-  /// or updated to GCS.
+  /// \param data_ptr The job information that will be appended to GCS.
+  /// \param callback Callback that will be called after append done.
   /// \return Status
   Status DoAsyncAppend(const std::shared_ptr<JobTableData> &data_ptr,
                        const StatusCallback &callback);
