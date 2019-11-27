@@ -2,6 +2,7 @@ import gym
 from gym import spaces
 import numpy as np
 
+
 class NormalizeActionWrapper(gym.ActionWrapper):
     """Rescale the action space of the environment."""
 

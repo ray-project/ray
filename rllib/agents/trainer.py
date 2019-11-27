@@ -501,7 +501,6 @@ class Trainer(Trainable):
                 if config["normalize_actions"]:
                     env_ = act_wrap(env_.env)
                 self.env_creator = lambda env_config: env_
-
         else:
             self.env_creator = lambda env_config: None
 

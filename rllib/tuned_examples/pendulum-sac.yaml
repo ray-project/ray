@@ -1,4 +1,4 @@
-# Pendulum SAC can attain -150+ reward in 5-6k timesteps (*disregarding initial exploration steps like in softlearning codebase)
+# Pendulum SAC can attain -150+ reward in 6-7k
 # Configurations are the similar to original softlearning/sac codebase
 pendulum_sac:
     env: Pendulum-v0

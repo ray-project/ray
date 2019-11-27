@@ -289,8 +289,7 @@ def gradients(policy, optimizer, loss):
 
 def apply_gradients(policy, optimizer, grads_and_vars):
     actor_apply_ops = policy._actor_optimizer.apply_gradients(
-        policy._actor_grads_and_vars,
-        global_step=tf.train.get_or_create_global_step())
+        policy._actor_grads_and_vars)
 
     cgrads = policy._critic_grads_and_vars
     half_cutoff = len(cgrads) // 2
