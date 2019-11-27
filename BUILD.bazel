@@ -744,7 +744,7 @@ cc_binary(
 cc_binary(
     name = "job_state_accessor_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/job_state_accessor_test.cc"],
+    srcs = ["src/ray/gcs/test/job_state_accessor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
