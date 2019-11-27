@@ -60,6 +60,9 @@ class DataReader {
   std::shared_ptr<RuntimeContext> runtime_context_;
 
  public:
+  explicit DataReader(std::shared_ptr<RuntimeContext> &runtime_context);
+  virtual ~DataReader();
+
   ///  Init Streaming reader. For exception status throwing, we do not init
   ///  in constructor. Actually, There are only reigster somethings in this
   ///  function.
@@ -70,8 +73,8 @@ class DataReader {
   ///
   void Init(const std::vector<ObjectID> &input_ids,
             const std::vector<ActorID> &actor_ids,
-            const std::vector<uint64_t> &queue_seq_ids,
-            const std::vector<uint64_t> &streaming_msg_ids, int64_t timer_interval);
+            const std::vector<uint64_t> &channel_seq_ids,
+            const std::vector<uint64_t> &msg_ids, int64_t timer_interval);
 
   void Init(const std::vector<ObjectID> &input_ids, const std::vector<ActorID> &actor_ids, int64_t timer_interval);
 
@@ -86,9 +89,6 @@ class DataReader {
   void GetOffsetInfo(std::unordered_map<ObjectID, ConsumerChannelInfo> *&offset_map);
 
   void Stop();
-
-  explicit DataReader(std::shared_ptr<RuntimeContext> &runtime_context);
-  virtual ~DataReader();
 
   ///  Notify input queues to clear data its seq id is equal or less than offset.
   ///  It's used when checkpoint is done.

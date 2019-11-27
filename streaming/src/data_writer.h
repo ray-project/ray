@@ -78,7 +78,7 @@ class DataWriter {
   /// \param channel_message_id_vec channel seq id is related with message checkpoint
   /// \param queue_size queue size (memory size not length)
 
-  StreamingStatus Init(const std::vector<ObjectID> &queue_id_vec,
+  StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
                        const std::vector<ActorID> &actor_ids,
                        const std::vector<uint64_t> &channel_message_id_vec,
                        const std::vector<uint64_t> &queue_size_vec);

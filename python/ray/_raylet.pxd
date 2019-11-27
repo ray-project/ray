@@ -18,6 +18,15 @@ from ray.includes.unique_ids cimport (
     CActorID
 )
 
+cdef class Buffer:
+    cdef:
+        shared_ptr[CBuffer] buffer
+        Py_ssize_t shape
+        Py_ssize_t strides
+
+    @staticmethod
+    cdef make(const shared_ptr[CBuffer]& buffer)
+
 cdef class BaseID:
     # To avoid the error of "Python int too large to convert to C ssize_t",
     # here `cdef size_t` is required.

@@ -74,11 +74,6 @@ cdef extern from "message/message.h" namespace "ray::streaming" nogil:
         inline CStreamingMessageType GetMessageType() const
         inline uint64_t GetMessageSeqId() const
 
-cdef extern from "message/serializable.h" namespace "ray::streaming" nogil:
-    cdef cppclass CStreamingSerializable "ray::streaming::StreamingSerializable":
-        void ToBytes(uint8_t *)
-        uint32_t ClassBytesSize()
-
 cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageBundleType "ray::streaming::StreamingMessageBundleType":
         pass
@@ -86,7 +81,7 @@ cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
     cdef CStreamingMessageBundleType BundleTypeBarrier "ray::streaming::StreamingMessageBundleType::Barrier"
     cdef CStreamingMessageBundleType BundleTypeBundle "ray::streaming::StreamingMessageBundleType::Bundle"
 
-    cdef cppclass CStreamingMessageBundleMeta "ray::streaming::StreamingMessageBundleMeta"(CStreamingSerializable):
+    cdef cppclass CStreamingMessageBundleMeta "ray::streaming::StreamingMessageBundleMeta":
         CStreamingMessageBundleMeta()
         inline uint64_t GetMessageBundleTs() const
         inline uint64_t GetLastMessageId() const
@@ -102,6 +97,22 @@ cdef extern from "message/message_bundle.h" namespace "ray::streaming" nogil:
          void GetMessageListFromRawData(const uint8_t *data, uint32_t size, uint32_t msg_nums,
                                         c_list[shared_ptr[CStreamingMessage]] &msg_list);
 
+cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
+    cdef cppclass CReaderClient "ray::streaming::ReaderClient":
+        CReaderClient(CCoreWorker *core_worker,
+                      CRayFunction &async_func,
+                      CRayFunction &sync_func)
+        void OnReaderMessage(shared_ptr[CLocalMemoryBuffer] buffer);
+        shared_ptr[CLocalMemoryBuffer] OnReaderMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
+
+    cdef cppclass CWriterClient "ray::streaming::WriterClient":
+        CWriterClient(CCoreWorker *core_worker,
+                      CRayFunction &async_func,
+                      CRayFunction &sync_func)
+        void OnWriterMessage(shared_ptr[CLocalMemoryBuffer] buffer);
+        shared_ptr[CLocalMemoryBuffer] OnWriterMessageSync(shared_ptr[CLocalMemoryBuffer] buffer);
+
+
 cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
     cdef cppclass CDataBundle "ray::streaming::DataBundle":
         uint8_t *data
@@ -111,56 +122,31 @@ cdef extern from "data_reader.h" namespace "ray::streaming" nogil:
         CStreamingMessageBundleMetaPtr meta
 
     cdef cppclass CDataReader "ray::streaming::DataReader"(CStreamingCommon):
+        CDataReader(shared_ptr[CRuntimeContext] &runtime_context)
         void Init(const c_vector[CObjectID] &input_ids,
+                  const c_vector[CActorID] &actor_ids,
                   const c_vector[uint64_t] &seq_ids,
-                  const c_vector[uint64_t] &streaming_msg_ids,
+                  const c_vector[uint64_t] &msg_ids,
                   int64_t timer_interval);
         CStreamingStatus GetBundle(const uint32_t timeout_ms,
                                    shared_ptr[CDataBundle] &message)
         void Stop()
 
-    cdef cppclass CDirectCallDataReader "ray::streaming::DirectCallDataReader"(CDataReader):
-        CDirectCallDataReader(
-                shared_ptr[CRuntimeContext] &runtime_context,
-                CCoreWorker *core_worker,
-                const c_vector[CObjectID] &queue_ids,
-                const c_vector[CActorID] &actor_ids,
-                CRayFunction async_func,
-                CRayFunction sync_func)
 
 cdef extern from "data_writer.h" namespace "ray::streaming" nogil:
     cdef cppclass CDataWriter "ray::streaming::DataWriter"(CStreamingCommon):
+        CDataWriter(shared_ptr[CRuntimeContext] &runtime_context)
+        CStreamingStatus Init(const c_vector[CObjectID] &channel_ids,
+                              const c_vector[CActorID] &actor_ids,
+                              const c_vector[uint64_t] &message_ids,
+                              const c_vector[uint64_t] &queue_size_vec);
         long WriteMessageToBufferRing(
                 const CObjectID &q_id, uint8_t *data, uint32_t data_size)
-        CStreamingStatus Init(c_vector[CObjectID] &queue_ids,
-                              c_vector[uint64_t] &message_ids,
-                              const c_vector[uint64_t] &queue_size_vec);
         void Run()
         void Stop()
 
-    cdef cppclass CDirectCallDataWriter "ray::streaming::DirectCallDataWriter"(CDataWriter):
-        CDirectCallDataWriter(
-                shared_ptr[CRuntimeContext] &runtime_context,
-                CCoreWorker *core_worker,
-                const c_vector[CObjectID] &queue_ids,
-                const c_vector[CActorID] &actor_ids,
-                CRayFunction async_func,
-                CRayFunction sync_func)
 
 cdef extern from "ray/common/buffer.h" nogil:
     cdef cppclass CLocalMemoryBuffer "ray::LocalMemoryBuffer":
         uint8_t *Data() const
         size_t Size() const
-
-cdef extern from "queue/queue_manager.h" namespace "ray::streaming" nogil:
-    cdef cppclass CQueueManager "ray::streaming::QueueManager":
-        @staticmethod
-        shared_ptr[CQueueManager] GetInstance(const CActorID &actor_id)
-
-cdef extern from "queue/queue_client.h" namespace "ray::streaming" nogil:
-    cdef cppclass CQueueClient "ray::streaming::QueueClient":
-        CQueueClient(shared_ptr[CQueueManager] manager)
-        void OnMessage(shared_ptr[CLocalMemoryBuffer] buffer)
-        shared_ptr[CLocalMemoryBuffer] OnMessageSync(shared_ptr[CLocalMemoryBuffer] buffer)
-
-
