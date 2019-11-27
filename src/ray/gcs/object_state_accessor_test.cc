@@ -33,14 +33,14 @@ class ObjectStateAccessorTest : public AccessorTestBase<ObjectID, ObjectTableDat
   size_t copy_count_{5};
 };
 
-TEST_F(ObjectStateAccessorTest, TestGetAddDelete) {
+TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
   ObjectStateAccessor &object_accessor = gcs_client_->Objects();
   // add && get
   // add
   for (const auto &elem : object_id_to_data_) {
     for (const auto &item : elem.second) {
       ++pending_count_;
-      object_accessor.AsyncAdd(elem.first, item, [this](Status status) {
+      object_accessor.AsyncAddLocation(elem.first, item, [this](Status status) {
         RAY_CHECK_OK(status);
         --pending_count_;
       });
@@ -51,7 +51,7 @@ TEST_F(ObjectStateAccessorTest, TestGetAddDelete) {
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
     size_t total_size = elem.second.size();
-    object_accessor.AsyncGet(
+    object_accessor.AsyncGetLocations(
         elem.first,
         [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
           RAY_CHECK_OK(status);
@@ -83,10 +83,11 @@ TEST_F(ObjectStateAccessorTest, TestGetAddDelete) {
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
     ++sub_pending_count;
-    object_accessor.AsyncSubscribe(elem.first, subscribe, [this](Status status) {
-      RAY_CHECK_OK(status);
-      --pending_count_;
-    });
+    object_accessor.AsyncSubscribeToLocations(elem.first, subscribe,
+                                              [this](Status status) {
+                                                RAY_CHECK_OK(status);
+                                                --pending_count_;
+                                              });
   }
   WaitPendingDone(wait_pending_timeout_);
   WaitPendingDone(sub_pending_count, wait_pending_timeout_);
@@ -95,7 +96,8 @@ TEST_F(ObjectStateAccessorTest, TestGetAddDelete) {
     ++pending_count_;
     ++sub_pending_count;
     const ObjectVector &object_vec = elem.second;
-    object_accessor.AsyncDelete(elem.first, object_vec[0], [this](Status status) {
+    ClientID node_id = ClientID::FromBinary(object_vec[0]->manager());
+    object_accessor.AsyncRemoveLocation(elem.first, object_vec[0], [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     });
@@ -106,7 +108,7 @@ TEST_F(ObjectStateAccessorTest, TestGetAddDelete) {
   for (const auto &elem : object_id_to_data_) {
     ++pending_count_;
     size_t total_size = elem.second.size();
-    object_accessor.AsyncGet(
+    object_accessor.AsyncGetLocations(
         elem.first,
         [this, total_size](Status status, const std::vector<ObjectTableData> &result) {
           RAY_CHECK_OK(status);
