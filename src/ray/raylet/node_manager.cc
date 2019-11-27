@@ -664,8 +664,10 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
 
-  if (USE_NEW_SCHEDULER) {
-    RAY_LOG(ERROR) << "Updating node " << client_id.Binary();
+  if (USE_NEW_SCHEDULER && client_id != client_id_) {
+    RAY_LOG(ERROR) << "Updating node " << client_id.Hex() <<
+      " total: " << remote_total.ToString() <<
+      " available: " << remote_available.ToString();
     new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
                                              remote_total.GetResourceMap(),
                                              remote_available.GetResourceMap());

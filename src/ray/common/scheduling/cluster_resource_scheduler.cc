@@ -149,8 +149,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     }
   }
 
+  for (auto rr : task_req.predefined_resources) {
+    RAY_LOG(ERROR) << "task req " << rr.demand;
+  }
+
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
-    RAY_LOG(ERROR) << "check other node";
+    RAY_LOG(ERROR) << "check other node ";
     // Return -1 if node not schedulable. otherwise return the number
     // of soft constraint violations.
     int64_t violations;
