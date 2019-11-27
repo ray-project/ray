@@ -16,6 +16,8 @@ import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.test_utils import RayTestTimeoutException
 
+RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_workers_separate_multinode(request):
@@ -83,10 +85,12 @@ def _test_component_failed(cluster, component_type):
     # Submit many tasks with many dependencies.
     @ray.remote
     def f(x):
+        time.sleep(0.001)
         return x
 
     @ray.remote
     def g(*xs):
+        time.sleep(0.001)
         return 1
 
     # Kill the component on all nodes except the head node as the tasks
@@ -179,6 +183,7 @@ def test_plasma_store_failed(ray_start_cluster):
     check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor restart yet")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 4,
