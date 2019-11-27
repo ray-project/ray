@@ -24,7 +24,7 @@ A naive example for ``Trainable`` is a simple number guesser:
     from ray import tune
     from ray.tune import Trainable
 
-    class Guesser(Trainable):
+    class Example(Trainable):
         def _setup(self, config):
             self.config = config
             self.password = 1024
@@ -36,7 +36,7 @@ A naive example for ``Trainable`` is a simple number guesser:
 
     ray.init()
     analysis = tune.run(
-        Guesser,
+        Example,
         stop={
             "training_iteration": 1,
         },
@@ -48,8 +48,10 @@ A naive example for ``Trainable`` is a simple number guesser:
     print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
 
 The program randomly picks 10 number from [1, 10000) and finds which is closer to the password.
-As a subclass of ``ray.tune.Trainable``, Tune will convert ``Example`` into a Ray actor, which
-runs on a separate process on a worker. ``_setup`` function is invoked once for each Actor for custom
+As a minimized example, we use BasicVariantGenerator as search algorithm and it cannot further
+mutate the (hyper)parameter in config across the experiments.
+For the subclass of ``ray.tune.Trainable``, Tune will convert this class into a Ray actor, which
+runs on a separate process on a worker.``_setup`` function is invoked once for custom
 initialization. ``_train`` execute one logical iteration of training in the tuning process,
 which may include several iterations of actual training (see the next example). As a rule of
 thumb, the execution time of one train call should be large enough to avoid overheads
@@ -59,7 +61,7 @@ thumb, the execution time of one train call should be large enough to avoid over
 We only implemented ``_setup`` and ``_train``methods for simplification, usually it's also required
 to implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
 
-Next we trains a Pytorch convolution model with Trainable and PBT.
+Next we use a more complete example, training a Pytorch model with Trainable and PBT.
 
 Trainable with Population Based Training (PBT)
 ----------------------------------------------
@@ -81,13 +83,13 @@ values throughout training, leading to automatic learning of the best configurat
 
 First we define a Trainable that wraps a ConvNet model.
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
    :language: python
    :start-after: __trainable_begin__
    :end-before: __trainable_end__
 
-The example reuses some of the functions in ray/tune/examples/mnist_pytorch.py, and is also a good
-demo for how to decouple the tuning logic and original training code.
+The example reuse some of the functions in mnist_pytorch, and is a good demo for how to decouple
+the tuning function and original training code.
 
 Here we also overrides ``reset_config``. This method is optional, but can be implemented to speed
 up algorithms such as PBT, and to allow performance optimizations such as running experiments
@@ -95,7 +97,7 @@ with reuse_actors=True.
 
 Then we define a PBT scheduler
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
    :language: python
    :start-after: __pbt_begin__
    :end-before: __pbt_end__
@@ -115,7 +117,7 @@ may go out of the specific range.
 
 Now we can kick off the tuning process by invoking tune.run:
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_example.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__
@@ -144,8 +146,6 @@ and individual policy perturbations are recorded in pbt_policy_{i}.txt. Tune log
 [target trial tag, clone trial tag, target trial iteration, clone trial iteration,
 old config, new config] on each perturbation step.
 
-Checking the accuracy:
-
 .. code-block:: python
 
     # Plot by wall-clock time
@@ -165,87 +165,5 @@ Checking the accuracy:
 DCGAN with Trainable and PBT
 ----------------------------
 
-The Generative Adversarial Networks (GAN) (Goodfellow et al., 2014) framework learns generative
-models via a training paradigm consisting of two competing modules – a generator and a
-discriminator. GAN training can be remarkably brittle and unstable in the face of suboptimal
-hyper- parameter selection with generators often collapsing to a single mode or diverging entirely.
 
-As presented in `Population Based Training (PBT) <https://deepmind.com/blog/population-based-training-neural-networks>`__,
-PBT can help with the DCGAN training and next we're gonna to build a simple DCGAN demo.
-Complete code example at `github <https://github.com/ray-project/ray/tree/master/python/ray/tune/examples/dcgan_mnist_pbt>`__
 
-We define the Generator and Discriminator with standard Pytorch API:
-
-.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
-   :language: python
-   :start-after: __GANmodel_begin__
-   :end-before: __GANmodel_end__
-
-To train the model with PBT, we need to define a metric for the scheduler to evaluate
-the model candidates. For a GAN network, inception score is arguably the most
-commonly used metric. We trained a mnist classification model (LeNet) and use
-it to inference the generated images and evaluate the image quality.
-
-.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
-   :language: python
-   :start-after: __INCEPTION_SCORE_begin__
-   :end-before: __INCEPTION_SCORE_end__
-
-The ``Trainable`` class includes a Generator and a Discriminator, each with an
-independent learning rate and optimizer.
-
-.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
-   :language: python
-   :start-after: __Trainable_begin__
-   :end-before: __Trainable_end__
-
-We specify inception score as the metric and start the tuning:
-
-.. literalinclude:: ../../python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py
-   :language: python
-   :start-after: __tune_begin__
-   :end-before: __tune_end__
-
-The trained Generator models can be load from checkpoints, and generate images
-from noise signals.
-
-.. image:: images/tune_advance_dcgan_generated.gif
-
-Visualize the increasing inception score from the training logs.
-
-.. code-block:: python
-
-    lossG = [df['is_score'].tolist() for df in list(analysis.trial_dataframes.values())]
-
-    plt.figure(figsize=(10,5))
-    plt.title("Inception Score During Training")
-    for i, lossg in enumerate(lossG):
-        plt.plot(lossg,label=i)
-
-    plt.xlabel("iterations")
-    plt.ylabel("is_score")
-    plt.legend()
-    plt.show()
-
-.. image:: images/tune_advance_dcgan_inscore.png
-
-And the Generator loss:
-
-.. code-block:: python
-
-    lossG = [df['lossg'].tolist() for df in list(analysis.trial_dataframes.values())]
-
-    plt.figure(figsize=(10,5))
-    plt.title("Generator Loss During Training")
-    for i, lossg in enumerate(lossG):
-        plt.plot(lossg,label=i)
-
-    plt.xlabel("iterations")
-    plt.ylabel("LossG")
-    plt.legend()
-    plt.show()
-
-.. image:: images/tune_advance_dcgan_Gloss.png
-
-Training of the MNist Generator takes about several minutes. The example can be easily
-altered to generate images for other dataset, e.g. cifar10 or LSUN.
