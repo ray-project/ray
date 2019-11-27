@@ -18,13 +18,14 @@ const int kWaitObjectEvictionMilliseconds = 100;
 // was available. This class is thread-safe.
 class FutureResolver {
  public:
-  FutureResolver(std::shared_ptr<CoreWorkerMemoryStore> store,
-                 rpc::ClientFactoryFn client_factory, boost::asio::io_service &io_service,
-                 int wait_object_eviction_milliseconds = kWaitObjectEvictionMilliseconds)
+  FutureResolver(
+      std::shared_ptr<CoreWorkerMemoryStore> store, rpc::ClientFactoryFn client_factory,
+      boost::asio::io_service &io_service,
+      int wait_future_resolution_milliseconds = kWaitObjectEvictionMilliseconds)
       : in_memory_store_(store),
         client_factory_(client_factory),
         io_service_(io_service),
-        wait_object_eviction_milliseconds_(wait_object_eviction_milliseconds) {}
+        wait_future_resolution_milliseconds_(wait_future_resolution_milliseconds) {}
 
   /// Resolve the value for a future. This will periodically contact the given
   /// owner until the owner dies or the owner has finished creating the object.
@@ -53,7 +54,9 @@ class FutureResolver {
   /// Factory for producing new core worker clients.
   const rpc::ClientFactoryFn client_factory_;
 
-  const int wait_object_eviction_milliseconds_;
+  /// The amount of time to wait between requests to a future's owner to get
+  /// the object's current status.
+  const int wait_future_resolution_milliseconds_;
 
   /// Protects against concurrent access to internal state.
   absl::Mutex mu_;

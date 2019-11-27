@@ -296,8 +296,9 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
   RAY_CHECK(has_owner)
       << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be serialized because we do not know their "
-         "owner. If this was not how your object ID was generated, please file an issue "
+         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
+         "which task will create them. "
+         "If this was not how your object ID was generated, please file an issue "
          "at https://github.com/ray-project/ray/issues/";
 }
 

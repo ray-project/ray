@@ -48,7 +48,7 @@ class ReferenceCounter {
   /// \param[in] object_id The ID of the object that we own.
   /// \param[in] owner_id The ID of the object's owner.
   /// \param[in] owner_address The address of the object's owner.
-  /// \param[in] dependencies The obnects that the object depends on.
+  /// \param[in] dependencies The objects that the object depends on.
   void AddOwnedObject(const ObjectID &object_id, const TaskID &owner_id,
                       const rpc::Address &owner_address,
                       std::shared_ptr<std::vector<ObjectID>> dependencies)

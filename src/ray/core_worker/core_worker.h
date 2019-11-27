@@ -138,7 +138,6 @@ class CoreWorker {
   /// appended to the serialized object ID.
   /// \param[out] owner_address The address of the object's owner. This should
   /// be appended to the serialized object ID.
-  /// \return Void.
   void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id, TaskID *owner_id,
                                           rpc::Address *owner_address);
 

@@ -876,10 +876,10 @@ def test_direct_call_serialized_id_eviction(ray_start_cluster):
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_nodes": 2,
-        "num_cpus": 10,
+        "num_cpus": 1,
     }, {
         "num_nodes": 1,
-        "num_cpus": 20,
+        "num_cpus": 2,
     }],
     indirect=True)
 def test_direct_call_serialized_id(ray_start_cluster):

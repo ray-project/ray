@@ -1060,11 +1060,9 @@ cdef class CoreWorker:
             CAddress c_owner_address = CAddress()
         self.core_worker.get().PromoteToPlasmaAndGetOwnershipInfo(
                 c_object_id, &c_owner_id, &c_owner_address)
-        serialized_owner_address = (
-                c_owner_address.SerializeAsString())
         return (object_id,
                 TaskID(c_owner_id.Binary()),
-                serialized_owner_address)
+                c_owner_address.SerializeAsString())
 
     def deserialize_and_register_object_id(
             self, const c_string &object_id_binary, const c_string

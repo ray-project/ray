@@ -183,6 +183,8 @@ class SerializationContext(object):
                 if owner_id:
                     worker = ray.worker.get_global_worker()
                     worker.check_connected()
+                    # UniqueIDs are serialized as
+                    # (class name, (unique bytes,)).
                     worker.core_worker.deserialize_and_register_object_id(
                         obj_id[1][0], owner_id[1][0], owner_address)
                 obj_id = obj_id[0](obj_id[1][0])
@@ -245,6 +247,8 @@ class SerializationContext(object):
                 if owner_id:
                     worker = ray.worker.get_global_worker()
                     worker.check_connected()
+                    # UniqueIDs are serialized as
+                    # (class name, (unique bytes,)).
                     worker.core_worker.deserialize_and_register_object_id(
                         obj_id[1][0], owner_id[1][0], owner_address)
                 obj_id = id_deserializer(obj_id)
