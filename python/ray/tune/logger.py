@@ -442,29 +442,14 @@ class UnifiedLogger(Logger):
     def sync_down(self):
         return self._log_syncer.sync_down()
 
+    def set_worker_ip(self, worker_ip):
+        if worker_ip != self._log_syncer.worker_ip:
+            self._log_syncer.set_worker_ip(worker_ip)
+        else:
+            logger.warning("Trial %s: No change to worker IP.")
+
     def wait(self):
         self._log_syncer.wait()
-
-    def sync_results_to_new_location(self, worker_ip):
-        """Sends the current log directory to the remote node.
-
-        Syncing will not occur if the cluster is not started
-        with the Ray autoscaler.
-        """
-        if worker_ip != self._log_syncer.worker_ip:
-            logger.info("Trial %s: Syncing (blocking) results to %s",
-                        self.trial, worker_ip)
-            self._log_syncer.reset()
-            self._log_syncer.set_worker_ip(worker_ip)
-            if not self._log_syncer.sync_up():
-                logger.error(
-                    "Trial %s: Sync up to new location skipped. "
-                    "This should not occur.", self.trial)
-            self._log_syncer.wait()
-        else:
-            logger.error(
-                "Trial %s: Sync attempted to same IP %s. This "
-                "should not occur.", self.trial, worker_ip)
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

@@ -60,6 +60,7 @@ class NodeSyncMixin(object):
     def set_worker_ip(self, worker_ip):
         """Set the worker ip to sync logs from."""
         self.worker_ip = worker_ip
+        self.reset()
 
     def has_remote_target(self):
         """Returns whether the Syncer has a remote target."""
@@ -83,15 +84,24 @@ class NodeSyncMixin(object):
             return True
         super(NodeSyncMixin, self).sync_down()
 
-    def sync_down(self):
-        if not self.has_remote_target():
-            return True
-        return super(NodeSyncMixin, self).sync_down()
+    def sync_up_to_new_location(self, worker_ip):
+        if worker_ip != self.worker_ip:
+            self.set_worker_ip(worker_ip)
+            if not self.sync_up():
+                logger.warning(
+                    "Sync up to new location skipped. This should not occur.")
+        else:
+            logger.warning("Sync attempted to same IP %s.", worker_ip)
 
     def sync_up(self):
         if not self.has_remote_target():
             return True
         return super(NodeSyncMixin, self).sync_up()
+
+    def sync_down(self):
+        if not self.has_remote_target():
+            return True
+        return super(NodeSyncMixin, self).sync_down()
 
     @property
     def _remote_path(self):

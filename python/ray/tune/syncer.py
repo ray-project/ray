@@ -289,7 +289,7 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
 
 
 def get_syncer(local_dir, remote_dir=None, sync_function=None):
-    """Returns a Syncer between two directories.
+    """Returns a MixedSyncer between two directories.
 
     Args:
         local_dir (str): Source directory for syncing.

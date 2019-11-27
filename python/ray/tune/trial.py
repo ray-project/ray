@@ -263,7 +263,8 @@ class Trial(object):
                 self.trial_dir = TrialDirectory(str(self), self.local_dir)
             else:
                 self.trial_dir.mkdir()
-            # TODO replace these with a single syncer capable of syncing subdirs
+            # TODO(ujvl): replace these with a single syncer capable of
+            #  syncing individual subdirectories.
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
@@ -287,14 +288,17 @@ class Trial(object):
             raise ValueError("Cannot update resources while Trial is running.")
         self.resources = Resources(cpu, gpu, **kwargs)
 
-    def sync_logger_to_new_location(self, worker_ip):
-        """Updates the logger location.
+    def sync_to_new_location(self, worker_ip):
+        """Updates the logger and syncer locations.
 
-        Also pushes logdir to worker_ip, allowing for cross-node recovery.
+        Also pushes checkpoints to worker_ip, allowing for cross-node recovery.
         """
-        if self.result_logger:
-            self.result_logger.sync_results_to_new_location(worker_ip)
-            self.set_location(Location(worker_ip))
+        assert self.result_logger, "Logger not initialized."
+        self.result_logger.set_worker_ip(worker_ip)
+        self.remote_logdir_syncer.set_worker_ip(worker_ip)
+        self.checkpoint_syncer.sync_up_to_new_location(worker_ip)
+        self.checkpoint_syncer.wait()
+        self.set_location(Location(worker_ip))
 
     def set_location(self, location):
         """Sets the location of the trial."""

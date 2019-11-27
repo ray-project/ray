@@ -260,8 +260,7 @@ def test_trial_migration(start_connected_emptyhead_cluster):
     cluster.wait_for_nodes()
     runner.step()  # Recovery step
     assert t2.last_result["training_iteration"] == 2
-    for i in range(1):
-        runner.step()
+    runner.step()
 
     assert t2.status == Trial.TERMINATED
 
