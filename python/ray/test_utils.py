@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import fnmatch
 import os
 import subprocess
@@ -170,3 +171,11 @@ def recursive_fnmatch(dirpath, pattern):
         for filename in fnmatch.filter(filenames, pattern):
             matches.append(os.path.join(root, filename))
     return matches
+
+
+def generate_internal_config_map(**kwargs):
+    internal_config = json.dumps(kwargs)
+    ray_kwargs = {
+        "_internal_config": internal_config,
+    }
+    return ray_kwargs

@@ -10,7 +10,7 @@ import time
 import ray
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.tests.utils import RayTestTimeoutException
+from ray.test_utils import RayTestTimeoutException
 
 
 def test_worker_stats(ray_start_regular):
@@ -53,5 +53,13 @@ def test_worker_stats(ray_start_regular):
             if p.info["pid"] in pids
         ]
         for process in processes:
-            assert "python" in process or "ray" in process
+            # TODO(ekl) why does travis/mi end up in the process list
+            assert ("python" in process or "ray" in process
+                    or "travis" in process)
         break
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

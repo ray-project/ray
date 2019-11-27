@@ -85,24 +85,33 @@ def ray_deps_setup():
     )
 
     github_repository(
-        name = "bazel_skylib",
-        tag = "0.6.0",
-        remote = "https://github.com/bazelbuild/bazel-skylib",
-        sha256 = "54ee22e5b9f0dd2b42eb8a6c1878dee592cfe8eb33223a7dbbc583a383f6ee1a",
-    )
-
-    github_repository(
         name = "com_github_checkstyle_java",
         commit = "ef367030d1433877a3360bbfceca18a5d0791bdd",
         remote = "https://github.com/ray-project/checkstyle_java",
         sha256 = "2fc33ec804011a03106e76ae77d7f1b09091b0f830f8e2a0408f079a032ed716",
     )
 
+    http_archive(
+        # This rule is used by @com_github_nelhage_rules_boost and
+        # declaring it here allows us to avoid patching the latter.
+        name = "boost",
+        build_file = "@com_github_nelhage_rules_boost//:BUILD.boost",
+        sha256 = "da3411ea45622579d419bfda66f45cd0f8c32a181d84adfa936f5688388995cf",
+        strip_prefix = "boost_1_68_0",
+        url = "https://dl.bintray.com/boostorg/release/1.68.0/source/boost_1_68_0.tar.gz",
+        patches = [
+            # Backport Clang-Cl patch on Boost 1.69 to Boost <= 1.68:
+            #   https://lists.boost.org/Archives/boost/2018/09/243420.php
+            "//thirdparty/patches:boost-type_traits-trivial_move.patch",
+        ],
+    )
+
     github_repository(
         name = "com_github_nelhage_rules_boost",
-        commit = "5171b9724fbb39c5fdad37b9ca9b544e8858d8ac",
-        remote = "https://github.com/ray-project/rules_boost",
-        sha256 = "14fa5cb327a3df811aa8713bbb7c5a63a89286868e7ec874c4a335829bf9c018",
+        # If you update the Boost version, remember to update the 'boost' rule.
+        commit = "df908358c605a7d5b8bbacde07afbaede5ac12cf",
+        remote = "https://github.com/nelhage/rules_boost",
+        sha256 = "3775c5ab217e0c9cc380f56e243a4d75fe6fee8eaee1447899eaa04c5d582cf1",
     )
 
     github_repository(
@@ -128,10 +137,12 @@ def ray_deps_setup():
 
     github_repository(
         name = "com_github_google_glog",
-        build_file = "@//bazel:BUILD.glog",
-        commit = "96a2f23dca4cc7180821ca5f32e526314395d26a",
+        commit = "925858d9969d8ee22aabc3635af00a37891f4e25",
         remote = "https://github.com/google/glog",
-        sha256 = "6281aa4eeecb9e932d7091f99872e7b26fa6aacece49c15ce5b14af2b7ec050f",
+        sha256 = "dbe787f2a7cf1146f748a191c99ae85d6b931dd3ebdcc76aa7ccae3699149c67",
+        patches = [
+            "//thirdparty/patches:glog-stack-trace.patch",
+        ],
     )
 
     github_repository(
@@ -169,19 +180,23 @@ def ray_deps_setup():
     # OpenCensus depends on jupp0r/prometheus-cpp
     github_repository(
         name = "com_github_jupp0r_prometheus_cpp",
-        commit = "5c45ba7ddc0585d765a43d136764dd2a542bd495",
-        remote = "https://github.com/ray-project/prometheus-cpp",
-        # TODO(qwang): We should use the repository of `jupp0r` here when this PR
-        # `https://github.com/jupp0r/prometheus-cpp/pull/225` getting merged.
-        sha256 = "c80293276166d405188b1af62cd11178fbcec0f1a8ab0dbece19d4bdc79d45e7",
+        commit = "60eaa4ea47b16751a8e8740b05fe70914c68a480",
+        remote = "https://github.com/jupp0r/prometheus-cpp",
+        sha256 = "9756bd2d573e7722f97dbe6d35934e43b9a79e6a87fc5e1da79774a621cddd8e",
+        patches = [
+            # https://github.com/jupp0r/prometheus-cpp/pull/225
+            "//thirdparty/patches:prometheus-windows-zlib.patch",
+            "//thirdparty/patches:prometheus-windows-pollfd.patch",
+        ]
     )
 
     github_repository(
         name = "com_github_grpc_grpc",
-        commit = "93e8830070e9afcbaa992c75817009ee3f4b63a0",
+        commit = "4790ab6d97e634a1ede983be393f3bb3c132b2f7",
         remote = "https://github.com/grpc/grpc",
-        sha256 = "b391a327429279f6f29b9ae7e5317cd80d5e9d49cc100e6d682221af73d984a6",
+        sha256 = "723853c36ea6d179d32a4f9f2f8691dbe0e28d5bbc521c954b34355a1c952ba5",
         patches = [
+            "//thirdparty/patches:grpc-command-quoting.patch",
             "//thirdparty/patches:grpc-cython-copts.patch",
         ],
     )

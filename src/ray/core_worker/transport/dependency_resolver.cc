@@ -3,6 +3,8 @@
 namespace ray {
 
 struct TaskState {
+  TaskState(TaskSpecification t, absl::flat_hash_set<ObjectID> deps)
+      : task(t), local_dependencies(deps) {}
   /// The task to be run.
   TaskSpecification task;
   /// The remaining dependencies to resolve for this task.
@@ -42,7 +44,7 @@ void DoInlineObjectValue(const ObjectID &obj_id, std::shared_ptr<RayObject> valu
   RAY_CHECK(found) << "obj id " << obj_id << " not found";
 }
 
-void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
+void LocalDependencyResolver::ResolveDependencies(TaskSpecification &task,
                                                   std::function<void()> on_complete) {
   absl::flat_hash_set<ObjectID> local_dependencies;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -62,7 +64,7 @@ void LocalDependencyResolver::ResolveDependencies(const TaskSpecification &task,
 
   // This is deleted when the last dependency fetch callback finishes.
   std::shared_ptr<TaskState> state =
-      std::shared_ptr<TaskState>(new TaskState{task, std::move(local_dependencies)});
+      std::make_shared<TaskState>(task, std::move(local_dependencies));
   num_pending_ += 1;
 
   for (const auto &obj_id : state->local_dependencies) {

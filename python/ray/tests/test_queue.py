@@ -119,3 +119,8 @@ def test_queue(ray_start_regular):
         assert q.get() == item
         size -= 1
         assert q.qsize() == size
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

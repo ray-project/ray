@@ -166,7 +166,8 @@ def run(run_or_experiment,
             BasicVariantGenerator.
         scheduler (TrialScheduler): Scheduler for executing
             the experiment. Choose among FIFO (default), MedianStopping,
-            AsyncHyperBand, and HyperBand.
+            AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
+            ray.tune.schedulers for more options.
         with_server (bool): Starts a background Tune server. Needed for
             using the Client API.
         server_port (int): Port number for launching TuneServer.

@@ -5,6 +5,7 @@
 /python/ray/pickle5_files/
 /python/build
 /python/dist
+/python/python-driver-*
 /thirdparty/pkg/
 /build/java
 

@@ -513,6 +513,9 @@ class CoreWorker {
   /// Fields related to task submission.
   ///
 
+  // Tracks the currently pending tasks.
+  std::shared_ptr<TaskManager> task_manager_;
+
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
 
@@ -521,6 +524,9 @@ class CoreWorker {
 
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+
+  /// Resolve local and remote dependencies for actor creation.
+  std::unique_ptr<LocalDependencyResolver> resolver_;
 
   ///
   /// Fields related to task execution.

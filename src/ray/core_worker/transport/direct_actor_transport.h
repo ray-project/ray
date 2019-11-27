@@ -16,6 +16,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/grpc_server.h"
@@ -27,25 +28,6 @@ namespace ray {
 
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
-
-/// Treat a task as failed.
-///
-/// \param[in] task_id The ID of a task.
-/// \param[in] num_returns Number of return objects.
-/// \param[in] error_type The type of the specific error.
-/// \param[in] in_memory_store The memory store to write to.
-/// \return Void.
-void TreatTaskAsFailed(const TaskID &task_id, int num_returns,
-                       const rpc::ErrorType &error_type,
-                       std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store);
-
-/// Write return objects to the memory store.
-///
-/// \param[in] reply Proto response to a direct actor or task call.
-/// \param[in] in_memory_store The memory store to write to.
-/// \return Void.
-void WriteObjectsToMemoryStore(const rpc::PushTaskReply &reply,
-                               std::shared_ptr<CoreWorkerMemoryStore> &in_memory_store);
 
 /// In direct actor call task submitter and receiver, a task is directly submitted
 /// to the actor that will execute it.
@@ -66,10 +48,11 @@ struct ActorStateData {
 class CoreWorkerDirectActorTaskSubmitter {
  public:
   CoreWorkerDirectActorTaskSubmitter(rpc::ClientFactoryFn client_factory,
-                                     std::shared_ptr<CoreWorkerMemoryStore> store)
+                                     std::shared_ptr<CoreWorkerMemoryStore> store,
+                                     std::shared_ptr<TaskFinisherInterface> task_finisher)
       : client_factory_(client_factory),
-        in_memory_store_(store),
-        resolver_(in_memory_store_) {}
+        resolver_(store),
+        task_finisher_(task_finisher) {}
 
   /// Submit a task to an actor for execution.
   ///
@@ -138,14 +121,11 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// actor.
   std::unordered_map<ActorID, int64_t> next_sequence_number_;
 
-  /// Map from actor id to the tasks that are waiting for reply.
-  std::unordered_map<ActorID, std::unordered_map<TaskID, int>> waiting_reply_tasks_;
-
-  /// The in-memory store.
-  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
-
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
+
+  /// Used to complete tasks.
+  std::shared_ptr<TaskFinisherInterface> task_finisher_;
 
   friend class CoreWorkerTest;
 };
@@ -265,6 +245,38 @@ class FiberEvent {
   bool ready_ = false;
 };
 
+/// Used by async actor mode. The FiberRateLimiter is a barrier that
+/// allows at most num fibers running at once. It implements the
+/// semaphore data structure.
+class FiberRateLimiter {
+ public:
+  FiberRateLimiter(int num) : num_(num) {}
+
+  // Enter the semaphore. Wait fo the value to be > 0 and decrement the value.
+  void Acquire() {
+    std::unique_lock<boost::fibers::mutex> lock(mutex_);
+    cond_.wait(lock, [this]() { return num_ > 0; });
+    num_ -= 1;
+  }
+
+  // Exit the semaphore. Increment the value and notify other waiter.
+  void Release() {
+    {
+      std::unique_lock<boost::fibers::mutex> lock(mutex_);
+      num_ += 1;
+    }
+    // TODO(simon): This not does guarantee to wake up the first queued fiber.
+    // This could be a problem for certain workloads because there is no guarantee
+    // on task ordering .
+    cond_.notify_one();
+  }
+
+ private:
+  boost::fibers::condition_variable cond_;
+  boost::fibers::mutex mutex_;
+  int num_;
+};
+
 /// Used to ensure serial order of task execution per actor handle.
 /// See direct_actor.proto for a description of the ordering protocol.
 class SchedulingQueue {
@@ -272,13 +284,15 @@ class SchedulingQueue {
   SchedulingQueue(boost::asio::io_service &main_io_service, DependencyWaiter &waiter,
                   std::shared_ptr<BoundedExecutor> pool = nullptr,
                   bool use_asyncio = false,
+                  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter = nullptr,
                   int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : wait_timer_(main_io_service),
         waiter_(waiter),
         reorder_wait_seconds_(reorder_wait_seconds),
         main_thread_id_(boost::this_thread::get_id()),
         pool_(pool),
-        use_asyncio_(use_asyncio) {}
+        use_asyncio_(use_asyncio),
+        fiber_rate_limiter_(fiber_rate_limiter) {}
 
   void Add(int64_t seq_no, int64_t client_processed_up_to,
            std::function<void()> accept_request, std::function<void()> reject_request,
@@ -327,7 +341,12 @@ class SchedulingQueue {
       auto request = head->second;
 
       if (use_asyncio_) {
-        boost::fibers::fiber([request]() mutable { request.Accept(); }).detach();
+        boost::fibers::fiber([request, this]() mutable {
+          fiber_rate_limiter_->Acquire();
+          request.Accept();
+          fiber_rate_limiter_->Release();
+        })
+            .detach();
       } else if (pool_ != nullptr) {
         pool_->PostBlocking([request]() mutable { request.Accept(); });
       } else {
@@ -385,6 +404,9 @@ class SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool use_asyncio_;
+  /// If use_asyncio_ is true, fiber_rate_limiter_ limits the max number of async
+  /// tasks running at once.
+  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
 
   friend class SchedulingQueueTest;
 };
@@ -452,12 +474,16 @@ class CoreWorkerDirectTaskReceiver {
   /// If concurrent calls are allowed, holds the pool for executing these tasks.
   std::shared_ptr<BoundedExecutor> pool_;
   /// Whether this actor use asyncio for concurrency.
+  /// TODO(simon) group all asyncio related fields into a separate struct.
   bool is_asyncio_ = false;
   /// The thread that runs all asyncio fibers. is_asyncio_ must be true.
   std::thread fiber_runner_thread_;
   /// The fiber event used to block fiber_runner_thread_ from shutdown.
   /// is_asyncio_ must be true.
   FiberEvent fiber_shutdown_event_;
+  /// The fiber semaphore used to limit the number of concurrent fibers
+  /// running at once.
+  std::shared_ptr<FiberRateLimiter> fiber_rate_limiter_;
 };
 
 }  // namespace ray

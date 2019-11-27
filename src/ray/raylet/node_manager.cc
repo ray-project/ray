@@ -2062,14 +2062,12 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
   // Subscribe to the objects required by the task. These objects will be
   // fetched and/or reconstructed as necessary, until the objects become local
   // or are unsubscribed.
-  if (!required_object_ids.empty()) {
-    if (ray_get) {
-      task_dependency_manager_.SubscribeGetDependencies(current_task_id,
-                                                        required_object_ids);
-    } else {
-      task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
-                                                         required_object_ids);
-    }
+  if (ray_get) {
+    task_dependency_manager_.SubscribeGetDependencies(current_task_id,
+                                                      required_object_ids);
+  } else {
+    task_dependency_manager_.SubscribeWaitDependencies(worker->WorkerId(),
+                                                       required_object_ids);
   }
 }
 
@@ -2084,8 +2082,10 @@ void NodeManager::HandleTaskUnblocked(
     // The client is a worker. If the worker is not already unblocked and the
     // unblocked task matches the one assigned to the worker, then mark the
     // worker as unblocked. This returns the temporarily released resources to
-    // the worker.
-    if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId()) {
+    // the worker. Workers that have been marked dead have already been cleaned
+    // up.
+    if (worker->IsBlocked() && current_task_id == worker->GetAssignedTaskId() &&
+        !worker->IsDead()) {
       // (See design_docs/task_states.rst for the state transition diagram.)
       Task task;
       RAY_CHECK(local_queues_.RemoveTask(current_task_id, &task));
@@ -2294,7 +2294,7 @@ std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTas
     // This is the first time that the actor has been created, so the number
     // of remaining reconstructions is the max.
     actor_info_ptr->set_remaining_reconstructions(task_spec.MaxActorReconstructions());
-    actor_info_ptr->set_is_direct_call(task_spec.IsDirectCall());
+    actor_info_ptr->set_is_direct_call(task_spec.IsDirectActorCreationCall());
     actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
     actor_info_ptr->mutable_owner_address()->CopyFrom(
         task_spec.GetMessage().caller_address());
@@ -2527,6 +2527,11 @@ void NodeManager::ResubmitTask(const Task &task, const ObjectID &required_object
   RAY_LOG(DEBUG) << "Attempting to resubmit task "
                  << task.GetTaskSpecification().TaskId();
 
+  if (task.GetTaskSpecification().IsDirectCall()) {
+    TreatTaskAsFailed(task, ErrorType::OBJECT_UNRECONSTRUCTABLE);
+    return;
+  }
+
   // Actors should only be recreated if the first initialization failed or if
   // the most recent instance of the actor failed.
   if (task.GetTaskSpecification().IsActorCreationTask()) {
@@ -2740,21 +2745,9 @@ void NodeManager::ForwardTask(
         task_entry.second.TaskData().GetTaskExecutionSpec().GetMessage());
   }
 
-  // Move the FORWARDING task to the SWAP queue so that we remember that we
-  // have it queued locally. Once the ForwardTaskRequest has been sent, the
-  // task will get re-queued, depending on whether the message succeeded or
-  // not.
-  local_queues_.QueueTasks({task}, TaskState::SWAP);
-  client->ForwardTask(request, [this, on_error, task_id, node_id](
+  client->ForwardTask(request, [this, on_error, task, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
     // Remove the FORWARDING task from the SWAP queue.
-    Task task;
-    TaskState state;
-    if (!local_queues_.RemoveTask(task_id, &task, &state)) {
-      return;
-    }
-    RAY_CHECK(state == TaskState::SWAP);
-
     if (status.ok()) {
       const auto &spec = task.GetTaskSpecification();
       // Mark as forwarded so that the task and its lineage are not
