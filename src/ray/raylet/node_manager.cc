@@ -127,9 +127,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
 
   if (USE_NEW_SCHEDULER) {
     SchedulingResources &local_resources = cluster_resource_map_[local_client_id];
-    new_resource_scheduler_ = std::shared_ptr<ClusterResourceScheduler>(
-        new ClusterResourceScheduler(client_id_.Binary(),
-          local_resources.GetTotalResources().GetResourceMap()));
+    new_resource_scheduler_ =
+        std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
+            client_id_.Binary(), local_resources.GetTotalResources().GetResourceMap()));
   }
 
   RAY_ARROW_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
@@ -652,6 +652,8 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   }
   SchedulingResources &remote_resources = it->second;
 
+  ResourceSet remote_total(VectorFromProtobuf(heartbeat_data.resources_total_label()),
+                           VectorFromProtobuf(heartbeat_data.resources_total_capacity()));
   ResourceSet remote_available(
       VectorFromProtobuf(heartbeat_data.resources_available_label()),
       VectorFromProtobuf(heartbeat_data.resources_available_capacity()));
@@ -661,6 +663,14 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetAvailableResources(std::move(remote_available));
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
+
+  if (USE_NEW_SCHEDULER) {
+    new_resource_scheduler_->AddOrUpdateNode(
+        client_id.Binary(), remote_total.GetResourceMap(), remote_load.GetResourceMap());
+    NewSchedulerScheduleMoreTasks();
+    return;
+  }
+
   // Extract decision for this raylet.
   auto decision = scheduling_policy_.SpillOver(remote_resources);
   std::unordered_set<TaskID> local_task_ids;
@@ -1455,6 +1465,32 @@ void NodeManager::DispatchDirectCallTasks() {
   }
 }
 
+void NodeManager::NewSchedulerScheduleMoreTasks() {
+  RAY_CHECK(USE_NEW_SCHEDULER);
+  while (!new_pending_queue_.empty()) {
+    auto work = new_pending_queue_.front();
+    auto task = work.second;
+    auto request_resources =
+        task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+    int64_t violations = 0;
+    std::string node_id_string =
+        new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
+    if (node_id_string == std::to_string(-1)) {
+      break;
+    } else {
+      new_resource_scheduler_->SubtractNodeAvailableResources(node_id_string,
+                                                              request_resources);
+      if (node_id_string == client_id_.Binary()) {
+        new_runnable_queue_.push_back(work);
+      } else {
+        RAY_CHECK(false) << "TODO handle spillover reply";
+      }
+      new_pending_queue_.pop_front();
+    }
+  }
+  DispatchDirectCallTasks();
+}
+
 void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
                                            rpc::WorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
@@ -1463,13 +1499,11 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   Task task(task_message);
 
   if (USE_NEW_SCHEDULER) {
-    auto request_resources = task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-    int64_t violations = 0;
-    std::string node_id_string =
-      new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
-
+    auto request_resources =
+        task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     auto work = std::make_pair(
-        [this, request_resources, reply, send_reply_callback](std::shared_ptr<Worker> worker) {
+        [this, request_resources, reply,
+         send_reply_callback](std::shared_ptr<Worker> worker) {
           reply->mutable_worker_address()->set_ip_address(
               initial_config_.node_manager_address);
           reply->mutable_worker_address()->set_port(worker->Port());
@@ -1481,17 +1515,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
           leased_worker_resources_[worker->Port()] = request_resources;
         },
         task);
-
-    // Scheduled locally.
-    if (node_id_string == std::to_string(-1)) {
-      new_pending_queue_.push_back(work);
-    } else {
-      RAY_CHECK(node_id_string == client_id_.Binary());
-      new_resource_scheduler_->SubtractNodeAvailableResources(node_id_string,
-          request_resources);
-      new_runnable_queue_.push_back(work);
-      DispatchDirectCallTasks();
-    }
+    new_pending_queue_.push_back(work);
+    NewSchedulerScheduleMoreTasks();
     return;
   }
 
@@ -1539,6 +1564,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     RAY_CHECK(it != leased_worker_resources_.end());
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
     leased_worker_resources_.erase(it);
+    NewSchedulerScheduleMoreTasks();
   }
 
   leased_workers_.erase(worker_port);
