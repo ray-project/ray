@@ -665,9 +665,6 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetLoadResources(std::move(remote_load));
 
   if (USE_NEW_SCHEDULER && client_id != client_id_) {
-    RAY_LOG(ERROR) << "Updating node " << client_id.Hex() <<
-      " total: " << remote_total.ToString() <<
-      " available: " << remote_available.ToString();
     new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
                                              remote_total.GetResourceMap(),
                                              remote_available.GetResourceMap());
@@ -1495,7 +1492,6 @@ void NodeManager::NewSchedulerScheduleMoreTasks() {
             << node_id;
         work.first(nullptr, node_id, node_info.node_manager_address(),
                    node_info.node_manager_port());
-        RAY_LOG(ERROR) << "spilled task to other node";
       }
       new_pending_queue_.pop_front();
     }

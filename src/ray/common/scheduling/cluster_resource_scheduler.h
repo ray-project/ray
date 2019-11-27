@@ -7,6 +7,7 @@
 #include "ray/util/logging.h"
 
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 /// List of predefined resources.
@@ -81,6 +82,10 @@ class ClusterResourceScheduler {
   void SetCustomResources(
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
+
+  std::stringstream NodeResourcesPrint(const NodeResources& node_resources);
+  std::stringstream TaskRequestPrint(const TaskRequest& task_request);
+  std::stringstream Print(void);
 
  public:
   ClusterResourceScheduler(void){};
@@ -199,6 +204,8 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &resource_map_total,
       const std::unordered_map<std::string, double> &resource_map_available,
       NodeResources *node_resources);
+
 };
+
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H

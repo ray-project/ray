@@ -132,8 +132,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   if (it != nodes_.end()) {
     if (IsSchedulable(task_req, it->first, it->second) == 0) {
       return local_node_id_;
-    } else {
-      RAY_LOG(DEBUG) << "local node not schedulable";
     }
   }
 
@@ -149,19 +147,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     }
   }
 
-  for (auto rr : task_req.predefined_resources) {
-    RAY_LOG(ERROR) << "task req " << rr.demand;
-  }
-
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
-    RAY_LOG(ERROR) << "check other node ";
     // Return -1 if node not schedulable. otherwise return the number
     // of soft constraint violations.
     int64_t violations;
 
     if ((violations = IsSchedulable(task_req, it->first, it->second)) == -1) {
-      break;
+      continue;
     }
+
     // Update the node with the smallest number of soft constraints violated.
     if (min_violations > violations) {
       min_violations = violations;
@@ -173,7 +167,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     }
   }
   *total_violations = min_violations;
-  RAY_LOG(ERROR) << "best node " << best_node;
   return best_node;
 }
 
@@ -335,4 +328,51 @@ void ClusterResourceScheduler::ResourceMapToTaskRequest(
       i++;
     }
   }
+}
+
+std::stringstream ClusterResourceScheduler::NodeResourcesPrint(const NodeResources& node_resources) {
+  std::stringstream buffer;
+  buffer << "  node predefined resources {";
+  for (size_t i = 0; i < node_resources.capacities.size(); i++ ) {
+    buffer << "(" << node_resources.capacities[i].total << ":" <<
+      node_resources.capacities[i].available << ") ";
+  }
+  buffer << "}" << std::endl;
+
+  buffer << "  node custom resources {";
+  for (auto it = node_resources.custom_resources.begin();
+    it != node_resources.custom_resources.end(); ++it) {
+    buffer << it->first << ":(" << it->second.total << ":" << it->second.available << ") ";
+  }
+  buffer << "}" << std::endl;
+  return buffer;
+}
+
+std::stringstream ClusterResourceScheduler::TaskRequestPrint(const TaskRequest& task_request) {
+  std::stringstream buffer;
+  buffer << std::endl << "  request predefined resources {";
+  for (size_t i = 0; i < task_request.predefined_resources.size(); i++ ) {
+    buffer << "(" << task_request.predefined_resources[i].demand << ":" <<
+      task_request.predefined_resources[i].soft << ") ";
+  }
+  buffer << "}" << std::endl;
+
+  buffer << "  request custom resources {";
+  for (size_t i = 0; i < task_request.custom_resources.size(); i++ ) {
+    buffer << task_request.custom_resources[i].id << ":" <<
+      "(" << task_request.custom_resources[i].req.demand << ":" <<
+      task_request.custom_resources[i].req.soft << ") ";
+  }
+  buffer << "}" << std::endl;
+  return buffer;
+}
+
+std::stringstream ClusterResourceScheduler::Print(void) {
+  std::stringstream buffer;
+  buffer << std::endl << "local node id: " << local_node_id_ << std::endl;
+  for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
+    buffer << "node id: " << it->first << std::endl;
+    buffer << NodeResourcesPrint(it->second).str();
+  }
+  return buffer;
 }
