@@ -20,5 +20,5 @@ torchvision
 tensorboardX
 tabulate
 mlflow
-kubernetess
+kubernetes
 boto3
