@@ -1228,7 +1228,7 @@ void NodeManager::ProcessFetchOrReconstructMessage(
     }
   }
 
-  if (!required_object_ids.empty() && message->mark_worker_blocked()) {
+  if (!required_object_ids.empty()) {
     const TaskID task_id = from_flatbuf<TaskID>(*message->task_id());
     AsyncResolveObjects(client, required_object_ids, task_id, /*ray_get=*/true,
                         /*mark_worker_blocked*/ message->mark_worker_blocked());
@@ -2489,6 +2489,7 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
 
     // First filter out the tasks that should not be moved to READY.
     local_queues_.FilterState(ready_task_id_set, TaskState::BLOCKED);
+    local_queues_.FilterState(ready_task_id_set, TaskState::RUNNING);
     local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
     local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
 
