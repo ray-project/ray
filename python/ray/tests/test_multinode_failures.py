@@ -85,12 +85,16 @@ def _test_component_failed(cluster, component_type):
     # Submit many tasks with many dependencies.
     @ray.remote
     def f(x):
-        time.sleep(0.001)
+        if RAY_FORCE_DIRECT:
+            # The test takes too long with the raylet codepath.
+            time.sleep(0.01)
         return x
 
     @ray.remote
     def g(*xs):
-        time.sleep(0.001)
+        if RAY_FORCE_DIRECT:
+            # The test takes too long with the raylet codepath.
+            time.sleep(0.01)
         return 1
 
     # Kill the component on all nodes except the head node as the tasks
@@ -142,11 +146,13 @@ def check_components_alive(cluster, component_type, check_component_alive):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
+    "ray_start_cluster",
+    [{
         "num_cpus": 8,
         "num_nodes": 4,
         "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
         }),
     }],
     indirect=True)
@@ -164,11 +170,13 @@ def test_raylet_failed(ray_start_cluster):
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
+    "ray_start_cluster",
+    [{
         "num_cpus": 8,
         "num_nodes": 2,
         "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
         }),
     }],
     indirect=True)

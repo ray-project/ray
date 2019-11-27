@@ -138,10 +138,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &addr,
                                                    rpc::CoreWorkerClientInterface &client,
                                                    const SchedulingKey &scheduling_key,
-                                                   TaskSpecification &task_spec) {
+                                                   const TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-  request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+  request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = client.PushNormalTask(
       std::move(request), [this, task_id, scheduling_key, addr](
                               Status status, const rpc::PushTaskReply &reply) {
@@ -150,14 +150,18 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
           OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok());
         }
         if (!status.ok()) {
-          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
+          // TODO: It'd be nice to differentiate here between process vs node
+          // failure (e.g., by contacting the raylet). If it was a process
+          // failure, it may have been an application-level error and it may
+          // not make sense to retry the task.
+          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::WORKER_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
       });
   if (!status.ok()) {
     // TODO(swang): add unit test for this.
-    task_finisher_->FailPendingTask(task_id, rpc::ErrorType::WORKER_DIED);
+    task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::WORKER_DIED);
   }
 }
 };  // namespace ray

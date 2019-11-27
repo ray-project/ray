@@ -18,15 +18,18 @@ class TaskFinisherInterface {
   virtual void CompletePendingTask(const TaskID &task_id,
                                    const rpc::PushTaskReply &reply) = 0;
 
-  virtual void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) = 0;
+  virtual void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) = 0;
 
   virtual ~TaskFinisherInterface() {}
 };
 
+using RetryTaskCallback = std::function<Status(const TaskSpecification &spec)>;
+
 class TaskManager : public TaskFinisherInterface {
  public:
-  TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store)
-      : in_memory_store_(in_memory_store) {}
+  TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
+              RetryTaskCallback retry_task_callback)
+      : in_memory_store_(in_memory_store), retry_task_callback_(retry_task_callback) {}
 
   /// Add a task that is pending execution.
   ///
@@ -34,7 +37,7 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] num_retries_allowed Number of times this task may be retried
   /// on failure.
   /// \return Void.
-  void AddPendingTask(const TaskSpecification &spec, int num_retries_allowed);
+  void AddPendingTask(const TaskSpecification &spec, int num_retries_allowed = 0);
 
   /// Return whether the task is pending.
   ///
@@ -52,24 +55,33 @@ class TaskManager : public TaskFinisherInterface {
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &reply) override;
 
-  /// Treat a pending task as failed.
+  /// A pending task failed. This will either retry the task or mark the task
+  /// as failed if there are no retries left.
   ///
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
-  /// \return Void.
-  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) override;
+  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override;
 
  private:
+  /// Treat a pending task as failed. The lock should not be held when calling
+  /// this method because it may trigger callbacks in this or other classes.
+  void MarkPendingTaskFailed(const TaskID &task_id, int64_t num_returns,
+                             rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
+
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  /// Called when a task should be retried.
+  const RetryTaskCallback retry_task_callback_;
 
   /// Protects below fields.
   absl::Mutex mu_;
 
   /// Map from task ID to a pair of:
-  ///   {task's number of return values, number of allowed retries left}
+  ///   {task spec, number of allowed retries left}
   /// This map contains one entry per pending task that we submitted.
-  absl::flat_hash_map<TaskID, std::pair<int64_t, int>> pending_tasks_ GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
+      GUARDED_BY(mu_);
 };
 
 }  // namespace ray

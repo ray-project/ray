@@ -1621,6 +1621,7 @@ def make_decorator(num_return_vals=None,
                    object_store_memory=None,
                    resources=None,
                    max_calls=None,
+                   num_retries_allowed=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
@@ -1633,7 +1634,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls)
+                object_store_memory, resources, num_return_vals, max_calls,
+                num_retries_allowed)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
