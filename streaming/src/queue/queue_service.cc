@@ -105,19 +105,22 @@ void QueueService::Stop() {
   }
 }
 
-std::shared_ptr<UpstreamService> UpstreamService::GetService(CoreWorker* core_worker, const ActorID &actor_id) {
+std::shared_ptr<UpstreamService> UpstreamService::CreateService(CoreWorker* core_worker, const ActorID &actor_id) {
   if (nullptr == upstream_service_) {
     upstream_service_ = std::make_shared<UpstreamService>(core_worker, actor_id);
   }
   return upstream_service_;
 }
 
+std::shared_ptr<UpstreamService> UpstreamService::GetService() {
+  return upstream_service_;
+}
+
 std::shared_ptr<WriterQueue> UpstreamService::CreateUpstreamQueue(const ObjectID &queue_id,
-                                                         const ActorID &actor_id,
                                                          const ActorID &peer_actor_id,
                                                          uint64_t size) {
   STREAMING_LOG(INFO) << "CreateUpstreamQueue: " << queue_id
-                      << " " << actor_id << "->" << peer_actor_id;
+                      << " " << actor_id_ << "->" << peer_actor_id;
   std::shared_ptr<WriterQueue> queue = GetUpQueue(queue_id);
   if (queue != nullptr) {
     STREAMING_LOG(WARNING) << "Duplicate to create up queue." << queue_id;
@@ -125,7 +128,7 @@ std::shared_ptr<WriterQueue> UpstreamService::CreateUpstreamQueue(const ObjectID
   }
 
   queue = std::unique_ptr<streaming::WriterQueue>(new streaming::WriterQueue(
-            queue_id, actor_id, peer_actor_id, size, GetOutTransport(queue_id)));
+            queue_id, actor_id_, peer_actor_id, size, GetOutTransport(queue_id)));
   upstream_queues_[queue_id] = queue;
 
   return queue;
@@ -226,10 +229,14 @@ void UpstreamService::ReleaseAllUpQueues() {
   Release();
 }
 
-std::shared_ptr<DownstreamService> DownstreamService::GetService(CoreWorker* core_worker, const ActorID &actor_id) {
+std::shared_ptr<DownstreamService> DownstreamService::CreateService(CoreWorker* core_worker, const ActorID &actor_id) {
   if (nullptr == downstream_service_) {
     downstream_service_ = std::make_shared<DownstreamService>(core_worker, actor_id);
   }
+  return downstream_service_;
+}
+
+std::shared_ptr<DownstreamService> DownstreamService::GetService() {
   return downstream_service_;
 }
 
@@ -238,10 +245,9 @@ bool DownstreamService::DownstreamQueueExists(const ObjectID &queue_id) {
 }
 
 std::shared_ptr<ReaderQueue> DownstreamService::CreateDownstreamQueue(const ObjectID &queue_id,
-                                                           const ActorID &actor_id,
                                                            const ActorID &peer_actor_id) {
   STREAMING_LOG(INFO) << "CreateDownstreamQueue: " << queue_id
-                      << " " << peer_actor_id << "->" << actor_id;
+                      << " " << peer_actor_id << "->" << actor_id_;
   auto it = downstream_queues_.find(queue_id);
   if (it != downstream_queues_.end()) {
     STREAMING_LOG(WARNING) << "Duplicate to create down queue!!!! " << queue_id;
@@ -250,7 +256,7 @@ std::shared_ptr<ReaderQueue> DownstreamService::CreateDownstreamQueue(const Obje
 
   std::shared_ptr<streaming::ReaderQueue> queue =
       std::unique_ptr<streaming::ReaderQueue>(new streaming::ReaderQueue(
-          queue_id, actor_id, peer_actor_id, GetOutTransport(queue_id)));
+          queue_id, actor_id_, peer_actor_id, GetOutTransport(queue_id)));
   downstream_queues_[queue_id] = queue;
   return queue;
 }

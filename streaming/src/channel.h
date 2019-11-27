@@ -2,7 +2,7 @@
 #define RAY_CHANNEL_H
 
 #include "config/streaming_config.h"
-#include "queue/queue_interface.h"
+#include "queue/queue_service.h"
 #include "ring_buffer.h"
 #include "status.h"
 #include "util/streaming_util.h"
@@ -26,9 +26,6 @@ struct ProducerChannelInfo {
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
   int64_t message_pass_by_ts;
-
-  // for Direct Call
-  uint64_t actor_handle;
   ActorID actor_id;
 };
 
@@ -45,9 +42,6 @@ struct ConsumerChannelInfo {
   uint64_t last_queue_item_latency;
   uint64_t last_queue_target_diff;
   uint64_t get_queue_item_times;
-
-  // for Direct Call
-  uint64_t actor_handle;
   ActorID actor_id;
 };
 
@@ -101,9 +95,11 @@ class StreamingQueueProducer : public ProducerChannel {
 
  private:
   StreamingStatus CreateQueue();
+  Status PushQueueItem(uint64_t seq_id, uint8_t *data,
+                       uint32_t data_size, uint64_t timestamp);
 
  private:
-  std::shared_ptr<StreamingQueueWriter> queue_writer_;
+  std::shared_ptr<WriterQueue> queue_;
 };
 
 class StreamingQueueConsumer : public ConsumerChannel {
@@ -120,7 +116,7 @@ class StreamingQueueConsumer : public ConsumerChannel {
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
  private:
-  std::shared_ptr<StreamingQueueReader> queue_reader_;
+  std::shared_ptr<ReaderQueue> queue_;
 };
 
 class MockProducer : public ProducerChannel {

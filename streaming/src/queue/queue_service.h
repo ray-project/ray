@@ -68,7 +68,6 @@ class UpstreamService : public QueueService {
   public:
   UpstreamService(CoreWorker* core_worker, const ActorID &actor_id) : QueueService(core_worker, actor_id) {}
   std::shared_ptr<WriterQueue> CreateUpstreamQueue(const ObjectID &queue_id,
-                                             const ActorID &actor_id,
                                              const ActorID &peer_actor_id, uint64_t size);
   bool UpstreamQueueExists(const ObjectID &queue_id);
   /// Wait all queues in queue_ids vector ready, until timeout.
@@ -87,7 +86,8 @@ class UpstreamService : public QueueService {
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
 
-  static std::shared_ptr<UpstreamService> GetService(CoreWorker* core_worker, const ActorID &actor_id);
+  static std::shared_ptr<UpstreamService> CreateService(CoreWorker* core_worker, const ActorID &actor_id);
+  static std::shared_ptr<UpstreamService> GetService();
 
   static RayFunction PEER_SYNC_FUNCTION;
   static RayFunction PEER_ASYNC_FUNCTION;
@@ -104,7 +104,6 @@ class DownstreamService : public QueueService {
   public:
   DownstreamService(CoreWorker* core_worker, const ActorID &actor_id) : QueueService(core_worker, actor_id) {}
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
-                                               const ActorID &actor_id,
                                                const ActorID &peer_actor_id);
   bool DownstreamQueueExists(const ObjectID &queue_id);
 
@@ -132,7 +131,8 @@ class DownstreamService : public QueueService {
     SendMsgCallback callback_;
   };
 
-  static std::shared_ptr<DownstreamService> GetService(CoreWorker* core_worker, const ActorID &actor_id);
+  static std::shared_ptr<DownstreamService> CreateService(CoreWorker* core_worker, const ActorID &actor_id);
+  static std::shared_ptr<DownstreamService> GetService();
   static RayFunction PEER_SYNC_FUNCTION;
   static RayFunction PEER_ASYNC_FUNCTION;
 

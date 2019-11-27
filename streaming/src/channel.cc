@@ -15,9 +15,6 @@ StreamingQueueProducer::StreamingQueueProducer(std::shared_ptr<Config> &transfer
                                                ProducerChannelInfo &p_channel_info)
     : ProducerChannel(transfer_config, p_channel_info) {
   STREAMING_LOG(INFO) << "Producer Init";
-
-  queue_writer_ =
-      std::make_shared<StreamingQueueWriter>(p_channel_info.channel_id, p_channel_info.actor_id);
 }
 
 StreamingQueueProducer::~StreamingQueueProducer() {
@@ -55,7 +52,20 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel() {
 }
 
 StreamingStatus StreamingQueueProducer::CreateQueue() {
-  queue_writer_->CreateQueue(channel_info.queue_size, channel_info.actor_id);
+  STREAMING_LOG(INFO) << "CreateQueue qid: " << channel_info.channel_id << " data_size: " << channel_info.queue_size;
+  auto upstream_service = ray::streaming::UpstreamService::GetService();
+  if (upstream_service->UpstreamQueueExists(channel_info.channel_id)) {
+    RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
+    return StreamingStatus::OK;
+  }
+
+  upstream_service->AddPeerActor(channel_info.channel_id, channel_info.actor_id);
+  queue_ = upstream_service->CreateUpstreamQueue(channel_info.channel_id, channel_info.actor_id, channel_info.queue_size);
+  STREAMING_CHECK(queue_ != nullptr);
+
+  std::vector<ObjectID> queue_ids, failed_queues;
+  queue_ids.push_back(channel_info.channel_id);
+  upstream_service->WaitQueues(queue_ids, 10*1000, failed_queues, DOWNSTREAM);
 
   STREAMING_LOG(INFO) << "q id => " << channel_info.channel_id << ", queue size => "
                       << channel_info.queue_size;
@@ -64,7 +74,6 @@ StreamingStatus StreamingQueueProducer::CreateQueue() {
 }
 
 StreamingStatus StreamingQueueProducer::DestroyTransferChannel() {
-  RAY_IGNORE_EXPR(queue_writer_->DeleteQueue());
   return StreamingStatus::OK;
 }
 
@@ -74,16 +83,13 @@ StreamingStatus StreamingQueueProducer::ClearTransferCheckpoint(
 }
 
 StreamingStatus StreamingQueueProducer::NotifyChannelConsumed(uint64_t channel_offset) {
-  Status st =
-      queue_writer_->SetQueueEvictionLimit(channel_offset);
-  STREAMING_CHECK(st.code() == StatusCode::OK)
-      << " exception in clear barrier in writerwith client returned => " << st.message();
+  queue_->SetQueueEvictionLimit(channel_offset);
   return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
                                                              uint32_t data_size) {
-  Status status = queue_writer_->PushQueueItem(channel_info.current_seq_id + 1, data,
+  Status status = PushQueueItem(channel_info.current_seq_id + 1, data,
                                                data_size, current_time_ms());
 
   if (status.code() != StatusCode::OK) {
@@ -102,13 +108,31 @@ StreamingStatus StreamingQueueProducer::ProduceItemToChannel(uint8_t *data,
   return StreamingStatus::OK;
 }
 
+Status StreamingQueueProducer::PushQueueItem(uint64_t seq_id,
+                                             uint8_t *data, uint32_t data_size,
+                                             uint64_t timestamp) {
+  STREAMING_LOG(INFO) << "StreamingQueueProducer::PushQueueItem:"
+                       << " qid: " << channel_info.channel_id << " seq_id: " << seq_id
+                       << " data_size: " << data_size;
+  Status status = queue_->Push(seq_id, data, data_size, timestamp, false);
+  if (status.IsOutOfMemory()) {
+    status = queue_->TryEvictItems();
+    if (!status.ok()) {
+      STREAMING_LOG(INFO) << "Evict fail.";
+      return status;
+    }
+
+    status = queue_->Push(seq_id, data, data_size, timestamp, false);
+  }
+
+  queue_->Send();
+  return status;
+}
+
 StreamingQueueConsumer::StreamingQueueConsumer(std::shared_ptr<Config> &transfer_config,
                                                ConsumerChannelInfo &c_channel_info)
     : ConsumerChannel(transfer_config, c_channel_info) {
   STREAMING_LOG(INFO) << "Consumer Init";
-
-  queue_reader_ =
-      std::make_shared<StreamingQueueReader>(c_channel_info.channel_id, c_channel_info.actor_id);
 }
 
 StreamingQueueConsumer::~StreamingQueueConsumer() {
@@ -118,16 +142,23 @@ StreamingQueueConsumer::~StreamingQueueConsumer() {
 StreamingStatus StreamingQueueConsumer::CreateTransferChannel() {
   // subscribe next seq id from checkpoint id
   // pull remote queue to local store if scheduler connection is set
-  bool success = queue_reader_->GetQueue(
-      channel_info.current_seq_id + 1, channel_info.actor_id);
-  if (!success) {
-    return StreamingStatus::InitQueueFailed;
+
+  auto downstream_service = ray::streaming::DownstreamService::GetService();
+  STREAMING_LOG(INFO) << "GetQueue qid: " << channel_info.channel_id << " start_seq_id: " << channel_info.current_seq_id + 1;
+  if (downstream_service->DownstreamQueueExists(channel_info.channel_id)) {
+    RAY_LOG(INFO) << "StreamingQueueReader::GetQueue duplicate!!!";
+    return StreamingStatus::OK;
   }
+
+  downstream_service->AddPeerActor(channel_info.channel_id, channel_info.actor_id);
+  STREAMING_LOG(INFO) << "Create ReaderQueue " << channel_info.channel_id
+                      << " pull from start_seq_id: " << channel_info.current_seq_id + 1;
+  queue_ = downstream_service->CreateDownstreamQueue(channel_info.channel_id, channel_info.actor_id);
+
   return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingQueueConsumer::DestroyTransferChannel() {
-  RAY_IGNORE_EXPR(queue_reader_->DeleteQueue());
   return StreamingStatus::OK;
 }
 
@@ -140,13 +171,31 @@ StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(uint64_t &offset_
                                                                uint8_t *&data,
                                                                uint32_t &data_size,
                                                                uint32_t timeout) {
-  auto st = queue_reader_->GetQueueItem(data, data_size,
-                                        offset_id, timeout);
+  STREAMING_LOG(INFO) << "GetQueueItem qid: " << channel_info.channel_id;
+  STREAMING_CHECK(queue_ != nullptr);
+  QueueItem item = queue_->PopPendingBlockTimeout(timeout * 1000);
+  if (item.SeqId() == QUEUE_INVALID_SEQ_ID) {
+    STREAMING_LOG(INFO) << "GetQueueItem timeout.";
+    data = nullptr;
+    data_size = 0;
+    offset_id = QUEUE_INVALID_SEQ_ID;
+    return StreamingStatus::OK;
+  }
+
+  data = item.Buffer()->Data();
+  offset_id = item.SeqId();
+  data_size = item.Buffer()->Size();
+
+  STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << channel_info.channel_id
+                       << " seq_id: " << offset_id
+                       << " msg_id: " << item.MaxMsgId()
+                       << " data_size: " << data_size;
   return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingQueueConsumer::NotifyChannelConsumed(uint64_t offset_id) {
-  queue_reader_->NotifyConsumedItem(offset_id);
+  STREAMING_CHECK(queue_ != nullptr);
+  queue_->OnConsumed(offset_id);
   return StreamingStatus::OK;
 }
 

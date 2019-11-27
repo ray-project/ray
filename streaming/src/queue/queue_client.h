@@ -12,7 +12,7 @@ public:
   : core_worker_(core_worker) {
     DownstreamService::PEER_ASYNC_FUNCTION = async_func;
     DownstreamService::PEER_SYNC_FUNCTION = sync_func;
-    downstream_service_ = ray::streaming::DownstreamService::GetService(core_worker_, core_worker_->GetWorkerContext().GetCurrentActorID());
+    downstream_service_ = ray::streaming::DownstreamService::CreateService(core_worker_, core_worker_->GetWorkerContext().GetCurrentActorID());
   }
 
   void OnReaderMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
@@ -29,7 +29,7 @@ public:
   : core_worker_(core_worker) {
     UpstreamService::PEER_ASYNC_FUNCTION = async_func;
     UpstreamService::PEER_SYNC_FUNCTION = sync_func;
-    upstream_service_ = ray::streaming::UpstreamService::GetService(core_worker, core_worker_->GetWorkerContext().GetCurrentActorID());
+    upstream_service_ = ray::streaming::UpstreamService::CreateService(core_worker, core_worker_->GetWorkerContext().GetCurrentActorID());
   }
 
   void OnWriterMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
