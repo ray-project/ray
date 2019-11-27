@@ -52,11 +52,14 @@ class Location(object):
 class TrialDirectory(object):
     """Describes the Trial's directory structure.
 
-    trial_dir/
-      logdir/
-      trainable_logdir/
+    {trial_dir_name}/
+      driver_logs/
+      remote_logs/
       checkpoints/
     """
+    DRIVER_LOGDIR = "driver_logs"  # logs written by driver
+    REMOTE_LOGDIR = "remote_logs"  # logs written by remote
+    CHECKPOINT_DIR = "checkpoints"  # checkpoints taken
 
     def __init__(self, identifier, local_dir):
         local_dir = os.path.expanduser(local_dir)
@@ -78,15 +81,15 @@ class TrialDirectory(object):
 
     @property
     def logdir(self):
-        return os.path.join(self.root_dir, "driver_logs")
+        return os.path.join(self.root_dir, TrialDirectory.DRIVER_LOGDIR)
 
     @property
     def remote_logdir(self):
-        return os.path.join(self.root_dir, "remote_logs")
+        return os.path.join(self.root_dir, TrialDirectory.REMOTE_LOGDIR)
 
     @property
     def checkpoint_dir(self):
-        return os.path.join(self.root_dir, "checkpoints")
+        return os.path.join(self.root_dir, TrialDirectory.CHECKPOINT_DIR)
 
 
 class ExportFormat(object):

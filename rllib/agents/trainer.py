@@ -392,7 +392,7 @@ class Trainer(Trainable):
             logger_creator = default_logger_creator
 
         Trainable.__init__(self, config, logger_creator)
-        self.init_checkpoint_dir(trial_dir.checkpoint_dir)
+        self._init_checkpoint_dir(trial_dir.checkpoint_dir)
 
     @classmethod
     @override(Trainable)

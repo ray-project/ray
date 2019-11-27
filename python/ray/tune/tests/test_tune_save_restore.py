@@ -9,10 +9,13 @@ import shutil
 import tempfile
 import unittest
 
+from glob import glob
+
 import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
+from ray.tune.trial import TrialDirectory
 
 
 class SerialTuneRelativeLocalDirTest(unittest.TestCase):
@@ -50,17 +53,12 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         # Without this line, test_tune_server.testAddTrial would fail.
         _register_all()
 
-    def _get_trial_dir(self, absoulte_exp_dir):
-        trial_dirname = next(
-            (child_dir for child_dir in os.listdir(absoulte_exp_dir)
-             if (os.path.isdir(os.path.join(absoulte_exp_dir, child_dir))
-                 and child_dir.startswith(self.MockTrainable._name))))
+    def _get_trial_dir(self, absolute_exp_dir):
+        dirs = glob(absolute_exp_dir + "/" + self.MockTrainable._name + "*")
+        absolute_trial_dir = dirs[0]
+        return absolute_trial_dir
 
-        trial_absolute_dir = os.path.join(absoulte_exp_dir, trial_dirname)
-
-        return trial_dirname, trial_absolute_dir
-
-    def _train(self, exp_name, local_dir, absolute_local_dir):
+    def _train(self, exp_name, absolute_local_dir):
         trial, = tune.run(
             self.MockTrainable,
             name=exp_name,
@@ -68,39 +66,39 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
                 "training_iteration": 1
             },
             checkpoint_freq=1,
-            local_dir=local_dir,
+            local_dir=absolute_local_dir,
             config={
                 "env": "CartPole-v0",
                 "log_level": "DEBUG"
             }).trials
 
         exp_dir = os.path.join(absolute_local_dir, exp_name)
-        _, abs_trial_dir = self._get_trial_dir(exp_dir)
+        abs_trial_dir = self._get_trial_dir(exp_dir)
+        logdir = os.path.join(abs_trial_dir, TrialDirectory.DRIVER_LOGDIR)
 
         self.assertIsNone(trial.error_file)
         self.assertEqual(trial.local_dir, exp_dir)
-        self.assertEqual(trial.logdir, abs_trial_dir)
+        self.assertEqual(trial.logdir, logdir)
 
         self.assertTrue(os.path.isdir(absolute_local_dir), absolute_local_dir)
         self.assertTrue(os.path.isdir(exp_dir))
         self.assertTrue(os.path.isdir(abs_trial_dir))
-        self.assertTrue(
-            os.path.isfile(
-                os.path.join(abs_trial_dir, "checkpoint_1/checkpoint-1")))
 
-    def _restore(self, exp_name, local_dir, absolute_local_dir):
-        trial_name, abs_trial_dir = self._get_trial_dir(
+        checkpoint_path = os.path.join(
+            abs_trial_dir,
+            TrialDirectory.CHECKPOINT_DIR,
+            "checkpoint_1/checkpoint-1")
+        self.assertTrue(os.path.isfile(checkpoint_path))
+
+    def _restore(self, exp_name, absolute_local_dir):
+        abs_trial_dir = self._get_trial_dir(
             os.path.join(absolute_local_dir, exp_name))
 
         checkpoint_path = os.path.join(
-            local_dir, exp_name, trial_name,
-            "checkpoint_1/checkpoint-1")  # Relative checkpoint path
-
-        # The file tune would find. The absolute checkpoint path.
-        tune_find_file = os.path.abspath(os.path.expanduser(checkpoint_path))
-        self.assertTrue(
-            os.path.isfile(tune_find_file),
-            "{} is not exist!".format(tune_find_file))
+            abs_trial_dir,
+            TrialDirectory.CHECKPOINT_DIR,
+            "checkpoint_1/checkpoint-1")
+        self.assertTrue(os.path.isfile(checkpoint_path))
 
         trial, = tune.run(
             self.MockTrainable,
@@ -121,8 +119,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         absolute_local_dir = os.path.abspath(local_dir)
         self.absolute_local_dir = absolute_local_dir
         self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
+        self._train(exp_name, absolute_local_dir)
+        self._restore(exp_name, absolute_local_dir)
 
     def testRelativePath(self):
         local_dir = "test_relative_local_dir"
@@ -130,8 +128,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         absolute_local_dir = os.path.abspath(local_dir)
         self.absolute_local_dir = absolute_local_dir
         self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
+        self._train(exp_name, absolute_local_dir)
+        self._restore(exp_name, absolute_local_dir)
 
     def testTildeAbsolutePath(self):
         local_dir = "~/test_tilde_absolute_local_dir"
@@ -139,15 +137,15 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         absolute_local_dir = os.path.abspath(os.path.expanduser(local_dir))
         self.absolute_local_dir = absolute_local_dir
         self.assertFalse(os.path.exists(absolute_local_dir))
-        self._train(exp_name, local_dir, absolute_local_dir)
-        self._restore(exp_name, local_dir, absolute_local_dir)
+        self._train(exp_name, absolute_local_dir)
+        self._restore(exp_name, absolute_local_dir)
 
     def testTempfile(self):
         local_dir = tempfile.mkdtemp()
         exp_name = self.prefix + "Tempfile"
         self.absolute_local_dir = local_dir
-        self._train(exp_name, local_dir, local_dir)
-        self._restore(exp_name, local_dir, local_dir)
+        self._train(exp_name, local_dir)
+        self._restore(exp_name, local_dir)
 
 
 if __name__ == "__main__":

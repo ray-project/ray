@@ -76,7 +76,6 @@ class Trainable(object):
             self._logdir = self._result_logger.logdir
             self._checkpoint_dir = None
         else:
-            # TODO this makes no sense...
             trial_dir = TrialDirectory("", DEFAULT_RESULTS_DIR)
             trial_dir.mkdir()
             self._logdir = trial_dir.logdir
@@ -105,8 +104,7 @@ class Trainable(object):
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-    def init_checkpoint_dir(self, checkpoint_dir):
-        # TODO this is a hack.
+    def _init_checkpoint_dir(self, checkpoint_dir):
         self._checkpoint_dir = checkpoint_dir
         if not os.path.exists(self._checkpoint_dir):
             os.makedirs(self._checkpoint_dir)
