@@ -98,10 +98,6 @@ class CommandBasedClient(SyncClient):
             sync_down_template (str): A runnable string template; needs to
                 include replacement fields '{source}' and '{target}'.
         """
-        if not isinstance(sync_up_template, str):
-            raise ValueError("{} is not a string.".format(sync_up_template))
-        if not isinstance(sync_down_template, str):
-            raise ValueError("{} is not a string.".format(sync_down_template))
         self._validate_sync_string(sync_up_template)
         self._validate_sync_string(sync_down_template)
         self.sync_up_template = sync_up_template
@@ -154,6 +150,8 @@ class CommandBasedClient(SyncClient):
 
     @staticmethod
     def _validate_sync_string(sync_string):
+        if not isinstance(sync_string, str):
+            raise ValueError("{} is not a string.".format(sync_string))
         if "{source}" not in sync_string:
             raise ValueError("Sync template missing '{source}'.")
         if "{target}" not in sync_string:

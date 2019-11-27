@@ -252,6 +252,10 @@ class Trial(object):
     def logdir(self):
         return self.trial_dir.logdir
 
+    @property
+    def checkpoint_dir(self):
+        return self.trial_dir.checkpoint_dir
+
     def init_syncers(self):
         """Initialize the trial directory and syncing primitives."""
         if not self.result_logger:
@@ -267,7 +271,7 @@ class Trial(object):
                 loggers=self.loggers,
                 sync_function=no_op)
             self.checkpoint_syncer = get_syncer(
-                self.trial_dir.checkpoint_dir, self.trial_dir.checkpoint_dir)
+                self.checkpoint_dir, self.checkpoint_dir)
             self.remote_logdir_syncer = get_syncer(
                 self.trial_dir.remote_logdir, self.trial_dir.remote_logdir)
 

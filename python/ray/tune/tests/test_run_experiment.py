@@ -134,7 +134,7 @@ class RunExperimentTest(unittest.TestCase):
         for trial in trials:
             self.assertEqual(trial.status, Trial.TERMINATED)
             self.assertTrue(
-                os.path.exists(os.path.join(trial.logdir, "exported")))
+                os.path.exists(os.path.join(trial.checkpoint_dir, "exported")))
 
     def testInvalidExportFormats(self):
         class train(Trainable):
@@ -193,8 +193,8 @@ class RunExperimentTest(unittest.TestCase):
             }
         })
         self.assertTrue(os.path.exists(os.path.join(trial.logdir, "test.log")))
-        self.assertFalse(
-            os.path.exists(os.path.join(trial.logdir, "params.json")))
+        self.assertFalse(os.path.exists(
+            os.path.join(trial.logdir, "params.json")))
 
         [trial] = run_experiments({
             "foo": {
