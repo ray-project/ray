@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import dis
 import hashlib
 import importlib
 import inspect
@@ -102,7 +103,7 @@ class FunctionDescriptor(object):
                 "Invalid input for FunctionDescriptor.from_bytes_list")
 
     @classmethod
-    def from_function(cls, function):
+    def from_function(cls, function, pickled_function):
         """Create a FunctionDescriptor from a function instance.
 
         This function is used to create the function descriptor from
@@ -113,6 +114,9 @@ class FunctionDescriptor(object):
             cls: Current class which is required argument for classmethod.
             function: the python function used to create the function
                 descriptor.
+            pickled_function: This is factored in to ensure that any
+                modifications to the function result in a different function
+                descriptor.
 
         Returns:
             The FunctionDescriptor instance created according to the function.
@@ -121,22 +125,10 @@ class FunctionDescriptor(object):
         function_name = function.__name__
         class_name = ""
 
-        function_source_hasher = hashlib.sha1()
-        try:
-            # If we are running a script or are in IPython, include the source
-            # code in the hash.
-            source = inspect.getsource(function)
-            if sys.version_info[0] >= 3:
-                source = source.encode()
-            function_source_hasher.update(source)
-            function_source_hash = function_source_hasher.digest()
-        except (IOError, OSError, TypeError):
-            # Source code may not be available:
-            # e.g. Cython or Python interpreter.
-            function_source_hash = b""
+        pickled_function_hash = hashlib.sha1(pickled_function).digest()
 
         return cls(module_name, function_name, class_name,
-                   function_source_hash)
+                   pickled_function_hash)
 
     @classmethod
     def from_class(cls, target_class):
@@ -301,6 +293,7 @@ class FunctionActorManager(object):
         self.imported_actor_classes = set()
         self._loaded_actor_classes = {}
         self.lock = threading.Lock()
+        self.execution_infos = {}
 
     def increase_task_counter(self, job_id, function_descriptor):
         function_id = function_descriptor.function_id
@@ -314,46 +307,51 @@ class FunctionActorManager(object):
             job_id = ray.JobID.nil()
         return self._num_task_executions[job_id][function_id]
 
-    def export_cached(self):
-        """Export cached remote functions
+    def compute_collision_identifier(self, function_or_class):
+        """The identifier is used to detect excessive duplicate exports.
 
-        Note: this should be called only once when worker is connected.
-        """
-        for remote_function in self._functions_to_export:
-            self._do_export(remote_function)
-        self._functions_to_export = None
-        for info in self._actors_to_export:
-            (key, actor_class_info) = info
-            self._publish_actor_class_to_key(key, actor_class_info)
-
-    def reset_cache(self):
-        self._functions_to_export = []
-        self._actors_to_export = []
-
-    def export(self, remote_function):
-        """Export a remote function.
+        The identifier is used to determine when the same function or class is
+        exported many times. This can yield false positives.
 
         Args:
-            remote_function: the RemoteFunction object.
-        """
-        if self._worker.mode is None:
-            # If the worker isn't connected, cache the function
-            # and export it later.
-            self._functions_to_export.append(remote_function)
-            return
-        if self._worker.mode == ray.worker.LOCAL_MODE:
-            # Don't need to export if the worker is not a driver.
-            return
-        self._do_export(remote_function)
+            function_or_class: The function or class to compute an identifier
+                for.
 
-    def _do_export(self, remote_function):
+        Returns:
+            The identifier. Note that different functions or classes can give
+                rise to same identifier. However, the same function should
+                hopefully always give rise to the same identifier. TODO(rkn):
+                verify if this is actually the case. Note that if the
+                identifier is incorrect in any way, then we may give warnings
+                unnecessarily or fail to give warnings, but the application's
+                behavior won't change.
+        """
+        if sys.version_info[0] >= 3:
+            import io
+            string_file = io.StringIO()
+            if sys.version_info[1] >= 7:
+                dis.dis(function_or_class, file=string_file, depth=2)
+            else:
+                dis.dis(function_or_class, file=string_file)
+            collision_identifier = (
+                function_or_class.__name__ + ":" + string_file.getvalue())
+        else:
+            collision_identifier = function_or_class.__name__
+
+        # Return a hash of the identifier in case it is too large.
+        return hashlib.sha1(collision_identifier.encode("ascii")).digest()
+
+    def export(self, remote_function):
         """Pickle a remote function and export it to redis.
 
         Args:
             remote_function: the RemoteFunction object.
         """
+        if self._worker.mode == ray.worker.LOCAL_MODE:
+            return
         if self._worker.load_code_from_local:
             return
+
         function = remote_function._function
         pickled_function = pickle.dumps(function)
 
@@ -367,9 +365,11 @@ class FunctionActorManager(object):
                 "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
-                "name": remote_function._function_name,
+                "function_name": remote_function._function_name,
                 "module": function.__module__,
                 "function": pickled_function,
+                "collision_identifier": self.compute_collision_identifier(
+                    function),
                 "max_calls": remote_function._max_calls
             })
         self._worker.redis_client.rpush("Exports", key)
@@ -379,8 +379,8 @@ class FunctionActorManager(object):
         (job_id_str, function_id_str, function_name, serialized_function,
          num_return_vals, module, resources,
          max_calls) = self._worker.redis_client.hmget(key, [
-             "job_id", "function_id", "name", "function", "num_return_vals",
-             "module", "resources", "max_calls"
+             "job_id", "function_id", "function_name", "function",
+             "num_return_vals", "module", "resources", "max_calls"
          ])
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
@@ -577,6 +577,7 @@ class FunctionActorManager(object):
             "module": Class.__module__,
             "class": pickle.dumps(Class),
             "job_id": job_id.binary(),
+            "collision_identifier": self.compute_collision_identifier(Class),
             "actor_method_names": json.dumps(list(actor_method_names))
         }
 
@@ -584,21 +585,10 @@ class FunctionActorManager(object):
                                actor_class_info["class_name"], "actor",
                                self._worker)
 
-        if self._worker.mode is None:
-            # This means that 'ray.init()' has not been called yet and so we
-            # must cache the actor class definition and export it when
-            # 'ray.init()' is called.
-            assert self._actors_to_export is not None
-            self._actors_to_export.append((key, actor_class_info))
-            # This caching code path is currently not used because we only
-            # export actor class definitions lazily when we instantiate the
-            # actor for the first time.
-            assert False, "This should be unreachable."
-        else:
-            self._publish_actor_class_to_key(key, actor_class_info)
-            # TODO(rkn): Currently we allow actor classes to be defined
-            # within tasks. I tried to disable this, but it may be necessary
-            # because of https://github.com/ray-project/ray/issues/1146.
+        self._publish_actor_class_to_key(key, actor_class_info)
+        # TODO(rkn): Currently we allow actor classes to be defined
+        # within tasks. I tried to disable this, but it may be necessary
+        # because of https://github.com/ray-project/ray/issues/1146.
 
     def load_actor_class(self, job_id, function_descriptor):
         """Load the actor class.
@@ -660,7 +650,7 @@ class FunctionActorManager(object):
             module = importlib.import_module(module_name)
             actor_class = getattr(module, class_name)
             if isinstance(actor_class, ray.actor.ActorClass):
-                return actor_class._modified_class
+                return actor_class.__ray_metadata__.modified_class
             else:
                 return actor_class
         except Exception:
@@ -763,7 +753,7 @@ class FunctionActorManager(object):
                 worker's internal state to record the executed method.
         """
 
-        def actor_method_executor(dummy_return_id, actor, *args):
+        def actor_method_executor(actor, *args, **kwargs):
             # Update the actor's task counter to reflect the task we're about
             # to execute.
             self._worker.actor_task_counter += 1
@@ -771,9 +761,9 @@ class FunctionActorManager(object):
             # Execute the assigned method and save a checkpoint if necessary.
             try:
                 if is_class_method(method):
-                    method_returns = method(*args)
+                    method_returns = method(*args, **kwargs)
                 else:
-                    method_returns = method(actor, *args)
+                    method_returns = method(actor, *args, **kwargs)
             except Exception as e:
                 # Save the checkpoint before allowing the method exception
                 # to be thrown, but don't save the checkpoint for actor
@@ -799,6 +789,14 @@ class FunctionActorManager(object):
                         # return values.
                         self._save_and_log_checkpoint(actor)
                 return method_returns
+
+        # Set method_name and method as attributes to the executor clusore
+        # so we can make decision based on these attributes in task executor.
+        # Precisely, asyncio support requires to know whether:
+        # - the method is a ray internal method: starts with __ray
+        # - the method is a coroutine function: defined by async def
+        actor_method_executor.name = method_name
+        actor_method_executor.method = method
 
         return actor_method_executor
 
@@ -866,7 +864,7 @@ class FunctionActorManager(object):
                     # `available_checkpoints` list.
                     msg = (
                         "`load_checkpoint` must return a checkpoint id that " +
-                        "exists in the `available_checkpoints` list, or eone.")
+                        "exists in the `available_checkpoints` list, or None.")
                     assert any(checkpoint_id == checkpoint.checkpoint_id
                                for checkpoint in checkpoints), msg
                     # Notify raylet that this actor has been resumed from

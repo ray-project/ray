@@ -51,10 +51,14 @@ DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 # greater than this quantity, print an warning.
 PICKLE_OBJECT_WARNING_SIZE = 10**7
 
+# If remote functions with the same source are imported this many times, then
+# print a warning.
+DUPLICATE_REMOTE_FUNCTION_THRESHOLD = 100
+
 # The maximum resource quantity that is allowed. TODO(rkn): This could be
 # relaxed, but the current implementation of the node manager will be slower
 # for large resource quantities due to bookkeeping of specific resource IDs.
-MAX_RESOURCE_QUANTITY = 20000
+MAX_RESOURCE_QUANTITY = 40000
 
 # Each memory "resource" counts as this many bytes of memory.
 MEMORY_RESOURCE_UNIT_BYTES = 50 * 1024 * 1024
@@ -147,6 +151,8 @@ REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 500)
 
 # Max number of retries to AWS (default is 5, time increases exponentially)
 BOTO_MAX_RETRIES = env_integer("BOTO_MAX_RETRIES", 12)
+# Max number of retries to create an EC2 node (retry different subnet)
+BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 
 LOGGER_FORMAT = (
     "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s")
@@ -177,5 +183,10 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
+# A constant used as object metadata to indicate the object is pickled. This
+# format is only ever used for Python inline task argument values.
+PICKLE_BUFFER_METADATA = b"PICKLE"
+# A constant used as object metadata to indicate the object is pickle5 format.
+PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"

@@ -18,9 +18,10 @@ ObjectManager::ObjectManager(asio::io_service &main_service,
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
-      object_manager_server_("ObjectManager", config_.object_manager_port),
+      object_manager_server_("ObjectManager", config_.object_manager_port,
+                             config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service) {
+      client_call_manager_(main_service, config_.rpc_service_threads_number) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   client_id_ = object_directory_->GetLocalClientID();
   main_service_ = &main_service;
@@ -268,7 +269,7 @@ void ObjectManager::HandlePushTaskTimeout(const ObjectID &object_id,
                    << " after waiting for " << config_.push_timeout_ms << " ms.";
   auto iter = unfulfilled_push_requests_.find(object_id);
   RAY_CHECK(iter != unfulfilled_push_requests_.end());
-  uint num_erased = iter->second.erase(client_id);
+  size_t num_erased = iter->second.erase(client_id);
   RAY_CHECK(num_erased == 1);
   if (iter->second.size() == 0) {
     unfulfilled_push_requests_.erase(iter);
@@ -367,9 +368,9 @@ void ObjectManager::Push(const ObjectID &object_id, const ClientID &client_id) {
     // We haven't pushed this specific object to this specific object manager
     // yet (or if we have then the object must have been evicted and recreated
     // locally).
-    recent_pushes[client_id] = current_sys_time_ms();
+    recent_pushes[client_id] = absl::GetCurrentTimeNanos() / 1000000;
   } else {
-    int64_t current_time = current_sys_time_ms();
+    int64_t current_time = absl::GetCurrentTimeNanos() / 1000000;
     if (current_time - it->second <=
         RayConfig::instance().object_manager_repeated_push_delay_ms()) {
       // We pushed this object to the object manager recently, so don't do it
@@ -417,7 +418,7 @@ ray::Status ObjectManager::SendObjectChunk(
     const UniqueID &push_id, const ObjectID &object_id, const ClientID &client_id,
     uint64_t data_size, uint64_t metadata_size, uint64_t chunk_index,
     std::shared_ptr<rpc::ObjectManagerClient> rpc_client) {
-  double start_time = current_sys_time_seconds();
+  double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
   push_request.set_push_id(push_id.Binary());
@@ -441,10 +442,7 @@ ray::Status ObjectManager::SendObjectChunk(
     RAY_RETURN_NOT_OK(status);
   }
 
-  std::string buffer;
-  buffer.resize(chunk_info.buffer_length);
-  buffer.assign(chunk_info.data, chunk_info.data + chunk_info.buffer_length);
-  push_request.set_data(std::move(buffer));
+  push_request.set_data(chunk_info.data, chunk_info.buffer_length);
 
   // record the time cost between send chunk and receive reply
   rpc::ClientCallback<rpc::PushReply> callback = [this, start_time, object_id, client_id,
@@ -457,7 +455,7 @@ ray::Status ObjectManager::SendObjectChunk(
                        << " failed due to" << status.message()
                        << ", chunk index: " << chunk_index;
     }
-    double end_time = current_sys_time_seconds();
+    double end_time = absl::GetCurrentTimeNanos() / 1e9;
     HandleSendFinished(object_id, client_id, chunk_index, start_time, end_time, status);
   };
   rpc_client->Push(push_request, callback);
@@ -502,7 +500,8 @@ ray::Status ObjectManager::AddWaitRequest(const UniqueID &wait_id,
 
   RAY_CHECK(timeout_ms >= 0 || timeout_ms == -1);
   RAY_CHECK(num_required_objects != 0);
-  RAY_CHECK(num_required_objects <= object_ids.size());
+  RAY_CHECK(num_required_objects <= object_ids.size())
+      << num_required_objects << " " << object_ids.size();
   if (object_ids.size() == 0) {
     callback(std::vector<ObjectID>(), std::vector<ObjectID>());
   }
@@ -675,10 +674,10 @@ void ObjectManager::HandlePushRequest(const rpc::PushRequest &request,
   uint64_t data_size = request.data_size();
   const std::string &data = request.data();
 
-  double start_time = current_sys_time_seconds();
+  double start_time = absl::GetCurrentTimeNanos() / 1e9;
   auto status = ReceiveObjectChunk(client_id, object_id, data_size, metadata_size,
                                    chunk_index, data);
-  double end_time = current_sys_time_seconds();
+  double end_time = absl::GetCurrentTimeNanos() / 1e9;
 
   HandleReceiveFinished(object_id, client_id, chunk_index, start_time, end_time, status);
   send_reply_callback(status, nullptr, nullptr);
@@ -720,7 +719,7 @@ void ObjectManager::HandlePullRequest(const rpc::PullRequest &request,
 
   rpc::ProfileTableData::ProfileEvent profile_event;
   profile_event.set_event_type("receive_pull_request");
-  profile_event.set_start_time(current_sys_time_seconds());
+  profile_event.set_start_time(absl::GetCurrentTimeNanos() / 1e9);
   profile_event.set_end_time(profile_event.start_time());
   profile_event.set_extra_data("[\"" + object_id.Hex() + "\",\"" + client_id.Hex() +
                                "\"]");

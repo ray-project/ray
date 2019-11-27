@@ -9,6 +9,8 @@ import sys
 
 import ray
 from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.models.tf.fcnet_v2 import FullyConnectedNetwork as FCNetV2
+from ray.rllib.models.tf.visionnet_v2 import VisionNetwork as VisionNetV2
 from ray.rllib.tests.test_multi_agent_env import (MultiCartpole,
                                                   MultiMountainCar)
 from ray.rllib.utils.error import UnsupportedSpaceException
@@ -83,6 +85,12 @@ def check_support(alg, config, stats, check_bounds=False, name=None):
                     stat = "skip"  # speed up tests by avoiding full grid
                 else:
                     a = get_agent_class(alg)(config=config, env="stub_env")
+                    if alg not in ["DDPG", "ES", "ARS"]:
+                        if o_name in ["atari", "image"]:
+                            assert isinstance(a.get_policy().model,
+                                              VisionNetV2)
+                        elif o_name in ["vector", "vector2"]:
+                            assert isinstance(a.get_policy().model, FCNetV2)
                     a.train()
                     covered_a.add(a_name)
                     covered_o.add(o_name)

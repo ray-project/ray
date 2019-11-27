@@ -9,6 +9,7 @@
 
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
 
 using ray::ActorCheckpointID;
 using ray::ActorID;
@@ -62,19 +63,48 @@ class RayletConnection {
   std::mutex write_mutex_;
 };
 
-class RayletClient {
+/// Interface for leasing workers. Abstract for testing.
+class WorkerLeaseInterface {
+ public:
+  /// Requests a worker from the raylet. The callback will be sent via gRPC.
+  /// \param resource_spec Resources that should be allocated for the worker.
+  /// \return ray::Status
+  virtual ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) = 0;
+
+  /// Returns a worker to the raylet.
+  /// \param worker_port The local port of the worker on the raylet node.
+  /// \param disconnect_worker Whether the raylet should disconnect the worker.
+  /// \return ray::Status
+  virtual ray::Status ReturnWorker(int worker_port, bool disconnect_worker) = 0;
+
+  virtual ~WorkerLeaseInterface(){};
+};
+
+class RayletClient : public WorkerLeaseInterface {
  public:
   /// Connect to the raylet.
   ///
+  /// \param grpc_client gRPC client to the raylet.
   /// \param raylet_socket The name of the socket to use to connect to the raylet.
   /// \param worker_id A unique ID to represent the worker.
   /// \param is_worker Whether this client is a worker. If it is a worker, an
   /// additional message will be sent to register as one.
   /// \param job_id The ID of the driver. This is non-nil if the client is a driver.
-  /// \return The connection information.
-  RayletClient(const std::string &raylet_socket, const WorkerID &worker_id,
+  /// \param language Language of the worker.
+  /// \param raylet_id This will be populated with the local raylet's ClientID.
+  /// \param port The port that the worker will listen on for gRPC requests, if
+  /// any.
+  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
+               const std::string &raylet_socket, const WorkerID &worker_id,
                bool is_worker, const JobID &job_id, const Language &language,
-               int port = -1);
+               ClientID *raylet_id, int port = -1);
+
+  /// Connect to the raylet via grpc only.
+  ///
+  /// \param grpc_client gRPC client to the raylet.
+  RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client);
 
   ray::Status Disconnect() { return conn_->Disconnect(); };
 
@@ -83,14 +113,6 @@ class RayletClient {
   /// \param The task specification.
   /// \return ray::Status.
   ray::Status SubmitTask(const ray::TaskSpecification &task_spec);
-
-  /// Get next task for this client. This will block until the scheduler assigns
-  /// a task to this worker. The caller takes ownership of the returned task
-  /// specification and must free it.
-  ///
-  /// \param task_spec The assigned task.
-  /// \return ray::Status.
-  ray::Status GetTask(std::unique_ptr<ray::TaskSpecification> *task_spec);
 
   /// Tell the raylet that the client has finished executing a task.
   ///
@@ -105,11 +127,24 @@ class RayletClient {
   /// \return int 0 means correct, other numbers mean error.
   ray::Status FetchOrReconstruct(const std::vector<ObjectID> &object_ids, bool fetch_only,
                                  const TaskID &current_task_id);
+
   /// Notify the raylet that this client (worker) is no longer blocked.
   ///
   /// \param current_task_id The task that is no longer blocked.
   /// \return ray::Status.
   ray::Status NotifyUnblocked(const TaskID &current_task_id);
+
+  /// Notify the raylet that this client is blocked. This is only used for direct task
+  /// calls. Note that ordering of this with respect to Unblock calls is important.
+  ///
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskBlocked();
+
+  /// Notify the raylet that this client is unblocked. This is only used for direct task
+  /// calls. Note that ordering of this with respect to Block calls is important.
+  ///
+  /// \return ray::Status.
+  ray::Status NotifyDirectCallTaskUnblocked();
 
   /// Wait for the given objects until timeout expires or num_return objects are
   /// found.
@@ -125,6 +160,15 @@ class RayletClient {
   ray::Status Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                    int64_t timeout_milliseconds, bool wait_local,
                    const TaskID &current_task_id, WaitResultPair *result);
+
+  /// Wait for the given objects, asynchronously. The core worker is notified when
+  /// the wait completes.
+  ///
+  /// \param object_ids The objects to wait for.
+  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \return ray::Status.
+  ray::Status WaitForDirectActorCallArgs(const std::vector<ObjectID> &object_ids,
+                                         int64_t tag);
 
   /// Push an error to the relevant driver.
   ///
@@ -176,21 +220,31 @@ class RayletClient {
   ray::Status SetResource(const std::string &resource_name, const double capacity,
                           const ray::ClientID &client_Id);
 
-  Language GetLanguage() const { return language_; }
+  /// Notifies the raylet of the object IDs currently in use on this worker.
+  /// \param object_ids The set of object IDs currently in use.
+  /// \return ray::Status
+  ray::Status ReportActiveObjectIDs(const std::unordered_set<ObjectID> &object_ids);
+
+  /// Implements WorkerLeaseInterface.
+  ray::Status RequestWorkerLease(
+      const ray::TaskSpecification &resource_spec,
+      const ray::rpc::ClientCallback<ray::rpc::WorkerLeaseReply> &callback) override;
+
+  /// Implements WorkerLeaseInterface.
+  ray::Status ReturnWorker(int worker_port, bool disconnect_worker) override;
 
   WorkerID GetWorkerID() const { return worker_id_; }
 
   JobID GetJobID() const { return job_id_; }
 
-  bool IsWorker() const { return is_worker_; }
-
   const ResourceMappingType &GetResourceIDs() const { return resource_ids_; }
 
  private:
+  /// gRPC client to the raylet. Right now, this is only used for a couple
+  /// request types.
+  std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client_;
   const WorkerID worker_id_;
-  const bool is_worker_;
   const JobID job_id_;
-  const Language language_;
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker.

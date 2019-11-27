@@ -7,6 +7,7 @@ import inspect
 import logging
 import os
 import six
+import types
 
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable
@@ -71,6 +72,7 @@ class Experiment(object):
                  sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
+                 sync_on_checkpoint=True,
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=None,
                  export_formats=None,
@@ -79,6 +81,11 @@ class Experiment(object):
                  repeat=None,
                  trial_resources=None,
                  sync_function=None):
+        """Initialize a new Experiment.
+
+        The args here take the same meaning as the command line flags defined
+        in `tune.py:run`.
+        """
         if repeat:
             _raise_deprecation_note("repeat", "num_samples", soft=False)
         if trial_resources:
@@ -92,14 +99,18 @@ class Experiment(object):
         if not isinstance(stop, dict) and not callable(stop):
             raise ValueError("Invalid stop criteria: {}. Must be a callable "
                              "or dict".format(stop))
-        if callable(stop) and len(inspect.getargspec(stop).args) != 2:
-            raise ValueError("Invalid stop criteria: {}. Callable criteria "
-                             "must take exactly 2 parameters.".format(stop))
+        if callable(stop):
+            nargs = len(inspect.getargspec(stop).args)
+            is_method = isinstance(stop, types.MethodType)
+            if (is_method and nargs != 3) or (not is_method and nargs != 2):
+                raise ValueError(
+                    "Invalid stop criteria: {}. Callable "
+                    "criteria must take exactly 2 parameters.".format(stop))
 
         config = config or {}
-        run_identifier = Experiment._register_if_needed(run)
+        self._run_identifier = Experiment.register_if_needed(run)
         spec = {
-            "run": run_identifier,
+            "run": self._run_identifier,
             "stop": stop,
             "config": config,
             "resources_per_trial": resources_per_trial,
@@ -112,6 +123,7 @@ class Experiment(object):
             "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
+            "sync_on_checkpoint": sync_on_checkpoint,
             "keep_checkpoints_num": keep_checkpoints_num,
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
@@ -120,7 +132,7 @@ class Experiment(object):
             if restore else None
         }
 
-        self.name = name or run_identifier
+        self.name = name or self._run_identifier
         self.spec = spec
 
     @classmethod
@@ -151,7 +163,7 @@ class Experiment(object):
         return exp
 
     @classmethod
-    def _register_if_needed(cls, run_object):
+    def register_if_needed(cls, run_object):
         """Registers Trainable or Function at runtime.
 
         Assumes already registered if run_object is a string.
@@ -196,6 +208,11 @@ class Experiment(object):
     def remote_checkpoint_dir(self):
         if self.spec["upload_dir"]:
             return os.path.join(self.spec["upload_dir"], self.name)
+
+    @property
+    def run_identifier(self):
+        """Returns a string representing the trainable identifier."""
+        return self._run_identifier
 
 
 def convert_to_experiment_list(experiments):

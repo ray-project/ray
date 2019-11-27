@@ -354,7 +354,8 @@ class Monitor(object):
 
             # Wait for a heartbeat interval before processing the next round of
             # messages.
-            time.sleep(ray._config.heartbeat_timeout_milliseconds() * 1e-3)
+            time.sleep(
+                ray._config.raylet_heartbeat_timeout_milliseconds() * 1e-3)
 
     def run(self):
         try:

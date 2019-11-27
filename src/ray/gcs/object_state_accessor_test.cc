@@ -17,8 +17,8 @@ class ObjectStateAccessorTest : public AccessorTestBase<ObjectID, ObjectTableDat
       ObjectVector object_vec;
       for (size_t j = 0; j < copy_count_; ++j) {
         auto object = std::make_shared<ObjectTableData>();
-        object->set_object_size(i);
-        object->set_manager("10.10.10.10_" + std::to_string(j));
+        ClientID node_id = ClientID::FromRandom();
+        object->set_manager(node_id.Binary());
         object_vec.emplace_back(std::move(object));
       }
       ObjectID id = ObjectID::FromRandom();
@@ -40,7 +40,8 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
   for (const auto &elem : object_id_to_data_) {
     for (const auto &item : elem.second) {
       ++pending_count_;
-      object_accessor.AsyncAddLocation(elem.first, item, [this](Status status) {
+      ClientID node_id = ClientID::FromBinary(item->manager());
+      object_accessor.AsyncAddLocation(elem.first, node_id, [this](Status status) {
         RAY_CHECK_OK(status);
         --pending_count_;
       });
@@ -97,7 +98,7 @@ TEST_F(ObjectStateAccessorTest, TestGetAddRemove) {
     ++sub_pending_count;
     const ObjectVector &object_vec = elem.second;
     ClientID node_id = ClientID::FromBinary(object_vec[0]->manager());
-    object_accessor.AsyncRemoveLocation(elem.first, object_vec[0], [this](Status status) {
+    object_accessor.AsyncRemoveLocation(elem.first, node_id, [this](Status status) {
       RAY_CHECK_OK(status);
       --pending_count_;
     });

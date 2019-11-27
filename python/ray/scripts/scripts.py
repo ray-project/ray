@@ -163,6 +163,14 @@ def cli(logging_level, logging_format):
     default=False,
     help="provide this argument if the UI should be started")
 @click.option(
+    "--webui-host",
+    required=False,
+    type=click.Choice(["127.0.0.1", "0.0.0.0"]),
+    default="127.0.0.1",
+    help="The host to bind the web UI server to. Can either be 127.0.0.1 "
+    "(localhost) or 0.0.0.0 (available from all interfaces). By default, this "
+    "is set to 127.0.0.1 to prevent access from external machines.")
+@click.option(
     "--block",
     is_flag=True,
     default=False,
@@ -225,14 +233,20 @@ def cli(logging_level, logging_format):
     is_flag=True,
     default=False,
     help="Specify whether load code from local file or GCS serialization.")
+@click.option(
+    "--use-pickle/--no-use-pickle",
+    is_flag=True,
+    default=ray.cloudpickle.FAST_CLOUDPICKLE_USED,
+    help="Use pickle for serialization.")
 def start(node_ip_address, redis_address, address, redis_port,
           num_redis_shards, redis_max_clients, redis_password,
           redis_shard_ports, object_manager_port, node_manager_port, memory,
           object_store_memory, redis_max_memory, num_cpus, num_gpus, resources,
-          head, include_webui, block, plasma_directory, huge_pages,
+          head, include_webui, webui_host, block, plasma_directory, huge_pages,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir, include_java,
-          java_worker_options, load_code_from_local, internal_config):
+          java_worker_options, load_code_from_local, use_pickle,
+          internal_config):
     # Convert hostnames to numerical IP address.
     if node_ip_address is not None:
         node_ip_address = services.address_to_ip(node_ip_address)
@@ -271,8 +285,10 @@ def start(node_ip_address, redis_address, address, redis_port,
         temp_dir=temp_dir,
         include_java=include_java,
         include_webui=include_webui,
+        webui_host=webui_host,
         java_worker_options=java_worker_options,
         load_code_from_local=load_code_from_local,
+        use_pickle=use_pickle,
         _internal_config=internal_config)
 
     if head:
@@ -399,7 +415,17 @@ def start(node_ip_address, redis_address, address, redis_port,
 
 
 @cli.command()
-def stop():
+@click.option(
+    "-f",
+    "--force",
+    is_flag=True,
+    help="If set, ray will send SIGKILL instead of SIGTERM.")
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="If set, ray prints out more information about processes to kill.")
+def stop(force, verbose):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
@@ -410,33 +436,51 @@ def stop():
         # See STANDARD FORMAT SPECIFIERS section of
         # http://man7.org/linux/man-pages/man1/ps.1.html
         # about comm and args. This can help avoid killing non-ray processes.
+
+        # Format:
+        # Keyword to filter, filter by command (True)/filter by args (False)
         ["raylet", True],
         ["plasma_store", True],
         ["raylet_monitor", True],
         ["monitor.py", False],
         ["redis-server", True],
         ["default_worker.py", False],  # Python worker.
-        [" ray_", True],  # Python worker.
+        ["ray::", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
     ]
 
+    signal_name = "TERM"
+    if force:
+        signal_name = "KILL"
+
     for process in processes_to_kill:
-        filter = process[0]
-        if process[1]:
-            format = "pid,comm"
+        keyword, filter_by_cmd = process
+        if filter_by_cmd:
+            ps_format = "pid,comm"
             # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
             # comm only prints the first 15 characters of the executable name.
-            if len(filter) > 15:
+            if len(keyword) > 15:
                 raise ValueError("The filter string should not be more than" +
                                  " 15 characters. Actual length: " +
-                                 str(len(filter)) + ". Filter: " + filter)
+                                 str(len(keyword)) + ". Filter: " + keyword)
         else:
-            format = "pid,args"
-        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
-                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
+            ps_format = "pid,args"
+
+        debug_operator = "| tee /dev/stderr" if verbose else ""
+
+        command = (
+            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} | grep ray |"
+            "awk '{{ print $1 }}') 2> /dev/null".format(
+                # ^^ This is how you escape braces in python format string.
+                signal_name,
+                ps_format,
+                keyword,
+                debug_operator))
+        if verbose:
+            logger.info("Calling '{}'".format(command))
         subprocess.call([command], shell=True)
 
 
@@ -637,7 +681,11 @@ def rsync_up(cluster_config_file, source, target, cluster_name):
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help="Port to forward.")
+    "--port-forward",
+    required=False,
+    multiple=True,
+    type=int,
+    help="Port to forward. Use this multiple times to forward multiple ports.")
 @click.argument("script", required=True, type=str)
 @click.option("--args", required=False, type=str, help="Script args.")
 def submit(cluster_config_file, docker, screen, tmux, stop, start,
@@ -665,7 +713,7 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
         command_parts += [args]
     cmd = " ".join(command_parts)
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, False,
-                 cluster_name, port_forward)
+                 cluster_name, list(port_forward))
 
 
 @cli.command()
@@ -700,11 +748,15 @@ def submit(cluster_config_file, docker, screen, tmux, stop, start,
     type=str,
     help="Override the configured cluster name.")
 @click.option(
-    "--port-forward", required=False, type=int, help="Port to forward.")
+    "--port-forward",
+    required=False,
+    multiple=True,
+    type=int,
+    help="Port to forward. Use this multiple times to forward multiple ports.")
 def exec_cmd(cluster_config_file, cmd, docker, screen, tmux, stop, start,
              cluster_name, port_forward):
     exec_cluster(cluster_config_file, cmd, docker, screen, tmux, stop, start,
-                 cluster_name, port_forward)
+                 cluster_name, list(port_forward))
 
 
 @cli.command()
@@ -759,6 +811,18 @@ done
 
 
 @cli.command()
+def microbenchmark():
+    from ray.ray_perf import main
+    main()
+
+
+@cli.command()
+def clusterbenchmark():
+    from ray.ray_cluster_perf import main
+    main()
+
+
+@cli.command()
 @click.option(
     "--redis-address",
     required=False,
@@ -791,10 +855,18 @@ cli.add_command(teardown, name="down")
 cli.add_command(kill_random_node)
 cli.add_command(get_head_ip, name="get_head_ip")
 cli.add_command(get_worker_ips)
+cli.add_command(microbenchmark)
 cli.add_command(stack)
 cli.add_command(timeline)
 cli.add_command(project_cli)
 cli.add_command(session_cli)
+
+try:
+    from ray.experimental.serve.scripts import serve_cli
+    cli.add_command(serve_cli)
+except Exception as e:
+    logger.debug(
+        "Integrating ray serve command line tool failed with {}".format(e))
 
 
 def main():

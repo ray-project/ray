@@ -14,6 +14,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "absl/time/clock.h"
 #include "plasma/client.h"
 
 #include "ray/common/id.h"
@@ -36,7 +37,7 @@ struct ObjectManagerConfig {
   int object_manager_port;
   /// The time in milliseconds to wait before retrying a pull
   /// that fails due to client id lookup.
-  uint pull_timeout_ms;
+  unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
   /// The store socket name.

@@ -20,9 +20,9 @@ Status ObjectStateAccessor::AsyncGetLocations(
   return object_table.Lookup(JobID::Nil(), object_id, on_done);
 }
 
-Status ObjectStateAccessor::AsyncAddLocation(
-    const ObjectID &object_id, const std::shared_ptr<ObjectTableData> &data_ptr,
-    const StatusCallback &callback) {
+Status ObjectStateAccessor::AsyncAddLocation(const ObjectID &object_id,
+                                             const ClientID &node_id,
+                                             const StatusCallback &callback) {
   std::function<void(RedisGcsClient * client, const ObjectID &id,
                      const ObjectTableData &data)>
       on_done = nullptr;
@@ -30,6 +30,9 @@ Status ObjectStateAccessor::AsyncAddLocation(
     on_done = [callback](RedisGcsClient *client, const ObjectID &object_id,
                          const ObjectTableData &data) { callback(Status::OK()); };
   }
+
+  std::shared_ptr<ObjectTableData> data_ptr = std::make_shared<ObjectTableData>();
+  data_ptr->set_manager(node_id.Binary());
 
   ObjectTable &object_table = client_impl_.object_table();
   return object_table.Add(JobID::Nil(), object_id, data_ptr, on_done);

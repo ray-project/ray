@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import binascii
 import collections
 import json
 import logging
@@ -13,6 +12,7 @@ import resource
 import socket
 import subprocess
 import sys
+import textwrap
 import time
 import redis
 
@@ -153,6 +153,7 @@ def get_address_info_from_redis_helper(redis_address,
     return {
         "object_store_address": relevant_client["ObjectStoreSocketName"],
         "raylet_socket_name": relevant_client["RayletSocketName"],
+        "node_manager_port": relevant_client["NodeManagerPort"]
     }
 
 
@@ -442,7 +443,8 @@ def start_ray_process(command,
         env=modified_env,
         cwd=cwd,
         stdout=stdout_file,
-        stderr=stderr_file)
+        stderr=stderr_file,
+        preexec_fn=os.setsid)
 
     return ProcessInfo(
         process=process,
@@ -545,7 +547,7 @@ def check_version_info(redis_client):
     true_version_info = tuple(json.loads(ray.utils.decode(redis_reply)))
     version_info = _compute_version_info()
     if version_info != true_version_info:
-        node_ip_address = ray.services.get_node_ip_address()
+        node_ip_address = get_node_ip_address()
         error_message = ("Version mismatch: The cluster was started with:\n"
                          "    Ray: " + true_version_info[0] + "\n"
                          "    Python: " + true_version_info[1] + "\n"
@@ -972,7 +974,8 @@ def start_reporter(redis_address,
     return process_info
 
 
-def start_dashboard(redis_address,
+def start_dashboard(host,
+                    redis_address,
                     temp_dir,
                     stdout_file=None,
                     stderr_file=None,
@@ -980,6 +983,7 @@ def start_dashboard(redis_address,
     """Start a dashboard process.
 
     Args:
+        host (str): The host to bind the dashboard web server to.
         redis_address (str): The address of the Redis instance.
         temp_dir (str): The temporary directory used for log files and
             information for this Ray session.
@@ -1002,17 +1006,15 @@ def start_dashboard(redis_address,
         except socket.error:
             port += 1
 
-    token = ray.utils.decode(binascii.hexlify(os.urandom(24)))
-
     dashboard_filepath = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "dashboard/dashboard.py")
     command = [
         sys.executable,
         "-u",
         dashboard_filepath,
+        "--host={}".format(host),
+        "--port={}".format(port),
         "--redis-address={}".format(redis_address),
-        "--http-port={}".format(port),
-        "--token={}".format(token),
         "--temp-dir={}".format(temp_dir),
     ]
     if redis_password:
@@ -1034,16 +1036,27 @@ def start_dashboard(redis_address,
         ray_constants.PROCESS_TYPE_DASHBOARD,
         stdout_file=stdout_file,
         stderr_file=stderr_file)
-    dashboard_url = "http://{}:{}/?token={}".format(
-        ray.services.get_node_ip_address(), port, token)
+    dashboard_url = "http://{}:{}".format(
+        host if host == "127.0.0.1" else get_node_ip_address(), port)
     print("\n" + "=" * 70)
-    print("View the dashboard at {}".format(dashboard_url))
+    print("View the dashboard at {}.".format(dashboard_url))
+    if host == "127.0.0.1":
+        note = (
+            "Note: If Ray is running on a remote node, you will need to set "
+            "up an SSH tunnel with local port forwarding in order to access "
+            "the dashboard in your browser, e.g. by running "
+            "'ssh -L {}:{}:{} <username>@<host>'. Alternatively, you can set "
+            "webui_host=\"0.0.0.0\" in the call to ray.init() to allow direct "
+            "access from external machines.")
+        note = note.format(port, host, port)
+        print("\n".join(textwrap.wrap(note, width=70)))
     print("=" * 70 + "\n")
     return dashboard_url, process_info
 
 
 def start_raylet(redis_address,
                  node_ip_address,
+                 node_manager_port,
                  raylet_name,
                  plasma_store_name,
                  worker_path,
@@ -1051,7 +1064,6 @@ def start_raylet(redis_address,
                  session_dir,
                  resource_spec,
                  object_manager_port=None,
-                 node_manager_port=None,
                  redis_password=None,
                  use_valgrind=False,
                  use_profiler=False,
@@ -1060,12 +1072,15 @@ def start_raylet(redis_address,
                  config=None,
                  include_java=False,
                  java_worker_options=None,
-                 load_code_from_local=False):
+                 load_code_from_local=False,
+                 use_pickle=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
         redis_address (str): The address of the primary Redis server.
         node_ip_address (str): The IP address of this node.
+        node_manager_port(int): The port to use for the node manager. This must
+            not be 0.
         raylet_name (str): The name of the raylet socket to create.
         plasma_store_name (str): The name of the plasma store socket to connect
              to.
@@ -1076,8 +1091,6 @@ def start_raylet(redis_address,
         resource_spec (ResourceSpec): Resources for this raylet.
         object_manager_port: The port to use for the object manager. If this is
             None, then the object manager will choose its own port.
-        node_manager_port: The port to use for the node manager. If this is
-            None, then the node manager will choose its own port.
         redis_password: The password to use when connecting to Redis.
         use_valgrind (bool): True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
@@ -1092,9 +1105,13 @@ def start_raylet(redis_address,
         include_java (bool): If True, the raylet backend can also support
             Java worker.
         java_worker_options (str): The command options for Java worker.
+        use_pickle (bool): If True, use cloudpickle for serialization.
     Returns:
         ProcessInfo for the process that was started.
     """
+    # The caller must provide a node manager port so that we can correctly
+    # populate the command to start a worker.
+    assert node_manager_port is not None and node_manager_port != 0
     config = config or {}
     config_str = ",".join(["{},{}".format(*kv) for kv in config.items()])
 
@@ -1134,13 +1151,14 @@ def start_raylet(redis_address,
     # Create the command that the Raylet will use to start workers.
     start_worker_command = ("{} {} "
                             "--node-ip-address={} "
+                            "--node-manager-port={} "
                             "--object-store-name={} "
                             "--raylet-name={} "
                             "--redis-address={} "
                             "--temp-dir={}".format(
                                 sys.executable, worker_path, node_ip_address,
-                                plasma_store_name, raylet_name, redis_address,
-                                temp_dir))
+                                node_manager_port, plasma_store_name,
+                                raylet_name, redis_address, temp_dir))
     if redis_password:
         start_worker_command += " --redis-password {}".format(redis_password)
 
@@ -1148,13 +1166,11 @@ def start_raylet(redis_address,
     # manager to choose its own port.
     if object_manager_port is None:
         object_manager_port = 0
-    # If the node manager port is None, then use 0 to cause the node manager
-    # to choose its own port.
-    if node_manager_port is None:
-        node_manager_port = 0
 
     if load_code_from_local:
         start_worker_command += " --load-code-from-local "
+    if use_pickle:
+        start_worker_command += " --use-pickle "
 
     command = [
         RAYLET_EXECUTABLE,

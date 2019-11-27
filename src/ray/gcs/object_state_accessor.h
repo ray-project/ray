@@ -32,11 +32,10 @@ class ObjectStateAccessor {
   /// Add location of object to GCS asynchronously.
   ///
   /// \param object_id The ID of object which location will be added to GCS.
-  /// \param data_ptr The location that will be added to GCS.
+  /// \param node_id The location that will be added to GCS.
   /// \param callback Callback that will be called after object has been added to GCS.
   /// \return Status
-  Status AsyncAddLocation(const ObjectID &object_id,
-                          const std::shared_ptr<ObjectTableData> &data_ptr,
+  Status AsyncAddLocation(const ObjectID &object_id, const ClientID &node_id,
                           const StatusCallback &callback);
 
   /// Remove location of object from GCS asynchronously.

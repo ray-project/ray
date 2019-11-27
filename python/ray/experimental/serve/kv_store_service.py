@@ -1,7 +1,9 @@
 import json
+import sqlite3
 from abc import ABC
 
-import ray
+from ray import cloudpickle as pickle
+
 import ray.experimental.internal_kv as ray_kv
 from ray.experimental.serve.utils import logger
 
@@ -128,9 +130,48 @@ class RayInternalKVStore(NamespacedKVStore):
         return data
 
 
-class KVStoreProxy:
-    def __init__(self, kv_class=InMemoryKVStore):
-        self.routing_table = kv_class(namespace="routes")
+class SQLiteKVStore(NamespacedKVStore):
+    def __init__(self, namespace, db_path):
+        self.namespace = namespace
+        self.conn = sqlite3.connect(db_path)
+
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS {} (key TEXT UNIQUE, value TEXT)".
+            format(self.namespace))
+        self.conn.commit()
+
+    def put(self, key, value):
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO {} (key, value) VALUES (?,?)".format(
+                self.namespace), (key, value))
+        self.conn.commit()
+
+    def get(self, key, default=None):
+        cursor = self.conn.cursor()
+        result = list(
+            cursor.execute(
+                "SELECT value FROM {} WHERE key = (?)".format(self.namespace),
+                (key, )))
+        if len(result) == 0:
+            return default
+        else:
+            # Due to UNIQUE constraint, there can only be one value.
+            value, *_ = result[0]
+            return value
+
+    def as_dict(self):
+        cursor = self.conn.cursor()
+        result = list(
+            cursor.execute("SELECT key, value FROM {}".format(self.namespace)))
+        return dict(result)
+
+
+# Tables
+class RoutingTable:
+    def __init__(self, kv_connector):
+        self.routing_table = kv_connector("routing_table")
         self.request_count = 0
 
     def register_service(self, route: str, service: str):
@@ -167,7 +208,45 @@ class KVStoreProxy:
         return self.request_count
 
 
-@ray.remote
-class KVStoreProxyActor(KVStoreProxy):
-    def __init__(self, kv_class=RayInternalKVStore):
-        super().__init__(kv_class=kv_class)
+class BackendTable:
+    def __init__(self, kv_connector):
+        self.backend_table = kv_connector("backend_creator")
+        self.replica_table = kv_connector("replica_table")
+
+    def register_backend(self, backend_tag: str, backend_creator):
+        backend_creator_serialized = pickle.dumps(backend_creator)
+        self.backend_table.put(backend_tag, backend_creator_serialized)
+
+    def get_backend_creator(self, backend_tag):
+        return pickle.loads(self.backend_table.get(backend_tag))
+
+    def list_backends(self):
+        return list(self.backend_table.as_dict().keys())
+
+    def list_replicas(self, backend_tag: str):
+        return json.loads(self.replica_table.get(backend_tag, "[]"))
+
+    def add_replica(self, backend_tag: str, new_replica_tag: str):
+        replica_tags = self.list_replicas(backend_tag)
+        replica_tags.append(new_replica_tag)
+        self.replica_table.put(backend_tag, json.dumps(replica_tags))
+
+    def remove_replica(self, backend_tag):
+        replica_tags = self.list_replicas(backend_tag)
+        removed_replica = replica_tags.pop()
+        self.replica_table.put(backend_tag, json.dumps(replica_tags))
+        return removed_replica
+
+
+class TrafficPolicyTable:
+    def __init__(self, kv_connector):
+        self.traffic_policy_table = kv_connector("traffic_policy")
+
+    def register_traffic_policy(self, service_name, policy_dict):
+        self.traffic_policy_table.put(service_name, json.dumps(policy_dict))
+
+    def list_traffic_policy(self):
+        return {
+            service: json.loads(policy)
+            for service, policy in self.traffic_policy_table.as_dict()
+        }

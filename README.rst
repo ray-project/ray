@@ -6,9 +6,6 @@
 .. image:: https://readthedocs.org/projects/ray/badge/?version=latest
     :target: http://ray.readthedocs.io/en/latest/?badge=latest
 
-.. image:: https://img.shields.io/badge/pypi-0.7.4-blue.svg
-    :target: https://pypi.org/project/ray/
-
 |
 
 
@@ -48,7 +45,7 @@ To use Ray's actor model:
     ray.init()
 
     @ray.remote
-    class Counter():
+    class Counter(object):
         def __init__(self):
             self.n = 0
 
@@ -87,7 +84,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray torch torchvision filelock
+    $ pip install ray[tune] torch torchvision filelock
 
 
 This example runs a parallel grid search to train a Convolutional Neural Network using PyTorch.

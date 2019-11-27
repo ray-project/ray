@@ -11,7 +11,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.tf_policy import TFPolicy
-from ray.rllib.utils import try_import_tf
+from ray.rllib.utils import try_import_tf, try_import_tfp
 
 import logging
 from gym.spaces import Box, Discrete
@@ -20,6 +20,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 tf = try_import_tf()
+tfp = try_import_tfp()
 
 
 class MADDPGPostprocessing(object):
@@ -349,7 +350,6 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              hiddens,
                              activation=None,
                              scope=None):
-        from tensorflow.contrib.distributions import RelaxedOneHotCategorical
         with tf.variable_scope(scope, reuse=tf.AUTO_REUSE) as scope:
             if self.config["use_state_preprocessor"]:
                 model = ModelCatalog.get_model({
@@ -365,7 +365,7 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                 out = tf.layers.dense(out, units=hidden, activation=activation)
             feature = tf.layers.dense(
                 out, units=act_space.shape[0], activation=None)
-            sampler = RelaxedOneHotCategorical(
+            sampler = tfp.distributions.RelaxedOneHotCategorical(
                 temperature=1.0, logits=feature).sample()
 
         return sampler, feature, model, tf.global_variables(scope.name)

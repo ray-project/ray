@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from flaky import flaky
 import logging
 import pytest
 import time
@@ -10,8 +9,8 @@ import time
 import ray
 import ray.ray_constants as ray_constants
 from ray.monitor import Monitor
-from ray.tests.cluster_utils import Cluster
-from ray.tests.conftest import generate_internal_config_map
+from ray.cluster_utils import Cluster
+from ray.test_utils import generate_internal_config_map
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +51,7 @@ def test_internal_config(ray_start_cluster_head):
     worker = cluster.add_node()
     cluster.wait_for_nodes()
 
-    cluster.remove_node(worker)
+    cluster.remove_node(worker, allow_graceful=False)
     time.sleep(1)
     assert ray.cluster_resources()["CPU"] == 2
 
@@ -82,6 +81,12 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=10):
             del resource_usage[2]["memory"]
         if "object_store_memory" in resource_usage[2]:
             del resource_usage[2]["object_store_memory"]
+        for key in list(resource_usage[1].keys()):
+            if key.startswith("node:"):
+                del resource_usage[1][key]
+        for key in list(resource_usage[2].keys()):
+            if key.startswith("node:"):
+                del resource_usage[2][key]
 
         if expected_resource_usage is None:
             if all(x for x in resource_usage[1:]):
@@ -149,7 +154,7 @@ def test_heartbeats_single(ray_start_cluster_head):
     ray.get(work_handle)
 
 
-@flaky(max_runs=4)
+@pytest.mark.flaky(reruns=4)
 def test_heartbeats_cluster(ray_start_cluster_head):
     """Unit test for `Cluster.wait_for_nodes`.
 
@@ -210,9 +215,13 @@ def test_worker_plasma_store_failure(ray_start_cluster_head):
     cluster = ray_start_cluster_head
     worker = cluster.add_node()
     cluster.wait_for_nodes()
-    # Log monitor doesn't die for some reason
-    worker.kill_log_monitor()
     worker.kill_reporter()
     worker.kill_plasma_store()
     worker.all_processes[ray_constants.PROCESS_TYPE_RAYLET][0].process.wait()
     assert not worker.any_processes_alive(), worker.live_processes()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

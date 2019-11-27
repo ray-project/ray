@@ -8,7 +8,9 @@
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/rpc/worker/worker_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
+
+#include <unistd.h>  // pid_t
 
 namespace ray {
 
@@ -45,6 +47,8 @@ class Worker {
   const JobID &GetAssignedJobId() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
+  void MarkDetachedActor();
+  bool IsDetachedActor() const;
   const std::shared_ptr<LocalClientConnection> Connection() const;
 
   const ResourceIdSet &GetLifetimeResourceIds() const;
@@ -57,9 +61,13 @@ class Worker {
   ResourceIdSet ReleaseTaskCpuResources();
   void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources);
 
-  bool UsePush() const;
+  const std::unordered_set<ObjectID> &GetActiveObjectIds() const;
+  void SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids);
+
   void AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
                   const std::function<void(Status)> finish_assign_callback);
+  void DirectActorCallArgWaitComplete(int64_t tag);
+  void WorkerLeaseGranted(const std::string &address, int port);
 
  private:
   /// The worker's ID.
@@ -91,11 +99,16 @@ class Worker {
   // of a task.
   ResourceIdSet task_resource_ids_;
   std::unordered_set<TaskID> blocked_task_ids_;
-  /// The `ClientCallManager` object that is shared by `WorkerTaskClient` from all
+  /// The set of object IDs that are currently in use on the worker.
+  std::unordered_set<ObjectID> active_object_ids_;
+  /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
-  std::unique_ptr<rpc::WorkerTaskClient> rpc_client_;
+  std::unique_ptr<rpc::CoreWorkerClient> rpc_client_;
+  /// Whether the worker is detached. This is applies when the worker is actor.
+  /// Detached actor means the actor's creator can exit without killing this actor.
+  bool is_detached_actor_;
 };
 
 }  // namespace raylet

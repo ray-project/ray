@@ -46,11 +46,8 @@ ray::Status ObjectDirectory::ReportObjectAdded(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object added to GCS " << object_id;
-  // Append the addition entry to the object table.
-  auto data = std::make_shared<ObjectTableData>();
-  data->set_manager(client_id.Binary());
-  data->set_object_size(object_info.data_size);
-  ray::Status status = gcs_client_->Objects().AsyncAdd(object_id, data, nullptr);
+  ray::Status status =
+      gcs_client_->Objects().AsyncAddLocation(object_id, client_id, nullptr);
   return status;
 }
 
@@ -58,20 +55,18 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
     const ObjectID &object_id, const ClientID &client_id,
     const object_manager::protocol::ObjectInfoT &object_info) {
   RAY_LOG(DEBUG) << "Reporting object removed to GCS " << object_id;
-  // Append the eviction entry to the object table.
-  auto data = std::make_shared<ObjectTableData>();
-  data->set_manager(client_id.Binary());
-  data->set_object_size(object_info.data_size);
-  ray::Status status = gcs_client_->Objects().AsyncDelete(object_id, data, nullptr);
+  ray::Status status =
+      gcs_client_->Objects().AsyncRemoveLocation(object_id, client_id, nullptr);
   return status;
 };
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   GcsNodeInfo node_info;
-  gcs_client_->client_table().GetClient(connection_info.client_id, node_info);
+  bool found =
+      gcs_client_->client_table().GetClient(connection_info.client_id, &node_info);
   ClientID result_client_id = ClientID::FromBinary(node_info.node_id());
-  if (!result_client_id.IsNil()) {
+  if (found) {
     RAY_CHECK(result_client_id == connection_info.client_id);
     if (node_info.state() == GcsNodeInfo::ALIVE) {
       connection_info.ip = node_info.node_manager_address();
@@ -151,7 +146,7 @@ ray::Status ObjectDirectory::SubscribeObjectLocations(const UniqueID &callback_i
             callback_pair.second(object_id, it->second.current_object_locations);
           }
         };
-    status = gcs_client_->Objects().AsyncSubscribe(
+    status = gcs_client_->Objects().AsyncSubscribeToLocations(
         object_id, object_notification_callback, /*done*/ nullptr);
   }
   auto &listener_state = it->second;
@@ -179,7 +174,8 @@ ray::Status ObjectDirectory::UnsubscribeObjectLocations(const UniqueID &callback
   }
   entry->second.callbacks.erase(callback_id);
   if (entry->second.callbacks.empty()) {
-    status = gcs_client_->Objects().AsyncUnsubscribe(object_id, /*done*/ nullptr);
+    status =
+        gcs_client_->Objects().AsyncUnsubscribeToLocations(object_id, /*done*/ nullptr);
     listeners_.erase(entry);
   }
   return status;
@@ -201,7 +197,7 @@ ray::Status ObjectDirectory::LookupLocations(const ObjectID &object_id,
     // We do not have any locations cached due to a concurrent
     // SubscribeObjectLocations call, so look up the object's locations
     // directly from the GCS.
-    status = gcs_client_->Objects().AsyncGet(
+    status = gcs_client_->Objects().AsyncGetLocations(
         object_id,
         [this, object_id, callback](
             Status status, const std::vector<ObjectTableData> &location_updates) {
