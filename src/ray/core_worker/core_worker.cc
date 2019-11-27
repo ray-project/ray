@@ -164,6 +164,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+
   task_manager_.reset(new TaskManager(memory_store_));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
@@ -208,6 +209,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           },
           memory_store_, task_manager_,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
+  future_resolver_.reset(new FutureResolver(memory_store_, client_factory, io_service_));
 }
 
 CoreWorker::~CoreWorker() {
@@ -281,13 +283,36 @@ void CoreWorker::ReportActiveObjectIDs() {
   heartbeat_timer_.async_wait(boost::bind(&CoreWorker::ReportActiveObjectIDs, this));
 }
 
-void CoreWorker::PromoteObjectToPlasma(const ObjectID &object_id) {
+void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
+                                                    TaskID *owner_id,
+                                                    rpc::Address *owner_address) {
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
     RAY_CHECK_OK(
         plasma_store_provider_->Put(*value, object_id.WithPlasmaTransportType()));
   }
+
+  auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
+  RAY_CHECK(has_owner)
+      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
+         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
+         "which task will create them. "
+         "If this was not how your object ID was generated, please file an issue "
+         "at https://github.com/ray-project/ray/issues/";
+}
+
+void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
+    const ObjectID &object_id, const TaskID &owner_id,
+    const rpc::Address &owner_address) {
+  // Add the object's owner to the local metadata in case it gets serialized
+  // again.
+  reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
+
+  RAY_CHECK(!owner_id.IsNil());
+  // We will ask the owner about the object until the object is
+  // created or we can no longer reach the owner.
+  future_resolver_->ResolveFutureAsync(object_id, owner_id, owner_address);
 }
 
 Status CoreWorker::SetClientOptions(std::string name, int64_t limit_bytes) {
@@ -299,6 +324,8 @@ Status CoreWorker::Put(const RayObject &object, ObjectID *object_id) {
   *object_id = ObjectID::ForPut(worker_context_.GetCurrentTaskID(),
                                 worker_context_.GetNextPutIndex(),
                                 static_cast<uint8_t>(TaskTransportType::RAYLET));
+  reference_counter_->AddOwnedObject(*object_id, GetCallerId(), rpc_address_,
+                                     std::make_shared<std::vector<ObjectID>>());
   return Put(object, *object_id);
 }
 
@@ -557,7 +584,8 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
 
   // Note that we call this even if task_deps.size() == 0, in order to pin the return id.
   for (size_t i = 0; i < num_returns; i++) {
-    reference_counter_->SetDependencies(task_spec.ReturnId(i, transport_type), task_deps);
+    reference_counter_->AddOwnedObject(task_spec.ReturnId(i, transport_type),
+                                       GetCallerId(), rpc_address_, task_deps);
   }
 }
 
@@ -926,6 +954,27 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     direct_task_receiver_->HandleDirectActorCallArgWaitComplete(request, reply,
                                                                 send_reply_callback);
   });
+}
+
+void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
+                                       rpc::GetObjectStatusReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  ObjectID object_id = ObjectID::FromBinary(request.object_id());
+  TaskID owner_id = TaskID::FromBinary(request.owner_id());
+  if (owner_id != GetCallerId()) {
+    // We may have owned this object in the past, but we are now executing some
+    // other task or actor.
+    reply->set_status(rpc::GetObjectStatusReply::WRONG_OWNER);
+  } else {
+    if (task_manager_->IsTaskPending(object_id.TaskId())) {
+      reply->set_status(rpc::GetObjectStatusReply::PENDING);
+    } else {
+      // TODO: We could probably just send the object value if it is small
+      // enough and we have it local.
+      reply->set_status(rpc::GetObjectStatusReply::CREATED);
+    }
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

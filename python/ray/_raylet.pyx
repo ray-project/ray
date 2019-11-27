@@ -41,6 +41,7 @@ from libcpp.vector cimport vector as c_vector
 from cython.operator import dereference, postincrement
 
 from ray.includes.common cimport (
+    CAddress,
     CLanguage,
     CRayObject,
     CRayStatus,
@@ -1052,11 +1053,29 @@ cdef class CoreWorker:
         # Note: faster to not release GIL for short-running op.
         self.core_worker.get().RemoveObjectIDReference(c_object_id)
 
-    def promote_object_to_plasma(self, ObjectID object_id):
+    def serialize_and_promote_object_id(self, ObjectID object_id):
         cdef:
             CObjectID c_object_id = object_id.native()
-        self.core_worker.get().PromoteObjectToPlasma(c_object_id)
-        return object_id.with_plasma_transport_type()
+            CTaskID c_owner_id = CTaskID.Nil()
+            CAddress c_owner_address = CAddress()
+        self.core_worker.get().PromoteToPlasmaAndGetOwnershipInfo(
+                c_object_id, &c_owner_id, &c_owner_address)
+        return (object_id,
+                TaskID(c_owner_id.Binary()),
+                c_owner_address.SerializeAsString())
+
+    def deserialize_and_register_object_id(
+            self, const c_string &object_id_binary, const c_string
+            &owner_id_binary, const c_string &serialized_owner_address):
+        cdef:
+            CObjectID c_object_id = CObjectID.FromBinary(object_id_binary)
+            CTaskID c_owner_id = CTaskID.FromBinary(owner_id_binary)
+            CAddress c_owner_address = CAddress()
+        c_owner_address.ParseFromString(serialized_owner_address)
+        self.core_worker.get().RegisterOwnershipInfoAndResolveFuture(
+                c_object_id,
+                c_owner_id,
+                c_owner_address)
 
     # TODO: handle noreturn better
     cdef store_task_outputs(
