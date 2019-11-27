@@ -256,6 +256,7 @@ class Trial(object):
                 self.trial_dir = TrialDirectory(str(self), self.local_dir)
             else:
                 self.trial_dir.mkdir()
+            # TODO replace these with a single syncer capable of syncing subdirs
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,

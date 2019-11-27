@@ -73,7 +73,7 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
 
     def _setup_remote_runner(self, trial, reuse_allowed):
-        trial.init_logger()
+        trial.init_syncers()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
         trial_dir = trial.trial_dir

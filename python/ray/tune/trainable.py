@@ -21,8 +21,8 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
-
 from ray.tune.util import UtilMonitor
+from ray.tune.trial import TrialDirectory
 
 logger = logging.getLogger(__name__)
 
@@ -74,15 +74,15 @@ class Trainable(object):
         if logger_creator:
             self._result_logger = logger_creator(self.config)
             self._logdir = self._result_logger.logdir
+            self._checkpoint_dir = None
         else:
-            logdir_prefix = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            if not os.path.exists(DEFAULT_RESULTS_DIR):
-                os.makedirs(DEFAULT_RESULTS_DIR)
-            self._logdir = tempfile.mkdtemp(
-                prefix=logdir_prefix, dir=DEFAULT_RESULTS_DIR)
+            # TODO this makes no sense...
+            trial_dir = TrialDirectory("", DEFAULT_RESULTS_DIR)
+            trial_dir.mkdir()
+            self._logdir = trial_dir.logdir
             self._result_logger = UnifiedLogger(
                 self.config, self._logdir, loggers=None)
-        self._checkpoint_dir = None
+            self._checkpoint_dir = trial_dir.checkpoint_dir
 
         self._iteration = 0
         self._time_total = 0.0
@@ -106,6 +106,7 @@ class Trainable(object):
         self._monitor = UtilMonitor(start=log_sys_usage)
 
     def init_checkpoint_dir(self, checkpoint_dir):
+        # TODO this is a hack.
         self._checkpoint_dir = checkpoint_dir
         if not os.path.exists(self._checkpoint_dir):
             os.makedirs(self._checkpoint_dir)
