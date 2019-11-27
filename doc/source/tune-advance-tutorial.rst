@@ -10,16 +10,16 @@ Current available tutorials:
     :backlinks: none
 
 A native example of Trainable
-----------------------------------------------
+-----------------------------
 As mentioned in `Tune User Guide <tune-usage.html#Tune Training API>`_, Training can be done
-with either the `Trainable <tune-usage.html#trainable-api>`__ Trainable **Class API** or
+with either the `Trainable <tune-usage.html#trainable-api>`__ **Class API** or
 **function-based API**. Comparably, ``Trainable`` supports stateful Actor and checkpoint/restore,
-and is preferable for advanced algorithms. For the subclass of ``ray.tune.Trainable``, Tune will
-convert this class into a Ray actor, which runs on a separate process on a worker.
+and is preferable for advanced algorithms.
 
 A naive example for ``Trainable`` is a simple number guesser:
 
 .. code-block:: python
+
     import ray
     from ray import tune
     from ray.tune import Trainable
@@ -47,13 +47,19 @@ A naive example for ``Trainable`` is a simple number guesser:
 
     print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
 
-The program randomly picks 10 number from [1, 10000) and checks which is closer to the password.
-As a minimized example, we use the BasicVariantGenerator as search algorithm and it cannot further
-mutate the (hyper)parameter in config across the experiments. We only implemented ``_setup`` and ``_train``
-methods, usually users also need to implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
-``_setup`` runs once for custom initialization. ``_train`` execute one logical iteration of training. As a
-rule of thumb, the execution time of one train call should be large enough to avoid overheads (i.e. more
-than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
+The program randomly picks 10 number from [1, 10000) and finds which is closer to the password.
+As a minimized example, we use BasicVariantGenerator as search algorithm and it cannot further
+mutate the (hyper)parameter in config across the experiments.
+For the subclass of ``ray.tune.Trainable``, Tune will convert this class into a Ray actor, which
+runs on a separate process on a worker.``_setup`` function is invoked once for custom
+initialization. ``_train`` execute one logical iteration of training in the tuning process,
+which may include several iterations of actual training (see the next example). As a rule of
+thumb, the execution time of one train call should be large enough to avoid overheads
+(i.e. more than a few seconds), but short enough to report progress periodically
+(i.e. at most a few minutes).
+
+We only implemented ``_setup`` and ``_train``methods for simplification, usually it's also required
+to implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
 
 Next we use a more complete example, training a Pytorch model with Trainable and PBT.
 
@@ -77,7 +83,7 @@ values throughout training, leading to automatic learning of the best configurat
 
 First we define a Trainable that wraps a ConvNet model.
 
-.. literalinclude:: ../../python/ray/tune/example/pbt_pytorch_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
    :language: python
    :start-after: __trainable_begin__
    :end-before: __trainable_end__
@@ -91,7 +97,7 @@ with reuse_actors=True.
 
 Then we define a PBT scheduler
 
-.. literalinclude:: ../../python/ray/tune/example/pbt_pytorch_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
    :language: python
    :start-after: __pbt_begin__
    :end-before: __pbt_end__
@@ -102,16 +108,62 @@ Some of the most important parameters are:
 or function for a hyperparameter. custom_explore_fn is applied after built-in perturbations
 from hyperparam_mutations are applied, and should return config updated as needed.
 
+``resample_probability``: The probability of resampling from the original distribution
+when applying hyperparam_mutations. If not resampled, the value will be perturbed by a
+factor of 1.2 or 0.8 if continuous, or changed to an adjacent value if discrete.
+
+Note that ``resample_probability`` by default is 0.25, thus hyperparameter with a distribution
+may go out of the specific range.
+
 Now we can kick off the tuning process by invoking tune.run:
 
-.. literalinclude:: ../../python/ray/tune/example/pbt_pytorch_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
    :language: python
    :start-after: __tune_begin__
    :end-before: __tune_end__
 
 During the training, we can constantly check the status of the models from console log:
 
+.. code-block:: bash
 
-The best model gets an accuracy of , and the result.json stores all the config information.
+    == Status ==
+    Memory usage on this node: 10.4/16.0 GiB
+    PopulationBasedTraining: 4 checkpoints, 1 perturbs
+    Resources requested: 4/12 CPUs, 0/0 GPUs, 0.0/3.42 GiB heap, 0.0/1.17 GiB objects
+    Number of trials: 4 ({'RUNNING': 4})
+    Result logdir: /Users/yuhao.yang/ray_results/pbt_test
+    +--------------------------+----------+---------------------+----------+------------+--------+------------------+----------+
+    | Trial name               | status   | loc                 |       lr |   momentum |   iter |   total time (s) |      acc |
+    |--------------------------+----------+---------------------+----------+------------+--------+------------------+----------|
+    | PytorchTrainble_3b42d914 | RUNNING  | 30.57.180.224:49840 | 0.122032 |   0.302176 |     18 |          3.8689  | 0.8875   |
+    | PytorchTrainble_3b45091e | RUNNING  | 30.57.180.224:49835 | 0.505325 |   0.628559 |     18 |          3.90404 | 0.134375 |
+    | PytorchTrainble_3b454c46 | RUNNING  | 30.57.180.224:49843 | 0.490228 |   0.969013 |     17 |          3.72111 | 0.0875   |
+    | PytorchTrainble_3b458a9c | RUNNING  | 30.57.180.224:49833 | 0.961861 |   0.169701 |     13 |          2.72594 | 0.1125   |
+    +--------------------------+----------+---------------------+----------+------------+--------+------------------+----------+
+
+In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in pbt_global.txt
+and individual policy perturbations are recorded in pbt_policy_{i}.txt. Tune logs:
+[target trial tag, clone trial tag, target trial iteration, clone trial iteration,
+old config, new config] on each perturbation step.
+
+.. code-block:: python
+
+    # Plot by wall-clock time
+    dfs = analysis.fetch_trial_dataframes()
+    # This plots everything on the same plot
+    ax = None
+    for d in dfs.values():
+        ax = d.plot("training_iteration", "mean_accuracy", ax=ax, legend=False)
+
+    plt.xlabel("iterations")
+    plt.ylabel("Test Accuracy")
+
+    print('best config:', analysis.get_best_config("mean_accuracy"))
+
+.. image:: images/tune_advanced_plot1.png
+
+DCGAN with Trainable and PBT
+----------------------------
+
 
 
