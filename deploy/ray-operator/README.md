@@ -1,217 +1,79 @@
 # Ray-Operator Documentation
 
 To introduce the Ray-Operator, give an explanation of RayCluster CR firstly.  
-If interested in CRD, refer to file deploy/ray-operator/config/crd/bases/ray.io_rayclusters.yaml for more detail.  
-If interested in RayCluster types, refer to file deploy/ray-operator/api/v1/raycluster_types.go.  
+
+## File structure:
+> ```
+> ray/deploy/ray-operator
+> ├── api/v1  // Package v1 contains API Schema definitions for the ray v1 API group
+> │   ├── groupversion_info.go 
+> │   ├── raycluster_types.go  // RayCluster field definitions
+> │   └── zz_generated.deepcopy.go // RayCluster field built-in function
+> │   
+> └── config  // Kubernetes require Config 
+>    ├── certmanager  // self-signed issuer CR and a certificate CR.
+>    ├── crd          // crd and related config
+>    ├── default
+>    ├── manager      // manager config in Kubernetes
+>    ├── prometheus         
+>    ├── rbac
+>    ├── samples      // sample RayCluster yaml
+>    └── webhook
+> ```
 
 ## RayCluster sample CR
-4 pods in this sample, 1 for head and 3 for workers but with different specifications.
-```yaml
-apiVersion: ray.io/v1
-kind: RayCluster
-metadata:
-  labels:
-    controller-tools.k8s.io: "1.0"
-  name: raycluster-sample
-spec:
-  clusterName: raycluster-sample
-  images:
-    defaultImage: "image"
-  imagePullPolicy: "Always"
 
-  extensions:
-    - size: 2
-      groupName: group1
-      type: worker
-      idList: ["raycluster-sample-group1-worker-0","raycluster-sample-group1-worker-1"]
+[RayCluster.mini.yaml](config/samples/ray_v1_raycluster.mini.yaml)         - 4 pods in this sample, 1 for head and 3 for workers but with different specifications.
 
-      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
-      labels:
-        raycluster.group.name: group1
+[RayCluster.complete.yaml](config/samples/ray_v1_raycluster.complete.yaml) - a complete version CR for Customized requirement.
 
-      # resource requirements
-      resources:
-        limits:
-          cpu: 1000m
-          memory: 2Gi
-          ephemeral-storage: 2Gi
-        requests:
-          cpu: 1000m
-          memory: 2Gi
-          ephemeral-storage: 2Gi
+## RayCluster CRD
 
-      # environment variables to set in the container
-      containerEnv:
-        - name: CLUSTER_NAME
-          value: raycluster-sample
-        - name: POD_READY_FILEPATH
-          value: /path/to/log
-        - name: MY_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: MY_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
+Refers to file [raycluster_types.go](api/v1/raycluster_types.go) for code details.
 
-      # head service suffix: {namespace}.svc , follows Kubernetes standard
-      headServiceSuffix: "ray-operator.svc"
+If interested in CRD, refer to file [CRD](config/crd/bases/ray.io_rayclusters.yaml) for more details. 
 
-      volumes:
-        - name: log-volume
-          emptyDir: {}
 
-      volumeMounts:
-        - mountPath: /path/to/log
-          name: log-volume
 
-    - size: 1
-      groupName: group2
-      type: worker
-      idList: ["raycluster-sample-group2-worker-0"]
+## Software requirement
+Take care some software have dependency.  
 
-      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
-      labels:
-        raycluster.group.name: group2
+software  | version | memo
+:-------------  | :---------------:| -------------:
+kustomize |  v3.1.0+ | [download](https://github.com/kubernetes-sigs/kustomize)
+kubectl |  v1.11.3+    | [download](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+Kubernetes Cluster | Access to a Kubernetes v1.11.3+ cluster| [Minikube](https://github.com/kubernetes/minikube)  for local test
+go  | v1.13+|[download](https://golang.org/dl/)
+docker   | 17.03+|[download](https://docs.docker.com/install/)
 
-      # resource requirements
-      resources:
-        limits:
-          cpu: 2000m
-          memory: 4Gi
-          ephemeral-storage: 4Gi
-        requests:
-          cpu: 2000m
-          memory: 4Gi
-          ephemeral-storage: 4Gi
+Also you will need kubeconfig in ~/.kube/config, so you can access to Kubernetes Cluster.  
 
-      # environment variables to set in the container
-      containerEnv:
-        - name: CLUSTER_NAME
-          value: raycluster-sample
-        - name: POD_READY_FILEPATH
-          value: /path/to/log
-        - name: MY_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: MY_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
+## Get started
+Below gives a guide for user to submit RayCluster step by step:
 
-      # head service suffix
-      headServiceSuffix: "ray-operator.svc"
+### Install CRDs into a cluster
 
-      volumes:
-        - name: log-volume
-          emptyDir: {}
-
-      volumeMounts:
-        - mountPath: /path/to/log
-          name: log-volume
-
-    - size: 1
-      groupName: headgroup1
-      type: head
-      idList: ["raycluster-sample-group2-head-0"]
-
-      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
-      labels:
-        raycluster.group.name: headgroup1
-
-      # resource requirements
-      resources:
-        limits:
-          cpu: 2000m
-          memory: 4Gi
-          ephemeral-storage: 4Gi
-        requests:
-          cpu: 2000m
-          memory: 4Gi
-          ephemeral-storage: 4Gi
-
-      # environment variables to set in the container
-      containerEnv:
-        - name: CLUSTER_NAME
-          value: raycluster-sample
-        - name: POD_READY_FILEPATH
-          value: /path/to/log
-        - name: MY_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: MY_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-
-      # head service suffix
-      headServiceSuffix: "ray-operator.svc"
-
-      volumes:
-        - name: log-volume
-          emptyDir: {}
-
-      volumeMounts:
-        - mountPath: /path/to/log
-          name: log-volume
-
+```shell script
+kustomize build config/crd | kubectl apply -f -
 ```
 
-### apiVersion
-* ray.io/v1 - version for RayCluster v1
-
-### kind
-* RayCluster - CustomResourceDefinition of Kubernetes, we applied this
-
-### metadata
-* labels - key-value pair, metadata
-* name -  metadata for the object
-    
-### spec - specification of the RayCluster        
-* clusterName - to distinguish among the multiple clusters  
-
-* images - the image for the pod
-  * defaultImage - the default image for pod.  
-
-* imagePullPolicy - the pull policy for pod
-
-* extensions - array of pod group
-
-```
-size         // the size of this pod group
-
-type         // worker/head
-
-image        // pod image
-
-groupName    // logic groupName for worker in same group
-
-idList       // the concrete pod name list, separate by ","
-
-labels       // labels for pod
-
-nodeSelector // NodeSelector specifies a map of key-value pairs. For the pod to be eligible
-             // to run on a node, the node must have each of the indicated key-value pairs as
-             // labels.
-
-affinity     // the affinity for pod
-
-resources    // the resource requirements for this group pod.
-
-tolerations  // Tolerations specifies the pod's tolerations.
-
-containerEnv // List of environment variables to set in the container.
-
-headServiceSuffix // Head service suffix, format {namespace}.svc , follows Kubernetes standard. So head can be accessed by domain name
-
-annotations  // Annotations for pod
-
-volumes      // Volume for the pod group
-
-volumeMounts // VolumeMount for the pod group
+### Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+```shell script
+cd config/manager 
+kustomize build config/default | kubectl apply -f -
 ```
 
-The attributes above follows the Kubernetes standard, so the format can be accepted.
+### Submit RayCluster to Kubernetes
+```shell script
+kubectl create -f config/samples/ray_v1_raycluster.mini.yaml
+```
+
+### Apply RayCluster to Kubernetes
+```shell script
+kubectl apply -f config/samples/ray_v1_raycluster.mini.yaml
+```
+
+### Delete RayCluster to Kubernetes
+```shell script
+kubectl delete -f config/samples/ray_v1_raycluster.mini.yaml
+```

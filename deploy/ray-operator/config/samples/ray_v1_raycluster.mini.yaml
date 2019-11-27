@@ -46,7 +46,7 @@ spec:
             fieldRef:
               fieldPath: status.podIP
 
-      # head service suffix
+      # head service suffix: {namespace}.svc , follows Kubernetes standard
       headServiceSuffix: "ray-operator.svc"
 
       volumes:
