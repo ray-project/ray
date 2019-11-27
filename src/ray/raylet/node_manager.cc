@@ -665,8 +665,10 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetLoadResources(std::move(remote_load));
 
   if (USE_NEW_SCHEDULER) {
-    new_resource_scheduler_->AddOrUpdateNode(
-        client_id.Binary(), remote_total.GetResourceMap(), remote_load.GetResourceMap());
+    RAY_LOG(ERROR) << "Updating node " << client_id.Binary();
+    new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
+                                             remote_total.GetResourceMap(),
+                                             remote_available.GetResourceMap());
     NewSchedulerScheduleMoreTasks();
     return;
   }
@@ -1454,13 +1456,13 @@ void NodeManager::DispatchDirectCallTasks() {
   RAY_CHECK(USE_NEW_SCHEDULER);
   while (!new_runnable_queue_.empty()) {
     auto task = new_runnable_queue_.front();
-    std::function<void(std::shared_ptr<Worker>)> reply = task.first;
+    auto reply = task.first;
     std::shared_ptr<Worker> worker =
         worker_pool_.PopWorker(task.second.GetTaskSpecification());
     if (worker == nullptr) {
       return;
     }
-    reply(worker);
+    reply(worker, ClientID::Nil(), "", -1);
     new_runnable_queue_.pop_front();
   }
 }
@@ -1483,7 +1485,15 @@ void NodeManager::NewSchedulerScheduleMoreTasks() {
       if (node_id_string == client_id_.Binary()) {
         new_runnable_queue_.push_back(work);
       } else {
-        RAY_CHECK(false) << "TODO handle spillover reply";
+        ClientID node_id = ClientID::FromBinary(node_id_string);
+        GcsNodeInfo node_info;
+        bool found = gcs_client_->client_table().GetClient(node_id, &node_info);
+        RAY_CHECK(found)
+            << "Spilling back to a node manager, but no GCS info found for node "
+            << node_id;
+        work.first(nullptr, node_id, node_info.node_manager_address(),
+                   node_info.node_manager_port());
+        RAY_LOG(ERROR) << "spilled task to other node";
       }
       new_pending_queue_.pop_front();
     }
@@ -1502,17 +1512,25 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     auto work = std::make_pair(
-        [this, request_resources, reply,
-         send_reply_callback](std::shared_ptr<Worker> worker) {
-          reply->mutable_worker_address()->set_ip_address(
-              initial_config_.node_manager_address);
-          reply->mutable_worker_address()->set_port(worker->Port());
-          reply->mutable_worker_address()->set_raylet_id(
-              gcs_client_->client_table().GetLocalClientId().Binary());
+        [this, request_resources, reply, send_reply_callback](
+            std::shared_ptr<Worker> worker, ClientID spillback_to, std::string address,
+            int port) {
+          if (worker != nullptr) {
+            reply->mutable_worker_address()->set_ip_address(
+                initial_config_.node_manager_address);
+            reply->mutable_worker_address()->set_port(worker->Port());
+            reply->mutable_worker_address()->set_raylet_id(
+                gcs_client_->client_table().GetLocalClientId().Binary());
+            RAY_CHECK(leased_workers_.find(worker->Port()) == leased_workers_.end());
+            leased_workers_[worker->Port()] = worker;
+            leased_worker_resources_[worker->Port()] = request_resources;
+          } else {
+            reply->mutable_retry_at_raylet_address()->set_ip_address(address);
+            reply->mutable_retry_at_raylet_address()->set_port(port);
+            reply->mutable_retry_at_raylet_address()->set_raylet_id(
+                spillback_to.Binary());
+          }
           send_reply_callback(Status::OK(), nullptr, nullptr);
-          RAY_CHECK(leased_workers_.find(worker->Port()) == leased_workers_.end());
-          leased_workers_[worker->Port()] = worker;
-          leased_worker_resources_[worker->Port()] = request_resources;
         },
         task);
     new_pending_queue_.push_back(work);

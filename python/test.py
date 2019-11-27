@@ -1,6 +1,10 @@
 import ray
 
-ray.init()
+from ray.tests.cluster_utils import Cluster
+
+cluster = Cluster(
+    initialize_head=True, connect=True, head_node_args={"num_cpus": 0})
+cluster.add_node(num_cpus=1)
 
 # Test a simple function.
 

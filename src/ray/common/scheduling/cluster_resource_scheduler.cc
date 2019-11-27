@@ -133,7 +133,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     if (IsSchedulable(task_req, it->first, it->second) == 0) {
       return local_node_id_;
     } else {
-      RAY_LOG(ERROR) << "local node not schedulable";
+      RAY_LOG(DEBUG) << "local node not schedulable";
     }
   }
 
@@ -150,6 +150,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   }
 
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
+    RAY_LOG(ERROR) << "check other node";
     // Return -1 if node not schedulable. otherwise return the number
     // of soft constraint violations.
     int64_t violations;
@@ -168,6 +169,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
     }
   }
   *total_violations = min_violations;
+  RAY_LOG(ERROR) << "best node " << best_node;
   return best_node;
 }
 

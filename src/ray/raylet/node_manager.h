@@ -630,13 +630,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unordered_map<int, std::unordered_map<std::string, double>>
       leased_worker_resources_;
 
+  typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
+                             std::string address, int port)>
+      ScheduleFn;
+
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<std::function<void(std::shared_ptr<Worker>)>, Task>>
-      new_pending_queue_;
+  std::deque<std::pair<ScheduleFn, Task>> new_pending_queue_;
   /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<std::pair<std::function<void(std::shared_ptr<Worker>)>, Task>>
-      new_runnable_queue_;
+  std::deque<std::pair<ScheduleFn, Task>> new_runnable_queue_;
 };
 
 }  // namespace raylet
