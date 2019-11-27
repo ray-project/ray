@@ -15,13 +15,13 @@ DOCKER_SHA=$($ROOT_DIR/../../build-docker.sh --output-sha --no-cache)
 SUPPRESS_OUTPUT=$ROOT_DIR/../suppress_output
 echo "Using Docker image" $DOCKER_SHA
 
-######################## RLLIB TESTS #################################
-
-source $ROOT_DIR/run_rllib_tests.sh
-
 ######################## TUNE TESTS #################################
 
 bash $ROOT_DIR/run_tune_tests.sh ${MEMORY_SIZE} ${SHM_SIZE} $DOCKER_SHA
+
+######################## RLLIB TESTS #################################
+
+source $ROOT_DIR/run_rllib_tests.sh
 
 ######################## EXAMPLE TESTS #################################
 
