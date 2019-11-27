@@ -101,6 +101,12 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
+message HeartbeatRequest {
+}
+
+message HeartbeatReply {
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -112,4 +118,6 @@ service CoreWorkerService {
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest)
       returns (GetObjectStatusReply);
+  // An empty request used to see if the owner is still alive.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatReply);
 }

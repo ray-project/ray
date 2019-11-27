@@ -364,12 +364,52 @@ void NodeManager::Heartbeat() {
     last_debug_dump_at_ms_ = now_ms;
   }
 
+  owner_heartbeat_counter_++;
+  if (owner_heartbeat_counter_ == RayConfig::instance().num_heartbeats_timeout()) {
+    owner_heartbeat_counter_ = 0;
+    SendLeaseOwnerHeartbeats();
+  }
+
   // Reset the timer.
   heartbeat_timer_.expires_from_now(heartbeat_period_);
   heartbeat_timer_.async_wait([this](const boost::system::error_code &error) {
     RAY_CHECK(!error);
     Heartbeat();
   });
+}
+
+void NodeManager::SendLeaseOwnerHeartbeats() {
+  for (const auto &lease_owner : leases_per_owner_) {
+    auto &owner_address = lease_owner.first;
+    auto it = lease_owner_client_cache_.find(owner_address);
+    if (it == lease_owner_client_cache_.end()) {
+      lease_owner_client_cache_.emplace(
+          owner_address,
+          std::make_shared<rpc::CoreWorkerClient>(
+              owner_address.first, owner_address.second, client_call_manager_));
+    }
+    auto status = it->second->Heartbeat(
+        [this, owner_address](const Status &status, const rpc::HeartbeatReply &reply) {
+          if (!status.ok()) {
+            KillLeasedWorkers(owner_address);
+          }
+        });
+    if (!status.ok()) {
+      KillLeasedWorkers(owner_address);
+    }
+  }
+}
+
+void NodeManager::KillLeasedWorkers(const rpc::WorkerAddress &owner_address) {
+  RAY_LOG(ERROR) << "Unable to reach " << owner_address.first << ":"
+                 << owner_address.second << " killing created tasks ";
+  for (const auto &lease_port : leases_per_owner_[owner_address]) {
+    auto it = leased_workers_.find(lease_port);
+    RAY_CHECK(it != leased_workers_.end());
+    // The lease data structures will get cleaned up once the worker
+    // disconnection is processed.
+    KillWorker(it->second.first);
+  }
 }
 
 // TODO(edoakes): this function is problematic because it both sends warnings spuriously
@@ -1116,7 +1156,15 @@ void NodeManager::ProcessDisconnectClientMessage(
       task_dependency_manager_.UnsubscribeWaitDependencies(worker->WorkerId());
     }
     // Erase any lease metadata.
-    leased_workers_.erase(worker->Port());
+    auto it = leased_workers_.find(worker->Port());
+    if (it != leased_workers_.end()) {
+      auto &addr = it->second.second;
+      leases_per_owner_[addr].erase(worker->Port());
+      if (leases_per_owner_[addr].empty()) {
+        lease_owner_client_cache_.erase(addr);
+      }
+      leased_workers_.erase(it);
+    }
   }
 
   if (is_worker) {
@@ -1436,22 +1484,22 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   Task task(task_message);
   RAY_LOG(DEBUG) << "Worker lease request " << task.GetTaskSpecification().TaskId();
   TaskID task_id = task.GetTaskSpecification().TaskId();
-  task.OnDispatchInstead(
-      [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
-                                                  const std::string &address, int port) {
-        RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
-        reply->mutable_worker_address()->set_ip_address(address);
-        reply->mutable_worker_address()->set_port(port);
-        reply->mutable_worker_address()->set_raylet_id(
-            gcs_client_->client_table().GetLocalClientId().Binary());
-        send_reply_callback(Status::OK(), nullptr, nullptr);
+  rpc::WorkerAddress owner_address(request.owner_address().ip_address(),
+                                   request.owner_address().port());
+  task.OnDispatchInstead([this, task_id, owner_address, reply, send_reply_callback](
+                             const std::shared_ptr<void> granted,
+                             const std::string &address, int port) {
+    RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
+    RAY_CHECK(leased_workers_.find(port) == leased_workers_.end());
+    leased_workers_[port] = {std::static_pointer_cast<Worker>(granted), owner_address};
+    leases_per_owner_[owner_address].insert(port);
 
-        // TODO(swang): Kill worker if other end hangs up.
-        // TODO(swang): Implement a lease term by which the owner needs to return the
-        // worker.
-        RAY_CHECK(leased_workers_.find(port) == leased_workers_.end());
-        leased_workers_[port] = std::static_pointer_cast<Worker>(granted);
-      });
+    reply->mutable_worker_address()->set_ip_address(address);
+    reply->mutable_worker_address()->set_port(port);
+    reply->mutable_worker_address()->set_raylet_id(
+        gcs_client_->client_table().GetLocalClientId().Binary());
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  });
   task.OnSpillbackInstead(
       [reply, task_id, send_reply_callback](const ClientID &spillback_to,
                                             const std::string &address, int port) {
@@ -1469,10 +1517,12 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Read the resource spec submitted by the client.
   auto worker_port = request.worker_port();
-  std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_port]);
-  leased_workers_.erase(worker_port);
+  auto it = leased_workers_.find(worker_port);
   Status status;
-  if (worker) {
+  if (it != leased_workers_.end()) {
+    std::shared_ptr<Worker> worker = std::move(it->second.first);
+    leased_workers_.erase(it);
+
     if (request.disconnect_worker()) {
       ProcessDisconnectClientMessage(worker->Connection());
     } else {

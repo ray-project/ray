@@ -2,11 +2,13 @@
 #define RAY_RAYLET_NODE_MANAGER_H
 
 #include <boost/asio/steady_timer.hpp>
+#include "absl/container/flat_hash_map.h"
 
 // clang-format off
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/common/task/task.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
@@ -143,6 +145,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Send heartbeats to the GCS.
   void Heartbeat();
+
+  /// Send heartbeats to all current lease owners.
+  void SendLeaseOwnerHeartbeats();
+
+  /// Kill all workers leased to the owner at the given address.
+  void KillLeasedWorkers(const rpc::WorkerAddress &owner_address);
 
   /// Write out debug state to a file.
   void DumpDebugState() const;
@@ -612,8 +620,23 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   std::unordered_map<ClientID, std::unique_ptr<rpc::NodeManagerClient>>
       remote_node_manager_clients_;
 
-  /// Map of workers leased out to direct call clients.
-  std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+  /// Map of workers leased out to direct call clients and the address of the
+  /// owner of the lease request.
+  std::unordered_map<int, std::pair<std::shared_ptr<Worker>, rpc::WorkerAddress>>
+      leased_workers_;
+  /// Map from the address of a worker to the set of ports granted to that
+  /// worker.
+  /// TODO(swang): Use rpc::Address as the key so that we can
+  /// contact the owner's raylet in case the owner dies and its
+  /// port gets reused.
+  absl::flat_hash_map<rpc::WorkerAddress, std::unordered_set<int>> leases_per_owner_;
+  /// Cache of clients to the lease owners. Used only for detection of owner
+  /// failure.
+  absl::flat_hash_map<rpc::WorkerAddress, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      lease_owner_client_cache_;
+  /// Number of node manager heartbeats that have passed since the last time we
+  /// checked whether the lease owners are still alive.
+  int owner_heartbeat_counter_ = 0;
 };
 
 }  // namespace raylet
