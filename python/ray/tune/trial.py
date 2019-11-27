@@ -271,8 +271,8 @@ class Trial(object):
                 trial=self,
                 loggers=self.loggers,
                 sync_function=no_op)
-            self.checkpoint_syncer = get_syncer(
-                self.checkpoint_dir, self.checkpoint_dir)
+            self.checkpoint_syncer = get_syncer(self.checkpoint_dir,
+                                                self.checkpoint_dir)
             self.remote_logdir_syncer = get_syncer(
                 self.trial_dir.remote_logdir, self.trial_dir.remote_logdir)
 

@@ -29,7 +29,6 @@ from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
 
-
 tf = try_import_tf()
 
 logger = logging.getLogger(__name__)
@@ -389,6 +388,7 @@ class Trainer(Trainable):
                 """
                 trial_dir.mkdir()
                 return UnifiedLogger(config, trial_dir.logdir, loggers=None)
+
             logger_creator = default_logger_creator
 
         Trainable.__init__(self, config, logger_creator)
