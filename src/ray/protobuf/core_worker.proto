@@ -110,6 +110,5 @@ service CoreWorkerService {
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
-  rpc GetObjectStatus(GetObjectStatusRequest)
-      returns (GetObjectStatusReply);
+  rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 }
