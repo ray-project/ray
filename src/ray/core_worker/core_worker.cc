@@ -1071,4 +1071,11 @@ void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   event.Wait();
 }
 
+void CoreWorker::GetAsync(const ObjectID &object_id,
+                          std::function<void(std::shared_ptr<RayObject>)> callback) {
+  RAY_CHECK(worker_context_.CurrentActorIsAsync());
+  RAY_CHECK(object_id.IsDirectCallType());
+  memory_store_->GetAsync(object_id, callback);
+}
+
 }  // namespace ray

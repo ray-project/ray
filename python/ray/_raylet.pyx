@@ -1172,3 +1172,12 @@ cdef class CoreWorker:
 
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
+
+    def get_async(self, object_id):
+        future = asyncio.Future()
+        self.core_worker.get().GetAsync(object_id, inner)
+        return future
+
+cdef void inner(shared_ptr[CRayObject] obj):
+    print(obj)
+    future.set_result(obj)        

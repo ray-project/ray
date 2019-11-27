@@ -88,6 +88,10 @@ def init():
     """
     assert ray.is_initialized(), "Please call ray.init before async_api.init"
 
+    # Noop when handler is set.
+    if handler is not None:
+        return
+
     loop = asyncio.get_event_loop()
     if loop.is_running():
         asyncio.ensure_future(_async_init())

@@ -401,6 +401,8 @@ class CoreWorker {
 
   /// Block current fiber until event is triggered.
   void YieldCurrentFiber(FiberEvent &event);
+  void GetAsync(const ObjectID &object_id,
+                std::function<void(std::shared_ptr<RayObject>)> callback);
 
  private:
   /// Run the io_service_ event loop. This should be called in a background thread.
