@@ -43,9 +43,9 @@ elif [ "$PYTHON" = "2.7" ] && [ "$platform" = "macosx" ]; then
   wget -q https://repo.continuum.io/miniconda/Miniconda2-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
   bash miniconda.sh -b -p "$HOME/miniconda"
   export PATH="$HOME/miniconda/bin:$PATH"
-  pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.24.2 requests \
+  pip install -q cython==0.29.0 tensorflow gym opencv-python-headless pyyaml pandas==0.24.2 \
     feather-format lxml openpyxl xlrd py-spy setproctitle faulthandler pytest-timeout mock networkx \
-    tabulate psutil kubernetes grpcio pytest-sugar pytest-rerunfailures "${pip_install_args[@]}"
+    tabulate psutil kubernetes grpcio pytest-sugar pytest-rerunfailures requests[security]
 elif [ "$PYTHON" = "3.5" ] && [ "$platform" = "macosx" ]; then
   # Install miniconda.
   wget -q https://repo.continuum.io/miniconda/Miniconda3-4.5.4-MacOSX-x86_64.sh -O miniconda.sh -nv
