@@ -14,7 +14,7 @@ message SubmitTaskReply {
 
 // Request a worker from the raylet with the specified resources.
 message WorkerLeaseRequest {
-  // Task containing the requested resources.
+  // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
 }
 
