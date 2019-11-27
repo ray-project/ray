@@ -27,12 +27,17 @@ def make_model(seq_length, num_tokens, num_layers, attn_dim, num_heads, head_dim
     layers = [tf.keras.layers.Dense(attn_dim)]
     for _ in range(num_layers):
         layers.append(
-            attention.RelativeMultiHeadAttention(attn_dim, num_heads, head_dim,
-                                                 pos_embedding)
+            attention.SkipConnection(
+                attention.RelativeMultiHeadAttention(attn_dim, num_heads,
+                                                     head_dim, pos_embedding))
         )
+        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
+
         layers.append(
-            attention.PositionwiseFeedforward(attn_dim, ff_hidden_dim)
+            attention.SkipConnection(
+                attention.PositionwiseFeedforward(attn_dim, ff_hidden_dim))
         )
+        layers.append(tf.keras.layers.LayerNormalization(axis=-1))
 
     layers.append(tf.keras.layers.Dense(num_tokens))
 

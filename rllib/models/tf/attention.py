@@ -5,7 +5,6 @@ from __future__ import print_function
 import numpy as np
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
-from ray.rllib.models.tf.misc import normc_initializer, get_activation_fn
 from ray.rllib.utils import try_import_tf
 
 tf = try_import_tf()
@@ -44,7 +43,6 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         self._linear_layer = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(out_dim,
                                   use_bias=False))
-        self._layer_norm = tf.keras.layers.LayerNormalization(axis=-1)
 
     def call(self, inputs):
         L = tf.shape(inputs)[0]  # length of segment
@@ -71,9 +69,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         wmat = tf.nn.softmax(masked_score, axis=1)
 
         out = tf.einsum("ijbn,jbnd->ibnd", wmat, values)
-        out = inputs + self._linear_layer(out)
-
-        return self._layer_norm(out)
+        return self._linear_layer(out)
 
 
 class RelativeMultiHeadAttention(tf.keras.layers.Layer):
@@ -89,7 +85,6 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
         self._linear_layer = tf.keras.layers.TimeDistributed(
             tf.keras.layers.Dense(out_dim,
                                   use_bias=False))
-        self._layer_norm = tf.keras.layers.LayerNormalization(axis=-1)
 
         self._uvar = self.add_weight(shape=(num_heads, head_dim))
         self._vvar = self.add_weight(shape=(num_heads, head_dim))
@@ -135,9 +130,7 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer):
 
         out = tf.einsum("ijbn,jbnd->ibnd", wmat, values)
         out = tf.reshape(out, [out.shape[0], out.shape[1], H * D])
-        out = inputs + self._linear_layer(out)
-
-        return self._layer_norm(out)
+        return self._linear_layer(out)
 
 
 class PositionwiseFeedforward(tf.keras.layers.Layer):
@@ -154,8 +147,71 @@ class PositionwiseFeedforward(tf.keras.layers.Layer):
 
     def call(self, inputs, **kwargs):
         output = self._hidden_layer(inputs)
-        output = self._output_layer(output)
-        return self._layer_norm(output + inputs)
+        return self._output_layer(output)
+
+
+class SkipConnection(tf.keras.layers.Layer):
+    """Skip connection layer.
+
+    If no fan-in layer is specified, then this layer behaves as a regular
+    residual layer.
+    """
+
+    def __init__(self, layer, fan_in_layer=None, **kwargs):
+        super(SkipConnection, self).__init__(**kwargs)
+        self._fan_in_layer = fan_in_layer
+        self._layer = layer
+
+    def call(self, inputs, **kwargs):
+        outputs = self._layer(inputs)
+        if self._fan_in_layer is None:
+            outputs = outputs + inputs
+        else:
+            outputs = self._fan_in_layer((inputs, outputs))
+
+        return outputs
+
+
+class GRUGate(tf.keras.layers.Layer):
+
+    def __init__(self, init_bias=0.):
+        self._init_bias = init_bias
+
+    def build(self, input_shape):
+        x_shape, y_shape = input_shape
+        if x_shape[-1] != y_shape[-1]:
+            raise ValueError(
+                "Both inputs to GRUGate must equal size last axis.")
+
+        self._w_r = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
+        self._w_z = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
+        self._w_h = self.add_weight(shape=(y_shape[-1], y_shape[-1]))
+        self._u_r = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
+        self._u_z = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
+        self._u_h = self.add_weight(shape=(x_shape[-1], x_shape[-1]))
+
+        def bias_initializer(shape, dtype):
+            return tf.fill(shape, tf.cast(self._init_bias, dtype=dtype))
+
+        self._bias_z = self.add_weight(shape=(x_shape[-1],),
+                                       initializer=bias_initializer)
+
+    def call(self, inputs, **kwargs):
+        x, y = inputs
+        r = (tf.tensordot(self._w_r, y, axes=1)
+             + tf.tensordot(self._u_r, x, axes=1))
+        r = tf.nn.sigmoid(r)
+
+        z = (tf.tensordot(self._w_z, y, axes=1)
+             + tf.tensordot(self._u_z, x, axes=1)
+             + self._bias_z)
+        z = tf.nn.sigmoid(z)
+
+        h = (tf.tensordot(self._w_h, y, axes=1)
+             + tf.tensordot(self._u_h, (x * r), axes=1))
+        h = tf.nn.tanh(h)
+
+        return (1 - z) * x + z * h
 
 
 class TransformerXL(TFModelV2):
