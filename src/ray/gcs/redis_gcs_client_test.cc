@@ -1159,7 +1159,7 @@ void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client
   ASSERT_EQ(data.state() == GcsNodeInfo::ALIVE, is_alive);
 
   GcsNodeInfo cached_client;
-  client->client_table().GetClient(added_id, cached_client);
+  ASSERT_TRUE(client->client_table().GetClient(added_id, &cached_client));
   ASSERT_EQ(ClientID::FromBinary(cached_client.node_id()), added_id);
   ASSERT_EQ(cached_client.state() == GcsNodeInfo::ALIVE, is_alive);
 }

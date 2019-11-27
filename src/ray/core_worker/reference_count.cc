@@ -36,12 +36,14 @@ void ReferenceCounter::SetDependencies(
   }
 }
 
-void ReferenceCounter::RemoveReference(const ObjectID &object_id) {
+void ReferenceCounter::RemoveReference(const ObjectID &object_id,
+                                       std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  RemoveReferenceRecursive(object_id);
+  RemoveReferenceRecursive(object_id, deleted);
 }
 
-void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id) {
+void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id,
+                                                std::vector<ObjectID> *deleted) {
   auto entry = object_id_refs_.find(object_id);
   if (entry == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
@@ -52,11 +54,17 @@ void ReferenceCounter::RemoveReferenceRecursive(const ObjectID &object_id) {
     // If the reference count reached 0, decrease the reference count for each dependency.
     if (entry->second.second) {
       for (const ObjectID &pending_task_object_id : *entry->second.second) {
-        RemoveReferenceRecursive(pending_task_object_id);
+        RemoveReferenceRecursive(pending_task_object_id, deleted);
       }
     }
     object_id_refs_.erase(object_id);
+    deleted->push_back(object_id);
   }
+}
+
+bool ReferenceCounter::HasReference(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
 size_t ReferenceCounter::NumObjectIDsInScope() const {

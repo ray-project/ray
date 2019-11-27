@@ -506,7 +506,7 @@ class SchedulingResources {
   /// \param resource_name: Name of the resource to be modified
   /// \param capacity: New capacity of the resource.
   /// \return Void.
-  void UpdateResource(const std::string &resource_name, int64_t capacity);
+  void UpdateResourceCapacity(const std::string &resource_name, int64_t capacity);
 
   /// \brief Delete resource from total, available and load resources.
   ///

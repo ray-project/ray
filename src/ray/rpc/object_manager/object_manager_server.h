@@ -57,7 +57,7 @@ class ObjectManagerGrpcService : public GrpcService {
             service_, &ObjectManagerService::AsyncService::RequestPush, service_handler_,
             &ObjectManagerServiceHandler::HandlePushRequest, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(std::move(push_call_factory),
-                                                          50);
+                                                          5);
 
     // Initialize the factory for `Pull` requests.
     std::unique_ptr<ServerCallFactory> pull_call_factory(
@@ -66,7 +66,7 @@ class ObjectManagerGrpcService : public GrpcService {
             service_, &ObjectManagerService::AsyncService::RequestPull, service_handler_,
             &ObjectManagerServiceHandler::HandlePullRequest, cq, main_service_));
     server_call_factories_and_concurrencies->emplace_back(std::move(pull_call_factory),
-                                                          50);
+                                                          5);
 
     // Initialize the factory for `FreeObjects` requests.
     std::unique_ptr<ServerCallFactory> free_objects_call_factory(

@@ -33,6 +33,13 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
   return size;
 }
 
+// Shared between direct actor and task submitters.
+// TODO(swang): Remove and replace with rpc::Address.
+class CoreWorkerClientInterface;
+typedef std::pair<std::string, int> WorkerAddress;
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
+    ClientFactoryFn;
+
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
@@ -74,16 +81,7 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
-  /// Grants a worker to the client.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
-  virtual ray::Status WorkerLeaseGranted(
-      const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) {
-    return Status::NotImplemented("");
-  }
+  virtual ~CoreWorkerClientInterface(){};
 };
 
 /// Client used for communicating with a remote worker server.
@@ -147,17 +145,6 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                                                 DirectActorCallArgWaitCompleteReply>(
         *stub_, &CoreWorkerService::Stub::PrepareAsyncDirectActorCallArgWaitComplete,
         request, callback);
-    return call->GetStatus();
-  }
-
-  ray::Status WorkerLeaseGranted(
-      const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) override {
-    auto call =
-        client_call_manager_.CreateCall<CoreWorkerService, WorkerLeaseGrantedRequest,
-                                        WorkerLeaseGrantedReply>(
-            *stub_, &CoreWorkerService::Stub::PrepareAsyncWorkerLeaseGranted, request,
-            callback);
     return call->GetStatus();
   }
 

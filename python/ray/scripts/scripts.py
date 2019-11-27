@@ -415,7 +415,17 @@ def start(node_ip_address, redis_address, address, redis_port,
 
 
 @cli.command()
-def stop():
+@click.option(
+    "-f",
+    "--force",
+    is_flag=True,
+    help="If set, ray will send SIGKILL instead of SIGTERM.")
+@click.option(
+    "-v",
+    "--verbose",
+    is_flag=True,
+    help="If set, ray prints out more information about processes to kill.")
+def stop(force, verbose):
     # Note that raylet needs to exit before object store, otherwise
     # it cannot exit gracefully.
     processes_to_kill = [
@@ -426,33 +436,51 @@ def stop():
         # See STANDARD FORMAT SPECIFIERS section of
         # http://man7.org/linux/man-pages/man1/ps.1.html
         # about comm and args. This can help avoid killing non-ray processes.
+
+        # Format:
+        # Keyword to filter, filter by command (True)/filter by args (False)
         ["raylet", True],
         ["plasma_store", True],
         ["raylet_monitor", True],
         ["monitor.py", False],
         ["redis-server", True],
         ["default_worker.py", False],  # Python worker.
-        [" ray_", True],  # Python worker.
+        ["ray::", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
         ["log_monitor.py", False],
         ["reporter.py", False],
         ["dashboard.py", False],
     ]
 
+    signal_name = "TERM"
+    if force:
+        signal_name = "KILL"
+
     for process in processes_to_kill:
-        filter = process[0]
-        if process[1]:
-            format = "pid,comm"
+        keyword, filter_by_cmd = process
+        if filter_by_cmd:
+            ps_format = "pid,comm"
             # According to https://superuser.com/questions/567648/ps-comm-format-always-cuts-the-process-name,  # noqa: E501
             # comm only prints the first 15 characters of the executable name.
-            if len(filter) > 15:
+            if len(keyword) > 15:
                 raise ValueError("The filter string should not be more than" +
                                  " 15 characters. Actual length: " +
-                                 str(len(filter)) + ". Filter: " + filter)
+                                 str(len(keyword)) + ". Filter: " + keyword)
         else:
-            format = "pid,args"
-        command = ("kill -9 $(ps ax -o " + format + " | grep '" + filter +
-                   "' | grep -v grep | " + "awk '{ print $1 }') 2> /dev/null")
+            ps_format = "pid,args"
+
+        debug_operator = "| tee /dev/stderr" if verbose else ""
+
+        command = (
+            "kill -s {} $(ps ax -o {} | grep {} | grep -v grep {} | grep ray |"
+            "awk '{{ print $1 }}') 2> /dev/null".format(
+                # ^^ This is how you escape braces in python format string.
+                signal_name,
+                ps_format,
+                keyword,
+                debug_operator))
+        if verbose:
+            logger.info("Calling '{}'".format(command))
         subprocess.call([command], shell=True)
 
 
@@ -785,6 +813,12 @@ done
 @cli.command()
 def microbenchmark():
     from ray.ray_perf import main
+    main()
+
+
+@cli.command()
+def clusterbenchmark():
+    from ray.ray_cluster_perf import main
     main()
 
 

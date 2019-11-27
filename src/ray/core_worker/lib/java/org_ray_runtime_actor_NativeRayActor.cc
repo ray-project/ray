@@ -38,8 +38,8 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   ray::ActorHandle *native_actor_handle = nullptr;
   auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
-  return native_actor_handle->IsDirectCallActor();  
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, false);
+  return native_actor_handle->IsDirectCallActor();
 }
 
 /*
@@ -53,7 +53,7 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   ray::ActorHandle *native_actor_handle = nullptr;
   auto status = GetCoreWorker(nativeCoreWorkerPointer).GetActorHandle(actor_id, &native_actor_handle);
-  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, (jint)0);
+  THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   auto function_descriptor = native_actor_handle->ActorCreationTaskFunctionDescriptor();
   return NativeStringVectorToJavaStringList(env, function_descriptor);
 }
@@ -68,7 +68,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSer
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
   std::string output;
   ray::Status status = GetCoreWorker(nativeCoreWorkerPointer)
-      .SerializeActorHandle(actor_id, &output);  
+      .SerializeActorHandle(actor_id, &output);
   jbyteArray bytes = env->NewByteArray(output.size());
   env->SetByteArrayRegion(bytes, 0, output.size(),
                           reinterpret_cast<const jbyte *>(output.c_str()));
@@ -84,7 +84,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDes
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);
   RAY_CHECK(buffer->Size() > 0);
-  auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());  
+  auto binary = std::string(reinterpret_cast<char *>(buffer->Data()), buffer->Size());
   auto actor_id = GetCoreWorker(nativeCoreWorkerPointer)
       .DeserializeAndRegisterActorHandle(binary);
 

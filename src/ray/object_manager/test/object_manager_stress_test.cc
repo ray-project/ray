@@ -412,12 +412,12 @@ class StressTestObjectManager : public TestObjectManagerBase {
                    << "All connected clients:"
                    << "\n";
     GcsNodeInfo data;
-    gcs_client_1->client_table().GetClient(client_id_1, data);
+    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_1, &data));
     RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data.node_id()) << "\n"
                    << "ClientIp=" << data.node_manager_address() << "\n"
                    << "ClientPort=" << data.node_manager_port();
     GcsNodeInfo data2;
-    gcs_client_1->client_table().GetClient(client_id_2, data2);
+    ASSERT_TRUE(gcs_client_1->client_table().GetClient(client_id_2, &data2));
     RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data2.node_id()) << "\n"
                    << "ClientIp=" << data2.node_manager_address() << "\n"
                    << "ClientPort=" << data2.node_manager_port();

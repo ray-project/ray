@@ -1,12 +1,12 @@
 # Bazel build
 # C/C++ documentation: https://docs.bazel.build/versions/master/be/c-cpp.html
 
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("@rules_proto_grpc//python:defs.bzl", "python_proto_compile")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("@//bazel:ray.bzl", "flatbuffer_py_library")
 
 COPTS = ["-DRAY_USE_GLOG"] + select({
     "@bazel_tools//src/conditions:windows": [
@@ -218,6 +218,9 @@ cc_library(
         ":ray_util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest",
         "@plasma//:plasma_client",
     ],
 )
@@ -357,6 +360,7 @@ cc_library(
         ":raylet_lib",
         ":worker_rpc",
         ":gcs",
+        "@boost//:fiber",
     ],
 )
 
@@ -405,6 +409,16 @@ cc_binary(
 )
 
 cc_test(
+    name = "direct_actor_transport_test",
+    srcs = ["src/ray/core_worker/test/direct_actor_transport_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "direct_task_transport_test",
     srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
     copts = COPTS,
@@ -430,6 +444,26 @@ cc_test(
     copts = COPTS,
     deps = [
         ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_manager_test",
+    srcs = ["src/ray/core_worker/test/task_manager_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "scheduling_test",
+    srcs = ["src/ray/common/scheduling/scheduling_test.cc"],
+    copts = COPTS,
+    deps = [
+        ":ray_common",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -754,6 +788,7 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
+    copts = COPTS,
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
@@ -872,6 +907,17 @@ filegroup(
         "gcs_py_proto",
         "node_manager_py_proto",
     ],
+)
+
+# This is a dummy test dependency that causes the python tests to be
+# re-run if any of these files changes.
+py_library(
+    name = "ray_lib",
+    srcs = glob(
+        ["python/ray/**/*.py"],
+        exclude = ["python/ray/tests/*.py"],
+    ),
+    visibility = ["__subpackages__"],
 )
 
 genrule(
