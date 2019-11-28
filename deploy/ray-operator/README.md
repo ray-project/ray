@@ -1,14 +1,14 @@
 # Ray-Operator Documentation
 
-Kubernetes is an open-source system for automating deployment, scaling, and management of containerized applications, It is playing an important role in the next generation cloud-infra. 
+Kubernetes is an open-source system for automating deployment, scaling, and management of containerized applications. It is playing an important role in the next generation cloud-infra. 
 
 So running Ray on Kubernetes will make Ray more acceptable to the industry.  
 
-The CR(Custom Resource defined in Kubernetes) and the controller we propose allow users to customize almost all the Kubernetes and Ray configurations. 
+The CR(Custom Resource defined in Kubernetes) and the controller we propose allow users to customize almost all the configurations of Kubernetes and Ray. 
 
 The solution provides the following features:
 - A CRD of RayCluster used for the desired state.
-- Support Ray cluster with heterogeneous Pods, CPU/MEM and other attributes.
+- Support Ray cluster with heterogeneous Pods, the pods will differ in CPU/MEM and other attributes.
 - Update the desired state following the Declarative API design concept.
 - HA for Ray Operator.
 
