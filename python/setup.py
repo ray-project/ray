@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import glob
+from itertools import chain
 import os
 import re
 import shutil
@@ -81,6 +82,8 @@ extras = {
     "serve": ["uvicorn", "pygments", "werkzeug", "flask", "pandas"],
     "tune": ["tabulate"],
 }
+
+extras["all"] = list(set(chain.from_iterable(extras.values())))
 
 
 class build_ext(_build_ext.build_ext):
