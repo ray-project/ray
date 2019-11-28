@@ -45,7 +45,7 @@ class MockServer {
 
  private:
   ray::Status RegisterGcs(boost::asio::io_service &io_service) {
-    auto object_manager_port = config_.object_manager_port;
+    auto object_manager_port = object_manager_.GetServerPort();
     GcsNodeInfo node_info;
     node_info.set_node_id(node_id_.Binary());
     node_info.set_node_manager_address("127.0.0.1");
@@ -98,7 +98,7 @@ class TestObjectManagerBase : public ::testing::Test {
     store_id_1 = StartStore(UniqueID::FromRandom().Hex());
     store_id_2 = StartStore(UniqueID::FromRandom().Hex());
 
-    uint pull_timeout_ms = 1000;
+    unsigned int pull_timeout_ms = 1000;
     uint64_t object_chunk_size = static_cast<uint64_t>(std::pow(10, 3));
     int push_timeout_ms = 10000;
 
@@ -113,7 +113,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_1.pull_timeout_ms = pull_timeout_ms;
     om_config_1.object_chunk_size = object_chunk_size;
     om_config_1.push_timeout_ms = push_timeout_ms;
-    om_config_1.object_manager_port = 12345;
+    om_config_1.object_manager_port = 0;
     om_config_1.rpc_service_threads_number = 3;
     server1.reset(new MockServer(main_service, om_config_1, gcs_client_1));
 
@@ -126,7 +126,7 @@ class TestObjectManagerBase : public ::testing::Test {
     om_config_2.pull_timeout_ms = pull_timeout_ms;
     om_config_2.object_chunk_size = object_chunk_size;
     om_config_2.push_timeout_ms = push_timeout_ms;
-    om_config_2.object_manager_port = 23456;
+    om_config_2.object_manager_port = 0;
     om_config_2.rpc_service_threads_number = 3;
     server2.reset(new MockServer(main_service, om_config_2, gcs_client_2));
 
@@ -196,7 +196,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
   };
 
   int async_loop_index = -1;
-  uint num_expected_objects;
+  size_t num_expected_objects;
 
   std::vector<TransferPattern> async_loop_patterns = {
       TransferPattern::PUSH_A_B,
@@ -258,7 +258,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void TransferTestNext() {
     async_loop_index += 1;
-    if ((uint)async_loop_index < async_loop_patterns.size()) {
+    if ((size_t)async_loop_index < async_loop_patterns.size()) {
       TransferPattern pattern = async_loop_patterns[async_loop_index];
       TransferTestExecute(100, 3 * std::pow(10, 3) - 1, pattern);
     } else {
@@ -309,12 +309,12 @@ class StressTestObjectManager : public TestObjectManagerBase {
                   << static_cast<int>(async_loop_patterns[async_loop_index]) << " "
                   << v1.size() << " " << elapsed;
     ASSERT_TRUE(v1.size() == v2.size());
-    for (uint i = 0; i < v1.size(); ++i) {
+    for (size_t i = 0; i < v1.size(); ++i) {
       ASSERT_TRUE(std::find(v1.begin(), v1.end(), v2[i]) != v1.end());
     }
 
     // Compare objects and their hashes.
-    for (uint i = 0; i < v1.size(); ++i) {
+    for (size_t i = 0; i < v1.size(); ++i) {
       ObjectID object_id_2 = v2[i];
       ObjectID object_id_1 =
           v1[std::distance(v1.begin(), std::find(v1.begin(), v1.end(), v2[i]))];
@@ -337,9 +337,9 @@ class StressTestObjectManager : public TestObjectManagerBase {
     if (transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PUSH ||
         transfer_pattern == TransferPattern::BIDIRECTIONAL_PULL_VARIABLE_DATA_SIZE) {
-      num_expected_objects = (uint)2 * num_trials;
+      num_expected_objects = (size_t)2 * num_trials;
     } else {
-      num_expected_objects = (uint)num_trials;
+      num_expected_objects = (size_t)num_trials;
     }
 
     start_time = current_time_ms();
@@ -405,7 +405,7 @@ class StressTestObjectManager : public TestObjectManagerBase {
 
   void TestConnections() {
     RAY_LOG(DEBUG) << "\n"
-                   << "Server client ids:"
+                   << "Server node ids:"
                    << "\n";
     ClientID node_id_1 = gcs_client_1->Nodes().GetSelfId();
     ClientID node_id_2 = gcs_client_2->Nodes().GetSelfId();
@@ -413,16 +413,16 @@ class StressTestObjectManager : public TestObjectManagerBase {
                    << "Server 2: " << node_id_2;
 
     RAY_LOG(DEBUG) << "\n"
-                   << "All connected clients:"
+                   << "All connected nodes:"
                    << "\n";
     auto data = gcs_client_1->Nodes().GetFromCache(node_id_1);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data->node_id()) << "\n"
-                   << "ClientIp=" << data->node_manager_address() << "\n"
-                   << "ClientPort=" << data->node_manager_port();
+    RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data->node_id()) << "\n"
+                   << "NodeIp=" << data->node_manager_address() << "\n"
+                   << "NodePort=" << data->node_manager_port();
     auto data2 = gcs_client_1->Nodes().GetFromCache(node_id_2);
-    RAY_LOG(DEBUG) << "ClientID=" << ClientID::FromBinary(data2->node_id()) << "\n"
-                   << "ClientIp=" << data2->node_manager_address() << "\n"
-                   << "ClientPort=" << data2->node_manager_port();
+    RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data2->node_id()) << "\n"
+                   << "NodeIp=" << data2->node_manager_address() << "\n"
+                   << "NodePort=" << data2->node_manager_port();
   }
 };
 

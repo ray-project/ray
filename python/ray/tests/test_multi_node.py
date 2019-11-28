@@ -8,8 +8,7 @@ import subprocess
 import time
 
 import ray
-from ray.utils import _random_string
-from ray.tests.utils import (
+from ray.test_utils import (
     RayTestTimeoutException,
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -556,14 +555,12 @@ print("success")
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id_bytes = _random_string()
-        nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
+        nonexistent_id = ray.ObjectID.from_random()
         driver_script = driver_script_template.format(address,
-                                                      nonexistent_id_hex)
+                                                      nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(nonexistent_id_bytes), None)
+        ray.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -583,14 +580,12 @@ print("success")
     # Create some drivers and let them exit and make sure everything is
     # still alive.
     for _ in range(3):
-        nonexistent_id_bytes = _random_string()
-        nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
+        nonexistent_id = ray.ObjectID.from_random()
         driver_script = driver_script_template.format(address,
-                                                      nonexistent_id_hex)
+                                                      nonexistent_id.hex())
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
-        ray.worker.global_worker.put_object(
-            ray.ObjectID(nonexistent_id_bytes), None)
+        ray.worker.global_worker.put_object(None, nonexistent_id)
         # Make sure the first driver ran to completion.
         assert "success" in out
 
@@ -620,3 +615,12 @@ def test_use_pickle(call_ray_start):
         return (3, "world")
 
     assert ray.get(f.remote(x)) == (3, "world")
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    # Make subprocess happy in bazel.
+    os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ["LANG"] = "en_US.UTF-8"
+    sys.exit(pytest.main(["-v", __file__]))

@@ -76,11 +76,9 @@ boost::optional<GcsNodeInfo> NodeStateAccessor::GetFromCache(
     const ClientID &node_id) const {
   ClientTable &client_table = client_impl_.client_table();
   GcsNodeInfo node_info;
-  client_table.GetClient(node_id, node_info);
-
+  bool found = client_table.GetClient(node_id, &node_info);
   boost::optional<GcsNodeInfo> optional_node;
-  ClientID id = ClientID::FromBinary(node_info.node_id());
-  if (!id.IsNil()) {
+  if (found) {
     optional_node = std::move(node_info);
   }
   return optional_node;

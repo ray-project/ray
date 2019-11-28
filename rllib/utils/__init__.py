@@ -17,9 +17,9 @@ def renamed_class(cls, old_name):
         # note: **kw not supported for ray.remote classes
         def __init__(self, *args, **kw):
             new_name = cls.__module__ + "." + cls.__name__
-            logger.warn("DeprecationWarning: {} has been renamed to {}. ".
-                        format(old_name, new_name) +
-                        "This will raise an error in the future.")
+            logger.warning("DeprecationWarning: {} has been renamed to {}. ".
+                           format(old_name, new_name) +
+                           "This will raise an error in the future.")
             cls.__init__(self, *args, **kw)
 
     DeprecationWrapper.__name__ = cls.__name__
@@ -49,9 +49,9 @@ def renamed_agent(cls):
         def __init__(self, config=None, env=None, logger_creator=None):
             old_name = cls.__name__.replace("Trainer", "Agent")
             new_name = cls.__module__ + "." + cls.__name__
-            logger.warn("DeprecationWarning: {} has been renamed to {}. ".
-                        format(old_name, new_name) +
-                        "This will raise an error in the future.")
+            logger.warning("DeprecationWarning: {} has been renamed to {}. ".
+                           format(old_name, new_name) +
+                           "This will raise an error in the future.")
             cls.__init__(self, config, env, logger_creator)
 
     DeprecationWrapper.__name__ = cls.__name__

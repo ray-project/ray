@@ -61,6 +61,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
   self_node_info_.set_object_store_socket_name(object_manager_config.store_socket_name);
   self_node_info_.set_object_manager_port(object_manager_.GetServerPort());
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
+  self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
 }
 
 Raylet::~Raylet() {}
@@ -84,7 +85,8 @@ ray::Status Raylet::RegisterGcs() {
                  << self_node_info_.node_manager_address() << ":"
                  << self_node_info_.node_manager_port() << " object manager at "
                  << self_node_info_.node_manager_address() << ":"
-                 << self_node_info_.object_manager_port();
+                 << self_node_info_.object_manager_port() << ", hostname "
+                 << self_node_info_.node_manager_hostname();
 
   // Add resource information.
   const NodeManagerConfig &node_manager_config = node_manager_.GetInitialConfig();

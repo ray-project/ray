@@ -19,7 +19,9 @@ class RedisContext;
 
 class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   friend class ActorStateAccessor;
+  friend class NodeStateAccessor;
   friend class SubscriptionExecutorTest;
+  friend class ClientTableTestHelper;
 
  public:
   /// Constructor of RedisGcsClient.
@@ -33,6 +35,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
   ///
+  /// \param io_service The event loop for this client.
+  /// Must be single-threaded io_service (get more information from RedisAsioClient).
+  ///
   /// \return Status
   Status Connect(boost::asio::io_service &io_service);
 
@@ -44,9 +49,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   raylet::TaskTable &raylet_task_table();
   TaskReconstructionLog &task_reconstruction_log();
   TaskLeaseTable &task_lease_table();
-  // TODO(micafan) Change this method to private in next PR,
-  // to avoid conflicts with other PRs.
-  ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
   ErrorTable &error_table();
@@ -77,8 +79,11 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// one event loop should be attached at a time.
   Status Attach(boost::asio::io_service &io_service);
 
-  /// Use method Actors() instead
+  /// Use method Actors() instead.
   ActorTable &actor_table();
+
+  /// Use method Nodes() instead.
+  ClientTable &client_table();
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

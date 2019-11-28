@@ -35,11 +35,6 @@ from ray.includes.libraylet cimport CRayletClient
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
 
-cdef extern from "ray/core_worker/task_execution.h" namespace "ray" nogil:
-    cdef cppclass CTaskExecutionInterface "CoreWorkerTaskExecutionInterface":
-        void Run()
-        void Stop()
-
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
         void Start()
@@ -53,23 +48,15 @@ cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfileEvent "ray::worker::ProfileEvent":
         void SetExtraData(const c_string &extra_data)
 
-cdef extern from "ray/core_worker/object_interface.h" nogil:
-    cdef cppclass CObjectInterface "ray::CoreWorkerObjectInterface":
-        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
-        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
-        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
-        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
-                          const size_t data_size, const CObjectID &object_id,
-                          shared_ptr[CBuffer] *data)
-        CRayStatus Seal(const CObjectID &object_id)
-        CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
-                       c_vector[shared_ptr[CRayObject]] *results)
-        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
-        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
-                        int64_t timeout_ms, c_vector[c_bool] *results)
-        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
-                          c_bool local_only, c_bool delete_creating_tasks)
-        c_string MemoryUsageString()
+cdef extern from "ray/core_worker/transport/direct_actor_transport.h" nogil:
+    cdef cppclass CFiberEvent "ray::FiberEvent":
+        CFiberEvent()
+        void Wait()
+        void Notify()
+
+cdef extern from "ray/core_worker/context.h" nogil:
+    cdef cppclass CWorkerContext "ray::WorkerContext":
+        c_bool CurrentActorIsAsync()
 
 cdef extern from "ray/core_worker/core_worker.h" nogil:
     cdef cppclass CCoreWorker "ray::CoreWorker":
@@ -78,23 +65,23 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_string &raylet_socket, const CJobID &job_id,
                     const CGcsClientOptions &gcs_options,
                     const c_string &log_dir, const c_string &node_ip_address,
+                    int node_manager_port,
                     CRayStatus (
                         CTaskType task_type,
                         const CRayFunction &ray_function,
-                        const CJobID &job_id,
-                        const CActorID &actor_id,
                         const unordered_map[c_string, double] &resources,
                         const c_vector[shared_ptr[CRayObject]] &args,
                         const c_vector[CObjectID] &arg_reference_ids,
                         const c_vector[CObjectID] &return_ids,
                         c_vector[shared_ptr[CRayObject]] *returns) nogil,
                     CRayStatus() nogil,
-                    c_bool use_memory_store_)
+                    void () nogil,
+                    c_bool ref_counting_enabled)
         void Disconnect()
         CWorkerType &GetWorkerType()
         CLanguage &GetLanguage()
-        CObjectInterface &Objects()
-        CTaskExecutionInterface &Execution()
+
+        void StartExecutingTasks()
 
         CRayStatus SubmitTask(
             const CRayFunction &function, const c_vector[CTaskArg] &args,
@@ -109,21 +96,45 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         unique_ptr[CProfileEvent] CreateProfileEvent(
             const c_string &event_type)
+        CRayStatus AllocateReturnObjects(
+            const c_vector[CObjectID] &object_ids,
+            const c_vector[size_t] &data_sizes,
+            const c_vector[shared_ptr[CBuffer]] &metadatas,
+            c_vector[shared_ptr[CRayObject]] *return_objects)
 
         # TODO(edoakes): remove this once the raylet client is no longer used
         # directly.
         CRayletClient &GetRayletClient()
-        # TODO(edoakes): remove these once the Python core worker uses the task
-        # interfaces
         CJobID GetCurrentJobId()
-        void SetCurrentJobId(const CJobID &job_id)
         CTaskID GetCurrentTaskId()
-        void SetCurrentTaskId(const CTaskID &task_id)
         const CActorID &GetActorId()
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes)
-        void AddActiveObjectID(const CObjectID &object_id)
-        void RemoveActiveObjectID(const CObjectID &object_id)
+        void AddObjectIDReference(const CObjectID &object_id)
+        void RemoveObjectIDReference(const CObjectID &object_id)
+        void PromoteObjectToPlasma(const CObjectID &object_id)
+
+        CRayStatus SetClientOptions(c_string client_name, int64_t limit)
+        CRayStatus Put(const CRayObject &object, CObjectID *object_id)
+        CRayStatus Put(const CRayObject &object, const CObjectID &object_id)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, CObjectID *object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Create(const shared_ptr[CBuffer] &metadata,
+                          const size_t data_size, const CObjectID &object_id,
+                          shared_ptr[CBuffer] *data)
+        CRayStatus Seal(const CObjectID &object_id)
+        CRayStatus Get(const c_vector[CObjectID] &ids, int64_t timeout_ms,
+                       c_vector[shared_ptr[CRayObject]] *results)
+        CRayStatus Contains(const CObjectID &object_id, c_bool *has_object)
+        CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
+                        int64_t timeout_ms, c_vector[c_bool] *results)
+        CRayStatus Delete(const c_vector[CObjectID] &object_ids,
+                          c_bool local_only, c_bool delete_creating_tasks)
+        c_string MemoryUsageString()
+
+        CWorkerContext &GetWorkerContext()
+        void YieldCurrentFiber(CFiberEvent &coroutine_done)

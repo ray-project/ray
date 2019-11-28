@@ -73,9 +73,11 @@ inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) 
 }
 
 inline void SetTransportTypeFlag(uint8_t transport_type, ObjectIDFlagsType *flags) {
+  // TODO(ekl) we should be masking for all the SET operations in this file.
+  auto mask = static_cast<ObjectIDFlagsType>(1) << kTransportTypeBitsOffset;
   const ObjectIDFlagsType transport_type_bits =
       static_cast<ObjectIDFlagsType>(transport_type) << kTransportTypeBitsOffset;
-  *flags = (*flags bitor transport_type_bits);
+  *flags = ((*flags bitand ~mask) bitor transport_type_bits);
 }
 
 inline bool CreatedByTask(ObjectIDFlagsType flags) {
@@ -146,6 +148,22 @@ bool ObjectID::IsPutObject() const {
 
 bool ObjectID::IsReturnObject() const {
   return ::ray::GetObjectType(this->GetFlags()) == ObjectType::RETURN_OBJECT;
+}
+
+ObjectID ObjectID::WithTransportType(TaskTransportType transport_type) const {
+  ObjectID copy = ObjectID::FromBinary(Binary());
+  ObjectIDFlagsType flags = GetFlags();
+  SetTransportTypeFlag(static_cast<uint8_t>(transport_type), &flags);
+  std::memcpy(copy.id_ + TaskID::kLength, &flags, sizeof(flags));
+  return copy;
+}
+
+ObjectID ObjectID::WithPlasmaTransportType() const {
+  return WithTransportType(TaskTransportType::RAYLET);
+}
+
+ObjectID ObjectID::WithDirectTransportType() const {
+  return WithTransportType(TaskTransportType::DIRECT);
 }
 
 uint8_t ObjectID::GetTransportType() const {
@@ -280,10 +298,6 @@ TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
 }
 
 TaskID ObjectID::TaskId() const {
-  if (!CreatedByTask()) {
-    // TODO(qwang): Should be RAY_CHECK here.
-    RAY_LOG(WARNING) << "Shouldn't call this on a non-task object id: " << this->Hex();
-  }
   return TaskID::FromBinary(
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }

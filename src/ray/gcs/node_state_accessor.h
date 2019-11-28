@@ -17,7 +17,7 @@ class RedisGcsClient;
 
 /// \class NodeStateAccessor
 /// NodeStateAccessor class encapsulates the implementation details of
-/// reading or writing or subscribing of node's information (immutable fields like id,
+/// reading, writing and subscribing of node's information (immutable fields like id,
 /// and mutable fields like runtime state).
 class NodeStateAccessor {
  public:

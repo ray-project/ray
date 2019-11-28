@@ -89,6 +89,7 @@ template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
 /// A helper function to fill random bytes into the `data`.
+/// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);

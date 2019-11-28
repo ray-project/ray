@@ -202,3 +202,9 @@ def test_channel_generation():
 def test_wordcount():
     """Tests a simple streaming wordcount."""
     pass
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

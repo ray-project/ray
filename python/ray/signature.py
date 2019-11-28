@@ -134,6 +134,7 @@ def flatten_args(signature_parameters, args, kwargs):
         >>> flatten_args([1, 2, 3], {"a": 4})
         [None, 1, None, 2, None, 3, "a", 4]
     """
+
     restored = _restore_parameters(signature_parameters)
     reconstructed_signature = funcsigs.Signature(parameters=restored)
     try:

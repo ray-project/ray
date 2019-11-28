@@ -110,7 +110,7 @@ cdef class UniqueID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(os.urandom(CUniqueID.Size()))
+        return cls(CUniqueID.FromRandom().Binary())
 
     def size(self):
         return CUniqueID.Size()
@@ -146,14 +146,14 @@ cdef class ObjectID(BaseID):
         # TODO(edoakes): there are dummy object IDs being created in
         # includes/task.pxi before the core worker is initialized.
         if hasattr(worker, "core_worker"):
-            worker.core_worker.add_active_object_id(self)
+            worker.core_worker.add_object_id_reference(self)
             self.in_core_worker = True
 
     def __dealloc__(self):
         if self.in_core_worker:
             try:
                 worker = ray.worker.global_worker
-                worker.core_worker.remove_active_object_id(self)
+                worker.core_worker.remove_object_id_reference(self)
             except Exception as e:
                 # There is a strange error in rllib that causes the above to
                 # fail. Somehow the global 'ray' variable corresponding to the
@@ -176,6 +176,12 @@ cdef class ObjectID(BaseID):
     def hex(self):
         return decode(self.data.Hex())
 
+    def is_direct_call_type(self):
+        return self.data.IsDirectCallType()
+
+    def with_plasma_transport_type(self):
+        return ObjectID(self.data.WithPlasmaTransportType().Binary())
+
     def is_nil(self):
         return self.data.IsNil()
 
@@ -197,7 +203,7 @@ cdef class ObjectID(BaseID):
 
     @classmethod
     def from_random(cls):
-        return cls(os.urandom(CObjectID.Size()))
+        return cls(CObjectID.FromRandom().Binary())
 
 
 cdef class TaskID(BaseID):

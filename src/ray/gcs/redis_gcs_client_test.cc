@@ -1148,7 +1148,10 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
   TestSetSubscribeCancel(job_id_, client_);
 }
 
-void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client_id,
+/// A helper class for ClientTable testing.
+class ClientTableTestHelper {
+ public:
+static void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client_id,
                              const GcsNodeInfo &data, bool is_alive) {
   ClientID added_id = local_client_id;
   ASSERT_EQ(client_id, added_id);
@@ -1156,12 +1159,12 @@ void ClientTableNotification(gcs::RedisGcsClient *client, const ClientID &client
   ASSERT_EQ(data.state() == GcsNodeInfo::ALIVE, is_alive);
 
   GcsNodeInfo cached_client;
-  client->client_table().GetClient(added_id, cached_client);
+  ASSERT_TRUE(client->client_table().GetClient(added_id, &cached_client));
   ASSERT_EQ(ClientID::FromBinary(cached_client.node_id()), added_id);
   ASSERT_EQ(cached_client.state() == GcsNodeInfo::ALIVE, is_alive);
 }
 
-void TestClientTableConnect(const JobID &job_id,
+static void TestClientTableConnect(const JobID &job_id,
                             std::shared_ptr<gcs::RedisGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
@@ -1182,12 +1185,7 @@ void TestClientTableConnect(const JobID &job_id,
   test->Start();
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableConnect) {
-  test = this;
-  TestClientTableConnect(job_id_, client_);
-}
-
-void TestClientTableDisconnect(const JobID &job_id,
+static void TestClientTableDisconnect(const JobID &job_id,
                                std::shared_ptr<gcs::RedisGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
@@ -1214,12 +1212,7 @@ void TestClientTableDisconnect(const JobID &job_id,
   test->Start();
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
-  test = this;
-  TestClientTableDisconnect(job_id_, client_);
-}
-
-void TestClientTableImmediateDisconnect(const JobID &job_id,
+static void TestClientTableImmediateDisconnect(const JobID &job_id,
                                         std::shared_ptr<gcs::RedisGcsClient> client) {
   // Register callbacks for when a client gets added and removed. The latter
   // event will stop the event loop.
@@ -1244,12 +1237,7 @@ void TestClientTableImmediateDisconnect(const JobID &job_id,
   test->Start();
 }
 
-TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
-  test = this;
-  TestClientTableImmediateDisconnect(job_id_, client_);
-}
-
-void TestClientTableMarkDisconnected(const JobID &job_id,
+static void TestClientTableMarkDisconnected(const JobID &job_id,
                                      std::shared_ptr<gcs::RedisGcsClient> client) {
   GcsNodeInfo local_node_info;
   local_node_info.set_node_id(local_client_id.Binary());
@@ -1272,9 +1260,27 @@ void TestClientTableMarkDisconnected(const JobID &job_id,
   test->Start();
 }
 
+};
+
+
+TEST_F(TestGcsWithAsio, TestClientTableConnect) {
+  test = this;
+  ClientTableTestHelper::TestClientTableConnect(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableDisconnect) {
+  test = this;
+  ClientTableTestHelper::TestClientTableDisconnect(job_id_, client_);
+}
+
+TEST_F(TestGcsWithAsio, TestClientTableImmediateDisconnect) {
+  test = this;
+  ClientTableTestHelper::TestClientTableImmediateDisconnect(job_id_, client_);
+}
+
 TEST_F(TestGcsWithAsio, TestClientTableMarkDisconnected) {
   test = this;
-  TestClientTableMarkDisconnected(job_id_, client_);
+  ClientTableTestHelper::TestClientTableMarkDisconnected(job_id_, client_);
 }
 
 void TestHashTable(const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
