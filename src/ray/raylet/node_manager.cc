@@ -901,6 +901,9 @@ void NodeManager::ProcessClientMessage(
     return;
   } break;
   case protocol::MessageType::SubmitTask: {
+    // For tasks submitted via the raylet path, we must make sure to order the
+    // task submission so that tasks are always submitted after the tasks that
+    // they depend on.
     ProcessSubmitTaskMessage(message_data);
   } break;
   case protocol::MessageType::SetResourceRequest: {
