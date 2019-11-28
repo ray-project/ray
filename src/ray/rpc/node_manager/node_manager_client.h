@@ -73,16 +73,6 @@ class NodeManagerWorkerClient
     return std::shared_ptr<NodeManagerWorkerClient>(instance);
   }
 
-  /// Submit a task.
-  ray::Status SubmitTask(const SubmitTaskRequest &request,
-                         const ClientCallback<SubmitTaskReply> &callback) {
-    auto call = client_call_manager_
-                    .CreateCall<NodeManagerService, SubmitTaskRequest, SubmitTaskReply>(
-                        *stub_, &NodeManagerService::Stub::PrepareAsyncSubmitTask,
-                        request, callback);
-    return call->GetStatus();
-  }
-
   /// Request a worker lease.
   ray::Status RequestWorkerLease(const WorkerLeaseRequest &request,
                                  const ClientCallback<WorkerLeaseReply> &callback) {

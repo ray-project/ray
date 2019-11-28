@@ -229,7 +229,6 @@ RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> gr
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  ray::rpc::SubmitTaskRequest request;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
       for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
@@ -238,8 +237,11 @@ ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
       }
     }
   }
-  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateSubmitTaskRequest(
+      fbb, fbb.CreateString(task_spec.Serialize()));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 ray::Status RayletClient::TaskDone() {
