@@ -118,6 +118,7 @@ class CommandBasedClient(SyncClient):
         return self.execute(self.sync_up_template, source, target)
 
     def sync_down(self, source, target):
+        logger.info("EXECUTING!!!!!!!!!")
         return self.execute(self.sync_down_template, source, target)
 
     def execute(self, sync_template, source, target):
@@ -249,6 +250,9 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
             remote_dir. If string, then it must be a string template for
             syncer to run. If not provided, it defaults
             to standard S3 or gsutil sync commands.
+
+    Raises:
+        ValueError if malformed remote_dir.
     """
     key = (local_dir, remote_dir)
 
@@ -267,7 +271,7 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
 
     if remote_dir.startswith(S3_PREFIX):
         if not distutils.spawn.find_executable("aws"):
-            raise TuneError(
+            raise ValueError(
                 "Upload uri starting with '{}' requires awscli tool"
                 " to be installed".format(S3_PREFIX))
         template = "aws s3 sync {source} {target}"
@@ -275,15 +279,15 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
         _syncers[key] = Syncer(local_dir, remote_dir, s3_client)
     elif remote_dir.startswith(GS_PREFIX):
         if not distutils.spawn.find_executable("gsutil"):
-            raise TuneError(
+            raise ValueError(
                 "Upload uri starting with '{}' requires gsutil tool"
                 " to be installed".format(GS_PREFIX))
         template = "gsutil rsync -r {source} {target}"
         gs_client = CommandBasedClient(template, template)
         _syncers[key] = Syncer(local_dir, remote_dir, gs_client)
     else:
-        raise TuneError("Upload uri must start with one of: {}"
-                        "".format(ALLOWED_REMOTE_PREFIXES))
+        raise ValueError("Upload uri must start with one of: {}"
+                         "".format(ALLOWED_REMOTE_PREFIXES))
 
     return _syncers[key]
 

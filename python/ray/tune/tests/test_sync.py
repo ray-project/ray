@@ -175,7 +175,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 "training_iteration": 1
             },
             sync_to_driver=sync_func_driver).trials
-        test_file_path = os.path.join(trial.logdir, "test.log2")
+        test_file_path = os.path.join(trial.remote_logdir, "test.log2")
         self.assertFalse(os.path.exists(test_file_path))
 
         with patch("ray.services.get_node_ip_address") as mock_sync:
@@ -188,7 +188,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "training_iteration": 1
                 },
                 sync_to_driver=sync_func_driver).trials
-        test_file_path = os.path.join(trial.logdir, "test.log2")
+        test_file_path = os.path.join(trial.remote_logdir, "test.log2")
         self.assertTrue(os.path.exists(test_file_path))
         os.remove(test_file_path)
 

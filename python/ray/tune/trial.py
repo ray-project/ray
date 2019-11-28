@@ -181,7 +181,7 @@ class Trial(object):
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
                 resources = default_resources
-        self.address = Location()
+        self.location = Location()
         self.resources = resources or Resources(cpu=1, gpu=0)
         self.stopping_criterion = stopping_criterion or {}
         self.loggers = loggers
@@ -238,7 +238,7 @@ class Trial(object):
 
     @property
     def node_ip(self):
-        return self.address.hostname
+        return self.location.hostname
 
     @property
     def checkpoint(self):
@@ -251,6 +251,10 @@ class Trial(object):
     @property
     def logdir(self):
         return self.trial_dir.logdir
+
+    @property
+    def remote_logdir(self):
+        return self.trial_dir.remote_logdir
 
     @property
     def checkpoint_dir(self):
@@ -271,10 +275,13 @@ class Trial(object):
                 trial=self,
                 loggers=self.loggers,
                 sync_function=no_op)
-            self.checkpoint_syncer = get_syncer(self.checkpoint_dir,
-                                                self.checkpoint_dir)
             self.remote_logdir_syncer = get_syncer(
-                self.trial_dir.remote_logdir, self.trial_dir.remote_logdir)
+                self.remote_logdir,
+                self.remote_logdir,
+                self.sync_to_driver_fn)
+            self.checkpoint_syncer = get_syncer(self.checkpoint_dir,
+                                                self.checkpoint_dir,
+                                                self.sync_to_driver_fn)
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -302,7 +309,7 @@ class Trial(object):
 
     def set_location(self, location):
         """Sets the location of the trial."""
-        self.address = location
+        self.location = location
 
     def close_logger(self):
         """Closes logger."""
@@ -396,6 +403,8 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
+        self.remote_logdir_syncer.set_worker_ip(self.location.hostname)
+        self.checkpoint_syncer.set_worker_ip(self.location.hostname)
         self.remote_logdir_syncer.sync_down()
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
