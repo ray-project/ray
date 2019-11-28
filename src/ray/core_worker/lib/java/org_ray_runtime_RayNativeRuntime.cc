@@ -31,11 +31,13 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWorker(
     JNIEnv *env, jclass, jint workerMode, jstring storeSocket, jstring rayletSocket,
-    jint nodeManagerPort, jbyteArray jobId, jobject gcsClientOptions) {
+    jstring nodeIpAddress, jint nodeManagerPort, jbyteArray jobId,
+    jobject gcsClientOptions) {
   auto native_store_socket = JavaStringToNativeString(env, storeSocket);
   auto native_raylet_socket = JavaStringToNativeString(env, rayletSocket);
   auto job_id = JavaByteArrayToId<ray::JobID>(env, jobId);
   auto gcs_client_options = ToGcsClientOptions(env, gcsClientOptions);
+  auto node_ip_address = JavaStringToNativeString(env, nodeIpAddress);
 
   auto task_execution_callback =
       [](ray::TaskType task_type, const ray::RayFunction &ray_function,
@@ -75,7 +77,7 @@ JNIEXPORT jlong JNICALL Java_org_ray_runtime_RayNativeRuntime_nativeInitCoreWork
     auto core_worker = new ray::CoreWorker(
         static_cast<ray::WorkerType>(workerMode), ::Language::JAVA, native_store_socket,
         native_raylet_socket, job_id, gcs_client_options, /*log_dir=*/"",
-        /*node_ip_address=*/"", 0, task_execution_callback);
+        node_ip_address, nodeManagerPort, task_execution_callback);
     return reinterpret_cast<jlong>(core_worker);
   } catch (const std::exception &e) {
     std::ostringstream oss;
