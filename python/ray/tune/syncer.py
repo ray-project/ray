@@ -3,10 +3,9 @@ from __future__ import division
 from __future__ import print_function
 
 import distutils
+import distutils.spawn
 import logging
 import os
-import subprocess
-import tempfile
 import time
 import types
 
@@ -15,8 +14,9 @@ try:  # py3
 except ImportError:  # py2
     from pipes import quote
 
-from ray.tune.error import TuneError
-from ray.tune.log_sync import log_sync_template, NodeSyncMixin
+from ray import services
+from ray.tune.cluster_info import get_ssh_key, get_ssh_user
+from ray.tune.sync_client import CommandBasedClient, FunctionBasedClient, NOOP
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ GS_PREFIX = "gs://"
 ALLOWED_REMOTE_PREFIXES = (S3_PREFIX, GS_PREFIX)
 SYNC_PERIOD = 300
 
+_log_sync_warned = False
 _syncers = {}
 
 
@@ -33,130 +34,35 @@ def wait_for_sync():
         syncer.wait()
 
 
-def no_op(source, target):
-    return
+def log_sync_template(options=""):
+    """Template enabling syncs between driver and worker when possible.
 
+    Requires ray cluster to be started with the autoscaler. Also requires
+    rsync to be installed.
 
-class SyncClient(object):
-    def sync_up(self, source, target):
-        """Sync up from source to target.
+    Args:
+        options (str): Addtional rsync options.
 
-        Args:
-            source (str): Source path.
-            target (str): Target path.
+    Returns:
+        Sync template with source and target parameters. None if rsync
+        unavailable.
+    """
+    if not distutils.spawn.find_executable("rsync"):
+        logger.error("Log sync requires rsync to be installed.")
+        return None
+    global _log_sync_warned
+    ssh_key = get_ssh_key()
+    if ssh_key is None:
+        if not _log_sync_warned:
+            logger.debug("Log sync requires cluster to be setup with "
+                         "`ray up`.")
+            _log_sync_warned = True
+        return None
 
-        Returns:
-            True if sync initiation successful, False otherwise.
-        """
-        raise NotImplementedError
-
-    def sync_down(self, source, target):
-        """Sync down from source to target.
-
-        Args:
-            source (str): Source path.
-            target (str): Target path.
-
-        Returns:
-            True if sync initiation successful, False otherwise.
-        """
-        raise NotImplementedError
-
-    def wait(self):
-        """Wait for current sync to complete, if asynchronously started."""
-        pass
-
-    def reset(self):
-        """Resets state."""
-        pass
-
-
-class FunctionBasedClient(SyncClient):
-    def __init__(self, sync_up_func, sync_down_func):
-        self.sync_up_func = sync_up_func
-        self.sync_down_func = sync_down_func
-
-    def sync_up(self, source, target):
-        self.sync_up_func(source, target)
-        return True
-
-    def sync_down(self, source, target):
-        self.sync_down_func(source, target)
-        return True
-
-
-NOOP = FunctionBasedClient(no_op, no_op)
-
-
-class CommandBasedClient(SyncClient):
-    def __init__(self, sync_up_template, sync_down_template):
-        """Syncs between two directories with the given command.
-
-        Arguments:
-            sync_up_template (str): A runnable string template; needs to
-                include replacement fields '{source}' and '{target}'.
-            sync_down_template (str): A runnable string template; needs to
-                include replacement fields '{source}' and '{target}'.
-        """
-        self._validate_sync_string(sync_up_template)
-        self._validate_sync_string(sync_down_template)
-        self.sync_up_template = sync_up_template
-        self.sync_down_template = sync_down_template
-        self.logfile = None
-        self.sync_process = None
-
-    def set_logdir(self, logdir):
-        """Sets the directory to log sync execution output in.
-
-        Args:
-            logdir: Log directory.
-        """
-        self.logfile = tempfile.NamedTemporaryFile(
-            prefix="log_sync", dir=logdir, suffix=".log", delete=False)
-
-    def sync_up(self, source, target):
-        return self.execute(self.sync_up_template, source, target)
-
-    def sync_down(self, source, target):
-        logger.info("EXECUTING!!!!!!!!!")
-        return self.execute(self.sync_down_template, source, target)
-
-    def execute(self, sync_template, source, target):
-        """Executes sync_template on source and target."""
-        if self.sync_process:
-            self.sync_process.poll()
-            if self.sync_process.returncode is None:
-                logger.warning("Last sync is still in progress, skipping.")
-                return False
-        final_cmd = sync_template.format(
-            source=quote(source), target=quote(target))
-        logger.debug("Running sync: {}".format(final_cmd))
-        self.sync_process = subprocess.Popen(
-            final_cmd, shell=True, stderr=subprocess.PIPE, stdout=self.logfile)
-        return True
-
-    def wait(self):
-        if self.sync_process:
-            _, error_msg = self.sync_process.communicate()
-            error_msg = error_msg.decode("ascii")
-            code = self.sync_process.returncode
-            self.sync_process = None
-            if code != 0:
-                raise TuneError("Sync error ({}): {}".format(code, error_msg))
-
-    def reset(self):
-        if self.sync_process:
-            logger.warning("Sync process still running but resetting anyways.")
-            self.sync_process = None
-
-    @staticmethod
-    def _validate_sync_string(sync_string):
-        if not isinstance(sync_string, str):
-            raise ValueError("{} is not a string.".format(sync_string))
-        if "{source}" not in sync_string:
-            raise ValueError("Sync template missing '{source}'.")
-        if "{target}" not in sync_string:
-            raise ValueError("Sync template missing '{target}'.")
+    rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
+    rsh = rsh.format(ssh_key=quote(ssh_key))
+    template = """rsync {options} -savz -e "{rsh}" {{source}} {{target}}"""
+    return template.format(options=options, rsh=rsh)
 
 
 class Syncer(object):
@@ -184,7 +90,7 @@ class Syncer(object):
         if time.time() - self.last_sync_down_time > SYNC_PERIOD:
             self.sync_down()
 
-    def sync_up(self):
+    def sync_up(self, relative_subdir=None):
         """Attempts to start the sync-up to the remote path.
 
         Returns:
@@ -200,7 +106,7 @@ class Syncer(object):
                 logger.exception("Sync execution failed.")
         return result
 
-    def sync_down(self):
+    def sync_down(self, relative_subdir=None):
         """Attempts to start the sync-down from the remote path.
 
         Returns:
@@ -235,6 +141,75 @@ class Syncer(object):
     @property
     def _remote_path(self):
         return self._remote_dir
+
+
+class NodeSyncer(Syncer):
+    """Syncer for syncing files to/from a remote dir to a local dir."""
+
+    def __init__(self, local_dir, remote_dir, sync_client):
+        self.local_ip = services.get_node_ip_address()
+        self.worker_ip = None
+        super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
+
+    def set_worker_ip(self, worker_ip):
+        """Set the worker ip to sync logs from."""
+        self.worker_ip = worker_ip
+        self.reset()
+
+    def has_remote_target(self):
+        """Returns whether the Syncer has a remote target."""
+        if not self.worker_ip:
+            logger.debug("Worker IP unknown, skipping log sync for %s",
+                         self._local_dir)
+            return False
+        if self.worker_ip == self.local_ip:
+            logger.debug("Worker IP is local IP, skipping log sync for %s",
+                         self._local_dir)
+            return False
+        return True
+
+    def sync_up_if_needed(self):
+        if not self.has_remote_target():
+            return True
+        super(NodeSyncer, self).sync_up()
+
+    def sync_down_if_needed(self):
+        if not self.has_remote_target():
+            return True
+        super(NodeSyncer, self).sync_down()
+
+    def sync_up_to_new_location(self, worker_ip):
+        if worker_ip != self.worker_ip:
+            self.set_worker_ip(worker_ip)
+            if not self.sync_up():
+                logger.warning(
+                    "Sync up to new location skipped. This should not occur.")
+        else:
+            logger.warning("Sync attempted to same IP %s.", worker_ip)
+
+    def sync_up(self, relative_subdir=None):
+        if not self.has_remote_target():
+            return True
+        return super(NodeSyncer, self).sync_up()
+
+    def sync_down(self, relative_subdir=None):
+        if not self.has_remote_target():
+            return True
+        return super(NodeSyncer, self).sync_down()
+
+    @property
+    def _remote_path(self):
+        ssh_user = get_ssh_user()
+        global _log_sync_warned
+        if not self.has_remote_target():
+            return
+        if ssh_user is None:
+            if not _log_sync_warned:
+                logger.error("Log sync requires cluster to be setup with "
+                             "`ray up`.")
+                _log_sync_warned = True
+            return
+        return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 
 def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
@@ -319,12 +294,7 @@ def get_syncer(local_dir, remote_dir=None, sync_function=None):
         else:
             sync_client = NOOP
 
-    class MixedSyncer(NodeSyncMixin, Syncer):
-        def __init__(self, *args, **kwargs):
-            Syncer.__init__(self, *args, **kwargs)
-            NodeSyncMixin.__init__(self)
-
-    _syncers[key] = MixedSyncer(local_dir, remote_dir, sync_client)
+    _syncers[key] = NodeSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 
 

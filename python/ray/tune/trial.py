@@ -14,7 +14,8 @@ from numbers import Number
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.logger import pretty_print, UnifiedLogger
-from ray.tune.syncer import get_syncer, no_op
+from ray.tune.syncer import get_syncer
+from ray.tune.sync_client import no_op
 from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -310,6 +311,10 @@ class Trial(object):
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
+        if self.remote_logdir_syncer:
+            self.remote_logdir_syncer.set_worker_ip(self.location.hostname)
+        if self.checkpoint_syncer:
+            self.checkpoint_syncer.set_worker_ip(self.location.hostname)
 
     def close_logger(self):
         """Closes logger."""
@@ -403,8 +408,6 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-        self.remote_logdir_syncer.set_worker_ip(self.location.hostname)
-        self.checkpoint_syncer.set_worker_ip(self.location.hostname)
         self.remote_logdir_syncer.sync_down()
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):

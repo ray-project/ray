@@ -445,8 +445,6 @@ class UnifiedLogger(Logger):
     def set_worker_ip(self, worker_ip):
         if worker_ip != self._log_syncer.worker_ip:
             self._log_syncer.set_worker_ip(worker_ip)
-        else:
-            logger.warning("Trial %s: No change to worker IP.")
 
     def wait(self):
         self._log_syncer.wait()
