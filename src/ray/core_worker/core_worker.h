@@ -7,6 +7,7 @@
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
+#include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/profiling.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -25,10 +26,11 @@
 /// 1) Add the rpc to the CoreWorkerService in core_worker.proto, e.g., "ExampleCall"
 /// 2) Add a new handler to the macro below: "RAY_CORE_WORKER_RPC_HANDLER(ExampleCall, 1)"
 /// 3) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
-#define RAY_CORE_WORKER_RPC_HANDLERS          \
-  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)  \
-  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999) \
-  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100)
+#define RAY_CORE_WORKER_RPC_HANDLERS                               \
+  RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
+  RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
+  RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 100)
 
 namespace ray {
 
@@ -104,7 +106,7 @@ class CoreWorker {
   ///
   /// \param[in] object_id The object ID to increase the reference count for.
   void AddObjectIDReference(const ObjectID &object_id) {
-    reference_counter_->AddReference(object_id);
+    reference_counter_->AddLocalReference(object_id);
   }
 
   /// Decrease the reference count for this object ID.
@@ -112,20 +114,46 @@ class CoreWorker {
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveObjectIDReference(const ObjectID &object_id) {
     std::vector<ObjectID> deleted;
-    reference_counter_->RemoveReference(object_id, &deleted);
+    reference_counter_->RemoveLocalReference(object_id, &deleted);
     if (ref_counting_enabled_) {
       memory_store_->Delete(deleted);
     }
   }
 
-  /// Promote an object to plasma. If it already exists locally, it will be
-  /// put into the plasma store. If it doesn't yet exist, it will be spilled to
-  /// plasma once available.
+  /// Promote an object to plasma and get its owner information. This should be
+  /// called when serializing an object ID, and the returned information should
+  /// be stored with the serialized object ID. For plasma promotion, if the
+  /// object already exists locally, it will be put into the plasma store. If
+  /// it doesn't yet exist, it will be spilled to plasma once available.
+  ///
+  /// This can only be called on object IDs that we created via task
+  /// submission, ray.put, or object IDs that we deserialized. It cannot be
+  /// called on object IDs that were created randomly, e.g.,
+  /// ObjectID::FromRandom.
   ///
   /// Postcondition: Get(object_id.WithPlasmaTransportType()) is valid.
   ///
-  /// \param[in] object_id The object ID to promote to plasma.
-  void PromoteObjectToPlasma(const ObjectID &object_id);
+  /// \param[in] object_id The object ID to serialize.
+  /// \param[out] owner_id The ID of the object's owner. This should be
+  /// appended to the serialized object ID.
+  /// \param[out] owner_address The address of the object's owner. This should
+  /// be appended to the serialized object ID.
+  void PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id, TaskID *owner_id,
+                                          rpc::Address *owner_address);
+
+  /// Add a reference to an ObjectID that was deserialized by the language
+  /// frontend. This will also start the process to resolve the future.
+  /// Specifically, we will periodically contact the owner, until we learn that
+  /// the object has been created or the owner is no longer reachable. This
+  /// will then unblock any Gets or submissions of tasks dependent on the
+  /// object.
+  ///
+  /// \param[in] object_id The object ID to deserialize.
+  /// \param[out] owner_id The ID of the object's owner.
+  /// \param[out] owner_address The address of the object's owner.
+  void RegisterOwnershipInfoAndResolveFuture(const ObjectID &object_id,
+                                             const TaskID &owner_id,
+                                             const rpc::Address &owner_address);
 
   ///
   /// Public methods related to storing and retrieving objects.
@@ -354,6 +382,11 @@ class CoreWorker {
       rpc::DirectActorCallArgWaitCompleteReply *reply,
       rpc::SendReplyCallback send_reply_callback);
 
+  /// Implements gRPC server handler.
+  void HandleGetObjectStatus(const rpc::GetObjectStatusRequest &request,
+                             rpc::GetObjectStatusReply *reply,
+                             rpc::SendReplyCallback send_reply_callback);
+
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -509,9 +542,14 @@ class CoreWorker {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
+  std::unique_ptr<FutureResolver> future_resolver_;
+
   ///
   /// Fields related to task submission.
   ///
+
+  // Tracks the currently pending tasks.
+  std::shared_ptr<TaskManager> task_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
@@ -521,6 +559,9 @@ class CoreWorker {
 
   /// Map from actor ID to a handle to that actor.
   absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_;
+
+  /// Resolve local and remote dependencies for actor creation.
+  std::unique_ptr<LocalDependencyResolver> resolver_;
 
   ///
   /// Fields related to task execution.

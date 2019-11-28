@@ -229,9 +229,19 @@ RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> gr
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  ray::rpc::SubmitTaskRequest request;
-  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
+            << "Passing direct call objects to non-direct tasks is not allowed.";
+      }
+    }
+  }
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateSubmitTaskRequest(
+      fbb, fbb.CreateString(task_spec.Serialize()));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 ray::Status RayletClient::TaskDone() {
@@ -239,12 +249,13 @@ ray::Status RayletClient::TaskDone() {
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                             bool fetch_only,
+                                             bool fetch_only, bool mark_worker_blocked,
                                              const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
+      fbb, object_ids_message, fetch_only, mark_worker_blocked,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
   return status;
@@ -274,12 +285,13 @@ ray::Status RayletClient::NotifyDirectCallTaskUnblocked() {
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
-                               const TaskID &current_task_id, WaitResultPair *result) {
+                               bool mark_worker_blocked, const TaskID &current_task_id,
+                               WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
-      to_flatbuf(fbb, current_task_id));
+      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::unique_ptr<uint8_t[]> reply;
   auto status = conn_->AtomicRequestReply(MessageType::WaitRequest,

@@ -67,43 +67,6 @@ matrix:
         - go get github.com/bazelbuild/buildtools/buildifier
         - ./ci/travis/bazel-format.sh
 
-    - os: linux
-      env: VALGRIND=1 PYTHON=2.7 PYTHONWARNINGS=ignore
-      before_install:
-        - eval `python $TRAVIS_BUILD_DIR/ci/travis/determine_tests_to_run.py`
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        # Install a newer version of valgrind, the one that comes with
-        # Ubuntu 16.04 is broken (Illegal instruction)
-        - sudo add-apt-repository -y ppa:msulikowski/valgrind
-        - sudo apt-get update -qq
-        - sudo apt-get install -qq valgrind
-
-      install:
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        - ./ci/suppress_output ./ci/travis/install-bazel.sh
-        - ./ci/suppress_output ./ci/travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./ci/suppress_output ./ci/travis/install-ray.sh
-
-      script:
-        - if [ $RAY_CI_PYTHON_AFFECTED != "1" ]; then exit; fi
-
-        - bash src/ray/test/run_object_manager_valgrind.sh
-
-        - export RAY_PLASMA_STORE_VALGRIND=1
-        # - export RAY_RAYLET_VALGRIND=1
-        # - export RAY_RAYLET_MONITOR_VALGRIND=1
-        # - export RAY_REDIS_SERVER_VALGRIND=1
-
-        # # Python3.5+ only. Otherwise we will get `SyntaxError` regardless of how we set the tester.
-        - python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 python/ray/experimental/test/async_test.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_mini.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_array.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_multi_node_2.py
-        - python -m pytest -v --durations=5 --timeout=300 python/ray/tests/test_node_manager.py
-
     # Build Linux wheels.
     - os: linux
       env: LINUX_WHEELS=1 PYTHONWARNINGS=ignore
@@ -122,6 +85,9 @@ matrix:
         # except the `$MOUNT_BAZEL_CACHE` part.
 
         - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
+
+        # Ignore any error for successful wheel uploads
+        - $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
 
@@ -175,7 +141,7 @@ script:
   - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 python/ray/tests/py3_test.py; fi
 
   # py bazel tests, run using local strategy since PY2 breaks with sandbox
-  - bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
+  - ./ci/keep_alive bazel test --spawn_strategy=local --python_version=$BAZEL_PYTHON_VERSION --incompatible_allow_python_version_transitions=false --incompatible_py3_is_default=false --progress_report_interval=100 --show_progress_rate_limit=100 --show_timestamps --test_output=errors --test_tag_filters=-jenkins_only python/ray/...
 
 deploy:
   - provider: s3
@@ -202,12 +168,16 @@ deploy:
     local_dir: .whl
     upload-dir: latest
     skip_cleanup: true
-    only:
-      - master
     on:
+      branch: master
       repo: ray-project/ray
       condition: $LINUX_WHEELS = 1 || $MAC_WHEELS = 1
 
 cache:
   directories:
     - $HOME/ray-bazel-cache
+
+env:
+  global:
+    # DOCKER_PASSWORD
+    secure: "I74yutR4HoiAQna9Ywi7uHcQDoefA+9lm5u24Xuu9Gha8Q7Anvic0qg4ILFJdqX+N7IdXtPA+/Xj+rjBNr7xNtamN1TmCItlXYtl1AMZ35bQZJjaJD3Ath/xe6Cj82BsBXsQYDwIXa8f8J0AsDNDW+u0+YysA7R86xQq086snevKttKXHBYfzzB2PLN6CBQh2RGWanE0qR2SOVSg+F0Ra+epZJ6jaey90UL4t6llbsNIlR17Xqc9OtFjDRIvO1ohpC7OcqnVDkEQcckue0CIHFwJ1J4kFzoJ31NFG/ZqNRzaoBtb8xiVkVQnxHRmX0ZRgx8z6EPfVMVBf4HBxgqUNgSnumV2ljoJV1/N8Ho+JkvnfzhLbdacG2qdKHQex85xnS8esVl1uvmZgJzPyX9u3OcLwNnzuFP3+CcJETsH19mwDo8dZzMy/jYzx+26oM410umG6KIMf1rvInDb2FEDT3lbUFdRMteDC5fjq6H/z7AHL2LDaS0pfEO9p5FRo8xokk7FT4row6yZbnAW/lqT52P8g1VNxrXzMWnzN5OeFhC7VaeJC6PaVG1eVwbgjRnoOhfXqwX5gms7KE03g7j1vXwbf4nbg53SJfwPFcvzW3az9G892jy170tsEzAbRVJKD14rsRQUh1lTq75GlEYEWvB1H2joUNtEgok0XExiTbY="

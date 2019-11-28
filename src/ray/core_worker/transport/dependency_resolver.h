@@ -21,9 +21,9 @@ class LocalDependencyResolver {
   //
   /// Note: This method **will mutate** the given TaskSpecification.
   ///
-  /// Postcondition: all direct call ids in arguments are converted to values.
-  void ResolveDependencies(const TaskSpecification &task,
-                           std::function<void()> on_complete);
+  /// Postcondition: all direct call ids in arguments are converted to values and all
+  /// remaining by-reference arguments are TaskTransportType::RAYLET.
+  void ResolveDependencies(TaskSpecification &task, std::function<void()> on_complete);
 
   /// Return the number of tasks pending dependency resolution.
   /// TODO(ekl) this should be exposed in worker stats.
