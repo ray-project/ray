@@ -82,13 +82,13 @@ class Syncer(object):
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
 
-    def sync_up_if_needed(self):
+    def sync_up_if_needed(self, relative_subdir=None):
         if time.time() - self.last_sync_up_time > SYNC_PERIOD:
-            self.sync_up()
+            self.sync_up(relative_subdir)
 
-    def sync_down_if_needed(self):
+    def sync_down_if_needed(self, relative_subdir=None):
         if time.time() - self.last_sync_down_time > SYNC_PERIOD:
-            self.sync_down()
+            self.sync_down(relative_subdir)
 
     def sync_up(self, relative_subdir=None):
         """Attempts to start the sync-up to the remote path.
@@ -97,10 +97,12 @@ class Syncer(object):
             Whether the sync (if feasible) was successfully started.
         """
         result = False
+        relative_subdir = relative_subdir or ""
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                result = self.sync_client.sync_up(self._local_dir,
-                                                  self._remote_path)
+                local_path = os.path.join(self._local_dir, relative_subdir)
+                remote_path = os.path.join(self._local_dir, relative_subdir)
+                result = self.sync_client.sync_up(local_path, remote_path)
                 self.last_sync_up_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -113,10 +115,12 @@ class Syncer(object):
              Whether the sync (if feasible) was successfully started.
         """
         result = False
+        relative_subdir = relative_subdir or ""
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                result = self.sync_client.sync_down(self._remote_path,
-                                                    self._local_dir)
+                local_path = os.path.join(self._local_dir, relative_subdir)
+                remote_path = os.path.join(self._local_dir, relative_subdir)
+                result = self.sync_client.sync_down(local_path, remote_path)
                 self.last_sync_down_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -168,20 +172,20 @@ class NodeSyncer(Syncer):
             return False
         return True
 
-    def sync_up_if_needed(self):
+    def sync_up_if_needed(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        super(NodeSyncer, self).sync_up()
+        super(NodeSyncer, self).sync_up(relative_subdir)
 
-    def sync_down_if_needed(self):
+    def sync_down_if_needed(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        super(NodeSyncer, self).sync_down()
+        super(NodeSyncer, self).sync_down(relative_subdir)
 
-    def sync_up_to_new_location(self, worker_ip):
+    def sync_up_to_new_location(self, worker_ip, relative_subdir=None):
         if worker_ip != self.worker_ip:
             self.set_worker_ip(worker_ip)
-            if not self.sync_up():
+            if not self.sync_up(relative_subdir):
                 logger.warning(
                     "Sync up to new location skipped. This should not occur.")
         else:
@@ -190,12 +194,12 @@ class NodeSyncer(Syncer):
     def sync_up(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_up()
+        return super(NodeSyncer, self).sync_up(relative_subdir)
 
     def sync_down(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_down()
+        return super(NodeSyncer, self).sync_down(relative_subdir)
 
     @property
     def _remote_path(self):
@@ -268,7 +272,7 @@ def get_cloud_syncer(local_dir, remote_dir=None, sync_function=None):
 
 
 def get_syncer(local_dir, remote_dir=None, sync_function=None):
-    """Returns a MixedSyncer between two directories.
+    """Returns a NodeSyncer between two directories.
 
     Args:
         local_dir (str): Source directory for syncing.
