@@ -58,9 +58,9 @@ class TrialDirectory(object):
       remote_logs/
       checkpoints/
     """
-    DRIVER_LOGDIR = "driver_logs"  # logs written by driver
-    REMOTE_LOGDIR = "remote_logs"  # logs written by remote
-    CHECKPOINT_DIR = "checkpoints"  # checkpoints taken
+    DRIVER_LOGDIR = "driver_logs"  # logs that originated on the driver
+    REMOTE_LOGDIR = "remote_logs"  # logs that originated on the remote worker
+    CHECKPOINT_DIR = "checkpoints"  # checkpoints on the remote worker
 
     def __init__(self, identifier, local_dir):
         local_dir = os.path.expanduser(local_dir)
@@ -253,8 +253,7 @@ class Trial(object):
                 trial=self,
                 loggers=self.loggers,
                 sync_function=no_op)
-            self.syncer = get_syncer(self.trial_dir.root,
-                                     self.trial_dir.root,
+            self.syncer = get_syncer(self.trial_dir.root, self.trial_dir.root,
                                      self.sync_to_driver_fn)
 
     @property
@@ -373,7 +372,7 @@ class Trial(object):
             self.syncer.wait()
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
-            if self.syncer.sync_down(self.trial_dir.checkpoint_dir):
+            if self.syncer.sync_down(TrialDirectory.CHECKPOINT_DIR):
                 self.syncer.wait()
             else:
                 logger.error(
@@ -404,7 +403,7 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-        self.syncer.sync_down(self.trial_dir.remote_logdir)
+        self.syncer.sync_down(TrialDirectory.REMOTE_LOGDIR)
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:

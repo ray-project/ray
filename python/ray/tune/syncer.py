@@ -101,7 +101,7 @@ class Syncer(object):
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
                 local_path = os.path.join(self._local_dir, relative_subdir)
-                remote_path = os.path.join(self._local_dir, relative_subdir)
+                remote_path = os.path.join(self._remote_path, relative_subdir)
                 result = self.sync_client.sync_up(local_path, remote_path)
                 self.last_sync_up_time = time.time()
             except Exception:
@@ -119,8 +119,8 @@ class Syncer(object):
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
                 local_path = os.path.join(self._local_dir, relative_subdir)
-                remote_path = os.path.join(self._local_dir, relative_subdir)
-                result = self.sync_client.sync_down(local_path, remote_path)
+                remote_path = os.path.join(self._remote_path, relative_subdir)
+                result = self.sync_client.sync_down(remote_path, local_path)
                 self.last_sync_down_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -206,13 +206,13 @@ class NodeSyncer(Syncer):
         ssh_user = get_ssh_user()
         global _log_sync_warned
         if not self.has_remote_target():
-            return
+            return None
         if ssh_user is None:
             if not _log_sync_warned:
                 logger.error("Log sync requires cluster to be setup with "
                              "`ray up`.")
                 _log_sync_warned = True
-            return
+            return None
         return "{}@{}:{}/".format(ssh_user, self.worker_ip, self._remote_dir)
 
 

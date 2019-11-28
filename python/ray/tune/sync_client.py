@@ -92,7 +92,7 @@ class CommandBasedClient(SyncClient):
         """Sets the directory to log sync execution output in.
 
         Args:
-            logdir: Log directory.
+            logdir (str): Log directory.
         """
         self.logfile = tempfile.NamedTemporaryFile(
             prefix="log_sync", dir=logdir, suffix=".log", delete=False)
