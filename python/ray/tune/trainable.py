@@ -22,7 +22,7 @@ from ray.tune.result import (DEFAULT_RESULTS_DIR, TIME_THIS_ITER_S,
                              EPISODES_THIS_ITER, EPISODES_TOTAL,
                              TRAINING_ITERATION, RESULT_DUPLICATE)
 from ray.tune.util import UtilMonitor
-from ray.tune.trial import TrialDirectory
+from ray.tune.trial import TrialDirSchema
 
 logger = logging.getLogger(__name__)
 
@@ -76,12 +76,13 @@ class Trainable(object):
             self._logdir = self._result_logger.logdir
             self._checkpoint_dir = None
         else:
-            trial_dir = TrialDirectory("", DEFAULT_RESULTS_DIR)
-            trial_dir.mkdir()
-            self._logdir = trial_dir.logdir
+            name = self.__class__.__name__
+            dir_schema = TrialDirSchema(name, DEFAULT_RESULTS_DIR)
+            dir_schema.mkdir()
+            self._logdir = dir_schema.logdir
             self._result_logger = UnifiedLogger(
                 self.config, self._logdir, loggers=None)
-            self._checkpoint_dir = trial_dir.checkpoint_dir
+            self._checkpoint_dir = dir_schema.checkpoint_dir
 
         self._iteration = 0
         self._time_total = 0.0

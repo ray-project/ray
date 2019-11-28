@@ -73,10 +73,10 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
 
     def _setup_remote_runner(self, trial, reuse_allowed):
-        trial.init()
+        trial.init_logger()
         # We checkpoint metadata here to try mitigating logdir duplication
         self.try_checkpoint_metadata(trial)
-        trial_dir = trial.trial_dir
+        trial_dir_schema = trial.trial_dir_schema
 
         if (self._reuse_actors and reuse_allowed
                 and self._cached_actor is not None):
@@ -108,10 +108,10 @@ class RayTrialExecutor(TrialExecutor):
 
         def logger_creator(config):
             # Set the working dir in the remote process, for user file writes
-            trial_dir.mkdir()
+            trial_dir_schema.mkdir()
             if not ray.worker._mode() == ray.worker.LOCAL_MODE:
-                os.chdir(trial_dir.remote_logdir)
-            return NoopLogger(config, trial_dir.remote_logdir)
+                os.chdir(trial_dir_schema.remote_logdir)
+            return NoopLogger(config, trial_dir_schema.remote_logdir)
 
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.

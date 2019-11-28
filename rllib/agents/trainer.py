@@ -24,7 +24,7 @@ from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import ExportFormat, TrialDirectory
+from ray.tune.trial import ExportFormat, TrialDirSchema
 from ray.tune.resources import Resources
 from ray.tune.logger import UnifiedLogger
 from ray.tune.result import DEFAULT_RESULTS_DIR
@@ -377,7 +377,7 @@ class Trainer(Trainable):
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
         identifier = "{}_{}".format(self._name, self._env_id)
-        trial_dir = TrialDirectory(identifier, DEFAULT_RESULTS_DIR)
+        trial_dir_schema = TrialDirSchema(identifier, DEFAULT_RESULTS_DIR)
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -386,13 +386,14 @@ class Trainer(Trainable):
                 """Creates a Unified logger with a default logdir prefix
                 containing the agent name and the env id
                 """
-                trial_dir.mkdir()
-                return UnifiedLogger(config, trial_dir.logdir, loggers=None)
+                trial_dir_schema.mkdir()
+                logdir = trial_dir_schema.logdir
+                return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
         Trainable.__init__(self, config, logger_creator)
-        self._init_checkpoint_dir(trial_dir.checkpoint_dir)
+        self._init_checkpoint_dir(trial_dir_schema.checkpoint_dir)
 
     @classmethod
     @override(Trainable)

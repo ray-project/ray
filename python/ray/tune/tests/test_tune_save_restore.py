@@ -15,7 +15,7 @@ import ray
 from ray import tune
 from ray.rllib import _register_all
 from ray.tune import Trainable
-from ray.tune.trial import TrialDirectory
+from ray.tune.trial import TrialDirSchema
 
 
 class SerialTuneRelativeLocalDirTest(unittest.TestCase):
@@ -74,7 +74,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         exp_dir = os.path.join(absolute_local_dir, exp_name)
         abs_trial_dir = self._get_trial_dir(exp_dir)
-        logdir = os.path.join(abs_trial_dir, TrialDirectory.DRIVER_LOGDIR)
+        logdir = os.path.join(abs_trial_dir, TrialDirSchema.DRIVER_LOGDIR)
 
         self.assertIsNone(trial.error_file)
         self.assertEqual(trial.local_dir, exp_dir)
@@ -85,7 +85,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         self.assertTrue(os.path.isdir(abs_trial_dir))
 
         checkpoint_path = os.path.join(abs_trial_dir,
-                                       TrialDirectory.CHECKPOINT_DIR,
+                                       TrialDirSchema.CHECKPOINT_DIR,
                                        "checkpoint_1/checkpoint-1")
         self.assertTrue(os.path.isfile(checkpoint_path))
 
@@ -94,7 +94,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             os.path.join(absolute_local_dir, exp_name))
 
         checkpoint_path = os.path.join(abs_trial_dir,
-                                       TrialDirectory.CHECKPOINT_DIR,
+                                       TrialDirSchema.CHECKPOINT_DIR,
                                        "checkpoint_1/checkpoint-1")
         self.assertTrue(os.path.isfile(checkpoint_path))
 

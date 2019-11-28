@@ -50,23 +50,23 @@ class Location(object):
             return "{}:{}".format(self.hostname, self.pid)
 
 
-class TrialDirectory(object):
+class TrialDirSchema(object):
     """Describes the Trial's directory structure.
 
     {trial_dir_name}/
-      driver_logs/
+      driver.log.1
+      driver.log.2
       remote_logs/
       checkpoints/
     """
-    DRIVER_LOGDIR = "driver_logs"  # logs that originated on the driver
-    REMOTE_LOGDIR = "remote_logs"  # logs that originated on the remote worker
-    CHECKPOINT_DIR = "checkpoints"  # checkpoints on the remote worker
+    REMOTE_LOGDIR = "remote_logs"
+    CHECKPOINT_DIR = "checkpoints"
 
-    def __init__(self, identifier, local_dir):
+    def __init__(self, trial_name, local_dir):
         local_dir = os.path.expanduser(local_dir)
         os.makedirs(local_dir, exist_ok=True)
         self.root_dir = tempfile.mkdtemp(
-            prefix="{}_{}".format(identifier[:MAX_LEN_IDENTIFIER], date_str()),
+            prefix="{}_{}".format(trial_name[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
         self.mkdir()
 
@@ -82,19 +82,26 @@ class TrialDirectory(object):
 
     @property
     def root(self):
+        """Root directory."""
         return self.root_dir
 
     @property
     def logdir(self):
-        return os.path.join(self.root_dir, TrialDirectory.DRIVER_LOGDIR)
+        """Directory containing logs that originated on the driver.
+
+        For backwards compatibility, this is set to the root.
+        """
+        return self.root_dir
 
     @property
     def remote_logdir(self):
-        return os.path.join(self.root_dir, TrialDirectory.REMOTE_LOGDIR)
+        """Directory containing logs that originated on the remote worker."""
+        return os.path.join(self.root_dir, TrialDirSchema.REMOTE_LOGDIR)
 
     @property
     def checkpoint_dir(self):
-        return os.path.join(self.root_dir, TrialDirectory.CHECKPOINT_DIR)
+        """Directory containing checkpoints taken on the remote worker."""
+        return os.path.join(self.root_dir, TrialDirSchema.CHECKPOINT_DIR)
 
 
 class ExportFormat(object):
@@ -211,7 +218,6 @@ class Trial(object):
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
-        self.trial_dir = None
         self.runner = None
         self.last_debug = 0
         self.error_file = None
@@ -219,8 +225,13 @@ class Trial(object):
         self.num_failures = 0
         self.custom_trial_name = None
 
+        self.trial_dir_schema = TrialDirSchema(str(self), self.local_dir)
+        self.logdir = self.trial_dir_schema.logdir
+        self.trial_dir_schema.mkdir()
+        self.syncer = get_syncer(self.trial_dir, self.trial_dir,
+                                 self.sync_to_driver_fn)
+
         self.result_logger = None
-        self.syncer = None
 
         # AutoML fields
         self.results = None
@@ -240,21 +251,16 @@ class Trial(object):
         if trial_name_creator:
             self.custom_trial_name = trial_name_creator(self)
 
-    def init(self):
-        """Initialize the trial directory, logger and syncer."""
+    def init_logger(self):
+        """Initializes the logger."""
         if not self.result_logger:
-            if not self.trial_dir:
-                self.trial_dir = TrialDirectory(str(self), self.local_dir)
-            else:
-                self.trial_dir.mkdir()
+            self.trial_dir_schema.mkdir()
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
                 trial=self,
                 loggers=self.loggers,
                 sync_function=no_op)
-            self.syncer = get_syncer(self.trial_dir.root, self.trial_dir.root,
-                                     self.sync_to_driver_fn)
 
     @property
     def node_ip(self):
@@ -269,16 +275,16 @@ class Trial(object):
         return str(uuid.uuid1().hex)[:8]
 
     @property
-    def logdir(self):
-        return self.trial_dir.logdir
+    def trial_dir(self):
+        return self.trial_dir_schema.root
 
     @property
     def remote_logdir(self):
-        return self.trial_dir.remote_logdir
+        return self.trial_dir_schema.remote_logdir
 
     @property
     def checkpoint_dir(self):
-        return self.trial_dir.checkpoint_dir
+        return self.trial_dir_schema.checkpoint_dir
 
     def update_resources(self, cpu, gpu, **kwargs):
         """EXPERIMENTAL: Updates the resource requirements.
@@ -372,7 +378,7 @@ class Trial(object):
             self.syncer.wait()
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
-            if self.syncer.sync_down(TrialDirectory.CHECKPOINT_DIR):
+            if self.syncer.sync_down(TrialDirSchema.CHECKPOINT_DIR):
                 self.syncer.wait()
             else:
                 logger.error(
@@ -403,7 +409,7 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-        self.syncer.sync_down(TrialDirectory.REMOTE_LOGDIR)
+        self.syncer.sync_down(TrialDirSchema.REMOTE_LOGDIR)
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
@@ -483,4 +489,4 @@ class Trial(object):
         self.__dict__.update(state)
         validate_trainable(self.trainable_name)
         if logger_started:
-            self.init()
+            self.init_logger()

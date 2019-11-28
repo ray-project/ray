@@ -5,7 +5,7 @@ from __future__ import print_function
 import os
 from datetime import datetime
 
-from ray.tune.trial import Trial, TrialDirectory
+from ray.tune.trial import Trial, TrialDirSchema
 from ray.tune.result import DEFAULT_RESULTS_DIR, TRAINING_ITERATION
 from ray.tune.logger import UnifiedLogger, Logger
 
@@ -70,7 +70,7 @@ class TrackSession(object):
 
         self._experiment_dir = os.path.expanduser(experiment_dir)
 
-        self._trial_dir = TrialDirectory(trial_name, self._experiment_dir)
+        self._trial_dir = TrialDirSchema(trial_name, self._experiment_dir)
         self._logdir = self._trial_dir.logdir
         self._upload_dir = upload_dir
         self.trial_config = trial_config or {}
