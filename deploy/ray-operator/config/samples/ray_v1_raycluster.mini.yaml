@@ -3,17 +3,23 @@ kind: RayCluster
 metadata:
   labels:
     controller-tools.k8s.io: "1.0"
+    # An unique identifier for the head node and workers of this cluster.
   name: raycluster-sample
 spec:
+  # An unique identifier for the head node and workers of this cluster.
   clusterName: raycluster-sample
   images:
     defaultImage: "docker-image"
   imagePullPolicy: "Always"
 
   extensions:
+    # the pod size in this group typed worker
     - size: 2
+      # logical group name
       groupName: group1
+      # pod type
       type: worker
+      # final pod name, clusterName-groupName-type-index
       idList: ["raycluster-sample-group1-worker-0","raycluster-sample-group1-worker-1"]
 
       # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
@@ -31,7 +37,7 @@ spec:
           memory: 2Gi
           ephemeral-storage: 2Gi
 
-      # environment variables to set in the container
+      # environment variables to set in the container.Optional
       containerEnv:
         - name: CLUSTER_NAME
           value: raycluster-sample
@@ -49,17 +55,23 @@ spec:
       # head service suffix: {namespace}.svc , follows Kubernetes standard
       headServiceSuffix: "ray-operator.svc"
 
+      # use volumes.Optional
       volumes:
         - name: log-volume
           emptyDir: {}
 
+      # use volumeMounts.Optional
       volumeMounts:
         - mountPath: /path/to/log
           name: log-volume
 
+    # the pod size in this group typed worker
     - size: 1
+      # logical group name
       groupName: group2
+      # pod type
       type: worker
+      # final pod name, clusterName-groupName-type-index
       idList: ["raycluster-sample-group2-worker-0"]
 
       # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
@@ -77,7 +89,7 @@ spec:
           memory: 4Gi
           ephemeral-storage: 4Gi
 
-      # environment variables to set in the container
+      # environment variables to set in the container.Optional
       containerEnv:
         - name: CLUSTER_NAME
           value: raycluster-sample
@@ -95,17 +107,23 @@ spec:
       # head service suffix
       headServiceSuffix: "ray-operator.svc"
 
+      # use volumes.Optional
       volumes:
         - name: log-volume
           emptyDir: {}
 
+      # use volumeMounts.Optional
       volumeMounts:
         - mountPath: /path/to/log
           name: log-volume
 
+    # the pod size in this group typed head
     - size: 1
+      # logical group name
       groupName: headgroup1
+      # pod type
       type: head
+      # final pod name, clusterName-groupName-type-index
       idList: ["raycluster-sample-group2-head-0"]
 
       # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
@@ -123,7 +141,7 @@ spec:
           memory: 4Gi
           ephemeral-storage: 4Gi
 
-      # environment variables to set in the container
+      # environment variables to set in the container.Optional
       containerEnv:
         - name: CLUSTER_NAME
           value: raycluster-sample
@@ -141,10 +159,12 @@ spec:
       # head service suffix
       headServiceSuffix: "ray-operator.svc"
 
+      # use volumes.Optional
       volumes:
         - name: log-volume
           emptyDir: {}
 
+      # use volumeMounts.Optional
       volumeMounts:
         - mountPath: /path/to/log
           name: log-volume
