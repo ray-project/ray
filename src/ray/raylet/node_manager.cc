@@ -668,6 +668,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
     new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
                                              remote_total.GetResourceMap(),
                                              remote_available.GetResourceMap());
+    RAY_LOG(ERROR) << "\n UUU HeartbeatAdded";
     NewSchedulerScheduleMoreTasks();
     return;
   }
@@ -901,6 +902,12 @@ void NodeManager::ProcessClientMessage(
     }
   }
 
+  if (message_type_value == protocol::MessageType::NotifyDirectCallTaskBlocked) {
+    RAY_LOG(ERROR) << "\n YYYY Message direct task blocked";
+  } else if (message_type_value == protocol::MessageType::NotifyDirectCallTaskUnblocked) {
+    RAY_LOG(ERROR) << "\n YYYY Message direct task unblocked";
+  }
+
   switch (message_type_value) {
   case protocol::MessageType::RegisterClientRequest: {
     ProcessRegisterClientRequestMessage(client, message_data);
@@ -933,6 +940,7 @@ void NodeManager::ProcessClientMessage(
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
+    RAY_LOG(ERROR) << "ZZZ direct call blocked";
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     HandleDirectCallTaskBlocked(worker);
   } break;
@@ -1453,13 +1461,16 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 }
 
 void NodeManager::DispatchDirectCallTasks() {
+  RAY_LOG(ERROR) << "\n XXX DispatchDirectCallTasks return enter";
   RAY_CHECK(USE_NEW_SCHEDULER);
   while (!new_runnable_queue_.empty()) {
     auto task = new_runnable_queue_.front();
     auto reply = task.first;
+    RAY_LOG(ERROR) << "\n XXX DispatchDirectCallTasks return loop";
     std::shared_ptr<Worker> worker =
         worker_pool_.PopWorker(task.second.GetTaskSpecification());
     if (worker == nullptr) {
+      RAY_LOG(ERROR) << "\n XXX DispatchDirectCallTasks return null worker";
       return;
     }
     reply(worker, ClientID::Nil(), "", -1);
@@ -1533,6 +1544,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         },
         task);
     new_pending_queue_.push_back(work);
+    RAY_LOG(ERROR) << "\n UUU HandleWorkerLeaseRequest";
     NewSchedulerScheduleMoreTasks();
     return;
   }
@@ -1581,6 +1593,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     RAY_CHECK(it != leased_worker_resources_.end());
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
     leased_worker_resources_.erase(it);
+    RAY_LOG(ERROR) << "\n UUU HandleReturnWorker";
     NewSchedulerScheduleMoreTasks();
   }
 
@@ -1982,11 +1995,30 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
+  RAY_LOG(ERROR) << "\n XXX print -1";
   if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
+    if (!worker) {
+      RAY_LOG(ERROR) << "\n XXX: a";
+      return;
+    }
+    if (worker->GetAssignedTaskId().IsNil()) {
+      RAY_LOG(ERROR) << "\n XXX: b";
+      return;
+    }
+    if (worker->IsBlocked()) {
+      RAY_LOG(ERROR) << "\n XXX: c";
+      return;
+    }
+    RAY_LOG(ERROR) << "\n XXX print -2";
     return;  // The worker may have died or is no longer processing the task.
   }
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
   local_available_resources_.Release(cpu_resource_ids);
+  RAY_LOG(ERROR) << "\n XXX print";
+  if (USE_NEW_SCHEDULER) {
+    new_resource_scheduler_->AddNodeAvailableResources(
+        client_id_.Binary(), cpu_resource_ids.ToResourceSet().GetResourceMap());
+  }
   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
       cpu_resource_ids.ToResourceSet());
   worker->MarkBlocked();
@@ -2043,7 +2075,6 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
           cpu_resource_ids.ToResourceSet());
       worker->MarkBlocked();
-
       // Try dispatching tasks since we may have released some resources.
       DispatchTasks(local_queues_.GetReadyTasksByClass());
     }

@@ -126,6 +126,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   int64_t best_node = -1;
   *total_violations = 0;
 
+  RAY_LOG(ERROR)  << "\nGET BEST NODE: " << Print().str();
+  RAY_LOG(ERROR)  << "\nGET BEST NODE: " << TaskRequestPrint(task_req).str();
+
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   auto it = nodes_.find(local_node_id_);
@@ -193,6 +196,7 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
   }
   NodeResources &resources = it->second;
 
+  RAY_LOG(ERROR) << "\nSUBTRACT RESOURCES: " << TaskRequestPrint(task_req).str();
   // Just double check this node can still schedule the task request.
   if (IsSchedulable(task_req, local_node_id_, resources) == -1) {
     return false;
@@ -225,11 +229,14 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 
 bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
                                                          const TaskRequest &task_req) {
+  RAY_LOG(ERROR) << "\nADD RESOURCES 0: " << TaskRequestPrint(task_req).str();
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;
   }
   NodeResources &resources = it->second;
+
+  RAY_LOG(ERROR) << "\nADD RESOURCES: " << TaskRequestPrint(task_req).str();
 
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     resources.capacities[i].available =

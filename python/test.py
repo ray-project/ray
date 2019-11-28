@@ -1,6 +1,6 @@
 import ray
 
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 cluster = Cluster(
     initialize_head=True, connect=True, head_node_args={"num_cpus": 0})
