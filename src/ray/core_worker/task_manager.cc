@@ -25,12 +25,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
     if (return_object.in_plasma()) {
       // Mark it as in plasma with a dummy object.
-      std::string meta =
-          std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
-      auto metadata =
-          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-      auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-      RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+      RAY_CHECK_OK(
+          in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
     } else {
       std::shared_ptr<LocalMemoryBuffer> data_buffer;
       if (return_object.data().size() > 0) {
@@ -70,10 +66,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
     const auto object_id = ObjectID::ForTaskReturn(
         task_id, /*index=*/i + 1,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
-    std::string meta = std::to_string(static_cast<int>(error_type));
-    auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
-    auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    RAY_CHECK_OK(in_memory_store_->Put(RayObject(nullptr, meta_buffer), object_id));
+    RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
   }
 }
 
