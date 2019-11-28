@@ -39,6 +39,10 @@ class WorkerContext {
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
 
+  /// Returns whether we should Block/Unblock through the raylet on Get/Wait.
+  /// This only applies to direct task calls.
+  bool ShouldReleaseResourcesOnBlockingCalls() const;
+
   /// Returns whether we are in a direct call actor.
   bool CurrentActorIsDirectCall() const;
 

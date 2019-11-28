@@ -364,9 +364,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
   bool got_exception = false;
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   auto start_time = current_time_ms();
-  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(plasma_object_ids, timeout_ms,
-                                                worker_context_.GetCurrentTaskID(),
-                                                &result_map, &got_exception));
+  RAY_RETURN_NOT_OK(plasma_store_provider_->Get(
+      plasma_object_ids, timeout_ms, worker_context_, &result_map, &got_exception));
 
   if (!got_exception) {
     int64_t local_timeout_ms = timeout_ms;
@@ -398,8 +397,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
       }
       RAY_LOG(DEBUG) << "Plasma GET timeout " << local_timeout_ms;
       RAY_RETURN_NOT_OK(plasma_store_provider_->Get(promoted_plasma_ids, local_timeout_ms,
-                                                    worker_context_.GetCurrentTaskID(),
-                                                    &result_map, &got_exception));
+                                                    worker_context_, &result_map,
+                                                    &got_exception));
       for (const auto &id : promoted_plasma_ids) {
         auto it = result_map.find(id);
         if (it == result_map.end()) {
@@ -489,9 +488,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
   // where we might use up the entire timeout on trying to get objects from one store
   // provider before even trying another (which might have all of the objects available).
   if (plasma_object_ids.size() > 0) {
-    RAY_RETURN_NOT_OK(
-        plasma_store_provider_->Wait(plasma_object_ids, num_objects, /*timeout_ms=*/0,
-                                     worker_context_.GetCurrentTaskID(), &ready));
+    RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+        plasma_object_ids, num_objects, /*timeout_ms=*/0, worker_context_, &ready));
   }
   RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
   if (static_cast<int>(ready.size()) < num_objects && memory_object_ids.size() > 0) {
@@ -510,9 +508,8 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
 
     int64_t start_time = current_time_ms();
     if (plasma_object_ids.size() > 0) {
-      RAY_RETURN_NOT_OK(
-          plasma_store_provider_->Wait(plasma_object_ids, num_objects, timeout_ms,
-                                       worker_context_.GetCurrentTaskID(), &ready));
+      RAY_RETURN_NOT_OK(plasma_store_provider_->Wait(
+          plasma_object_ids, num_objects, timeout_ms, worker_context_, &ready));
     }
     RAY_CHECK(static_cast<int>(ready.size()) <= num_objects);
     if (timeout_ms > 0) {
