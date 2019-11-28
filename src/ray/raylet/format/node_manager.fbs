@@ -5,9 +5,12 @@
 namespace ray.protocol;
 
 enum MessageType:int {
+  // Task is submitted to the raylet. This is sent from a worker to a
+  // raylet.
+  SubmitTask = 1,
   // Notify the raylet that a task has finished. This is sent from a
   // worker to a raylet.
-  TaskDone = 1,
+  TaskDone,
   // Log a message to the event table. This is sent from a worker to a raylet.
   EventLogMessage,
   // Send an initial connection message to the raylet. This is sent
@@ -94,6 +97,10 @@ table TaskExecutionSpecification {
 table Task {
   task_specification: string;
   task_execution_spec: TaskExecutionSpecification;
+}
+
+table SubmitTaskRequest {
+  task_spec: string;
 }
 
 // This message describes a given resource that is reserved for a worker.

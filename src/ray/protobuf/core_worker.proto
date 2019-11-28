@@ -87,6 +87,20 @@ message DirectActorCallArgWaitCompleteRequest {
 message DirectActorCallArgWaitCompleteReply {
 }
 
+message GetObjectStatusRequest {
+  bytes owner_id = 1;
+  bytes object_id = 2;
+}
+
+message GetObjectStatusReply {
+  enum ObjectStatus {
+    PENDING = 0;
+    CREATED = 1;
+    WRONG_OWNER = 2;
+  }
+  ObjectStatus status = 1;
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -95,4 +109,6 @@ service CoreWorkerService {
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
+  // Ask the object's owner about the object's current status.
+  rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 }
