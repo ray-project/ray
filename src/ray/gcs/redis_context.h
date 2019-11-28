@@ -275,8 +275,8 @@ std::shared_ptr<CallbackReply> RedisContext::RunSync(
     RAY_LOG(INFO) << "Run redis command failed , err is " << context_->err;
     return nullptr;
   } else {
-    std::shared_ptr<CallbackReply> callback_reply = std::make_shared<CallbackReply>(
-        reinterpret_cast<redisReply *>(redis_reply));
+    std::shared_ptr<CallbackReply> callback_reply =
+        std::make_shared<CallbackReply>(reinterpret_cast<redisReply *>(redis_reply));
     freeReplyObject(redis_reply);
     return callback_reply;
   }

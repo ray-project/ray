@@ -966,8 +966,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                                          message->port(), client, client_call_manager_);
   Status status;
   flatbuffers::FlatBufferBuilder fbb;
-  auto reply = ray::protocol::CreateRegisterClientReply(
-      fbb, to_flatbuf(fbb, self_node_id_));
+  auto reply =
+      ray::protocol::CreateRegisterClientReply(fbb, to_flatbuf(fbb, self_node_id_));
   fbb.Finish(reply);
   client->WriteMessageAsync(
       static_cast<int64_t>(protocol::MessageType::RegisterClientReply), fbb.GetSize(),
@@ -1426,8 +1426,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
-        reply->mutable_worker_address()->set_raylet_id(
-            self_node_id_.Binary());
+        reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
         // TODO(swang): Kill worker if other end hangs up.
@@ -1854,8 +1853,7 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
   }
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
   local_available_resources_.Release(cpu_resource_ids);
-  cluster_resource_map_[self_node_id_].Release(
-      cpu_resource_ids.ToResourceSet());
+  cluster_resource_map_[self_node_id_].Release(cpu_resource_ids.ToResourceSet());
   worker->MarkBlocked();
   DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
@@ -1882,9 +1880,7 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     // not have any CPU resources to release.
     RAY_LOG(WARNING)
         << "Resources oversubscribed: "
-        << cluster_resource_map_[self_node_id_]
-               .GetAvailableResources()
-               .ToString();
+        << cluster_resource_map_[self_node_id_].GetAvailableResources().ToString();
   }
   worker->MarkUnblocked();
   task_dependency_manager_.UnsubscribeGetDependencies(task_id);
@@ -2562,8 +2558,8 @@ void NodeManager::ForwardTask(
   // Override spillback for direct tasks.
   if (task.OnSpillback() != nullptr) {
     auto node_info = gcs_client_->Nodes().GetFromCache(node_id);
-    RAY_CHECK(node_info) << "Spilling back to a node manager, but no GCS info found for node "
-                     << node_id;
+    RAY_CHECK(node_info)
+        << "Spilling back to a node manager, but no GCS info found for node " << node_id;
     task.OnSpillback()(node_id, node_info->node_manager_address(),
                        node_info->node_manager_port());
     return;
