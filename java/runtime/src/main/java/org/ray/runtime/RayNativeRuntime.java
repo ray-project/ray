@@ -109,7 +109,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     // TODO(qwang): Get object_store_socket_name and raylet_socket_name from Redis.
     nativeCoreWorkerPointer = nativeInitCoreWorker(rayConfig.workerMode.getNumber(),
         rayConfig.objectStoreSocketName, rayConfig.rayletSocketName,
-        rayConfig.nodeIp, rayConfig.nodeManagerPort,
+        rayConfig.nodeIp, rayConfig.getNodeManagerPort(),
         (rayConfig.workerMode == WorkerType.DRIVER ? rayConfig.getJobId() : JobId.NIL).getBytes(),
         new GcsClientOptions(rayConfig));
     Preconditions.checkState(nativeCoreWorkerPointer != 0);

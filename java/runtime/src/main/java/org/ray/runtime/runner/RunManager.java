@@ -6,8 +6,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.File;
 import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.ServerSocket;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -242,20 +240,6 @@ public class RunManager {
     return ip + ":" + port;
   }
 
-  private int GetUnusedPort() {
-    int port = 0;
-    try {
-      ServerSocket ss = new ServerSocket();
-      ss.bind(new InetSocketAddress(0));
-      port = ss.getLocalPort();
-      ss.close();
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to bind to an available port.", e);
-    }
-  
-    return port;
-  }
-
   private void startRaylet() {
     int hardwareConcurrency = Runtime.getRuntime().availableProcessors();
     int maximumStartupConcurrency = Math.max(1,
@@ -274,7 +258,7 @@ public class RunManager {
           String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
           String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
           String.format("--object_manager_port=%d", 0), // The object manager port.
-          String.format("--node_manager_port=%d", GetUnusedPort()),  // The node manager port.
+          String.format("--node_manager_port=%d", rayConfig.getNodeManagerPort()),  // The node manager port.
           String.format("--node_ip_address=%s", rayConfig.nodeIp),
           String.format("--redis_address=%s", rayConfig.getRedisIp()),
           String.format("--redis_port=%d", rayConfig.getRedisPort()),
@@ -328,7 +312,7 @@ public class RunManager {
     cmd.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
     cmd.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
 
-    cmd.add("-Dray.raylet.node-manager-port=" + rayConfig.nodeManagerPort);
+    cmd.add("-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort());
 
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
