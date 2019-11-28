@@ -397,7 +397,7 @@ cdef class RayletClient:
                              TaskID current_task_id=TaskID.nil()):
         cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
         check_status(self.client.FetchOrReconstruct(
-            fetch_ids, fetch_only, current_task_id.native()))
+            fetch_ids, fetch_only, True, current_task_id.native()))
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
