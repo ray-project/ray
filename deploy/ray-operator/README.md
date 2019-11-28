@@ -89,3 +89,6 @@ kubectl apply -f config/samples/ray_v1_raycluster.mini.yaml
 ```shell script
 kubectl delete -f config/samples/ray_v1_raycluster.mini.yaml
 ```
+
+## More Information
+* [Proposal](https://docs.google.com/document/d/1vfXnwft1fY6HTKw2PUDFOh581KDt4zI2GBHhC1ji_uE/edit)
