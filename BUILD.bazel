@@ -272,7 +272,13 @@ cc_library(
     includes = [
         "src",
     ],
-    linkopts = ["-pthread"],
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -304,7 +310,13 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    linkopts = ["-pthread"],
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         ":common_cc_proto",
         ":gcs",
