@@ -94,8 +94,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  RAY_LOG(DEBUG) << "Requesting lease " << resource_spec.TaskId() << " from local? "
-                 << (raylet_address == nullptr ? "yes" : "no");
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();

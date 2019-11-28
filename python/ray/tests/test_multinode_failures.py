@@ -178,7 +178,10 @@ def test_raylet_failed(ray_start_cluster):
         "object_store_memory": 1000 * 1024 * 1024,
         "_internal_config": json.dumps({
             # Raylet codepath is not stable with a shorter timeout.
-            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
+            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100,
+            "object_manager_pull_timeout_ms": 1000,
+            "object_manager_push_timeout_ms": 1000,
+            "object_manager_repeated_push_delay_ms": 1000,
         }),
     }],
     indirect=True)
@@ -208,6 +211,11 @@ def test_object_reconstruction(ray_start_cluster):
         # Submit a round of tasks with many dependencies.
         num_tasks = len(worker_nodes)
         xs = [large_value.remote() for _ in range(num_tasks)]
+        # Wait for the tasks to complete, then evict the objects from the local
+        # node.
+        for x in xs:
+            ray.get(x)
+            ray.internal.free([x], local_only=True)
 
         # Kill a component on one of the nodes.
         process.terminate()
