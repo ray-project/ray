@@ -64,7 +64,8 @@ class TrialDirSchema(object):
 
     def __init__(self, trial_name, local_dir):
         local_dir = os.path.expanduser(local_dir)
-        os.makedirs(local_dir, exist_ok=True)
+        if not os.path.exists(local_dir):
+            os.makedirs(local_dir)
         self.root_dir = tempfile.mkdtemp(
             prefix="{}_{}".format(trial_name[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
