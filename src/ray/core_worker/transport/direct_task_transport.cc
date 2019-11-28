@@ -5,7 +5,9 @@
 namespace ray {
 
 Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+  RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
+    RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     absl::MutexLock lock(&mu_);
     // Note that the dependencies in the task spec are mutated to only contain
     // plasma dependencies after ResolveDependencies finishes.
@@ -92,10 +94,12 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
+  RAY_LOG(DEBUG) << "Requesting lease " << resource_spec.TaskId() << " from local? "
+                 << (raylet_address == nullptr ? "yes" : "no");
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
-  RAY_CHECK_OK(lease_client->RequestWorkerLease(
+  auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
@@ -131,8 +135,22 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                            << status.ToString();
           }
         }
-      }));
-  pending_lease_requests_.insert(scheduling_key);
+      });
+
+  if (status.ok()) {
+    pending_lease_requests_.insert(scheduling_key);
+  } else {
+    if (lease_client != local_lease_client_) {
+      // A remote request failed. Retry the worker lease request locally
+      // if it's still in the queue.
+      // TODO(swang): Fail after some number of retries?
+      RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
+                     << status.ToString();
+      RequestNewWorkerIfNeeded(scheduling_key);
+    } else {
+      RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
+    }
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &addr,
@@ -141,6 +159,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
                                                    const TaskSpecification &task_spec) {
   auto task_id = task_spec.TaskId();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+  RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   auto status = client.PushNormalTask(
       std::move(request), [this, task_id, scheduling_key, addr](
