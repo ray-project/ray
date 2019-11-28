@@ -900,6 +900,12 @@ void NodeManager::ProcessClientMessage(
     // because it's already disconnected.
     return;
   } break;
+  case protocol::MessageType::SubmitTask: {
+    // For tasks submitted via the raylet path, we must make sure to order the
+    // task submission so that tasks are always submitted after the tasks that
+    // they depend on.
+    ProcessSubmitTaskMessage(message_data);
+  } break;
   case protocol::MessageType::SetResourceRequest: {
     ProcessSetResourceRequest(client, message_data);
   } break;
@@ -1408,21 +1414,16 @@ void NodeManager::ProcessReportActiveObjectIDs(
       unordered_set_from_flatbuf<ObjectID>(*message->object_ids()));
 }
 
-void NodeManager::HandleSubmitTask(const rpc::SubmitTaskRequest &request,
-                                   rpc::SubmitTaskReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) {
-  rpc::Task task;
-  task.mutable_task_spec()->CopyFrom(request.task_spec());
-  // Set the caller's node ID.
-  if (task.task_spec().caller_address().raylet_id() == "") {
-    task.mutable_task_spec()->mutable_caller_address()->set_raylet_id(
-        gcs_client_->client_table().GetLocalClientId().Binary());
-  }
+void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
+  // Read the task submitted by the client.
+  auto fbs_message = flatbuffers::GetRoot<protocol::SubmitTaskRequest>(message_data);
+  rpc::Task task_message;
+  RAY_CHECK(task_message.mutable_task_spec()->ParseFromArray(
+      fbs_message->task_spec()->data(), fbs_message->task_spec()->size()));
 
   // Submit the task to the raylet. Since the task was submitted
   // locally, there is no uncommitted lineage.
-  SubmitTask(Task(task), Lineage());
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  SubmitTask(Task(task_message), Lineage());
 }
 
 void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
