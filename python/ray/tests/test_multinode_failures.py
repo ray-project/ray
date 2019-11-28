@@ -86,14 +86,18 @@ def _test_component_failed(cluster, component_type):
     @ray.remote
     def f(x):
         if RAY_FORCE_DIRECT:
-            # The test takes too long with the raylet codepath.
+            # Sleep to make sure that tasks actually fail mid-execution. We
+            # only use it for direct calls because the test already takes a
+            # long time to run with the raylet codepath.
             time.sleep(0.01)
         return x
 
     @ray.remote
     def g(*xs):
         if RAY_FORCE_DIRECT:
-            # The test takes too long with the raylet codepath.
+            # Sleep to make sure that tasks actually fail mid-execution. We
+            # only use it for direct calls because the test already takes a
+            # long time to run with the raylet codepath.
             time.sleep(0.01)
         return 1
 

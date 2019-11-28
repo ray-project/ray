@@ -50,6 +50,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) {
+  if (error_type == rpc::ErrorType::ACTOR_DIED) {
+    // Note that this might be the __ray_terminate__ task, so we don't log
+    // loudly with ERROR here.
+    RAY_LOG(INFO) << "Task " << task_id << " failed with error "
+                  << rpc::ErrorType_Name(error_type);
+  } else {
+    RAY_LOG(ERROR) << "Task " << task_id << " failed with error "
+                   << rpc::ErrorType_Name(error_type);
+  }
+
   RAY_LOG(DEBUG) << "Failing task " << task_id;
   int num_retries_left = 0;
   TaskSpecification spec;
@@ -63,6 +73,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     if (num_retries_left == 0) {
       pending_tasks_.erase(it);
     } else {
+      RAY_CHECK(num_retries_left > 0);
       it->second.second--;
     }
   }
@@ -72,9 +83,7 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
   if (num_retries_left > 0) {
     RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
                    << ", attempting to resubmit.";
-    if (!retry_task_callback_(spec).ok()) {
-      MarkPendingTaskFailed(task_id, spec.NumReturns(), error_type);
-    }
+    retry_task_callback_(spec);
   } else {
     MarkPendingTaskFailed(task_id, spec.NumReturns(), error_type);
   }

@@ -123,21 +123,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
       << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
   next_sequence_number_[actor_id]++;
 
-  auto status = client.PushActorTask(
+  RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
-          // Note that this might be the __ray_terminate__ task, so we don't log
-          // loudly with ERROR here.
-          RAY_LOG(INFO) << "Task failed with error: " << status;
           task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
-      });
-  if (!status.ok()) {
-    task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
-  }
+      }));
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {

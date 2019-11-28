@@ -23,7 +23,7 @@ class TaskFinisherInterface {
   virtual ~TaskFinisherInterface() {}
 };
 
-using RetryTaskCallback = std::function<Status(const TaskSpecification &spec)>;
+using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
 
 class TaskManager : public TaskFinisherInterface {
  public:

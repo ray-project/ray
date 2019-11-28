@@ -97,7 +97,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
-  auto status = lease_client->RequestWorkerLease(
+  RAY_CHECK_OK(lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
@@ -133,22 +133,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                            << status.ToString();
           }
         }
-      });
-
-  if (status.ok()) {
-    pending_lease_requests_.insert(scheduling_key);
-  } else {
-    if (lease_client != local_lease_client_) {
-      // A remote request failed. Retry the worker lease request locally
-      // if it's still in the queue.
-      // TODO(swang): Fail after some number of retries?
-      RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                     << status.ToString();
-      RequestNewWorkerIfNeeded(scheduling_key);
-    } else {
-      RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
-    }
-  }
+      }));
+  pending_lease_requests_.insert(scheduling_key);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &addr,
@@ -159,7 +145,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  auto status = client.PushNormalTask(
+  RAY_CHECK_OK(client.PushNormalTask(
       std::move(request), [this, task_id, scheduling_key, addr](
                               Status status, const rpc::PushTaskReply &reply) {
         {
@@ -175,10 +161,6 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
-      });
-  if (!status.ok()) {
-    // TODO(swang): add unit test for this.
-    task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::WORKER_DIED);
-  }
+      }));
 }
 };  // namespace ray
