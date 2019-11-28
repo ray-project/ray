@@ -34,10 +34,10 @@ class TaskManager : public TaskFinisherInterface {
   /// Add a task that is pending execution.
   ///
   /// \param[in] spec The spec of the pending task.
-  /// \param[in] num_retries_allowed Number of times this task may be retried
+  /// \param[in] max_retries Number of times this task may be retried
   /// on failure.
   /// \return Void.
-  void AddPendingTask(const TaskSpecification &spec, int num_retries_allowed = 0);
+  void AddPendingTask(const TaskSpecification &spec, int max_retries = 0);
 
   /// Return whether the task is pending.
   ///

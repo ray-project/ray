@@ -281,7 +281,7 @@ class CoreWorker {
   /// \return Status error if task submission fails, likely due to raylet failure.
   Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
                     const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
-                    int num_retries_allowed);
+                    int max_retries);
 
   /// Create an actor.
   ///

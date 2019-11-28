@@ -2,10 +2,10 @@
 
 namespace ray {
 
-void TaskManager::AddPendingTask(const TaskSpecification &spec, int num_retries_allowed) {
+void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
-  std::pair<TaskSpecification, int> entry = {spec, num_retries_allowed};
+  std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 }
 

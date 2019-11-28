@@ -78,7 +78,7 @@ message TaskSpec {
   // Whether this task is a direct call task.
   bool is_direct_call = 16;
   // Number of times this task may be retried on worker failure.
-  int32 num_retries_allowed = 17;
+  int32 max_retries = 17;
 }
 
 // Argument in the task.

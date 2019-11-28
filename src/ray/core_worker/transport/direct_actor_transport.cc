@@ -20,7 +20,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto task_id = task_spec.TaskId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-    request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+    request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
     std::unique_lock<std::mutex> guard(mutex_);
 

@@ -595,8 +595,7 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
-                              std::vector<ObjectID> *return_ids,
-                              int num_retries_allowed) {
+                              std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -612,7 +611,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    task_manager_->AddPendingTask(task_spec, num_retries_allowed);
+    task_manager_->AddPendingTask(task_spec, max_retries);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
