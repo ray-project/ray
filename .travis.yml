@@ -86,7 +86,8 @@ matrix:
 
         - ./ci/suppress_output docker run --rm -w /ray -v `pwd`:/ray $MOUNT_BAZEL_CACHE -ti rayproject/arrow_linux_x86_64_base:latest /ray/python/build-wheel-manylinux1.sh
 
-        - $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh
+        # Ignore any error for successful wheel uploads
+        - $TRAVIS_BUILD_DIR/ci/travis/build-autoscaler-images.sh || true
       script:
         - if [ $RAY_CI_LINUX_WHEELS_AFFECTED != "1" ]; then exit; fi
 

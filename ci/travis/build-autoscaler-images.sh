@@ -25,7 +25,7 @@ if [[ "$TRAVIS" == "true" && "$TRAVIS_PULL_REQUEST" == "false" ]]; then
     docker push ray-project/autoscaler:$commit_sha
 
     # We have a branch build, e.g. release/v0.7.0
-    if [[ "$TRAVIS_BRANCH" != "master" ]] then
+    if [[ "$TRAVIS_BRANCH" != "master" ]]; then
        docker tag ray-project/autoscaler:$commit_sha ray-project/autoscaler:$TRAVIS_BRANCH
        docker push ray-project/autoscaler:$TRAVIS_BRANCH
     else
