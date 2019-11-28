@@ -13,3 +13,6 @@ RUN pip install -r requirements.txt
 COPY $WHEEL_PATH $WHEEL_NAME
 RUN pip install $WHEEL_NAME[all]
 
+# For Click
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
