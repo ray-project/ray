@@ -27,7 +27,6 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
     cdef cppclass RpcTask "ray::rpc::Task":
         RpcTaskSpec *mutable_task_spec()
 
-
 cdef extern from "ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass TaskTableData "ray::rpc::TaskTableData":
         RpcTask *mutable_task()
