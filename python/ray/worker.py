@@ -724,9 +724,13 @@ def init(address=None,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
-        # handler.
+        # handler. We still spawn a reaper process in case the atexit handler
+        # isn't called.
         _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, ray_params=ray_params)
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -779,7 +783,11 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             use_pickle=use_pickle)
         _global_node = ray.node.Node(
-            ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+            ray_params,
+            head=False,
+            shutdown_at_exit=False,
+            spawn_reaper=False,
+            connect_only=True)
 
     connect(
         _global_node,
@@ -1094,7 +1102,7 @@ def connect(node,
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
-            setproctitle.setproctitle("ray_worker")
+            setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
         # Code path of local mode
         if job_id is None:
