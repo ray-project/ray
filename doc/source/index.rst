@@ -208,6 +208,7 @@ Getting Involved
 
    autoscaling.rst
    using-ray-on-a-cluster.rst
+   deploy-on-yarn.rst
    deploy-on-kubernetes.rst
    deploying-on-slurm.rst
 

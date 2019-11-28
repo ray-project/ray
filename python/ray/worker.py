@@ -286,7 +286,7 @@ class Worker(object):
         return context.deserialize_objects(data_metadata_pairs, object_ids,
                                            error_timeout)
 
-    def get_objects(self, object_ids):
+    def get_objects(self, object_ids, timeout=None):
         """Get the values in the object store associated with the IDs.
 
         Return the values from the local object store for object_ids. This will
@@ -296,6 +296,8 @@ class Worker(object):
         Args:
             object_ids (List[object_id.ObjectID]): A list of the object IDs
                 whose values should be retrieved.
+            timeout (float): timeout (float): The maximum amount of time in
+                seconds to wait before returning.
 
         Raises:
             Exception if running in LOCAL_MODE and any of the object IDs do not
@@ -311,8 +313,9 @@ class Worker(object):
         if self.mode == LOCAL_MODE:
             return self.local_mode_manager.get_objects(object_ids)
 
+        timeout_ms = int(timeout * 1000) if timeout else -1
         data_metadata_pairs = self.core_worker.get_objects(
-            object_ids, self.current_task_id)
+            object_ids, self.current_task_id, timeout_ms)
         return self.deserialize_objects(data_metadata_pairs, object_ids)
 
     def run_function_on_all_workers(self, function,
@@ -721,9 +724,13 @@ def init(address=None,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
-        # handler.
+        # handler. We still spawn a reaper process in case the atexit handler
+        # isn't called.
         _global_node = ray.node.Node(
-            head=True, shutdown_at_exit=False, ray_params=ray_params)
+            head=True,
+            shutdown_at_exit=False,
+            spawn_reaper=True,
+            ray_params=ray_params)
     else:
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
@@ -776,7 +783,11 @@ def init(address=None,
             load_code_from_local=load_code_from_local,
             use_pickle=use_pickle)
         _global_node = ray.node.Node(
-            ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+            ray_params,
+            head=False,
+            shutdown_at_exit=False,
+            spawn_reaper=False,
+            connect_only=True)
 
     connect(
         _global_node,
@@ -843,7 +854,11 @@ def sigterm_handler(signum, frame):
     sys.exit(signal.SIGTERM)
 
 
-signal.signal(signal.SIGTERM, sigterm_handler)
+try:
+    signal.signal(signal.SIGTERM, sigterm_handler)
+except ValueError:
+    logger.warning("Failed to set SIGTERM handler, processes might"
+                   "not be cleaned up properly on exit.")
 
 # Define a custom excepthook so that if the driver exits with an exception, we
 # can push that exception to Redis.
@@ -1087,7 +1102,7 @@ def connect(node,
         # TODO(qwang): Rename this to `worker_id_str` or type to `WorkerID`
         worker.worker_id = _random_string()
         if setproctitle:
-            setproctitle.setproctitle("ray_worker")
+            setproctitle.setproctitle("ray::IDLE")
     elif mode is LOCAL_MODE:
         # Code path of local mode
         if job_id is None:
@@ -1388,7 +1403,7 @@ def register_custom_serializer(cls,
         class_id=class_id)
 
 
-def get(object_ids):
+def get(object_ids, timeout=None):
     """Get a remote object or a list of remote objects from the object store.
 
     This method blocks until the object corresponding to the object ID is
@@ -1400,11 +1415,15 @@ def get(object_ids):
     Args:
         object_ids: Object ID of the object to get or a list of object IDs to
             get.
+        timeout (Optional[float]): The maximum amount of time in seconds to
+            wait before returning.
 
     Returns:
         A Python object or a list of Python objects.
 
     Raises:
+        RayTimeoutError: A RayTimeoutError is raised if a timeout is set and
+            the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
     """
@@ -1420,7 +1439,8 @@ def get(object_ids):
                              "or a list of object IDs.")
 
         global last_task_error_raise_time
-        values = worker.get_objects(object_ids)
+        # TODO(ujvl): Consider how to allow user to retrieve the ready objects.
+        values = worker.get_objects(object_ids, timeout=timeout)
         for i, value in enumerate(values):
             if isinstance(value, RayError):
                 last_task_error_raise_time = time.time()

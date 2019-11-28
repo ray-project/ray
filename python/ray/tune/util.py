@@ -119,18 +119,25 @@ class warn_if_slow(object):
         ...    ray.get(something)
     """
 
-    def __init__(self, name):
+    DEFAULT_THRESHOLD = 0.5
+
+    def __init__(self, name, threshold=None):
         self.name = name
+        self.threshold = threshold or self.DEFAULT_THRESHOLD
+        self.too_slow = False
 
     def __enter__(self):
         self.start = time.time()
+        return self
 
     def __exit__(self, type, value, traceback):
         now = time.time()
-        if now - self.start > 0.5 and now - START_OF_TIME > 60.0:
-            logger.warning("The `{}` operation took {} seconds to complete, ".
-                           format(self.name, now - self.start) +
-                           "which may be a performance bottleneck.")
+        if now - self.start > self.threshold and now - START_OF_TIME > 60.0:
+            self.too_slow = True
+            logger.warning(
+                "The `%s` operation took %s seconds to complete, "
+                "which may be a performance bottleneck.", self.name,
+                now - self.start)
 
 
 def merge_dicts(d1, d2):

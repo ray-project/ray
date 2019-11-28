@@ -33,6 +33,13 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
   return size;
 }
 
+// Shared between direct actor and task submitters.
+// TODO(swang): Remove and replace with rpc::Address.
+class CoreWorkerClientInterface;
+typedef std::pair<std::string, int> WorkerAddress;
+typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const WorkerAddress &)>
+    ClientFactoryFn;
+
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface {
  public:
@@ -74,16 +81,14 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
-  /// Grants a worker to the client.
-  ///
-  /// \param[in] request The request message.
-  /// \param[in] callback The callback function that handles reply.
-  /// \return if the rpc call succeeds
-  virtual ray::Status WorkerLeaseGranted(
-      const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) {
+  /// Ask the owner of an object about the object's current status.
+  virtual ray::Status GetObjectStatus(
+      const GetObjectStatusRequest &request,
+      const ClientCallback<GetObjectStatusReply> &callback) {
     return Status::NotImplemented("");
   }
+
+  virtual ~CoreWorkerClientInterface(){};
 };
 
 /// Client used for communicating with a remote worker server.
@@ -150,17 +155,14 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     return call->GetStatus();
   }
 
-  ray::Status WorkerLeaseGranted(
-      const WorkerLeaseGrantedRequest &request,
-      const ClientCallback<WorkerLeaseGrantedReply> &callback) override {
-    auto call =
-        client_call_manager_.CreateCall<CoreWorkerService, WorkerLeaseGrantedRequest,
-                                        WorkerLeaseGrantedReply>(
-            *stub_, &CoreWorkerService::Stub::PrepareAsyncWorkerLeaseGranted, request,
-            callback);
+  virtual ray::Status GetObjectStatus(
+      const GetObjectStatusRequest &request,
+      const ClientCallback<GetObjectStatusReply> &callback) {
+    auto call = client_call_manager_.CreateCall<CoreWorkerService, GetObjectStatusRequest,
+                                                GetObjectStatusReply>(
+        *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
     return call->GetStatus();
   }
-
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being

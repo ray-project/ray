@@ -87,14 +87,18 @@ message DirectActorCallArgWaitCompleteRequest {
 message DirectActorCallArgWaitCompleteReply {
 }
 
-message WorkerLeaseGrantedRequest {
-  // Address of the leased worker.
-  string address = 1;
-  // Port of the leased worker.
-  int32 port = 2;
+message GetObjectStatusRequest {
+  bytes owner_id = 1;
+  bytes object_id = 2;
 }
 
-message WorkerLeaseGrantedReply {
+message GetObjectStatusReply {
+  enum ObjectStatus {
+    PENDING = 0;
+    CREATED = 1;
+    WRONG_OWNER = 2;
+  }
+  ObjectStatus status = 1;
 }
 
 service CoreWorkerService {
@@ -105,6 +109,6 @@ service CoreWorkerService {
   // Reply from raylet that wait for direct actor call args has completed.
   rpc DirectActorCallArgWaitComplete(DirectActorCallArgWaitCompleteRequest)
       returns (DirectActorCallArgWaitCompleteReply);
-  // Reply from raylet to fulfill a worker lease request.
-  rpc WorkerLeaseGranted(WorkerLeaseGrantedRequest) returns (WorkerLeaseGrantedReply);
+  // Ask the object's owner about the object's current status.
+  rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
 }

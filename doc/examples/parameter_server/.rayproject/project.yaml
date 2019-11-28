@@ -13,7 +13,7 @@ environment:
 
 commands:
   - name: run-sync
-    command: python sync_parameter_server.py --num-workers {{num_workers}}
+    command: python sync_parameter_server.py --num-workers {{num-workers}}
     help: "Start the synchronous parameter server."
     params:
       - name: num-workers
@@ -24,7 +24,7 @@ commands:
       tmux: true
 
   - name: run-async
-    command: python async_parameter_server.py --num-workers {{num_workers}}
+    command: python async_parameter_server.py --num-workers {{num-workers}}
     help: "Start the asynchronous parameter server."
     params:
       - name: num-workers

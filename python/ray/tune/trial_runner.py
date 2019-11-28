@@ -17,8 +17,8 @@ from ray.tune import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
-from ray.tune.syncer import get_syncer
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.syncer import get_cloud_syncer
+from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.util import warn_if_slow, flatten_dict
@@ -126,7 +126,7 @@ class TrialRunner(object):
                 global checkpoints are stored and restored from. Used
                 if `resume` == REMOTE.
             resume (str|False): see `tune.py:run`.
-            sync_to_cloud (func|str): see `tune.py:run`.
+            sync_to_cloud (func|str): See `tune.py:run`.
             server_port (int): Port number for launching TuneServer.
             verbose (bool): Flag for verbosity. If False, trial results
                 will not be output.
@@ -158,8 +158,8 @@ class TrialRunner(object):
             os.makedirs(self._local_checkpoint_dir)
 
         self._remote_checkpoint_dir = remote_checkpoint_dir
-        self._syncer = get_syncer(local_checkpoint_dir, remote_checkpoint_dir,
-                                  sync_to_cloud)
+        self._syncer = get_cloud_syncer(local_checkpoint_dir,
+                                        remote_checkpoint_dir, sync_to_cloud)
 
         self._resumed = False
 
@@ -216,8 +216,7 @@ class TrialRunner(object):
                     "Called resume from remote without remote directory.")
 
             # Try syncing down the upload directory.
-            logger.info("Downloading from {}".format(
-                self._remote_checkpoint_dir))
+            logger.info("Downloading from %s", self._remote_checkpoint_dir)
             self._syncer.sync_down_if_needed()
 
             if not self.checkpoint_exists(self._local_checkpoint_dir):
@@ -334,24 +333,7 @@ class TrialRunner(object):
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
-            for trial in self._trials:
-                if trial.status == Trial.PENDING:
-                    if not self.has_resources(trial.resources):
-                        raise TuneError(
-                            ("Insufficient cluster resources to launch trial: "
-                             "trial requested {} but the cluster has only {}. "
-                             "Pass `queue_trials=True` in "
-                             "ray.tune.run() or on the command "
-                             "line to queue trials until the cluster scales "
-                             "up. {}").format(
-                                 trial.resources.summary_string(),
-                                 self.trial_executor.resource_string(),
-                                 trial.get_trainable_cls().resource_help(
-                                     trial.config)))
-                elif trial.status == Trial.PAUSED:
-                    raise TuneError(
-                        "There are paused trials, but no more pending "
-                        "trials with sufficient resources.")
+            self.trial_executor.on_no_available_trials(self)
 
         try:
             with warn_if_slow("experiment_checkpoint"):
@@ -422,12 +404,12 @@ class TrialRunner(object):
     def _process_events(self):
         failed_trial = self.trial_executor.get_next_failed_trial()
         if failed_trial:
+            error_msg = (
+                "{} (IP: {}) detected as stale. This is likely because the "
+                "node was lost").format(failed_trial, failed_trial.node_ip)
+            logger.info(error_msg)
             with warn_if_slow("process_failed_trial"):
-                self._process_trial_failure(
-                    failed_trial,
-                    error_msg="{} (ip: {}) detected as stale. This is likely"
-                    "because the node was lost".format(failed_trial,
-                                                       failed_trial.node_ip))
+                self._process_trial_failure(failed_trial, error_msg=error_msg)
         else:
             trial = self.trial_executor.get_next_available_trial()  # blocking
             with warn_if_slow("process_trial"):
@@ -537,12 +519,17 @@ class TrialRunner(object):
                 stop_logger=False)
             trial.result_logger.flush()
             if self.trial_executor.has_resources(trial.resources):
-                logger.info("Attempting to recover trial.")
+                logger.info(
+                    "Trial %s: Attempting to recover "
+                    "trial state from last checkpoint.", trial)
                 self.trial_executor.start_trial(trial)
                 if trial.status == Trial.ERROR:
+                    logger.error("Trial %s: Did not start correctly.", trial)
                     raise RuntimeError("Trial did not start correctly.")
+                logger.debug("Trial %s: Started correctly.", trial)
             else:
-                logger.debug("Notifying Scheduler and requeueing trial.")
+                logger.debug("Trial %s: Notifying Scheduler and requeueing.",
+                             trial)
                 self._requeue_trial(trial)
         except Exception:
             logger.exception("Error recovering trial from checkpoint, abort.")

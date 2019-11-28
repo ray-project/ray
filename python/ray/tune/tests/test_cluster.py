@@ -13,8 +13,8 @@ import sys
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import run_string_as_driver_nonblocking
+from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.experiment import Experiment
@@ -336,7 +336,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
-    shutil.rmtree(os.path.dirname(t1._checkpoint.value))
+    shutil.rmtree(os.path.dirname(t1.checkpoint.value))
 
     runner.step()  # Recovery step
     for i in range(3):
@@ -569,7 +569,7 @@ tune.run(
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
-    Experiment._register_if_needed(_Mock)
+    Experiment.register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
     runner = TrialRunner(
@@ -593,3 +593,9 @@ tune.run(
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
     ray.shutdown()
     cluster.shutdown()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

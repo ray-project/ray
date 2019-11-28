@@ -74,6 +74,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         CRayStatus RedisError(const c_string &msg)
 
         @staticmethod
+        CRayStatus TimedOut(const c_string &msg)
+
+        @staticmethod
         CRayStatus Interrupted(const c_string &msg)
 
         @staticmethod
@@ -89,7 +92,9 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsNotImplemented()
         c_bool IsObjectStoreFull()
         c_bool IsRedisError()
+        c_bool IsTimedOut()
         c_bool IsInterrupted()
+        c_bool IsSystemExit()
 
         c_string ToString()
         c_string CodeAsString()
@@ -127,6 +132,10 @@ cdef extern from "ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
+    cdef cppclass CAddress "ray::rpc::Address":
+        CAddress()
+        const c_string &SerializeAsString()
+        void ParseFromString(const c_string &serialized)
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
@@ -212,7 +221,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const unordered_map[c_string, double] &resources,
             const unordered_map[c_string, double] &placement_resources,
             const c_vector[c_string] &dynamic_worker_options,
-            c_bool is_detached)
+            c_bool is_detached, c_bool is_asyncio)
 
 cdef extern from "ray/gcs/gcs_client_interface.h" nogil:
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
