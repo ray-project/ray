@@ -149,6 +149,15 @@ py_test(
 )
 
 py_test(
+    name = "test_failure_direct",
+    size = "medium",
+    srcs = ["test_failure_direct.py", "test_failure.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+    flaky = 1,
+)
+
+py_test(
     name = "test_garbage_collection",
     size = "medium",
     srcs = ["test_garbage_collection.py"],
