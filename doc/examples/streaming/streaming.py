@@ -7,13 +7,10 @@ import ray
 import wikipedia
 
 parser = argparse.ArgumentParser()
-parser.add_argument(
-    "--num-mappers", help="number of mapper actors used", default=3, type=int)
-parser.add_argument(
-    "--num-reducers",
-    help="number of reducer actors used",
-    default=4,
-    type=int)
+parser.add_argument("--num-mappers",
+                    help="number of mapper actors used", default=3, type=int)
+parser.add_argument("--num-reducers",
+                    help="number of reducer actors used", default=4, type=int)
 
 
 @ray.remote
