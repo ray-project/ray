@@ -8,7 +8,6 @@
 #include "ray/util/util.h"
 
 extern "C" {
-#include "hiredis/adapters/ae.h"
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
 }

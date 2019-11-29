@@ -16,14 +16,12 @@
 #include "ray/protobuf/gcs.pb.h"
 
 extern "C" {
-#include "hiredis/adapters/ae.h"
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
 }
 
 struct redisContext;
 struct redisAsyncContext;
-struct aeEventLoop;
 
 namespace ray {
 

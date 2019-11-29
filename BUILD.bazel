@@ -656,26 +656,6 @@ cc_library(
 )
 
 cc_library(
-    name = "ae",
-    srcs = glob(
-        [
-            "src/ray/thirdparty/ae/ae.c",
-        ],
-        exclude = [
-        ],
-    ),
-    hdrs = glob([
-        "src/ray/thirdparty/ae/*.h",
-        "src/ray/thirdparty/ae/ae_kqueue.c",
-        "src/ray/thirdparty/ae/ae_epoll.c",
-    ]),
-    copts = COPTS,
-    includes = [
-        "src/ray/thirdparty/ae",
-    ],
-)
-
-cc_library(
     name = "gcs",
     srcs = glob(
         [
@@ -690,7 +670,6 @@ cc_library(
     ]),
     copts = COPTS,
     deps = [
-        ":ae",
         ":gcs_cc_proto",
         ":node_manager_fbs",
         ":node_manager_rpc",
