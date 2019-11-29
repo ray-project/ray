@@ -1,7 +1,6 @@
 #include "data_reader.h"
 #include "data_writer.h"
 #include "gtest/gtest.h"
-#include "transfer.h"
 
 using namespace ray;
 using namespace ray::streaming;

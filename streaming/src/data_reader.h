@@ -8,10 +8,10 @@
 #include <unordered_map>
 #include <vector>
 
+#include "channel.h"
 #include "message/message_bundle.h"
 #include "message/priority_queue.h"
 #include "runtime_context.h"
-#include "transfer.h"
 
 namespace ray {
 namespace streaming {
