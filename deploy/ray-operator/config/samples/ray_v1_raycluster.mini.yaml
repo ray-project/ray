@@ -14,19 +14,19 @@ spec:
 
   extensions:
     # the pod size in this group typed worker
-    - size: 2
-      # logical group name
-      groupName: group1
+    - size: 1
+      # logical group name, for this called small-group, also can be functional like hello-group
+      groupName: small-group
       # pod type
       type: worker
-      # final pod name, clusterName-groupName-type-index
-      idList: ["raycluster-sample-group1-worker-0","raycluster-sample-group1-worker-1"]
 
       # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
       labels:
-        raycluster.group.name: group1
+        raycluster.group.name: small-group
 
       # resource requirements
+      # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
       resources:
         limits:
           cpu: 1000m
@@ -36,101 +36,24 @@ spec:
           cpu: 1000m
           memory: 2Gi
           ephemeral-storage: 2Gi
-
-      # environment variables to set in the container.Optional
-      containerEnv:
-        - name: CLUSTER_NAME
-          value: raycluster-sample
-        - name: POD_READY_FILEPATH
-          value: /path/to/log
-        - name: MY_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: MY_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
 
       # head service suffix: {namespace}.svc , follows Kubernetes standard
       headServiceSuffix: "ray-operator.svc"
 
-      # use volumes.Optional
-      volumes:
-        - name: log-volume
-          emptyDir: {}
-
-      # use volumeMounts.Optional
-      volumeMounts:
-        - mountPath: /path/to/log
-          name: log-volume
-
-    # the pod size in this group typed worker
-    - size: 1
-      # logical group name
-      groupName: group2
-      # pod type
-      type: worker
-      # final pod name, clusterName-groupName-type-index
-      idList: ["raycluster-sample-group2-worker-0"]
-
-      # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
-      labels:
-        raycluster.group.name: group2
-
-      # resource requirements
-      resources:
-        limits:
-          cpu: 2000m
-          memory: 4Gi
-          ephemeral-storage: 4Gi
-        requests:
-          cpu: 2000m
-          memory: 4Gi
-          ephemeral-storage: 4Gi
-
-      # environment variables to set in the container.Optional
-      containerEnv:
-        - name: CLUSTER_NAME
-          value: raycluster-sample
-        - name: POD_READY_FILEPATH
-          value: /path/to/log
-        - name: MY_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: MY_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-
-      # head service suffix
-      headServiceSuffix: "ray-operator.svc"
-
-      # use volumes.Optional
-      volumes:
-        - name: log-volume
-          emptyDir: {}
-
-      # use volumeMounts.Optional
-      volumeMounts:
-        - mountPath: /path/to/log
-          name: log-volume
-
     # the pod size in this group typed head
     - size: 1
-      # logical group name
-      groupName: headgroup1
+      # logical group name, also can be functional
+      groupName: head-group
       # pod type
       type: head
-      # final pod name, clusterName-groupName-type-index
-      idList: ["raycluster-sample-group2-head-0"]
 
       # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
+      # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
       labels:
-        raycluster.group.name: headgroup1
+        raycluster.group.name: head-group
 
       # resource requirements
+      # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
       resources:
         limits:
           cpu: 2000m
@@ -141,30 +64,5 @@ spec:
           memory: 4Gi
           ephemeral-storage: 4Gi
 
-      # environment variables to set in the container.Optional
-      containerEnv:
-        - name: CLUSTER_NAME
-          value: raycluster-sample
-        - name: POD_READY_FILEPATH
-          value: /path/to/log
-        - name: MY_POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: MY_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-
-      # head service suffix
+      # head service suffix: {namespace}.svc , follows Kubernetes standard
       headServiceSuffix: "ray-operator.svc"
-
-      # use volumes.Optional
-      volumes:
-        - name: log-volume
-          emptyDir: {}
-
-      # use volumeMounts.Optional
-      volumeMounts:
-        - mountPath: /path/to/log
-          name: log-volume

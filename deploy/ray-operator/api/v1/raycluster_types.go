@@ -27,8 +27,9 @@ type RayClusterStatus struct {
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
+// +kubebuilder:object:root=true
+
 // RayCluster is the Schema for the RayClusters API
-// +k8s:openapi-gen=true
 type RayCluster struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -64,41 +65,38 @@ type Extension struct {
 	// pod image
 	Image string `json:"image,omitempty"`
 
-	// logic groupName for worker in same group
+	// logic groupName for worker in same group, can be functional or in size meaning
 	GroupName string `json:"groupName,omitempty"`
-
-	// the concrete pod name list, separate by ","
-	IdList []string `json:"idList,omitempty"`
 
 	// labels for pod, raycluster.component and rayclusters.ray.io/component-name are default labels, do not overwrite them.
 	Labels map[string]string `json:"labels,omitempty"`
 
 	// NodeSelector specifies a map of key-value pairs. For the pod to be eligible
 	// to run on a node, the node must have each of the indicated key-value pairs as
-	// labels.
+	// labels.Optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
-	// the affinity for pod
+	// the affinity for pod.Optional
 	Affinity *v1.Affinity `json:"affinity,omitempty"`
 
 	// the resource requirements for this group pod.
 	Resources v1.ResourceRequirements `json:"resources,omitempty"`
 
-	// Tolerations specifies the pod's tolerations.
+	// Tolerations specifies the pod's tolerations.Optional
 	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
 
-	// List of environment variables to set in the container.
+	// List of environment variables to set in the container.Optional
 	ContainerEnv []v1.EnvVar `json:"containerEnv,omitempty"`
 
-	// Head service suffix. So head can be accessed by domain name
+	// Head service suffix. So head can be accessed by domain name: {namespace}.svc , follows Kubernetes standard
 	HeadServiceSuffix string `json:"headServiceSuffix,omitempty"`
 
-	// Annotations for pod
+	// Annotations for pod.Optional
 	Annotations map[string]string `json:"annotations,omitempty"`
 
-	// Volume for the pod group
+	// Volume for the pod group.Optional
 	Volumes []v1.Volume `json:"volumes,omitempty"`
 
-	// VolumeMount for the pod group
+	// VolumeMount for the pod group.Optional
 	VolumeMounts []v1.VolumeMount `json:"volumeMounts,omitempty"`
 }

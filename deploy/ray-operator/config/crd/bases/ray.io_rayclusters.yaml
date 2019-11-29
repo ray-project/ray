@@ -42,7 +42,7 @@ spec:
               items:
                 properties:
                   affinity:
-                    description: Affinity is a group of affinity scheduling rules.
+                    description: the affinity for pod.Optional
                     properties:
                       nodeAffinity:
                         description: Describes node affinity scheduling rules for
@@ -661,10 +661,10 @@ spec:
                   annotations:
                     additionalProperties:
                       type: string
-                    description: Annotations for pod
+                    description: Annotations for pod.Optional
                     type: object
                   containerEnv:
-                    description: List of environment variables to set in the container.
+                    description: List of environment variables to set in the container.Optional
                     items:
                       description: EnvVar represents an environment variable present
                         in a Container.
@@ -768,24 +768,20 @@ spec:
                       type: object
                     type: array
                   groupName:
-                    description: logic groupName for same type worker
+                    description: logic groupName for worker in same group, can be
+                      functional or in size level
                     type: string
                   headServiceSuffix:
-                    description: Head service suffix.
+                    description: 'Head service suffix. So head can be accessed by
+                      domain name: {namespace}.svc , follows Kubernetes standard'
                     type: string
-                  idList:
-                    description: create operation should have no idList (generate
-                      by controller)
-                    items:
-                      type: string
-                    type: array
                   image:
-                    description: pod image to support heterogeneous
+                    description: pod image
                     type: string
                   labels:
                     additionalProperties:
                       type: string
-                    description: raycluster.component and rayclusters.ray.io/component-name
+                    description: labels for pod, raycluster.component and rayclusters.ray.io/component-name
                       are default labels, do not overwrite them.
                     type: object
                   nodeSelector:
@@ -793,10 +789,10 @@ spec:
                       type: string
                     description: NodeSelector specifies a map of key-value pairs.
                       For the pod to be eligible to run on a node, the node must have
-                      each of the indicated key-value pairs as labels.
+                      each of the indicated key-value pairs as labels.Optional
                     type: object
                   resources:
-                    description: the resource requirements for this type.
+                    description: the resource requirements for this group pod.
                     properties:
                       limits:
                         additionalProperties:
@@ -814,11 +810,11 @@ spec:
                         type: object
                     type: object
                   size:
-                    description: a pod group of type of size
+                    description: the size of this pod group
                     format: int32
                     type: integer
                   tolerations:
-                    description: Tolerations specifies the pod's tolerations.
+                    description: Tolerations specifies the pod's tolerations.Optional
                     items:
                       description: The pod this Toleration is attached to tolerates
                         any taint that matches the triple <key,value,effect> using
@@ -859,9 +855,10 @@ spec:
                       type: object
                     type: array
                   type:
-                    description: worker/head/clusterApiServer
+                    description: worker/head
                     type: string
                   volumeMounts:
+                    description: VolumeMount for the pod group.Optional
                     items:
                       description: VolumeMount describes a mounting of a Volume within
                         a container.
@@ -901,6 +898,7 @@ spec:
                       type: object
                     type: array
                   volumes:
+                    description: Volume for the pod group.Optional
                     items:
                       description: Volume represents a named volume in a pod that
                         may be accessed by any container in the pod.
@@ -2146,8 +2144,6 @@ spec:
               type: string
             images:
               properties:
-                clusterApiServerImage:
-                  type: string
                 defaultImage:
                   type: string
               type: object
