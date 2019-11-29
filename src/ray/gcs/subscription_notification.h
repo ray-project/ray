@@ -18,13 +18,13 @@ class SubscriptionNotification {
       : change_mode_(change_mode), data_(std::move(data)) {}
 
   SubscriptionNotification(SubscriptionNotification &&other) {
-    this.change_mode_ = other.change_mode_;
-    this.data_ = std::move(other.data_);
+    change_mode_ = other.change_mode_;
+    data_ = std::move(other.data_);
   }
 
   SubscriptionNotification &operator=(SubscriptionNotification &&other) {
-    this.change_mode_ = other.change_mode_;
-    this.data_ = std::move(other.data_);
+    change_mode_ = other.change_mode_;
+    data_ = std::move(other.data_);
   }
 
   /// Get change mode of this notification.
