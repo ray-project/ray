@@ -94,7 +94,8 @@ def stats(policy, train_batch):
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
         "policy_loss": policy.loss.pi_loss,
         "policy_entropy": policy.loss.entropy,
-        "var_gnorm": tf.global_norm(list(policy.model.trainable_variables())),
+        "var_gnorm": tf.global_norm(
+            list(policy.model.trainable_variables())),
         "vf_loss": policy.loss.vf_loss,
     }
 
