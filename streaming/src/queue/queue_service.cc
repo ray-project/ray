@@ -48,8 +48,7 @@ std::shared_ptr<Message> QueueService::ParseMessage(
   return message;
 }
 
-// Message will be handled in io_service queue thread.
-void QueueService::DispatchMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
+void QueueService::DispatchMessageAsync(std::shared_ptr<LocalMemoryBuffer> buffer) {
   queue_service_.post(
       boost::bind(&QueueService::DispatchMessageInternal, this, buffer, nullptr));
 }
@@ -77,12 +76,12 @@ std::shared_ptr<Transport> QueueService::GetOutTransport(const ObjectID &queue_i
   return it->second;
 }
 
-void QueueService::AddPeerActor(const ObjectID &queue_id, const ActorID &actor_id) {
+void QueueService::SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id) {
   actors_.emplace(queue_id, actor_id);
   out_transports_.emplace(queue_id, std::make_shared<ray::streaming::Transport>(core_worker_, actor_id));
 }
 
-ActorID QueueService::GetPeerActor(const ObjectID &queue_id) {
+ActorID QueueService::GetPeerActorID(const ObjectID &queue_id) {
   auto it = actors_.find(queue_id);
   STREAMING_CHECK(it != actors_.end());
   return it->second;
@@ -93,7 +92,7 @@ void QueueService::Release() {
     out_transports_.clear();
 }
 
-void QueueService::Init() {
+void QueueService::Start() {
   queue_thread_ = std::thread(&QueueService::QueueThreadCallback, this);
 }
 
@@ -146,8 +145,8 @@ std::shared_ptr<streaming::WriterQueue> UpstreamService::GetUpQueue(
   return it->second;
 }
 
-bool UpstreamService::CheckQueueSync(const ObjectID &queue_id, QueueType type) {
-  ActorID peer_actor_id = GetPeerActor(queue_id);
+bool UpstreamService::CheckQueueSync(const ObjectID &queue_id) {
+  ActorID peer_actor_id = GetPeerActorID(queue_id);
   STREAMING_LOG(INFO) << "CheckQueueSync queue_id: " << queue_id
                       << " peer_actor_id: " << peer_actor_id;
 
@@ -174,13 +173,13 @@ bool UpstreamService::CheckQueueSync(const ObjectID &queue_id, QueueType type) {
 }
 
 void UpstreamService::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                              std::vector<ObjectID> &failed_queues, QueueType type) {
+                              std::vector<ObjectID> &failed_queues) {
   failed_queues.insert(failed_queues.begin(), queue_ids.begin(), queue_ids.end());
   uint64_t start_time_us = current_time_ms();
   uint64_t current_time_us = start_time_us;
   while (!failed_queues.empty() && current_time_us < start_time_us + timeout_ms * 1000) {
     for (auto it = failed_queues.begin(); it != failed_queues.end();) {
-      if (CheckQueueSync(*it, type)) {
+      if (CheckQueueSync(*it)) {
         STREAMING_LOG(INFO) << "Check queue: " << *it << " return, ready.";
         it = failed_queues.erase(it);
       } else {

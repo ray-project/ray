@@ -13,9 +13,17 @@
 namespace ray {
 namespace streaming {
 
-/// base class of all command messages
+/// Base class of all message classes.
+/// All payloads transferred through direct actor call are packed into a unified package, 
+/// consisting of protobuf-formatted metadata and data, including data and control messages.
+/// These message classes wrap the package defined in protobuf/streaming_queue.proto respectively.
 class Message {
  public:
+  /// Construct a Message instance.
+  /// \param[in] actor_id ActorID of message sender
+  /// \param[in] peer_actor_id ActorID of message receiver
+  /// \param[in] queue_id queue id to identify which queue the message sent to
+  /// \param[in] buffer an optional param, a chunk of data to send.
   Message(const ActorID &actor_id, const ActorID &peer_actor_id, const ObjectID &queue_id,
           std::shared_ptr<LocalMemoryBuffer> buffer = nullptr)
       : actor_id_(actor_id),
@@ -24,15 +32,18 @@ class Message {
         buffer_(buffer) {}
   Message() {}
   virtual ~Message() {}
-  virtual ActorID ActorId() { return actor_id_; }
-  virtual ActorID PeerActorId() { return peer_actor_id_; }
-  virtual ObjectID QueueId() { return queue_id_; }
-  virtual queue::protobuf::StreamingQueueMessageType Type() = 0;
+  ActorID ActorId() { return actor_id_; }
+  ActorID PeerActorId() { return peer_actor_id_; }
+  ObjectID QueueId() { return queue_id_; }
   std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
-  virtual std::unique_ptr<LocalMemoryBuffer> ToBytes();
-  virtual void ToProtobuf(std::string *output) = 0;
+  /// Pack all meta data and data to a LocalMemoryBuffer, which can be send through direct actor call
+  std::unique_ptr<LocalMemoryBuffer> ToBytes();
 
+  virtual queue::protobuf::StreamingQueueMessageType Type() = 0;
+
+  /// All subclass should implement `ToProtobuf` to serialize its own protobuf data
+  virtual void ToProtobuf(std::string *output) = 0;
  protected:
   ActorID actor_id_;
   ActorID peer_actor_id_;
@@ -40,9 +51,11 @@ class Message {
   std::shared_ptr<LocalMemoryBuffer> buffer_;
 
  public:
+  /// A magic number to identify a valid message.
   static const uint32_t MagicNum;
 };
 
+/// Wrap StreamingQueueDataMsg
 class DataMessage : public Message {
  public:
   DataMessage(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
@@ -52,7 +65,6 @@ class DataMessage : public Message {
 
   static std::shared_ptr<DataMessage> FromBytes(uint8_t *bytes);
   virtual void ToProtobuf(std::string *output);
-
   uint64_t SeqId() { return seq_id_; }
   bool IsRaw() { return raw_; }
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
@@ -65,6 +77,7 @@ class DataMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType;
 };
 
+/// Wrap StreamingQueueNotificationMsg
 class NotificationMessage : public Message {
  public:
   NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -85,6 +98,7 @@ class NotificationMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };
 
+/// Wrap StreamingQueueCheckMsg
 class CheckMessage : public Message {
  public:
   CheckMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -102,6 +116,7 @@ class CheckMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType;
 };
 
+/// Wrap StreamingQueueCheckRspMsg
 class CheckRspMessage : public Message {
  public:
   CheckRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -120,6 +135,7 @@ class CheckRspMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType;
 };
 
+/// Wrap StreamingQueueTestInitMsg
 class TestInitMessage : public Message {
  public:
   TestInitMessage(const queue::protobuf::StreamingQueueTestRole role,
@@ -166,7 +182,7 @@ class TestInitMessage : public Message {
   }
  private:
   const queue::protobuf::StreamingQueueMessageType type_ = 
-      queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType;
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMsgType;
   std::string actor_handle_serialized_;
   std::vector<ObjectID> queue_ids_;
   std::vector<ObjectID> rescale_queue_ids_;
@@ -176,6 +192,7 @@ class TestInitMessage : public Message {
   uint64_t param_;
 };
 
+/// Wrap StreamingQueueTestCheckStatusRspMsg
 class TestCheckStatusRspMsg : public Message {
  public:
   TestCheckStatusRspMsg(const std::string test_name, bool status)

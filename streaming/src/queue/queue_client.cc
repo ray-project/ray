@@ -4,7 +4,7 @@ namespace ray {
 namespace streaming {
 
 void WriterClient::OnWriterMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
-  upstream_service_->DispatchMessage(buffer);
+  upstream_service_->DispatchMessageAsync(buffer);
 }
 
 std::shared_ptr<LocalMemoryBuffer> WriterClient::OnWriterMessageSync(
@@ -13,7 +13,7 @@ std::shared_ptr<LocalMemoryBuffer> WriterClient::OnWriterMessageSync(
 }
 
 void ReaderClient::OnReaderMessage(std::shared_ptr<LocalMemoryBuffer> buffer) {
-  downstream_service_->DispatchMessage(buffer);
+  downstream_service_->DispatchMessageAsync(buffer);
 }
 
 std::shared_ptr<LocalMemoryBuffer> ReaderClient::OnReaderMessageSync(

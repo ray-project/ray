@@ -7,7 +7,7 @@ enum StreamingQueueMessageType {
   StreamingQueueCheckMsgType = 1;
   StreamingQueueCheckRspMsgType = 2;
   StreamingQueueNotificationMsgType = 3;
-  StreamingQueueTestInitMessageType = 4;
+  StreamingQueueTestInitMsgType = 4;
   StreamingQueueTestCheckStatusRspMsgType = 5;
 }
 
@@ -52,7 +52,7 @@ enum StreamingQueueTestRole {
   READER = 1;
 }
 
-message StreamingQueueTestInitMessage {
+message StreamingQueueTestInitMsg {
   StreamingQueueTestRole role = 1;
   bytes src_actor_id = 2;
   bytes dst_actor_id = 3;

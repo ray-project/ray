@@ -385,7 +385,7 @@ class StreamingWorker {
         (queue::protobuf::StreamingQueueMessageType *)p_cur;
     STREAMING_CHECK(
         *type ==
-        queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMessageType);
+        queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMsgType);
     std::shared_ptr<TestInitMessage> message = TestInitMessage::FromBytes(bytes);
 
     STREAMING_LOG(INFO) << "Init message: " << message->ToString();

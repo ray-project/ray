@@ -170,7 +170,7 @@ std::shared_ptr<CheckRspMessage> CheckRspMessage::FromBytes(uint8_t *bytes) {
 }
 
 void TestInitMessage::ToProtobuf(std::string *output) {
-  queue::protobuf::StreamingQueueTestInitMessage msg;
+  queue::protobuf::StreamingQueueTestInitMsg msg;
   msg.set_role(role_);
   msg.set_src_actor_id(actor_id_.Binary());
   msg.set_dst_actor_id(peer_actor_id_.Binary());
@@ -194,7 +194,7 @@ std::shared_ptr<TestInitMessage> TestInitMessage::FromBytes(
   bytes += sizeof(uint64_t);
 
   std::string inputpb(reinterpret_cast<char const*>(bytes), *length);
-  queue::protobuf::StreamingQueueTestInitMessage message;
+  queue::protobuf::StreamingQueueTestInitMsg message;
   message.ParseFromString(inputpb);
   queue::protobuf::StreamingQueueTestRole role = message.role();
   ActorID src_actor_id = ActorID::FromBinary(message.src_actor_id());
