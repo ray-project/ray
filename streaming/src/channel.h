@@ -45,6 +45,17 @@ struct ConsumerChannelInfo {
   ActorID actor_id;
 };
 
+/// There are two types of channel:
+///   * ProducerChannel
+///    * ConsumerChannel
+///  They share similar interfaces:
+///    * CreateTransferChannel
+///    * DestoryTransferChannel
+///    * ClearTransferCheckpoint(it's empty and supported now, we will add 
+///      implementation in next PR)
+///    * NotifychannelConsumed
+///  but some differences in read/write function.(named ProduceItemTochannel and
+///  ConsumeItemFrom channel)
 class ProducerChannel {
  public:
   explicit ProducerChannel(std::shared_ptr<Config> &transfer_config,
