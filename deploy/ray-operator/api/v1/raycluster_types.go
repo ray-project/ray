@@ -68,6 +68,9 @@ type Extension struct {
 	// logic groupName for worker in same group, can be functional or in size meaning
 	GroupName string `json:"groupName,omitempty"`
 
+	// command to start ray
+	Command string `json:"command,omitempty"`
+
 	// labels for pod, raycluster.component and rayclusters.ray.io/component-name are default labels, do not overwrite them.
 	Labels map[string]string `json:"labels,omitempty"`
 

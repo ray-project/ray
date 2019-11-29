@@ -20,10 +20,17 @@ spec:
       # pod type
       type: worker
 
+      # Command to start ray
+      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+
       # custom labels. NOTE: do not define custom labels start with `raycluster.`, they may be used in controller.
       # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
       labels:
         raycluster.group.name: small-group
+
+      # annotations for pod
+      annotations:
+        key: value
 
       # use affinity to select nodes.Optional.
       # Refer to https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
@@ -100,6 +107,13 @@ spec:
       labels:
         raycluster.group.name: medium-group
 
+      # annotations for pod
+      annotations:
+        key: value
+
+      # Command to start ray
+      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+
       # use affinity to select nodes.Optional.
       # Refer to https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity
       affinity:
@@ -174,6 +188,13 @@ spec:
       # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
       labels:
         raycluster.group.name: headgroup
+
+      # annotations for pod
+      annotations:
+        key: value
+
+      # Command to start ray
+      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
 
       # use affinity to select nodes.Optional.
       # Refer to https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity

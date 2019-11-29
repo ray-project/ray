@@ -25,6 +25,9 @@ spec:
       labels:
         raycluster.group.name: small-group
 
+      # Command to start ray
+      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
       resources:
@@ -66,6 +69,9 @@ spec:
       labels:
         raycluster.group.name: medium-group
 
+      # Command to start ray
+      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
+
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
       resources:
@@ -106,6 +112,9 @@ spec:
       # Refer to https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
       labels:
         raycluster.group.name: head-group
+
+      # Command to start ray
+      command: ray stop; ulimit -n 65536; ray start --object-manager-port=8076
 
       # resource requirements
       # Refer to https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/

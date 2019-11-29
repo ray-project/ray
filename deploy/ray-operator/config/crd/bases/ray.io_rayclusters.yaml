@@ -663,6 +663,9 @@ spec:
                       type: string
                     description: Annotations for pod.Optional
                     type: object
+                  command:
+                    description: Command to start ray
+                    type: string
                   containerEnv:
                     description: List of environment variables to set in the container.Optional
                     items:
@@ -769,7 +772,7 @@ spec:
                     type: array
                   groupName:
                     description: logic groupName for worker in same group, can be
-                      functional or in size level
+                      functional or in size meaning
                     type: string
                   headServiceSuffix:
                     description: 'Head service suffix. So head can be accessed by
