@@ -89,7 +89,11 @@ if __name__ == "__main__":
         use_pickle=args.use_pickle)
 
     node = ray.node.Node(
-        ray_params, head=False, shutdown_at_exit=False, connect_only=True)
+        ray_params,
+        head=False,
+        shutdown_at_exit=False,
+        spawn_reaper=False,
+        connect_only=True)
     ray.worker._global_node = node
     ray.worker.connect(node, mode=ray.WORKER_MODE)
     ray.worker.global_worker.main_loop()

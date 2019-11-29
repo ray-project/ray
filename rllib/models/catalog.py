@@ -170,6 +170,10 @@ class ModelCatalog(object):
                                           "supported for Pytorch.")
             return partial(MultiCategorical, input_lens=action_space.nvec), \
                 int(sum(action_space.nvec))
+        elif isinstance(action_space, gym.spaces.Dict):
+            raise NotImplementedError(
+                "Dict action spaces are not supported, consider using "
+                "gym.spaces.Tuple instead")
 
         return dist, dist.required_model_output_shape(action_space, config)
 
@@ -204,6 +208,10 @@ class ModelCatalog(object):
                     all_discrete = False
                     size += np.product(action_space.spaces[i].shape)
             return (tf.int64 if all_discrete else tf.float32, (None, size))
+        elif isinstance(action_space, gym.spaces.Dict):
+            raise NotImplementedError(
+                "Dict action spaces are not supported, consider using "
+                "gym.spaces.Tuple instead")
         else:
             raise NotImplementedError("action space {}"
                                       " not supported".format(action_space))
