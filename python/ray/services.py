@@ -1233,7 +1233,7 @@ def build_java_worker_command(
 
     if redis_address is not None:
         command += "-Dray.redis.address={} ".format(redis_address)
-    command += "-Dray.raylet.node-manager-port={}".format(node_manager_port)
+    command += "-Dray.raylet.node-manager-port={} ".format(node_manager_port)
 
     if plasma_store_name is not None:
         command += (
