@@ -35,7 +35,8 @@ class MockWorker {
                      const std::vector<ObjectID> &return_ids,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Note that this doesn't include dummy object id.
-    const std::vector<std::string> &function_descriptor = ray_function.GetFunctionDescriptor();
+    const std::vector<std::string> &function_descriptor =
+        ray_function.GetFunctionDescriptor();
     RAY_CHECK(return_ids.size() >= 0 && 1 == function_descriptor.size());
 
     if ("actor creation task" == function_descriptor[0]) {
