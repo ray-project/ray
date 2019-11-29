@@ -1,7 +1,7 @@
 #include "src/ray/rpc/grpc_server.h"
 
-#include <boost/asio/detail/socket_holder.hpp>
 #include <grpcpp/impl/service_type.h>
+#include <boost/asio/detail/socket_holder.hpp>
 
 namespace {
 
@@ -12,7 +12,7 @@ bool PortNotInUse(int port) {
   server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   server_addr.sin_port = htons(port);
   return fd.get() >= 0 &&
-    bind(fd.get(), (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0;
+         bind(fd.get(), (struct sockaddr *)&server_addr, sizeof(server_addr)) == 0;
 }
 
 }  // namespace
