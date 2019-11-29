@@ -16,8 +16,9 @@
 namespace ray {
 namespace streaming {
 
+/// Databundle is super-bundle that contains channel information (upstream
+/// channel id & bundle meta data) and raw buffer pointer.
 struct DataBundle {
-  // it's immutable data point
   uint8_t *data = nullptr;
   uint32_t data_size;
   ObjectID from;
@@ -25,20 +26,28 @@ struct DataBundle {
   StreamingMessageBundleMetaPtr meta;
 };
 
+/// There is implementation of merger policy in StreamingReaderMsgPtrComparator.
 struct StreamingReaderMsgPtrComparator {
-  StreamingReaderMsgPtrComparator()= default;;
+  StreamingReaderMsgPtrComparator() = default;
+  ;
   bool operator()(const std::shared_ptr<DataBundle> &a,
                   const std::shared_ptr<DataBundle> &b);
 };
 
+/// DataReader will fetch data bundles from channels of upstream workers, once
+/// invoked user thread. Firstly put them into a priority queue ordered by bundle
+/// comparator that's related meta-data, then pop out the top bunlde to user
+/// thread every time, so that the order of the message can be guranteed, which
+/// will also facilitate our future implementation of fault tolerance. Finally
+/// user thread can extract messages from the bundle and process one by one.
 class DataReader {
  private:
   std::vector<ObjectID> input_queue_ids_;
 
   std::vector<ObjectID> unready_queue_ids_;
 
-  std::unique_ptr<PriorityQueue<std::shared_ptr<DataBundle>,
-                                StreamingReaderMsgPtrComparator>>
+  std::unique_ptr<
+      PriorityQueue<std::shared_ptr<DataBundle>, StreamingReaderMsgPtrComparator>>
       reader_merger_;
 
   std::shared_ptr<DataBundle> last_fetched_queue_item_;
@@ -81,8 +90,7 @@ class DataReader {
   ///  Get latest message from input queues
   ///  \param timeout_ms
   ///  \param message, return the latest message
-  StreamingStatus GetBundle(uint32_t timeout_ms,
-                            std::shared_ptr<DataBundle> &message);
+  StreamingStatus GetBundle(uint32_t timeout_ms, std::shared_ptr<DataBundle> &message);
 
   ///  Get offset information about channels for checkpoint.
   ///  \param offset_map (return value)

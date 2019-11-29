@@ -15,6 +15,20 @@
 namespace ray {
 namespace streaming {
 
+/// DataWriter is designed for data transporting between upstream and //downstream.
+/// After the user sends the data, it does not immediately send the data to
+/// downstream, but caches it in the corresponding memory ring buffer. There is
+/// a spearate transfer thread(setup in WriterLoopForward function ) to collect
+/// the messages from all the ringbuffers, and write them to the corresponding
+/// transmission channel, which is backed StreamingQueue. Actually, the
+/// advantage is that the user thread will not be affected by the transmission
+/// speed during the data transfer. And also the transfer thread can automatically
+/// batch the catched data from memory buffer into a data bundle to reduce
+/// transmission overhead. In addtion, when there is no data in the ringbuffer,
+/// it will also send an empty bundle, so downstream can know that and process
+/// accordingly. It will sleep for a short interval to save cpu if all ring
+/// buffers have no data in that moment.
+
 class DataWriter {
  private:
   std::shared_ptr<std::thread> loop_thread_;
