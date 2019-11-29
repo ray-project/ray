@@ -78,17 +78,15 @@ To introduce the Ray-Operator, give 3 samples of RayCluster CR.
 
 Sample  | desc
 ------------- | -------------
-[RayCluster.mini.yaml](config/samples/ray_v1_raycluster.mini.yaml)   | 2 pods in this sample, 1 for head and 1 for workers.
-[RayCluster.heterogeneous.yaml](config/samples/ray_v1_raycluster.heterogeneous.yaml)  | 3 pods in this sample, 1 for head and 2 for workers but with different specifications.
-[RayCluster.complete.yaml](config/samples/ray_v1_raycluster.complete.yaml)  | a complete version CR for customized requirement, show how to set Customized props.
+[RayCluster.mini.yaml](config/samples/ray_v1_raycluster.mini.yaml)   | 2 pods in this sample, 1 for head and 1 for workers.The least information to start ray cluster, run in local test.
+[RayCluster.heterogeneous.yaml](config/samples/ray_v1_raycluster.heterogeneous.yaml)  | 3 pods in this sample, 1 for head and 2 for workers but with different specifications. Different quota(like CPU/MEMORY) compares to mini version, run in local test.
+[RayCluster.complete.yaml](config/samples/ray_v1_raycluster.complete.yaml)  | a complete version CR for customized requirement, show how to set Customized props. More props to set compares to heterogeneous version, run in production. 
 
 ## RayCluster CRD
 
 Refers to file [raycluster_types.go](api/v1/raycluster_types.go) for code details.
 
 If interested in CRD, refer to file [CRD](config/crd/bases/ray.io_rayclusters.yaml) for more details. 
-
-
 
 ## Software requirement
 Take care some software have dependency.  
@@ -113,6 +111,9 @@ kustomize build config/crd | kubectl apply -f -
 ```
 
 ### Deploy controller in the configured Kubernetes cluster in ~/.kube/config
+* For this version controller will run in system namespace, which maybe can't be tolerated in production.  
+* We will add more detailed RBAC file to control the namespace used in production, and the controller will run in that namespace to control the permission.  
+* Also we will provide the more detailed guide for user to run in a controlled way.
 ```shell script
 cd config/manager 
 kustomize build config/default | kubectl apply -f -
