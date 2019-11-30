@@ -444,7 +444,7 @@ def stop(force, verbose):
         ["plasma_store", True],
         ["raylet_monitor", True],
         ["monitor.py", False],
-        ["redis-server", True],
+        ["redis-server", False],
         ["default_worker.py", False],  # Python worker.
         ["ray::", True],  # Python worker.
         ["org.ray.runtime.runner.worker.DefaultWorker", False],  # Java worker.
