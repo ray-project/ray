@@ -783,6 +783,7 @@ void NodeManager::HandleActorStateTransition(const ActorID &actor_id,
     // creation task.
     reconstruction_policy_.ListenAndMaybeReconstruct(
         actor_registration.GetActorCreationDependency());
+
     // When an actor fails but can be reconstructed, resubmit all of the queued
     // tasks for that actor. This will mark the tasks as waiting for actor
     // creation.
@@ -1060,6 +1061,15 @@ void NodeManager::HandleDisconnectedActor(const ActorID &actor_id, bool was_loca
   };
   auto actor_notification = std::make_shared<ActorTableData>(new_actor_info);
   RAY_CHECK_OK(gcs_client_->Actors().AsyncUpdate(actor_id, actor_notification, done));
+
+  if (was_local && new_state == ActorTableData::RECONSTRUCTING) {
+    RAY_LOG(INFO) << "A local actor (id = " << actor_id
+                  << " ) is dead, reconstructing it.";
+    const ObjectID &actor_creation_dummy_object_id =
+        actor_registration.GetActorCreationDependency();
+    HandleTaskReconstruction(actor_creation_dummy_object_id.TaskId(),
+                             actor_creation_dummy_object_id);
+  }
 }
 
 void NodeManager::HandleWorkerAvailable(
