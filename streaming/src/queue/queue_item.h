@@ -8,7 +8,7 @@
 #include "ray/common/id.h"
 
 #include "message/message_bundle.h"
-#include "transport.h"
+#include "message.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
