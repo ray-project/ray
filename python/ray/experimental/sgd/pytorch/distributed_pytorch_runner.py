@@ -5,6 +5,7 @@ from __future__ import print_function
 import logging
 import torch.distributed as dist
 import torch.utils.data
+from torch.nn.parallel import DistributedDataParallel
 
 from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
 
@@ -51,10 +52,12 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     def _setup_training(self):
         logger.debug("Creating model")
-        self.model = self.model_creator(self.config)
+        models = self.model_creators(self.config)
+        if not isinstance(models, list):
+            self.models = [models]
         if torch.cuda.is_available():
-            self.model = self.model.cuda()
-        self.model = torch.nn.parallel.DistributedDataParallel(self.model)
+            self.models = [model.cuda() for model in self.models]
+        self.models = [DistributedDataParallel(model) for model in self.models]
 
         logger.debug("Creating optimizer.")
         self.optimizer = self.optimizer_creator(self.model, self.config)
