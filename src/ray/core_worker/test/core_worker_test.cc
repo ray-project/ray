@@ -190,6 +190,11 @@ class CoreWorkerTest : public ::testing::Test {
   bool WaitForDirectCallActorState(CoreWorker &worker, const ActorID &actor_id,
                                    bool wait_alive, int timeout_ms);
 
+  // Get the pid for the worker process that runs the actor.
+  int GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+                  std::unordered_map<std::string, double> &resources,
+                  bool is_direct_call);
+
   std::vector<std::string> raylet_socket_names_;
   std::vector<std::string> raylet_store_socket_names_;
   gcs::GcsClientOptions gcs_options_;
@@ -204,6 +209,29 @@ bool CoreWorkerTest::WaitForDirectCallActorState(CoreWorker &worker,
   };
 
   return WaitForCondition(condition_func, timeout_ms);
+}
+
+int CoreWorkerTest::GetActorPid(CoreWorker &worker, const ActorID &actor_id,
+                                std::unordered_map<std::string, double> &resources,
+                                bool is_direct_call) {
+  std::vector<TaskArg> args;
+  TaskOptions options{1, is_direct_call, resources};
+  std::vector<ObjectID> return_ids;
+  RayFunction func{Language::PYTHON, {"GetWorkerPid"}};
+
+  RAY_CHECK_OK(worker.SubmitActorTask(actor_id, func, args, options, &return_ids));
+
+  std::vector<std::shared_ptr<ray::RayObject>> results;
+  RAY_CHECK_OK(worker.Get(return_ids, -1, &results));
+
+  if (nullptr == results[0]->GetData()) {
+    // If failed to get actor process pid, return -1
+    return -1;
+  }
+
+  auto data = reinterpret_cast<char *>(results[0]->GetData()->Data());
+  std::string pid_string(data, results[0]->GetData()->Size());
+  return std::stoi(pid_string);
 }
 
 void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &resources) {
@@ -226,7 +254,7 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
           TaskArg::PassByValue(std::make_shared<RayObject>(buffer1, nullptr)));
       args.emplace_back(TaskArg::PassByReference(object_id));
 
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
       TaskOptions options;
       options.is_direct_call = true;
 
@@ -273,7 +301,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -313,7 +341,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {});
+    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
     auto status = driver.SubmitActorTask(actor_id, func, args, options, &return_ids);
     ASSERT_TRUE(status.ok());
 
@@ -344,6 +372,9 @@ void CoreWorkerTest::TestActorReconstruction(
   ASSERT_TRUE(WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
   RAY_LOG(INFO) << "actor has been created";
 
+  auto pid = GetActorPid(driver, actor_id, resources, is_direct_call);
+  RAY_CHECK(pid != -1);
+
   // Test submitting some tasks with by-value args for that actor.
   {
     const int num_tasks = 100;
@@ -355,10 +386,12 @@ void CoreWorkerTest::TestActorReconstruction(
         ASSERT_EQ(system("pkill mock_worker"), 0);
 
         // Wait for actor restruction event, and then for alive event.
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, false, 30 * 1000 /* 30s */));
-        ASSERT_TRUE(
-            WaitForDirectCallActorState(driver, actor_id, true, 30 * 1000 /* 30s */));
+        auto check_actor_restart_func = [this, pid, &driver, &actor_id, &resources,
+                                         is_direct_call]() -> bool {
+          auto new_pid = GetActorPid(driver, actor_id, resources, is_direct_call);
+          return new_pid != -1 && new_pid != pid;
+        };
+        ASSERT_TRUE(WaitForCondition(check_actor_restart_func, 30 * 1000 /* 30s */));
 
         RAY_LOG(INFO) << "actor has been reconstructed";
       }
@@ -373,7 +406,7 @@ void CoreWorkerTest::TestActorReconstruction(
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
       ASSERT_EQ(return_ids.size(), 1);
@@ -418,7 +451,7 @@ void CoreWorkerTest::TestActorFailure(std::unordered_map<std::string, double> &r
 
       TaskOptions options{1, false, resources};
       std::vector<ObjectID> return_ids;
-      RayFunction func(ray::Language::PYTHON, {});
+      RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
       RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
 
@@ -566,7 +599,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
 
     TaskOptions options{1, false, resources};
     std::vector<ObjectID> return_ids;
-    RayFunction func(ray::Language::PYTHON, {});
+    RayFunction func(ray::Language::PYTHON, {"MergeInputArgsAsOutput"});
 
     RAY_CHECK_OK(driver.SubmitActorTask(actor_id, func, args, options, &return_ids));
     ASSERT_EQ(return_ids.size(), 1);
