@@ -10,7 +10,7 @@ build --action_env=USE_CLANG_CL=1
 # Enable build:windows, build:linux, build:macos, build:freebsd
 build --enable_platform_specific_config
 # Warnings should be errors
-build --per_file_copt=-src/ray/thirdparty/hiredis/dict.c,-.*/arrow/util/logging.cc@-Werror
+build --per_file_copt=-.*/arrow/util/logging.cc@-Werror
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt='\\.pb\\.cc$@-w'
 build --per_file_copt='external/.*@-w'
