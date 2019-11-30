@@ -28,10 +28,10 @@ class PyTorchTrainer(object):
     """
 
     def __init__(self,
-                 model_creators,
-                 data_creators,
-                 optimizer_creators,
-                 loss_creators,
+                 model_creator,
+                 data_creator,
+                 optimizer_creator,
+                 loss_creator,
                  train_function=None,
                  validation_function=None,
                  initialization_hook=None,
@@ -43,14 +43,14 @@ class PyTorchTrainer(object):
         """Sets up the PyTorch trainer.
 
         Args:
-            model_creators (dict -> torch.nn.Module): creates the model
+            model_creator (dict -> torch.nn.Module): creates the model
                 using the config.
-            data_creators (int, dict -> DataLoader, DataLoader): Function that
+            data_creator (int, dict -> DataLoader, DataLoader): Function that
                 takes in (batch_size, config) and returns two Torch DataLoader
                 objects.
-            optimizer_creators (torch.nn.Module, dict -> optimizer):
+            optimizer_creator (torch.nn.Module, dict -> optimizer):
                 creates the loss and optimizer using the model and the config.
-            loss_creators (dict -> loss): Creates the loss function/criterion
+            loss_creator (dict -> loss): Creates the loss function/criterion
                 using the config.
             train_function: Trains a model for a epoch. This takes in (
                 model, train_dataloader, criterion, optimizer, config), and
@@ -58,8 +58,8 @@ class PyTorchTrainer(object):
             validation_function: Runs validation. This takes in (
                 model, val_dataloader, criterion, config) and returns a dict of
                 validation stats.
-            config (dict): configuration passed to "model_creators",
-                "data_creators", "optimizer_creators", and "loss_creators".
+            config (dict): configuration passed to "model_creator",
+                "data_creator", "optimizer_creator", and "loss_creator".
             num_replicas (int): the number of workers used in distributed
                 training.
             use_gpu (bool): Sets resource allocation for workers to 1 GPU
@@ -76,7 +76,7 @@ class PyTorchTrainer(object):
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        self.model_creators = model_creators
+        self.model_creator = model_creator
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -92,10 +92,10 @@ class PyTorchTrainer(object):
             # Start workers
             self.workers = [
                 Runner.remote(
-                    model_creators,
-                    data_creators,
-                    optimizer_creators,
-                    loss_creators,
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    loss_creator,
                     train_function=train_function,
                     validation_function=validation_function,
                     config=self.config,
@@ -123,10 +123,10 @@ class PyTorchTrainer(object):
             # Start workers
             self.workers = [
                 Runner.remote(
-                    model_creators,
-                    data_creators,
-                    optimizer_creators,
-                    loss_creators,
+                    model_creator,
+                    data_creator,
+                    optimizer_creator,
+                    loss_creator,
                     backend=backend,
                     train_function=train_function,
                     validation_function=validation_function,
@@ -171,7 +171,7 @@ class PyTorchTrainer(object):
 
     def get_model(self):
         """Returns the learned model."""
-        model = self.model_creators(self.config)
+        model = self.model_creator(self.config)
         state = ray.get(self.workers[0].get_state.remote())
         model.load_state_dict(state["model"])
         return model

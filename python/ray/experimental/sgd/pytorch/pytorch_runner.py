@@ -17,9 +17,9 @@ class PyTorchRunner(object):
     """Manages a PyTorch model for training."""
 
     def __init__(self,
-                 model_creators,
+                 model_creator,
                  data_creator,
-                 optimizer_creators,
+                 optimizer_creator,
                  loss_creator,
                  train_function=None,
                  validation_function=None,
@@ -28,10 +28,10 @@ class PyTorchRunner(object):
         """Initializes the runner.
 
         Args:
-            model_creators (dict -> torch.nn.Module): see pytorch_trainer.py
+            model_creator (dict -> torch.nn.Module): see pytorch_trainer.py
             data_creator (int, dict -> DataLoader, DataLoader): see
                 pytorch_trainer.py.
-            optimizer_creators (torch.nn.Module, dict -> loss, optimizer):
+            optimizer_creator (torch.nn.Module, dict -> loss, optimizer):
                 see pytorch_trainer.py.
             loss_creator (dict -> loss): see pytorch_trainer.py.
             train_function: see pytorch_trainer.py
@@ -39,9 +39,9 @@ class PyTorchRunner(object):
             config (dict): see pytorch_trainer.py.
             batch_size (int): see pytorch_trainer.py.
         """
-        self.model_creators = model_creators
+        self.model_creator = model_creator
         self.data_creator = data_creator
-        self.optimizer_creators = optimizer_creators
+        self.optimizer_creator = optimizer_creator
         self.loss_creator = loss_creator
         self.config = {} if config is None else config
         self.train_function = train_function or pytorch_utils.train
@@ -68,14 +68,14 @@ class PyTorchRunner(object):
     def setup(self):
         """Initializes the model."""
         logger.debug("Creating model")
-        models = self.model_creators(self.config)
+        models = self.model_creator(self.config)
         if not isinstance(models, list):
             self.models = [models]
         if torch.cuda.is_available():
             self.models = [model.cuda() for model in self.models]
 
         logger.debug("Creating optimizer")
-        optimizers = self.optimizer_creators(self.given_models, self.config)
+        optimizers = self.optimizer_creator(self.given_models, self.config)
         if not isinstance(optimizers, list):
             self.optimizers = [optimizers]
         self.criterion = self.loss_creator(self.config)

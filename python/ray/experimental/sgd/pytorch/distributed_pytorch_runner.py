@@ -52,7 +52,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
 
     def _setup_training(self):
         logger.debug("Creating model")
-        models = self.model_creators(self.config)
+        models = self.model_creator(self.config)
         if not isinstance(models, list):
             self.models = [models]
         if torch.cuda.is_available():
