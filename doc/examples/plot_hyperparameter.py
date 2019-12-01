@@ -73,13 +73,6 @@ def get_data_loaders(batch_size):
         shuffle=True)
     return train_loader, test_loader
 
-#######################################################################
-# Setup: Defining the Neural Network
-# ----------------------------------
-#
-# We define a small neural network to use in training. In addition, 
-# we created methods to train and test this neural network 
-
 
 #######################################################################
 # Setup: Defining the Neural Network
@@ -141,16 +134,6 @@ def test(model, test_loader, device=torch.device("cpu")):
 
     return correct / total
 
-#######################################################################
-# Evaluating the Hyperparameters
-# -------------------------------
-#
-# For a given configuration, the neural network created previously
-# will be trained and return the accuracy of the model. These trained 
-# networks will then be tested for accuracy to find the best set of 
-# hyperparameters.
-#
-# The ``@ray.remote`` decorator defines a remote process.
 
 #######################################################################
 # Evaluating the Hyperparameters
@@ -174,13 +157,6 @@ def evaluate_hyperparameters(config):
         momentum=config["momentum"])
     train(model, optimizer, train_loader)
     return test(model, test_loader)
-
-#######################################################################
-# Synchronous Evaluation of Randomly Generated Hyperparameters
-# ------------------------------------------------------------
-#
-# We will create multiple sets of random hyperparameters for our neural
-# network that will be evaluated in parallel.
 
 
 #######################################################################
