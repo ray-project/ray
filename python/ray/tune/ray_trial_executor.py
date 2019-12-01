@@ -573,7 +573,7 @@ class RayTrialExecutor(TrialExecutor):
         This will also sync the trial results to a new location
         if restoring on a different node.
         """
-        if not checkpoint or checkpoint.value is None:
+        if checkpoint is None or checkpoint.value is None:
             checkpoint = trial.checkpoint
         if checkpoint.value is None:
             return True
