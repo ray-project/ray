@@ -1,10 +1,15 @@
 import ray
-from actor_pool import ActorPool
-
-ray.init()
+from ray.experimental import ActorPool
 
 
-def test_get_next():
+@pytest.fixture
+def init():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
+def test_get_next(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -23,7 +28,7 @@ def test_get_next():
         assert pool.get_next() == i + 1
 
 
-def test_get_next_unordered():
+def test_get_next_unordered(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -48,7 +53,7 @@ def test_get_next_unordered():
     assert all(elem in [1, 2, 3, 4, 5] for elem in total)
 
 
-def test_map():
+def test_map(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -69,7 +74,7 @@ def test_map():
         index += 1
 
 
-def test_map_unordered():
+def test_map_unordered(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -91,7 +96,7 @@ def test_map_unordered():
     assert all(elem in [0, 2, 4, 6, 8] for elem in total)
 
 
-def test_get_next_timeout():
+def test_get_next_timeout(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -112,7 +117,7 @@ def test_get_next_timeout():
         assert pool.get_next(1) == i + 1
 
 
-def test_get_next_unordered_timeout():
+def test_get_next_unordered_timeout(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -139,7 +144,7 @@ def test_get_next_unordered_timeout():
     assert all(elem in [1, 2, 3, 4, 5] for elem in total)
 
 
-def test_get_next_and_unordered():
+def test_get_next_and_unordered(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
@@ -159,7 +164,7 @@ def test_get_next_and_unordered():
         pool.get_next_unordered()
 
 
-def test_get_next_unordered_and_ordered():
+def test_get_next_unordered_and_ordered(init):
     @ray.remote
     class MyActor(object):
         def __init__(self):
