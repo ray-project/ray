@@ -18,7 +18,6 @@ from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 
-
 if sys.version_info >= (3, 3):
     from unittest.mock import patch
 else:

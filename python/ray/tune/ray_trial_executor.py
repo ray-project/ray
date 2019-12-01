@@ -242,8 +242,9 @@ class RayTrialExecutor(TrialExecutor):
                 # Note that we don't return the resources, since they may
                 # have been lost. TODO(ujvl): is this the right thing to do?
         else:
-            logger.exception("Trial %s: Error starting runner, aborting!",
-                             trial)
+            logger.exception(
+                "Trial %s: Aborting trial after %s start "
+                "attempts!", trial, TRIAL_START_ATTEMPTS)
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
@@ -576,7 +577,7 @@ class RayTrialExecutor(TrialExecutor):
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial.checkpoint
         if checkpoint.value is None:
-            return True
+            return
         if trial.runner is None:
             raise RuntimeError(
                 "Trial {}: Unable to restore - no runner found.".format(trial))
