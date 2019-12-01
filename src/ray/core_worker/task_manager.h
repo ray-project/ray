@@ -80,6 +80,11 @@ class TaskManager : public TaskFinisherInterface {
   /// Map from task ID to a pair of:
   ///   {task spec, number of allowed retries left}
   /// This map contains one entry per pending task that we submitted.
+  /// TODO(swang): The TaskSpec protobuf must be copied into the
+  /// PushTaskRequest protobuf when sent to a worker so that we can retry it if
+  /// the worker fails. We could avoid this by either not caching the full
+  /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
+  /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
   absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
       GUARDED_BY(mu_);
 };
