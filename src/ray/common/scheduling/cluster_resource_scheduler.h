@@ -83,9 +83,9 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
-  std::stringstream NodeResourcesPrint(const NodeResources& node_resources);
-  std::stringstream TaskRequestPrint(const TaskRequest& task_request);
-  std::stringstream Print(void);
+  std::string TaskRequestPrint(const TaskRequest& task_request);
+  std::string NodeResourcesPrint(const NodeResources& node_resources);
+  std::string Print(void);
 
  public:
   ClusterResourceScheduler(void){};
@@ -205,7 +205,16 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &resource_map_available,
       NodeResources *node_resources);
 
+  void UpdateResourceCapacity(const std::string& client_id,
+      const std::string& resource_name, int64_t resource_total);
+
+  void DeleteResource(const std::string& client_id_string,
+      const std::string& resource_name);
+
+  bool EqualNodeResources(
+      const NodeResources &node_resources1, const NodeResources &node_resources2);
 };
+
 
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H
