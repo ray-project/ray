@@ -7,11 +7,10 @@ import pickle
 import threading
 
 import ray
-import ray.streaming.runtime.queue.streaming_queue as streaming_queue
+import ray.streaming._streaming as _streaming
+from ray.streaming.config import Config
 from ray.function_manager import FunctionDescriptor
 from ray.streaming.communication import DataInput, DataOutput
-from ray.streaming.config import Config
-from ray.streaming.runtime.queue.memory_queue import MemQueueLinkImpl
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +27,7 @@ class JobWorker(object):
         the instance (see: DataOutput in communication.py).
         the operator instance.
     """
+
     def __init__(self, worker_id, operator,
                  input_channels, output_channels):
         self.env = None
@@ -37,32 +37,40 @@ class JobWorker(object):
         processor_instance = operator.processor_class(operator)
         self.processor_name = processor_name
         self.processor_instance = processor_instance
-        self.queue_link = None
         self.input_channels = input_channels
         self.output_channels = output_channels
         self.input_gate = None
         self.output_gate = None
+        self.reader_client = None
+        self.writer_client = None
 
     def init(self, env):
         """init streaming actor"""
         env = pickle.loads(env)
         logger.info("init operator instance %s", self.__class__.__name__)
         self.env = env
-        if self.env.config.queue_type == Config.MEMORY_QUEUE:
-            self.queue_link = MemQueueLinkImpl()
-        else:
-            sync_func = FunctionDescriptor(__name__, self.on_streaming_transfer_sync.__name__,
-                                           self.__class__.__name__)
-            async_func = FunctionDescriptor(__name__, self.on_streaming_transfer.__name__,
-                                            self.__class__.__name__)
-            self.queue_link = streaming_queue.QueueLinkImpl(sync_func, async_func)
-        runtime_conf = {Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id}
-        self.queue_link.set_ray_runtime(runtime_conf)
+
+        if env.config.queue_type == Config.NATIVE_QUEUE:
+            core_worker = ray.worker.global_worker.core_worker
+            reader_async_func = FunctionDescriptor(__name__, self.on_reader_message.__name__,
+                                                   self.__class__.__name__)
+            reader_sync_func = FunctionDescriptor(__name__, self.on_reader_message_sync.__name__,
+                                                  self.__class__.__name__)
+            self.reader_client = _streaming.ReaderClient(core_worker,
+                                                         reader_async_func,
+                                                         reader_sync_func)
+            writer_async_func = FunctionDescriptor(__name__, self.on_writer_message.__name__,
+                                                   self.__class__.__name__)
+            writer_sync_func = FunctionDescriptor(__name__, self.on_writer_message_sync.__name__,
+                                                  self.__class__.__name__)
+            self.writer_client = _streaming.WriterClient(core_worker,
+                                                         writer_async_func,
+                                                         writer_sync_func)
         if len(self.input_channels) > 0:
-            self.input_gate = DataInput(env, self.queue_link, self.input_channels)
+            self.input_gate = DataInput(env, self.input_channels)
             self.input_gate.init()
         if len(self.output_channels) > 0:
-            self.output_gate = DataOutput(env, self.queue_link, self.output_channels,
+            self.output_gate = DataOutput(env, self.output_channels,
                                           self.operator.partitioning_strategies)
             self.output_gate.init()
         logger.info("init operator instance %s succeed", self.__class__.__name__)
@@ -74,7 +82,6 @@ class JobWorker(object):
         self.t.start()
         actor_id = ray.worker.global_worker.actor_id
         logger.info("%s %s started, actor id %s", self.__class__.__name__, self.processor_name, actor_id)
-        # self.t.join()
 
     def run(self):
         logger.info("%s start running", self.processor_name)
@@ -91,13 +98,24 @@ class JobWorker(object):
     def is_finished(self):
         return not self.t.is_alive()
 
-    def on_streaming_transfer(self, buffer: ray._raylet.Buffer):
+    def on_reader_message(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        self.queue_link.on_streaming_transfer(buffer.to_pybytes())
+        self.reader_client.on_reader_message(buffer)
 
-    def on_streaming_transfer_sync(self, buffer: ray._raylet.Buffer):
+    def on_reader_message_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        if self.queue_link is None:
-            return b' '*4  # special flag to indicate this actor not ready
-        result = self.queue_link.on_streaming_transfer_sync(buffer.to_pybytes())
+        if self.reader_client is None:
+            return b' ' * 4  # special flag to indicate this actor not ready
+        result = self.reader_client.on_reader_message_sync(buffer)
+        return result
+
+    def on_writer_message(self, buffer: ray._raylet.Buffer):
+        """used in direct call mode"""
+        self.writer_client.on_writer_message_sync(buffer)
+
+    def on_writer_message_sync(self, buffer: ray._raylet.Buffer):
+        """used in direct call mode"""
+        if self.writer_client is None:
+            return b' ' * 4  # special flag to indicate this actor not ready
+        result = self.writer_client.on_writer_message_sync(buffer)
         return result

@@ -10,7 +10,7 @@ import time
 import networkx as nx
 import ray
 import ray.streaming.processor as processor
-import ray.streaming.runtime.queue.queue_utils as queue_utils
+import ray.streaming.runtime.channel as channel
 from ray.streaming.communication import DataChannel
 from ray.streaming.config import Config
 from ray.streaming.jobworker import JobWorker
@@ -110,8 +110,8 @@ class ExecutionGraph:
         handles = []
         for i in range(num_instances):
             # Collect input and output channels for the particular instance
-            ip = [channel for channel in upstream_channels if channel.dst_instance_index == i]
-            op = [channel for channel in downstream_channels if channel.src_instance_index == i]
+            ip = [c for c in upstream_channels if c.dst_instance_index == i]
+            op = [c for c in downstream_channels if c.src_instance_index == i]
             log = "Constructed {} input and {} output channels "
             log += "for the {}-th instance of the {} operator."
             logger.debug(log.format(len(ip), len(op), i, operator.type))
@@ -123,8 +123,8 @@ class ExecutionGraph:
 
     # Adds a channel/edge to the physical dataflow graph
     def __add_channel(self, actor_id, output_channels):
-        for channel in output_channels:
-            dest_actor_id = (channel.dst_operator_id, channel.dst_instance_index)
+        for c in output_channels:
+            dest_actor_id = (c.dst_operator_id, c.dst_instance_index)
             self.physical_topo.add_edge(actor_id, dest_actor_id)
 
     # Generates all required data channels between an operator
@@ -152,14 +152,14 @@ class ExecutionGraph:
                     # ID of destination instance to connect
                     id = i % num_dest_instances
                     qid = self._gen_str_qid(operator.id, i, dst_operator, id)
-                    channel = DataChannel(operator.id, i, dst_operator, id, qid)
-                    entry.append(channel)
+                    c = DataChannel(operator.id, i, dst_operator, id, qid)
+                    entry.append(c)
             elif p_scheme.strategy in all_to_all_strategies:
                 for i in range(operator.num_instances):
                     for j in range(num_dest_instances):
                         qid = self._gen_str_qid(operator.id, i, dst_operator, j)
-                        channel = DataChannel(operator.id, i, dst_operator, j, qid)
-                        entry.append(channel)
+                        c = DataChannel(operator.id, i, dst_operator, j, qid)
+                        entry.append(c)
             else:
                 # TODO (john): Add support for other partitioning strategies
                 sys.exit("Unrecognized or unsupported partitioning strategy.")
@@ -169,7 +169,7 @@ class ExecutionGraph:
                      dst_operator_id, dst_instance_index):
         from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_index)
         to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_index)
-        return queue_utils.generate_qid(from_task_id, to_task_id, self.build_time)
+        return channel.generate_qid(from_task_id, to_task_id, self.build_time)
 
     def _gen_task_id(self):
         task_id = self.task_id_counter
@@ -244,11 +244,11 @@ class ExecutionGraph:
         output_channels = {}
         for op_id, all_downstream_channels in channels.items():
             for dst_op_channels in all_downstream_channels.values():
-                for channel in dst_op_channels:
-                    dst = input_channels.setdefault(channel.dst_operator_id, [])
-                    dst.append(channel)
-                    src = output_channels.setdefault(channel.src_operator_id, [])
-                    src.append(channel)
+                for c in dst_op_channels:
+                    dst = input_channels.setdefault(c.dst_operator_id, [])
+                    dst.append(c)
+                    src = output_channels.setdefault(c.src_operator_id, [])
+                    src.append(c)
         self.input_channels = input_channels
         self.output_channels = output_channels
 

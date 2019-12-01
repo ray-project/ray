@@ -1,6 +1,6 @@
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr, make_shared, dynamic_pointer_cast
+from libcpp.memory cimport shared_ptr, make_shared
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.list cimport list as c_list
@@ -41,10 +41,10 @@ from ray.streaming.includes.libstreaming cimport (
 
 import logging
 from ray.function_manager import FunctionDescriptor
-from ray.streaming.runtime.queue.queue_interface import QueueInitException, QueueInterruptException
+import ray.streaming.runtime.channel as channel
 
 
-queue_logger = logging.getLogger(__name__)
+channel_logger = logging.getLogger(__name__)
 
 
 cdef class ReaderClient:
@@ -143,14 +143,12 @@ cdef class DataWriter:
         raise Exception("use create() to create DataWriter")
 
     @staticmethod
-    def create(self,
-                list py_output_channels,
-                list output_actor_ids: list[ActorID],
-                uint64_t queue_size,
-                list py_msg_ids,
-                bytes config_bytes):
-        if self.producer:
-            return self.producer
+    def create(list py_output_channels,
+               list output_actor_ids: list[ActorID],
+               uint64_t queue_size,
+               list py_msg_ids,
+               bytes config_bytes,
+               c_bool is_mock):
         cdef:
             c_vector[CObjectID] channel_ids = bytes_list_to_qid_vec(py_output_channels)
             c_vector[CActorID] actor_ids
@@ -163,9 +161,11 @@ cdef class DataWriter:
             msg_ids.push_back(<uint64_t>py_msg_id)
 
         cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
+        if is_mock:
+            ctx.get().MarkMockTest()
         if config_bytes:
             config_data = config_bytes
-            queue_logger.info("load config, config bytes size: %s", config_data.nbytes)
+            channel_logger.info("load config, config bytes size: %s", config_data.nbytes)
             ctx.get().SetConfig(<uint8_t *>(&config_data[0]), config_data.nbytes)
         c_writer = new CDataWriter(ctx)
         cdef:
@@ -175,23 +175,23 @@ cdef class DataWriter:
             queue_size_vec.push_back(queue_size)
         cdef CStreamingStatus status = c_writer.Init(channel_ids, actor_ids, msg_ids, queue_size_vec)
         if remain_id_vec.size() != 0:
-            queue_logger.warning("failed queue amounts => %s", remain_id_vec.size())
+            channel_logger.warning("failed queue amounts => %s", remain_id_vec.size())
         if <uint32_t>status != <uint32_t> libstreaming.StatusOK:
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
-            queue_logger.error(msg)
+            channel_logger.error(msg)
             del c_writer
-            raise QueueInitException(msg, qid_vector_to_list(remain_id_vec))
+            raise channel.ChannelInitException(msg, qid_vector_to_list(remain_id_vec))
 
         c_writer.Run()
-        queue_logger.info("create native producer succeed")
-        cdef DataWriter writer = DataWriter.__new__()
+        channel_logger.info("create native writer succeed")
+        cdef DataWriter writer = DataWriter.__new__(DataWriter)
         writer.writer = c_writer
         return writer
 
     def __dealloc__(self):
         if self.writer != NULL:
             del self.writer
-            queue_logger.info("deleted StreamingWriter")
+            channel_logger.info("deleted DataWriter")
             self.writer = NULL
 
     def write(self, ObjectID qid, const unsigned char[:] value):
@@ -207,7 +207,7 @@ cdef class DataWriter:
 
     def stop(self):
         self.writer.Stop()
-        queue_logger.info("stopped DataWriter")
+        channel_logger.info("stopped DataWriter")
 
 
 cdef class DataReader:
@@ -220,16 +220,14 @@ cdef class DataReader:
         raise Exception("use create() to create DataReader")
 
     @staticmethod
-    def create(self,
-                list py_input_queues,
-                list input_actor_ids: list[ActorID],
-                list py_seq_ids,
-                list py_msg_ids,
-                int64_t timer_interval,
-                c_bool is_recreate,
-                bytes config_bytes):
-        if self.consumer:
-            return self.consumer
+    def create(list py_input_queues,
+               list input_actor_ids: list[ActorID],
+               list py_seq_ids,
+               list py_msg_ids,
+               int64_t timer_interval,
+               c_bool is_recreate,
+               bytes config_bytes,
+               c_bool is_mock):
         cdef:
             c_vector[CObjectID] queue_id_vec = bytes_list_to_qid_vec(py_input_queues)
             c_vector[CActorID] actor_ids
@@ -246,22 +244,24 @@ cdef class DataReader:
         cdef shared_ptr[CRuntimeContext] ctx = make_shared[CRuntimeContext]()
         if config_bytes:
             config_data = config_bytes
-            queue_logger.info("load config, config bytes size: %s", config_data.nbytes)
+            channel_logger.info("load config, config bytes size: %s", config_data.nbytes)
             ctx.get().SetConfig(<uint8_t *>(&(config_data[0])), config_data.nbytes)
+        if is_mock:
+            ctx.get().MarkMockTest()
         c_reader = new CDataReader(ctx)
         c_reader.Init(queue_id_vec, actor_ids, seq_ids, msg_ids, timer_interval)
-        queue_logger.info("create native consumer succeed")
-        cdef DataReader reader = DataReader.__new__()
+        channel_logger.info("create native reader succeed")
+        cdef DataReader reader = DataReader.__new__(DataReader)
         reader.reader = c_reader
         return reader
 
     def __dealloc__(self):
         if self.reader != NULL:
             del self.reader
-            queue_logger.info("deleted DataReader")
+            channel_logger.info("deleted DataReader")
             self.reader = NULL
 
-    def pull(self, uint32_t timeout_millis):
+    def read(self, uint32_t timeout_millis):
         cdef:
             shared_ptr[CDataBundle] bundle
             CStreamingStatus status
@@ -270,11 +270,11 @@ cdef class DataReader:
         cdef uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
         if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
             if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
-                raise QueueInterruptException("consumer interrupted")
+                raise channel.ChannelInterruptException("reader interrupted")
             elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
-                raise Exception("init queue failed")
+                raise Exception("init channel failed")
             elif <uint32_t> status == <uint32_t> libstreaming.StatusWaitQueueTimeOut:
-                raise Exception("wait queue object timeout")
+                raise Exception("wait channel object timeout")
         cdef:
             uint32_t msg_nums
             CObjectID queue_id
@@ -303,7 +303,7 @@ cdef class DataReader:
 
     def stop(self):
         self.reader.Stop()
-        queue_logger.info("stopped DataReader")
+        channel_logger.info("stopped DataReader")
 
 
 cdef c_vector[CObjectID] bytes_list_to_qid_vec(list py_queue_ids) except *:

@@ -61,7 +61,9 @@ cdef extern from "status.h" namespace "ray::streaming" nogil:
 cdef extern from "runtime_context.h" namespace "ray::streaming" nogil:
     cdef cppclass CRuntimeContext "ray::streaming::RuntimeContext":
         CRuntimeContext()
-        void SetConfig(const uint8_t *data, uint32_t size);
+        void SetConfig(const uint8_t *data, uint32_t size)
+        inline void MarkMockTest()
+        inline c_bool IsMockTest()
 
 cdef extern from "message/message.h" namespace "ray::streaming" nogil:
     cdef cppclass CStreamingMessageType "ray::streaming::StreamingMessageType":

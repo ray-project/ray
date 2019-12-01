@@ -8,8 +8,11 @@ import pickle
 import sys
 import time
 
+import ray
 from ray.streaming.operator import PStrategy
-from ray.streaming.runtime.queue.queue_interface import QueueID
+from ray.streaming.runtime.channel import ChannelID
+from ray.streaming.config import Config
+import ray.streaming.runtime.channel as channel
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -49,7 +52,7 @@ class DataChannel(object):
         self.dst_operator_id = dst_operator_id
         self.dst_instance_index = dst_instance_index
         self.str_qid = str_qid
-        self.qid = QueueID(str_qid)
+        self.qid = ChannelID(str_qid)
 
     def __repr__(self):
         return "(src({},{}),dst({},{}), qid({}))".format(
@@ -78,11 +81,10 @@ class DataInput(object):
          closed (True) or not (False).
     """
 
-    def __init__(self, env, queue_link, channels):
+    def __init__(self, env, channels):
         assert len(channels) > 0
         self.env = env
-        self.queue_link = queue_link
-        self.consumer = None  # created in `init` method
+        self.reader = None  # created in `init` method
         self.input_channels = channels
         self.channel_index = 0
         self.max_index = len(channels)
@@ -90,20 +92,24 @@ class DataInput(object):
         self.closed = {}
 
     def init(self):
-        qids = [channel.str_qid for channel in self.input_channels]
+        channels = [c.str_qid for c in self.input_channels]
         input_actors = []
-        for channel in self.input_channels:
-            actor = self.env.execution_graph.get_actor(channel.src_operator_id, channel.src_instance_index)
+        for c in self.input_channels:
+            actor = self.env.execution_graph.get_actor(c.src_operator_id, c.src_instance_index)
             input_actors.append(actor)
         logger.info("DataInput input_actors %s", input_actors)
-        self.consumer = self.queue_link.register_queue_consumer(qids, input_actors)
+        conf = {
+            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id,
+            Config.QUEUE_TYPE: self.env.config.queue_type
+        }
+        self.reader = channel.DataReader(channels, input_actors, conf)
 
     def pull(self):
         # pull from queue
-        queue_item = self.consumer.pull(100)
+        queue_item = self.reader.read(100)
         while queue_item is None:
             time.sleep(0.001)
-            queue_item = self.consumer.pull(100)
+            queue_item = self.reader.read(100)
         msg_data = queue_item.body()
         if msg_data == _CLOSE_FLAG:
             self.closed[queue_item.queue_id] = True
@@ -140,11 +146,10 @@ class DataOutput(object):
          least one shuffle_key_channel.
     """
 
-    def __init__(self, env, queue_link, channels, partitioning_schemes):
+    def __init__(self, env, channels, partitioning_schemes):
         assert len(channels) > 0
         self.env = env
-        self.queue_link = queue_link
-        self.producer = None  # created in `init` method
+        self.writer = None  # created in `init` method
         self.channels = channels
         self.key_selector = None
         self.round_robin_indexes = [0]
@@ -203,15 +208,19 @@ class DataOutput(object):
         assert not (self.shuffle_exists and self.shuffle_key_exists)
 
     def init(self):
-        """init DataOutput which creates QueueProducer"""
-        qids = [channel.str_qid for channel in self.channels]
+        """init DataOutput which creates DataWriter"""
+        channel_ids = [c.str_qid for c in self.channels]
         to_actors = []
-        for channel in self.channels:
-            actor = self.env.execution_graph.get_actor(channel.dst_operator_id, channel.dst_instance_index)
+        for c in self.channels:
+            actor = self.env.execution_graph.get_actor(c.dst_operator_id, c.dst_instance_index)
             to_actors.append(actor)
         logger.info("DataOutput output_actors %s", to_actors)
 
-        self.producer = self.queue_link.register_queue_producer(qids, to_actors)
+        conf = {
+            Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id,
+            Config.QUEUE_TYPE: self.env.config.queue_type
+        }
+        self.writer = channel.DataWriter(channel_ids, to_actors, conf)
 
     def close(self):
         """Close the channel (True) by propagating _CLOSE_FLAG
@@ -220,7 +229,7 @@ class DataOutput(object):
         to sink to notify that the end of data in a stream.
         """
         for channel in self.channels:
-            self.producer.produce(channel.qid, _CLOSE_FLAG)
+            self.writer.write(channel.qid, _CLOSE_FLAG)
         # stop StreamingWriter may cause None flag not sent to peer actor
 
     # Pushes the record to the output
@@ -269,7 +278,7 @@ class DataOutput(object):
         msg_data = pickle.dumps(record)
         for channel in target_channels:
             # send data to queue
-            self.producer.produce(channel.qid, msg_data)
+            self.writer.write(channel.qid, msg_data)
 
     # Pushes a list of records to the output
     # Each individual output queue flushes batches to plasma periodically

@@ -3,4 +3,4 @@
 # cython: embedsignature = True
 # cython: language_level = 3
 
-include "includes/native_transfer.pxi"
+include "includes/native_channel.pxi"
