@@ -303,7 +303,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void DispatchTasks(
       const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class);
 
-  /// Handle a task that is blocked. This could be a task assigned to a worker,
+  /// Handle blocking gets of objects. This could be a task assigned to a worker,
   /// an out-of-band task (e.g., a thread created by the application), or a
   /// driver task. This can be triggered when a client starts a get call or a
   /// wait call.
@@ -311,24 +311,28 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param client The client that is executing the blocked task.
   /// \param required_object_ids The IDs that the client is blocked waiting for.
   /// \param current_task_id The task that is blocked.
-  /// \param ray_get Whether the task is blocked in a `ray.get` call, as
-  /// opposed to a `ray.wait` call.
+  /// \param ray_get Whether the task is blocked in a `ray.get` call.
+  /// \param mark_worker_blocked Whether to mark the worker as blocked. This
+  ///                            should be False for direct calls.
   /// \return Void.
-  void HandleTaskBlocked(const std::shared_ptr<LocalClientConnection> &client,
-                         const std::vector<ObjectID> &required_object_ids,
-                         const TaskID &current_task_id, bool ray_get);
+  void AsyncResolveObjects(const std::shared_ptr<LocalClientConnection> &client,
+                           const std::vector<ObjectID> &required_object_ids,
+                           const TaskID &current_task_id, bool ray_get,
+                           bool mark_worker_blocked);
 
-  /// Handle a task that is unblocked. This could be a task assigned to a
+  /// Handle end of a blocking object get. This could be a task assigned to a
   /// worker, an out-of-band task (e.g., a thread created by the application),
   /// or a driver task. This can be triggered when a client finishes a get call
   /// or a wait call. The given task must be blocked, via a previous call to
-  /// HandleTaskBlocked.
+  /// AsyncResolveObjects.
   ///
   /// \param client The client that is executing the unblocked task.
   /// \param current_task_id The task that is unblocked.
+  /// \param worker_was_blocked Whether we previously marked the worker as
+  ///                           blocked in AsyncResolveObjects().
   /// \return Void.
-  void HandleTaskUnblocked(const std::shared_ptr<LocalClientConnection> &client,
-                           const TaskID &current_task_id);
+  void AsyncResolveObjectsFinish(const std::shared_ptr<LocalClientConnection> &client,
+                                 const TaskID &current_task_id, bool was_blocked);
 
   /// Handle a direct call task that is blocked. Note that this callback may
   /// arrive after the worker lease has been returned to the node manager.
@@ -394,6 +398,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   ///
   /// \return True if the invariants are satisfied and false otherwise.
   bool CheckDependencyManagerInvariant() const;
+
+  /// Process client message of SubmitTask
+  ///
+  /// \param message_data A pointer to the message data.
+  /// \return Void.
+  void ProcessSubmitTaskMessage(const uint8_t *message_data);
 
   /// Process client message of RegisterClientRequest
   ///
@@ -509,11 +519,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param success Whether the task is successfully assigned to the worker.
   /// \return void.
   void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
-
-  /// Handle a `SubmitTask` request.
-  void HandleSubmitTask(const rpc::SubmitTaskRequest &request,
-                        rpc::SubmitTaskReply *reply,
-                        rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `WorkerLease` request.
   void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
