@@ -814,8 +814,6 @@ std::unordered_map<SchedulingClass, ordered_set<TaskID>> MakeTasksByClass(
 
 void NodeManager::DispatchTasks(
     const std::unordered_map<SchedulingClass, ordered_set<TaskID>> &tasks_by_class) {
-  std::unordered_set<TaskID> removed_task_ids;
-
   // Dispatch tasks in priority order by class. This avoids starvation problems where
   // one class of tasks become stuck behind others in the queue, causing Ray to start
   // many workers. See #3644 for a more detailed description of this issue.
@@ -834,7 +832,6 @@ void NodeManager::DispatchTasks(
           return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
-  std::vector<std::function<void()>> post_assign_callbacks;
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources =
@@ -847,17 +844,14 @@ void NodeManager::DispatchTasks(
         // once the first task is not feasible, we can break out of this loop
         break;
       }
-      if (AssignTask(task, &post_assign_callbacks)) {
-        removed_task_ids.insert(task_id);
+
+      // Try to get an idle worker to execute this task. If nullptr, there
+      // aren't any available workers so we can't assign the task.
+      std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
+      if (worker != nullptr) {
+        AssignTask(worker, task);
       }
     }
-  }
-  // Move the ASSIGNED task to the SWAP queue so that we remember that we have
-  // it queued locally. Once the GetTaskReply has been sent, the task will get
-  // re-queued, depending on whether the message succeeded or not.
-  local_queues_.MoveTasks(removed_task_ids, TaskState::READY, TaskState::SWAP);
-  for (auto func : post_assign_callbacks) {
-    func();
   }
 }
 
@@ -2067,84 +2061,58 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-bool NodeManager::AssignTask(const Task &task,
-                             std::vector<std::function<void()>> *post_assign_callbacks) {
-  const TaskSpecification &spec = task.GetTaskSpecification();
+void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &task);
+const TaskSpecification &spec = task.GetTaskSpecification();
 
-  // If this is an actor task, check that the new task has the correct counter.
-  if (spec.IsActorTask()) {
-    // An actor task should only be ready to be assigned if it matches the
-    // expected task counter.
-    int64_t expected_task_counter =
-        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
-    RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
-        << "Expected actor counter: " << expected_task_counter << ", task "
-        << spec.TaskId() << " has: " << spec.ActorCounter();
-  }
+// If this is an actor task, check that the new task has the correct counter.
+if (spec.IsActorTask()) {
+  // An actor task should only be ready to be assigned if it matches the
+  // expected task counter.
+  int64_t expected_task_counter =
+      GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
+  RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
+      << "Expected actor counter: " << expected_task_counter << ", task " << spec.TaskId()
+      << " has: " << spec.ActorCounter();
+}
 
-  // Try to get an idle worker that can execute this task.
-  std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
-  if (worker == nullptr) {
-    // There are no workers that can execute this task.
-    // We couldn't assign this task, as no worker available.
-    return false;
-  }
+RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
+               << worker->Pid();
+flatbuffers::FlatBufferBuilder fbb;
 
-  RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
-                 << worker->Pid();
-  flatbuffers::FlatBufferBuilder fbb;
+// Resource accounting: acquire resources for the assigned task.
+auto acquired_resources = local_available_resources_.Acquire(spec.GetRequiredResources());
+const auto &my_client_id = gcs_client_ -> client_table().GetLocalClientId();
+cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
 
-  // Resource accounting: acquire resources for the assigned task.
-  auto acquired_resources =
-      local_available_resources_.Acquire(spec.GetRequiredResources());
-  const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
+if (spec.IsActorCreationTask()) {
+  // Check that the actor's placement resource requirements are satisfied.
+  RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
+      cluster_resource_map_[my_client_id].GetTotalResources()));
+  worker->SetLifetimeResourceIds(acquired_resources);
+} else {
+  worker->SetTaskResourceIds(acquired_resources);
+}
 
-  if (spec.IsActorCreationTask()) {
-    // Check that the actor's placement resource requirements are satisfied.
-    RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
-        cluster_resource_map_[my_client_id].GetTotalResources()));
-    worker->SetLifetimeResourceIds(acquired_resources);
-  } else {
-    worker->SetTaskResourceIds(acquired_resources);
-  }
-
-  auto task_id = spec.TaskId();
-  auto finish_assign_task_callback = [this, worker, task_id](Status status) {
-    // NOTE: we cannot directly call `FinishAssignTask` here because
-    // it assumes the task is in SWAP queue, thus we need to delay invoking this
-    // function after the assigned tasks are moved from READY queue to SWAP queue
-    // in `DispatchTasks`.
-    // Another option is to move the tasks to SWAP queue here just before calling
-    // `FinishAssignTask` so we can save an io_service post, at the
-    // expense of calling `MoveTask` for each of the assigned tasks.
-    // TODO(zhijunfu): after all workers are fully migrated to push mode, the
-    // `post` below and swap queue can be removed.
-    io_service_.post([this, status, worker, task_id]() {
-      FinishAssignTask(task_id, *worker, status.ok());
-    });
-  };
-
+if (task.OnDispatch() != nullptr) {
+  task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
+  FinishAssignTask(worker, spec.TaskId());
+} else {
   ResourceIdSet resource_id_set =
       worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
-
-  if (task.OnDispatch() != nullptr) {
-    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
-    if (post_assign_callbacks != nullptr) {
-      // Moves the tasks from SWAP to RUNNING state atomically. This avoids race
-      // conditions with ReturnLease requests.
-      post_assign_callbacks->push_back(
-          [this, worker, task_id]() { FinishAssignTask(task_id, *worker, true); });
-    }
+  if (worker->AssignTask(task, resource_id_set).ok()) {
+    RAY_LOG(DEBUG) << "Assigned task " << spec.TaskId() << " to worker "
+                   << worker->WorkerID();
+    FinishAssignTask(worker, spec.TaskId());
   } else {
-    worker->AssignTask(task, resource_id_set, finish_assign_task_callback);
+    RAY_LOG(ERROR) << "Failed to assign task " << spec.TaskId() << " to worker "
+                   << worker->WorkerID() << ", disconnecting client";
+    // We failed to send the task to the worker, so disconnect the worker
+    // and retry dispatching the task.
+    ProcessDisconnectClientMessage(worker->Connection());
+    DispatchTasks(MakeTasksByClass({task}));
   }
-
-  // We assigned this task to a worker.
-  // (Note this means that we sent the task to the worker. The assignment
-  //  might still fail if the worker fails in the meantime, for instance.)
-  return true;
 }
+}  // namespace raylet
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
@@ -2661,7 +2629,6 @@ void NodeManager::ForwardTask(
 
   client->ForwardTask(request, [this, on_error, task, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
-    // Remove the FORWARDING task from the SWAP queue.
     if (status.ok()) {
       const auto &spec = task.GetTaskSpecification();
       // Mark as forwarded so that the task and its lineage are not
@@ -2695,43 +2662,32 @@ void NodeManager::ForwardTask(
   });
 }
 
-void NodeManager::FinishAssignTask(const TaskID &task_id, Worker &worker, bool success) {
-  // Remove the ASSIGNED task from the SWAP queue.
+void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
+                                   const TaskID &task_id) {
+  // Remove the ASSIGNED task from the READY queue.
   Task assigned_task;
   TaskState state;
   if (!local_queues_.RemoveTask(task_id, &assigned_task, &state)) {
+    // TODO(edoakes): should we be failing silently here?
     return;
   }
+  RAY_CHECK(state == TaskState::READY);
 
-  RAY_CHECK(state == TaskState::SWAP);
+  auto spec = assigned_task.GetTaskSpecification();
+  // We successfully assigned the task to the worker.
+  worker->AssignTaskId(spec.TaskId());
+  worker->AssignJobId(spec.JobId());
+  // TODO(swang): For actors with multiple actor handles, to
+  // guarantee that tasks are replayed in the same order after a
+  // failure, we must update the task's execution dependency to be
+  // the actor's current execution dependency.
 
-  if (success) {
-    auto spec = assigned_task.GetTaskSpecification();
-    // We successfully assigned the task to the worker.
-    worker.AssignTaskId(spec.TaskId());
-    worker.AssignJobId(spec.JobId());
-    // TODO(swang): For actors with multiple actor handles, to
-    // guarantee that tasks are replayed in the same order after a
-    // failure, we must update the task's execution dependency to be
-    // the actor's current execution dependency.
-
-    // Mark the task as running.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
-    // Notify the task dependency manager that we no longer need this task's
-    // object dependencies.
-    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
-  } else {
-    RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
-    // We failed to send the task to the worker, so disconnect the worker.
-    ProcessDisconnectClientMessage(worker.Connection());
-    // Queue this task for future assignment. We need to do this since
-    // DispatchTasks() removed it from the ready queue. The task will be
-    // assigned to a worker once one becomes available.
-    // (See design_docs/task_states.rst for the state transition diagram.)
-    local_queues_.QueueTasks({assigned_task}, TaskState::READY);
-    DispatchTasks(MakeTasksByClass({assigned_task}));
-  }
+  // Mark the task as running.
+  // (See design_docs/task_states.rst for the state transition diagram.)
+  local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
+  // Notify the task dependency manager that we no longer need this task's
+  // object dependencies.
+  RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
 }
 
 void NodeManager::DumpDebugState() const {
@@ -2883,6 +2839,6 @@ void NodeManager::RecordMetrics() {
                              {{stats::ValueTypeKey, "max_num_handles"}});
 }
 
-}  // namespace raylet
+}  // namespace ray
 
 }  // namespace ray
