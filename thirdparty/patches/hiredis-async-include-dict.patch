@@ -1,0 +1,10 @@
+diff --git deps/hiredis/async.c deps/hiredis/async.c
+index d955203f..026601de 100644
+--- deps/hiredis/async.c
++++ deps/hiredis/async.c
+@@ -40,3 +40,3 @@
+ #include "net.h"
+-#include "dict.c"
++#include "hiredis/dict.c"
+ #include "sds.h"
+-- 

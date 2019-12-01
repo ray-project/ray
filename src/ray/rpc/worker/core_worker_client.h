@@ -81,6 +81,13 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  /// Ask the owner of an object about the object's current status.
+  virtual ray::Status GetObjectStatus(
+      const GetObjectStatusRequest &request,
+      const ClientCallback<GetObjectStatusReply> &callback) {
+    return Status::NotImplemented("");
+  }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -148,6 +155,14 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
     return call->GetStatus();
   }
 
+  virtual ray::Status GetObjectStatus(
+      const GetObjectStatusRequest &request,
+      const ClientCallback<GetObjectStatusReply> &callback) {
+    auto call = client_call_manager_.CreateCall<CoreWorkerService, GetObjectStatusRequest,
+                                                GetObjectStatusReply>(
+        *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
+    return call->GetStatus();
+  }
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
