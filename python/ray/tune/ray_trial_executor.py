@@ -8,6 +8,7 @@ import os
 import random
 import time
 import traceback
+from contextlib import contextmanager
 
 import ray
 from ray.exceptions import RayTimeoutError
@@ -94,8 +95,9 @@ class RayTrialExecutor(TrialExecutor):
         if self._cached_actor:
             logger.debug("Cannot reuse cached runner {} for new trial".format(
                 self._cached_actor))
-            self._cached_actor.stop.remote()
-            self._cached_actor.__ray_terminate__.remote()
+            with self._switch_working_directory(trial):
+                self._cached_actor.stop.remote()
+                self._cached_actor.__ray_terminate__.remote()
             self._cached_actor = None
 
         cls = ray.remote(
@@ -120,13 +122,16 @@ class RayTrialExecutor(TrialExecutor):
         logger.info("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
-        return cls.remote(config=trial.config, logger_creator=logger_creator)
+        with self._switch_working_directory(trial):
+            return cls.remote(
+                config=trial.config, logger_creator=logger_creator)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
 
         assert trial.status == Trial.RUNNING, trial.status
-        remote = trial.runner.train.remote()
+        with self._switch_working_directory(trial):
+            remote = trial.runner.train.remote()
 
         # Local Mode
         if isinstance(remote, dict):
@@ -187,8 +192,9 @@ class RayTrialExecutor(TrialExecutor):
                     self._cached_actor = trial.runner
                 else:
                     logger.debug("Trial %s: Destroying actor.", trial)
-                    trial.runner.stop.remote()
-                    trial.runner.__ray_terminate__.remote()
+                    with self._switch_working_directory(trial):
+                        trial.runner.stop.remote()
+                        trial.runner.__ray_terminate__.remote()
         except Exception:
             logger.exception("Trial %s: Error stopping runner.", trial)
             self.set_status(trial, Trial.ERROR)
@@ -284,9 +290,10 @@ class RayTrialExecutor(TrialExecutor):
         trainable = trial.runner
         with warn_if_slow("reset_config"):
             try:
-                reset_val = ray.get(
-                    trainable.reset_config.remote(new_config),
-                    DEFAULT_GET_TIMEOUT)
+                with self._switch_working_directory(trial):
+                    reset_val = ray.get(
+                        trainable.reset_config.remote(new_config),
+                        DEFAULT_GET_TIMEOUT)
             except RayTimeoutError:
                 logger.exception("Trial %s: reset_config timed out.")
                 return False
@@ -534,13 +541,14 @@ class RayTrialExecutor(TrialExecutor):
 
     def save(self, trial, storage=Checkpoint.DISK):
         """Saves the trial's state to a checkpoint."""
-        if storage == Checkpoint.MEMORY:
-            value = trial.runner.save_to_object.remote()
-            checkpoint = Checkpoint(storage, value, trial.last_result)
-        else:
-            with warn_if_slow("save_checkpoint_to_disk"):
-                value = ray.get(trial.runner.save.remote())
+        with self._switch_working_directory(trial):
+            if storage == Checkpoint.MEMORY:
+                value = trial.runner.save_to_object.remote()
                 checkpoint = Checkpoint(storage, value, trial.last_result)
+            else:
+                with warn_if_slow("save_checkpoint_to_disk"):
+                    value = ray.get(trial.runner.save.remote())
+                    checkpoint = Checkpoint(storage, value, trial.last_result)
 
         with warn_if_slow("on_checkpoint", DEFAULT_GET_TIMEOUT) as profile:
             try:
@@ -574,22 +582,23 @@ class RayTrialExecutor(TrialExecutor):
             self.set_status(trial, Trial.ERROR)
             return False
         try:
-            value = checkpoint.value
-            if checkpoint.storage == Checkpoint.MEMORY:
-                assert type(value) != Checkpoint, type(value)
-                trial.runner.restore_from_object.remote(value)
-            else:
-                logger.info("Trial %s: Attempting restoration from %s", trial,
-                            checkpoint.value)
-                with warn_if_slow("get_current_ip"):
-                    worker_ip = ray.get(trial.runner.current_ip.remote(),
-                                        DEFAULT_GET_TIMEOUT)
-                with warn_if_slow("sync_to_new_location"):
-                    trial.sync_logger_to_new_location(worker_ip)
-                with warn_if_slow("restore_from_disk"):
-                    ray.get(
-                        trial.runner.restore.remote(value),
-                        DEFAULT_GET_TIMEOUT)
+            with self._switch_working_directory(trial):
+                value = checkpoint.value
+                if checkpoint.storage == Checkpoint.MEMORY:
+                    assert type(value) != Checkpoint, type(value)
+                    trial.runner.restore_from_object.remote(value)
+                else:
+                    logger.info("Trial %s: Attempting restoration from %s",
+                                trial, checkpoint.value)
+                    with warn_if_slow("get_current_ip"):
+                        worker_ip = ray.get(trial.runner.current_ip.remote(),
+                                            DEFAULT_GET_TIMEOUT)
+                    with warn_if_slow("sync_to_new_location"):
+                        trial.sync_logger_to_new_location(worker_ip)
+                    with warn_if_slow("restore_from_disk"):
+                        ray.get(
+                            trial.runner.restore.remote(value),
+                            DEFAULT_GET_TIMEOUT)
         except RayTimeoutError:
             logger.exception(
                 "Trial %s: Unable to restore - runner task timed "
@@ -612,15 +621,33 @@ class RayTrialExecutor(TrialExecutor):
             A dict that maps ExportFormats to successfully exported models.
         """
         if trial.export_formats and len(trial.export_formats) > 0:
-            return ray.get(
-                trial.runner.export_model.remote(trial.export_formats),
-                DEFAULT_GET_TIMEOUT)
+            with self._switch_working_directory(trial):
+                return ray.get(
+                    trial.runner.export_model.remote(trial.export_formats),
+                    DEFAULT_GET_TIMEOUT)
         return {}
 
     def has_gpus(self):
         if self._resources_initialized:
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
+
+    @contextmanager
+    def _switch_working_directory(self, trial):
+        """Context manager changing working directory to trial logdir.
+        Used in local mode.
+
+        For non-local mode it is no-op.
+        """
+        if ray.worker._mode() == ray.worker.LOCAL_MODE:
+            old_dir = os.getcwd()
+            try:
+                os.chdir(trial.logdir)
+                yield
+            finally:
+                os.chdir(old_dir)
+        else:
+            yield
 
 
 def _to_gb(n_bytes):
