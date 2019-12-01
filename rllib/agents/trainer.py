@@ -375,23 +375,22 @@ class Trainer(Trainable):
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
         identifier = "{}_{}".format(self._name, self._env_id)
-        trial_dir_schema = TrialDirSchema(identifier, DEFAULT_RESULTS_DIR)
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
+            trial_dir_schema = TrialDirSchema(identifier, DEFAULT_RESULTS_DIR)
 
             def default_logger_creator(config):
                 """Creates a Unified logger with a default logdir prefix
                 containing the agent name and the env id
                 """
-                trial_dir_schema.mkdir()
+                trial_dir_schema.makedirs()
                 logdir = trial_dir_schema.logdir
                 return UnifiedLogger(config, logdir, loggers=None)
 
             logger_creator = default_logger_creator
 
         Trainable.__init__(self, config, logger_creator)
-        self._init_checkpoint_dir(trial_dir_schema.checkpoint_dir)
 
     @classmethod
     @override(Trainable)

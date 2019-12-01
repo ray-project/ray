@@ -69,17 +69,13 @@ class TrialDirSchema(object):
         self.root_dir = tempfile.mkdtemp(
             prefix="{}_{}".format(trial_name[:MAX_LEN_IDENTIFIER], date_str()),
             dir=local_dir)
-        self.mkdir()
+        self.makedirs()
 
-    def mkdir(self):
-        if not os.path.exists(self.root_dir):
-            os.makedirs(self.root_dir)
-        if not os.path.exists(self.logdir):
-            os.makedirs(self.logdir)
-        if not os.path.exists(self.remote_logdir):
-            os.makedirs(self.remote_logdir)
-        if not os.path.exists(self.checkpoint_dir):
-            os.makedirs(self.checkpoint_dir)
+    def makedirs(self):
+        for path in (self.root_dir, self.logdir, self.remote_logdir,
+                     self.checkpoint_dir):
+            if not os.path.exists(path):
+                os.makedirs(path)
 
     @property
     def root(self):
@@ -228,7 +224,6 @@ class Trial(object):
 
         self.trial_dir_schema = TrialDirSchema(str(self), self.local_dir)
         self.logdir = self.trial_dir_schema.logdir
-        self.trial_dir_schema.mkdir()
         self.syncer = get_syncer(self.trial_dir, self.trial_dir,
                                  self.sync_to_driver_fn)
 
@@ -255,13 +250,12 @@ class Trial(object):
     def init_logger(self):
         """Initializes the logger."""
         if not self.result_logger:
-            self.trial_dir_schema.mkdir()
+            self.trial_dir_schema.makedirs()
             self.result_logger = UnifiedLogger(
                 self.config,
                 self.logdir,
                 trial=self,
-                loggers=self.loggers,
-                sync_function=no_op)
+                loggers=self.loggers)
 
     @property
     def node_ip(self):
@@ -304,8 +298,6 @@ class Trial(object):
 
         Also pushes checkpoints to worker_ip, allowing for cross-node recovery.
         """
-        assert self.result_logger, "Logger not initialized."
-        self.result_logger.set_worker_ip(worker_ip)
         self.syncer.set_worker_ip(worker_ip)
         self.syncer.sync_up_to_new_location(worker_ip)
         self.syncer.wait()
@@ -376,6 +368,8 @@ class Trial(object):
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if self.sync_on_checkpoint and checkpoint.storage == Checkpoint.DISK:
+            # Wait for any other syncs to finish. We need to sync again after
+            # this to handle checkpoints taken mid-sync.
             self.syncer.wait()
             # Force sync down and wait before tracking the new checkpoint. This
             # prevents attempts to restore from partially synced checkpoints.
@@ -410,7 +404,7 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-        self.syncer.sync_down(TrialDirSchema.REMOTE_LOGDIR)
+        self.syncer.sync_down_if_needed(TrialDirSchema.REMOTE_LOGDIR)
         for metric, value in flatten_dict(result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
@@ -474,6 +468,7 @@ class Trial(object):
         state["result_logger"] = None
         if self.result_logger:
             self.result_logger.flush()
+            self.syncer.sync_down()
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False

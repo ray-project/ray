@@ -70,8 +70,9 @@ class TrackSession(object):
 
         self._experiment_dir = os.path.expanduser(experiment_dir)
 
-        self._trial_dir = TrialDirSchema(trial_name, self._experiment_dir)
-        self._logdir = self._trial_dir.logdir
+        self._trial_dir_schema = TrialDirSchema(trial_name,
+                                                self._experiment_dir)
+        self._logdir = self._trial_dir_schema.logdir
         self._upload_dir = upload_dir
         self.trial_config = trial_config or {}
 
@@ -103,7 +104,6 @@ class TrackSession(object):
         self.trial_config["end_time"] = datetime.now().isoformat()
         # TODO(rliaw): Have Tune support updated configs
         self._logger.update_config(self.trial_config)
-        self._logger.flush()
         self._logger.close()
 
     @property

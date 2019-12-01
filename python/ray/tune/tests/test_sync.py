@@ -94,7 +94,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     def testClusterProperString(self):
         """Tests that invalid commands throw.."""
-        with self.assertRaises(TuneError):
+        with self.assertRaises(ValueError):
             # This raises TuneError because logger is init in safe zone.
             [trial] = tune.run(
                 "__fake",
@@ -107,7 +107,7 @@ class TestSyncFunctionality(unittest.TestCase):
                     "sync_to_driver": "ls {target}"
                 }).trials
 
-        with self.assertRaises(TuneError):
+        with self.assertRaises(ValueError):
             # This raises TuneError because logger is init in safe zone.
             [trial] = tune.run(
                 "__fake",

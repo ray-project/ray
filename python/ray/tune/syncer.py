@@ -61,8 +61,8 @@ def log_sync_template(options=""):
 
     rsh = "ssh -i {ssh_key} -o ConnectTimeout=120s -o StrictHostKeyChecking=no"
     rsh = rsh.format(ssh_key=quote(ssh_key))
-    template = """rsync {options} -savz -e "{rsh}" {{source}} {{target}}"""
-    return template.format(options=options, rsh=rsh)
+    template = "rsync {options} -savz -e {rsh} {{source}} {{target}}"
+    return template.format(options=options, rsh=quote(rsh))
 
 
 class Syncer(object):
@@ -175,12 +175,12 @@ class NodeSyncer(Syncer):
     def sync_up_if_needed(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        super(NodeSyncer, self).sync_up(relative_subdir)
+        return super(NodeSyncer, self).sync_up(relative_subdir)
 
     def sync_down_if_needed(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        super(NodeSyncer, self).sync_down(relative_subdir)
+        return super(NodeSyncer, self).sync_down(relative_subdir)
 
     def sync_up_to_new_location(self, worker_ip, relative_subdir=None):
         if worker_ip != self.worker_ip:

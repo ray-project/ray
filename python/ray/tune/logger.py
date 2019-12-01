@@ -384,22 +384,17 @@ class UnifiedLogger(Logger):
         logdir: Directory for all logger creators to log to.
         loggers (list): List of logger creators. Defaults to CSV, Tensorboard,
             and JSON loggers.
-        sync_function (func|str): Optional function for syncer to run.
-            See ray/python/ray/tune/syncer.py
     """
 
     def __init__(self,
                  config,
                  logdir,
                  trial=None,
-                 loggers=None,
-                 sync_function=None):
+                 loggers=None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:
             self._logger_cls_list = loggers
-        self._sync_function = sync_function
-        self._log_syncer = None
 
         super(UnifiedLogger, self).__init__(config, logdir, trial)
 
@@ -411,43 +406,23 @@ class UnifiedLogger(Logger):
             except Exception as exc:
                 logger.warning("Could not instantiate %s: %s.", cls.__name__,
                                str(exc))
-        self._log_syncer = get_syncer(
-            self.logdir,
-            remote_dir=self.logdir,
-            sync_function=self._sync_function)
 
     def on_result(self, result):
         for _logger in self._loggers:
             _logger.on_result(result)
-        self._log_syncer.set_worker_ip(result.get(NODE_IP))
-        self._log_syncer.sync_down_if_needed()
 
     def update_config(self, config):
         for _logger in self._loggers:
             _logger.update_config(config)
 
     def close(self):
+        self.flush()
         for _logger in self._loggers:
             _logger.close()
 
     def flush(self):
         for _logger in self._loggers:
             _logger.flush()
-        if not self._log_syncer.sync_down():
-            logger.warning("Trial %s: Post-flush sync skipped.", self.trial)
-
-    def sync_up(self):
-        return self._log_syncer.sync_up()
-
-    def sync_down(self):
-        return self._log_syncer.sync_down()
-
-    def set_worker_ip(self, worker_ip):
-        if worker_ip != self._log_syncer.worker_ip:
-            self._log_syncer.set_worker_ip(worker_ip)
-
-    def wait(self):
-        self._log_syncer.wait()
 
 
 class _SafeFallbackEncoder(json.JSONEncoder):

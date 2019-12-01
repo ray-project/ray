@@ -71,18 +71,18 @@ class Trainable(object):
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
 
+        self._checkpoint_dir = None
         if logger_creator:
+            # Tune always passes in a no-op logger_creator.
             self._result_logger = logger_creator(self.config)
             self._logdir = self._result_logger.logdir
-            self._checkpoint_dir = None
         else:
             name = self.__class__.__name__
             dir_schema = TrialDirSchema(name, DEFAULT_RESULTS_DIR)
-            dir_schema.mkdir()
+            dir_schema.makedirs()
             self._logdir = dir_schema.logdir
             self._result_logger = UnifiedLogger(
                 self.config, self._logdir, loggers=None)
-            self._checkpoint_dir = dir_schema.checkpoint_dir
 
         self._iteration = 0
         self._time_total = 0.0
@@ -424,7 +424,6 @@ class Trainable(object):
 
     def stop(self):
         """Releases all resources used by this trainable."""
-        self._result_logger.flush()
         self._result_logger.close()
         self._stop()
 
