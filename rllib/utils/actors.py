@@ -40,16 +40,12 @@ class TaskPool(object):
         Assumes obj_id only is one id."""
 
         for worker, obj_id in self.completed(blocking_wait=blocking_wait):
-            (ray.worker.global_worker.raylet_client.fetch_or_reconstruct(
-                [obj_id], True))
             self._fetching.append((worker, obj_id))
 
         remaining = []
         num_yielded = 0
         for worker, obj_id in self._fetching:
-            if (num_yielded < max_yield
-                    and ray.worker.global_worker.core_worker.object_exists(
-                        obj_id)):
+            if num_yielded < max_yield:
                 yield (worker, obj_id)
                 num_yielded += 1
             else:

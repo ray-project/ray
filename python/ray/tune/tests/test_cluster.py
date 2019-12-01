@@ -13,8 +13,8 @@ import sys
 import ray
 from ray import tune
 from ray.rllib import _register_all
-from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import run_string_as_driver_nonblocking
+from ray.cluster_utils import Cluster
+from ray.test_utils import run_string_as_driver_nonblocking
 from ray.tune.error import TuneError
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.experiment import Experiment
@@ -336,7 +336,7 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster):
     cluster.add_node(num_cpus=1)
     cluster.remove_node(node)
     cluster.wait_for_nodes()
-    shutil.rmtree(os.path.dirname(t1._checkpoint.value))
+    shutil.rmtree(os.path.dirname(t1.checkpoint.value))
 
     runner.step()  # Recovery step
     for i in range(3):
@@ -370,8 +370,8 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
     assert all(t.status == Trial.RUNNING for t in runner.get_trials())
     runner.checkpoint()
 
-    cluster.shutdown()
     ray.shutdown()
+    cluster.shutdown()
 
     cluster = _start_new_cluster()
     runner = TrialRunner(resume="LOCAL", local_checkpoint_dir=dirpath)
@@ -385,6 +385,7 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir):
         runner.step()
 
     assert all(t.status == Trial.TERMINATED for t in runner.get_trials())
+    ray.shutdown()
     cluster.shutdown()
 
 
@@ -425,6 +426,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir):
         all_experiments, resume=True, raise_on_failed_trial=False)
     assert len(trials) == 4
     assert all(t.status in [Trial.TERMINATED, Trial.ERROR] for t in trials)
+    ray.shutdown()
     cluster.shutdown()
 
 
@@ -487,6 +489,7 @@ tune.run(
         },
         resume=True)
     assert all(t.status == Trial.TERMINATED for t in trials2)
+    ray.shutdown()
     cluster.shutdown()
 
 
@@ -566,7 +569,7 @@ tune.run(
     ray.shutdown()
     cluster.shutdown()
     cluster = _start_new_cluster()
-    Experiment._register_if_needed(_Mock)
+    Experiment.register_if_needed(_Mock)
 
     # Inspect the internal trialrunner
     runner = TrialRunner(
@@ -588,4 +591,11 @@ tune.run(
         raise_on_failed_trial=False)
     assert all(t.status == Trial.TERMINATED for t in trials2)
     assert {t.trial_id for t in trials2} == {t.trial_id for t in trials}
+    ray.shutdown()
     cluster.shutdown()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

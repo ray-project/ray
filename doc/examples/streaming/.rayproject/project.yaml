@@ -12,7 +12,7 @@ environment:
 
 commands:
   - name: run
-    command: python streaming.py --num-mappers {{num_mappers}} --num-reducers {{num_reducers}}
+    command: python streaming.py --num-mappers {{num-mappers}} --num-reducers {{num-reducers}}
     help: "Start the streaming example."
     params:
       - name: num-mappers

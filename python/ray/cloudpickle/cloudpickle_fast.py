@@ -15,22 +15,28 @@ import copyreg
 import io
 import itertools
 import logging
-import _pickle
-import pickle
+
 import sys
 import types
 import weakref
-
-from _pickle import Pickler
 
 from .cloudpickle import (
     _is_dynamic, _extract_code_globals, _BUILTIN_TYPE_NAMES, DEFAULT_PROTOCOL,
     _find_imported_submodules, _get_cell_contents, _is_global, _builtin_type,
     Enum, _ensure_tracking,  _make_skeleton_class, _make_skeleton_enum,
-    _extract_class_dict, string_types, dynamic_subimport, subimport
+    _extract_class_dict, string_types, dynamic_subimport, subimport, cell_set,
+    _make_empty_cell
 )
 
-load, loads = _pickle.load, _pickle.loads
+if sys.version_info[:2] < (3, 8):
+    import pickle5 as pickle
+    from pickle5 import Pickler
+    load, loads = pickle.load, pickle.loads
+else:
+    import _pickle
+    import pickle
+    from _pickle import Pickler
+    load, loads = _pickle.load, _pickle.loads
 
 
 # Shorthands similar to pickle.dump/pickle.dumps
@@ -108,7 +114,6 @@ def _function_getstate(func):
         "__defaults__": func.__defaults__,
         "__module__": func.__module__,
         "__doc__": func.__doc__,
-        "__closure__": func.__closure__,
     }
 
     f_globals_ref = _extract_code_globals(func.__code__)
@@ -187,25 +192,46 @@ def _enum_getstate(obj):
 
 def _code_reduce(obj):
     """codeobject reducer"""
-    args = (
-        obj.co_argcount, obj.co_posonlyargcount,
-        obj.co_kwonlyargcount, obj.co_nlocals, obj.co_stacksize,
-        obj.co_flags, obj.co_code, obj.co_consts, obj.co_names,
-        obj.co_varnames, obj.co_filename, obj.co_name,
-        obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
-        obj.co_cellvars
-    )
+    if hasattr(obj, "co_posonlyargcount"):  # pragma: no branch
+        args = (
+                obj.co_argcount, obj.co_posonlyargcount,
+                obj.co_kwonlyargcount, obj.co_nlocals, obj.co_stacksize,
+                obj.co_flags, obj.co_code, obj.co_consts, obj.co_names,
+                obj.co_varnames, obj.co_filename, obj.co_name,
+                obj.co_firstlineno, obj.co_lnotab, obj.co_freevars,
+                obj.co_cellvars
+            )
+    else:
+        args = (
+            obj.co_argcount, obj.co_kwonlyargcount, obj.co_nlocals,
+            obj.co_stacksize, obj.co_flags, obj.co_code, obj.co_consts,
+            obj.co_names, obj.co_varnames, obj.co_filename,
+            obj.co_name, obj.co_firstlineno, obj.co_lnotab,
+            obj.co_freevars, obj.co_cellvars
+        )
     return types.CodeType, args
+
+
+def _make_cell(contents):
+    cell = _make_empty_cell()
+    cell_set(cell, contents)
+    return cell
 
 
 def _cell_reduce(obj):
     """Cell (containing values of a function's free variables) reducer"""
     try:
-        obj.cell_contents
+        contents = (obj.cell_contents,)
     except ValueError:  # cell is empty
-        return types.CellType, ()
+        contents = ()
+
+    if sys.version_info[:2] < (3, 8):
+        if contents:
+            return _make_cell, contents
+        else:
+            return _make_empty_cell, ()
     else:
-        return types.CellType, (obj.cell_contents,)
+        return types.CellType, contents
 
 
 def _classmethod_reduce(obj):
@@ -347,7 +373,6 @@ def _function_setstate(obj, state):
     obj.__dict__.update(state)
 
     obj_globals = slotstate.pop("__globals__")
-    obj_closure = slotstate.pop("__closure__")
     # _cloudpickle_subimports is a set of submodules that must be loaded for
     # the pickled function to work correctly at unpickling time. Now that these
     # submodules are depickled (hence imported), they can be removed from the
@@ -357,14 +382,6 @@ def _function_setstate(obj, state):
 
     obj.__globals__.update(obj_globals)
     obj.__globals__["__builtins__"] = __builtins__
-
-    if obj_closure is not None:
-        for i, cell in enumerate(obj_closure):
-            try:
-                value = cell.cell_contents
-            except ValueError:  # cell is empty
-                continue
-            obj.__closure__[i].cell_contents = value
 
     for k, v in slotstate.items():
         setattr(obj, k, v)
@@ -383,6 +400,11 @@ def _class_setstate(obj, state):
             obj.register(subclass)
 
     return obj
+
+
+def _property_reduce(obj):
+    # Python < 3.8 only
+    return property, (obj.fget, obj.fset, obj.fdel, obj.__doc__)
 
 
 class CloudPickler(Pickler):
@@ -407,13 +429,18 @@ class CloudPickler(Pickler):
     dispatch[logging.RootLogger] = _root_logger_reduce
     dispatch[memoryview] = _memoryview_reduce
     dispatch[staticmethod] = _classmethod_reduce
-    dispatch[types.CellType] = _cell_reduce
     dispatch[types.CodeType] = _code_reduce
     dispatch[types.GetSetDescriptorType] = _getset_descriptor_reduce
     dispatch[types.ModuleType] = _module_reduce
     dispatch[types.MethodType] = _method_reduce
     dispatch[types.MappingProxyType] = _mappingproxy_reduce
     dispatch[weakref.WeakSet] = _weakset_reduce
+    if sys.version_info[:2] >= (3, 8):
+        dispatch[types.CellType] = _cell_reduce
+    else:
+        dispatch[type(_make_empty_cell())] = _cell_reduce
+    if sys.version_info[:2] < (3, 8):
+        dispatch[property] = _property_reduce
 
     def __init__(self, file, protocol=None, buffer_callback=None):
         if protocol is None:
@@ -523,15 +550,7 @@ class CloudPickler(Pickler):
                 if k in func.__globals__:
                     base_globals[k] = func.__globals__[k]
 
-        # Do not bind the free variables before the function is created to
-        # avoid infinite recursion.
-        if func.__closure__ is None:
-            closure = None
-        else:
-            closure = tuple(
-                types.CellType() for _ in range(len(code.co_freevars)))
-
-        return code, base_globals, None, None, closure
+        return code, base_globals, None, None, func.__closure__
 
     def dump(self, obj):
         try:

@@ -13,9 +13,9 @@ import pytest
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import (run_string_as_driver_nonblocking,
-                             RayTestTimeoutException)
+from ray.cluster_utils import Cluster
+from ray.test_utils import (run_string_as_driver_nonblocking,
+                            RayTestTimeoutException)
 
 
 # This test checks that when a worker dies in the middle of a get, the plasma
@@ -441,3 +441,8 @@ def test_driver_lives_parallel(ray_start_regular):
         process_info.process.wait()
 
     # If the driver can reach the tearDown method, then it is still alive.
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))
