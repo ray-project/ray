@@ -1734,6 +1734,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_reconstructions",
+            "max_retries",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -1753,6 +1754,7 @@ def remote(*args, **kwargs):
     max_reconstructions = kwargs.get("max_reconstructions")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
+    max_retries = kwargs.get("max_retries")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -1763,4 +1765,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
+        max_retries=max_retries,
         worker=worker)
