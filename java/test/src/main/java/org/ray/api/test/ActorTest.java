@@ -94,7 +94,6 @@ public class ActorTest extends BaseTest {
     return res.get();
   }
 
-  @Test(enabled = false)
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
     Assert.assertEquals(Integer.valueOf(1),
