@@ -9,15 +9,23 @@ Tune: A Scalable Hyperparameter Tuning Library
 
 Tune is a Python library for hyperparameter tuning at any scale. Core features:
 
-  * Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
-  * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras.
+  * Launch a multi-node `distributed hyperparameter sweep <tune-distributed.html>`_ in less than 10 lines of code.
+  * Supports any machine learning framework, including PyTorch, XGBoost, MXNet, and Keras. See `examples here <tune-examples.html>`_.
+  * Natively `integrates with optimization libraries <tune-searchalg.html>`_ such as `HyperOpt <https://github.com/hyperopt/hyperopt>`_, `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_, and `Facebook Ax <http://ax.dev>`_.
+  * Choose among `scalable algorithms <tune-schedulers.html>`_ such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
   * Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
-  * Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
-  * Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
 .. _`Population Based Training (PBT)`: tune-schedulers.html#population-based-training-pbt
 .. _`Vizier's Median Stopping Rule`: tune-schedulers.html#median-stopping-rule
 .. _`HyperBand/ASHA`: tune-schedulers.html#asynchronous-hyperband
+
+**Try out a tutorial notebook on Colab**:
+
+.. raw:: html
+
+    <a href="https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb" target="_parent">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Tune Tutorial"/>
+    </a>
 
 
 Quick Start
