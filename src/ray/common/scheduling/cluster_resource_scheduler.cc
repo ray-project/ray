@@ -284,13 +284,13 @@ void ClusterResourceScheduler::ResourceMapToNodeResources(
     } else {
       resource_capacity.available = (int64_t)it2->second;
     }
-    if (it->first == "CPU") {
+    if (it->first == ray::kCPU_ResourceLabel) {
       node_resources->capacities[CPU] = resource_capacity;
-    } else if (it->first == "GPU") {
+    } else if (it->first == ray::kGPU_ResourceLabel) {
       node_resources->capacities[GPU] = resource_capacity;
-    } else if (it->first == "TPU") {
+    } else if (it->first == ray::kTPU_ResourceLabel) {
       node_resources->capacities[TPU] = resource_capacity;
-    } else if (it->first == "memory") {
+    } else if (it->first == ray::kMemory_ResourceLabel) {
       node_resources->capacities[MEM] = resource_capacity;
     } else {
       // This is a custom resource.
@@ -311,13 +311,13 @@ void ClusterResourceScheduler::ResourceMapToTaskRequest(
   }
 
   for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
-    if (it->first == "CPU") {
+    if (it->first == ray::kCPU_ResourceLabel) {
       task_request->predefined_resources[CPU].demand = it->second;
-    } else if (it->first == "GPU") {
+    } else if (it->first == ray::kGPU_ResourceLabel) {
       task_request->predefined_resources[GPU].demand = it->second;
-    } else if (it->first == "TPU") {
+    } else if (it->first == ray::kTPU_ResourceLabel) {
       task_request->predefined_resources[TPU].demand = it->second;
-    } else if (it->first == "memory") {
+    } else if (it->first == ray::kMemory_ResourceLabel) {
       task_request->predefined_resources[MEM].demand = it->second;
     } else {
       // This is a custom resource.
@@ -340,13 +340,13 @@ void ClusterResourceScheduler::UpdateResourceCapacity(
   }
 
   int idx = -1;
-  if (resource_name == "CPU") {
+  if (resource_name == ray::kCPU_ResourceLabel) {
     idx = (int)CPU;
-  } else if (resource_name == "GPU") {
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == "TPU") {
+  } else if (resource_name == ray::kTPU_ResourceLabel) {
     idx = (int)TPU;
-  } else if (resource_name == "memory") {
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
   if (idx != -1) {
@@ -389,13 +389,13 @@ void ClusterResourceScheduler::DeleteResource(
   }
 
   int idx = -1;
-  if (resource_name == "CPU") {
+  if (resource_name == ray::kCPU_ResourceLabel) {
     idx = (int)CPU;
-  } else if (resource_name == "GPU") {
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
     idx = (int)GPU;
-  } else if (resource_name == "TPU") {
+  } else if (resource_name == ray::kTPU_ResourceLabel) {
     idx = (int)TPU;
-  } else if (resource_name == "memory") {
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
     idx = (int)MEM;
   };
   if (idx != -1) {
@@ -442,7 +442,7 @@ bool ClusterResourceScheduler::EqualNodeResources(
   return true;
 }
 
-std::string ClusterResourceScheduler::NodeResourcesPrint(const NodeResources& node_resources) {
+std::string ClusterResourceScheduler::NodeResourcesDebugString(const NodeResources& node_resources) {
   std::stringstream buffer;
   buffer << "  node predefined resources {";
   for (size_t i = 0; i < node_resources.capacities.size(); i++ ) {
@@ -460,7 +460,7 @@ std::string ClusterResourceScheduler::NodeResourcesPrint(const NodeResources& no
   return buffer.str();
 }
 
-std::string ClusterResourceScheduler::TaskRequestPrint(const TaskRequest& task_request) {
+std::string ClusterResourceScheduler::TaskRequestDebugString(const TaskRequest& task_request) {
   std::stringstream buffer;
   buffer << std::endl << "  request predefined resources {";
   for (size_t i = 0; i < task_request.predefined_resources.size(); i++ ) {
@@ -479,12 +479,12 @@ std::string ClusterResourceScheduler::TaskRequestPrint(const TaskRequest& task_r
   return buffer.str();
 }
 
-std::string ClusterResourceScheduler::Print(void) {
+std::string ClusterResourceScheduler::DebugString(void) {
   std::stringstream buffer;
   buffer << std::endl << "local node id: " << local_node_id_ << std::endl;
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it) {
     buffer << "node id: " << it->first << std::endl;
-    buffer << NodeResourcesPrint(it->second);
+    buffer << NodeResourcesDebugString(it->second);
   }
   return buffer.str();
 }

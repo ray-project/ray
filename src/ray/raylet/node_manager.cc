@@ -14,8 +14,8 @@
 
 namespace {
 
-// TODO: Turn this into an environment variable. 
-const bool USE_NEW_SCHEDULER = false;
+// TODO: Turn this into an environment variable.
+// const bool USE_NEW_SCHEDULER = true;
 
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
@@ -126,7 +126,9 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
-  if (USE_NEW_SCHEDULER) {
+  new_scheduler_enabled_ = RayConfig::instance().new_scheduler_enabled();
+
+  if (new_scheduler_enabled_) {
     SchedulingResources &local_resources = cluster_resource_map_[local_client_id];
     new_resource_scheduler_ =
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
@@ -583,7 +585,7 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
       local_available_resources_.AddOrUpdateResource(resource_label,
                                                      new_resource_capacity);
     }
-    if (USE_NEW_SCHEDULER) {
+    if (new_scheduler_enabled_) {
       new_resource_scheduler_->UpdateResourceCapacity(client_id.Binary(),
                                                       resource_label,
                                                       new_resource_capacity);
@@ -620,7 +622,7 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
     if (client_id == local_client_id) {
       local_available_resources_.DeleteResource(resource_label);
     }
-    if (USE_NEW_SCHEDULER) {
+    if (new_scheduler_enabled_) {
       new_resource_scheduler_->DeleteResource(client_id.Binary(), resource_label);
     }
   }
@@ -673,7 +675,7 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   // Extract the load information and save it locally.
   remote_resources.SetLoadResources(std::move(remote_load));
 
-  if (USE_NEW_SCHEDULER && client_id != client_id_) {
+  if (new_scheduler_enabled_ && client_id != client_id_) {
     new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
                                              remote_total.GetResourceMap(),
                                              remote_available.GetResourceMap());
@@ -1106,7 +1108,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   // Return the worker to the idle pool.
   worker_pool_.PushWorker(std::move(worker));
 
-  if (USE_NEW_SCHEDULER) {
+  if (new_scheduler_enabled_) {
     DispatchScheduledTasksToWorkers();
     return;
   }
@@ -1211,7 +1213,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     local_available_resources_.ReleaseConstrained(
         task_resources, cluster_resource_map_[client_id].GetTotalResources());
     cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
-    if (USE_NEW_SCHEDULER) {
+    if (new_scheduler_enabled_) {
       new_resource_scheduler_->AddNodeAvailableResources(
           client_id_.Binary(), task_resources.ToResourceSet().GetResourceMap());
     }
@@ -1221,7 +1223,7 @@ void NodeManager::ProcessDisconnectClientMessage(
     local_available_resources_.ReleaseConstrained(
         lifetime_resources, cluster_resource_map_[client_id].GetTotalResources());
     cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
-    if (USE_NEW_SCHEDULER) {
+    if (new_scheduler_enabled_) {
       new_resource_scheduler_->AddNodeAvailableResources(
           client_id_.Binary(), lifetime_resources.ToResourceSet().GetResourceMap());
     }
@@ -1470,7 +1472,7 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
 }
 
 void NodeManager::DispatchScheduledTasksToWorkers() {
-  RAY_CHECK(USE_NEW_SCHEDULER);
+  RAY_CHECK(new_scheduler_enabled_);
   while (!tasks_to_dispatch_.empty()) {
     auto task = tasks_to_dispatch_.front();
     auto reply = task.first;
@@ -1485,7 +1487,7 @@ void NodeManager::DispatchScheduledTasksToWorkers() {
 }
 
 void NodeManager::NewSchedulerSchedulePendingTasks() {
-  RAY_CHECK(USE_NEW_SCHEDULER);
+  RAY_CHECK(new_scheduler_enabled_);
   while (!tasks_to_schedule_.empty()) {
     auto work = tasks_to_schedule_.front();
     auto task = work.second;
@@ -1525,7 +1527,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   Task task(task_message);
 
-  if (USE_NEW_SCHEDULER) {
+  if (new_scheduler_enabled_) {
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     auto work = std::make_pair(
@@ -1594,7 +1596,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
   auto worker_port = request.worker_port();
   std::shared_ptr<Worker> worker = std::move(leased_workers_[worker_port]);
 
-  if (USE_NEW_SCHEDULER) {
+  if (new_scheduler_enabled_) {
     auto it = leased_worker_resources_.find(worker_port);
     RAY_CHECK(it != leased_worker_resources_.end());
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
@@ -2000,17 +2002,18 @@ void NodeManager::SubmitTask(const Task &task, const Lineage &uncommitted_lineag
 }
 
 void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &worker) {
-  if (!worker || /*worker->GetAssignedTaskId().IsNil() ||*/ worker->IsBlocked()) {
+  if (new_scheduler_enabled_) {
+    // TODO (ion): replace this hard coded # of CPUs.
+    std::unordered_map<std::string, double> task_request;
+    task_request.emplace(kCPU_ResourceLabel, 1.);
+    new_resource_scheduler_->AddNodeAvailableResources( client_id_.Binary(), task_request);
+    return;
+  }
+  if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
     return;  // The worker may have died or is no longer processing the task.
   }
   auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
   local_available_resources_.Release(cpu_resource_ids);
-  if (USE_NEW_SCHEDULER) {
-    // TODO (ion): replace this hard coded # of CPUs.
-    std::unordered_map<std::string, double> task_request;
-    task_request.emplace("CPU", 1.);
-    new_resource_scheduler_->AddNodeAvailableResources( client_id_.Binary(), task_request);
-  }
   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
       cpu_resource_ids.ToResourceSet());
   worker->MarkBlocked();
@@ -2034,10 +2037,6 @@ void NodeManager::HandleDirectCallTaskUnblocked(const std::shared_ptr<Worker> &w
     worker->AcquireTaskCpuResources(resource_ids);
     cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
         cpu_resources);
-    if (USE_NEW_SCHEDULER) {
-      new_resource_scheduler_->SubtractNodeAvailableResources(
-          client_id_.Binary(), cpu_resources.GetResourceMap());
-    }
   } else {
     // In this case, we simply don't reacquire the CPU resources for the worker.
     // The worker can keep running and when the task finishes, it will simply
@@ -2068,10 +2067,6 @@ void NodeManager::HandleTaskBlocked(const std::shared_ptr<LocalClientConnection>
       // Release the CPU resources.
       auto const cpu_resource_ids = worker->ReleaseTaskCpuResources();
       local_available_resources_.Release(cpu_resource_ids);
-      if (USE_NEW_SCHEDULER) {
-        new_resource_scheduler_->AddNodeAvailableResources(
-            client_id_.Binary(), cpu_resource_ids.ToResourceSet().GetResourceMap());
-      }
       cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
           cpu_resource_ids.ToResourceSet());
       worker->MarkBlocked();
@@ -2136,7 +2131,7 @@ void NodeManager::HandleTaskUnblocked(
         worker->AcquireTaskCpuResources(resource_ids);
         cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Acquire(
             cpu_resources);
-        if (USE_NEW_SCHEDULER) {
+        if (new_scheduler_enabled_) {
           new_resource_scheduler_->SubtractNodeAvailableResources(
               client_id_.Binary(), cpu_resources.GetResourceMap());
         }
@@ -2222,7 +2217,7 @@ bool NodeManager::AssignTask(const Task &task,
       local_available_resources_.Acquire(spec.GetRequiredResources());
   const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
   cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
-  if (USE_NEW_SCHEDULER) {
+  if (new_scheduler_enabled_) {
     new_resource_scheduler_->AddNodeAvailableResources(
         client_id_.Binary(), spec.GetRequiredResources().GetResourceMap());
   }
@@ -2288,7 +2283,7 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
       task_resources, cluster_resource_map_[client_id].GetTotalResources());
   cluster_resource_map_[gcs_client_->client_table().GetLocalClientId()].Release(
       task_resources.ToResourceSet());
-  if (USE_NEW_SCHEDULER) {
+  if (new_scheduler_enabled_) {
     new_resource_scheduler_->AddNodeAvailableResources(
         client_id_.Binary(), task_resources.ToResourceSet().GetResourceMap());
   }

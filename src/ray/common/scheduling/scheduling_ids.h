@@ -23,6 +23,11 @@ class StringIdMap {
   /// \param String ID.
   /// \return The integer ID associated with the given string ID.
   int64_t Get(const std::string &string_id);
+
+  /// Get string ID associated with an existing integer ID.
+  ///
+  /// \param Integre ID.
+  /// \return The string ID associated with the given integer ID.
   std::string Get(uint64_t id);
 
   /// Insert a string ID and get the associated integer ID.

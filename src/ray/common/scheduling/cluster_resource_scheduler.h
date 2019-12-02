@@ -4,6 +4,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/task/scheduling_resources.h"
 #include "ray/util/logging.h"
 
 #include <iostream>
@@ -83,9 +84,9 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<int64_t, ResourceCapacity> &new_custom_resources,
       absl::flat_hash_map<int64_t, ResourceCapacity> *old_custom_resources);
 
-  std::string TaskRequestPrint(const TaskRequest& task_request);
-  std::string NodeResourcesPrint(const NodeResources& node_resources);
-  std::string Print(void);
+  std::string TaskRequestDebugString(const TaskRequest& task_request);
+  std::string NodeResourcesDebugString(const NodeResources& node_resources);
+  std::string DebugString(void);
 
  public:
   ClusterResourceScheduler(void){};
@@ -158,7 +159,7 @@ class ClusterResourceScheduler {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
-  
+
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations)
   /// but the return value is different:
@@ -212,12 +213,15 @@ class ClusterResourceScheduler {
       const std::unordered_map<std::string, double> &resource_map_available,
       NodeResources *node_resources);
 
+  /// Update total capacity of resource resource_name at node client_id.
   void UpdateResourceCapacity(const std::string& client_id,
       const std::string& resource_name, int64_t resource_total);
 
+  /// Delete resource resource_name from node cleint_id_string.
   void DeleteResource(const std::string& client_id_string,
       const std::string& resource_name);
 
+  /// Check whether two node resources are identical.
   bool EqualNodeResources(
       const NodeResources &node_resources1, const NodeResources &node_resources2);
 };
