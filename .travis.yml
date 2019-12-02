@@ -46,10 +46,10 @@ matrix:
         - ./ci/suppress_output ./ci/travis/install-ray.sh
         - ./ci/suppress_output ./ci/travis/install-cython-examples.sh
       script:
+        - export PATH="$HOME/miniconda/bin:$PATH"
         - cd python
         - pip install -e .
         - cd ..
-        - export PATH="$HOME/miniconda/bin:$PATH"
         - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/test_logical_graph.py; fi
 
     - os: linux
