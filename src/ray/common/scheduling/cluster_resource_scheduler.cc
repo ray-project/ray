@@ -126,9 +126,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   int64_t best_node = -1;
   *total_violations = 0;
 
-  // RAY_LOG(ERROR)  << "    GET BEST NODE: " << Print();
-  // RAY_LOG(ERROR)  << "    GET BEST NODE: " << TaskRequestPrint(task_req);
-
   // Check whether local node is schedulable. We return immediately
   // the local node only if there are zero violations.
   auto it = nodes_.find(local_node_id_);
@@ -182,10 +179,9 @@ std::string ClusterResourceScheduler::GetBestSchedulableNode(
 
   std::string id_string;
   if (node_id == -1) {
-    id_string = std::to_string(-1);
+    return "";
   }
-  id_string = string_to_int_map_.Get(node_id);
-  return id_string;
+  return string_to_int_map_.Get(node_id);
 }
 
 bool ClusterResourceScheduler::SubtractNodeAvailableResources(
@@ -196,7 +192,6 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
   }
   NodeResources &resources = it->second;
 
-  // RAY_LOG(ERROR) << "   SUBTRACT RESOURCES: " << TaskRequestPrint(task_req);
   // Just double check this node can still schedule the task request.
   if (IsSchedulable(task_req, local_node_id_, resources) == -1) {
     return false;
@@ -229,7 +224,6 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
 
 bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
                                                          const TaskRequest &task_req) {
-  // RAY_LOG(ERROR) << "    ADD RESOURCES 0: " << TaskRequestPrint(task_req);
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     return false;

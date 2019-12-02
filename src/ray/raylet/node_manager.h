@@ -542,11 +542,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
 
-  /// Move tasks from runnable -> running as workers become available.
-  void DispatchDirectCallTasks();
+  /// Dispatch tasks to available workers.
+  void DispatchScheduledTasksToWorkers();
 
-  /// Move tasks from pending -> runnable queue as resources become available.
-  void NewSchedulerScheduleMoreTasks();
+  /// For the pending task at the head of tasks_to_schedule_, return a node
+  /// in the system (local or remote) that has enough resources available to
+  /// run the task, if any such node exist.
+  /// Repeat the process as long as we can schedule a task.
+  void NewSchedulerSchedulePendingTasks();
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -627,7 +630,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// The new resource scheduler for direct task calls.
   std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
   /// Map of leased workers to their current resource usage.
-  // std::unordered_map<int, TaskRequest> leased_worker_resources_; XXX
   std::unordered_map<int, std::unordered_map<std::string, double>>
       leased_worker_resources_;
 
@@ -637,9 +639,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Queue of lease requests that are waiting for resources to become available.
   /// TODO this should be a queue for each SchedulingClass
-  std::deque<std::pair<ScheduleFn, Task>> new_pending_queue_;
+  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
   /// Queue of lease requests that should be scheduled onto workers.
-  std::deque<std::pair<ScheduleFn, Task>> new_runnable_queue_;
+  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
 };
 
 }  // namespace raylet

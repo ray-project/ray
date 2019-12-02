@@ -14,7 +14,8 @@
 
 namespace {
 
-const bool USE_NEW_SCHEDULER = true;
+// TODO: Turn this into an environment variable. 
+const bool USE_NEW_SCHEDULER = false;
 
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
@@ -126,7 +127,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
 
   if (USE_NEW_SCHEDULER) {
-    // RAY_LOG(ERROR) << "NEW_SCHEDULER NodeManager  : ClusterResourceScheduler";
     SchedulingResources &local_resources = cluster_resource_map_[local_client_id];
     new_resource_scheduler_ =
         std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
@@ -584,7 +584,6 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
                                                      new_resource_capacity);
     }
     if (USE_NEW_SCHEDULER) {
-      // RAY_LOG(ERROR) << "NEW_SCHEDULER ResourceCreateUpdated  : UpdateResourceCapacity";
       new_resource_scheduler_->UpdateResourceCapacity(client_id.Binary(),
                                                       resource_label,
                                                       new_resource_capacity);
@@ -622,7 +621,6 @@ void NodeManager::ResourceDeleted(const ClientID &client_id,
       local_available_resources_.DeleteResource(resource_label);
     }
     if (USE_NEW_SCHEDULER) {
-      // RAY_LOG(ERROR) << "NEW_SCHEDULER ResourceDelete  : DeleteResource";
       new_resource_scheduler_->DeleteResource(client_id.Binary(), resource_label);
     }
   }
@@ -676,11 +674,10 @@ void NodeManager::HeartbeatAdded(const ClientID &client_id,
   remote_resources.SetLoadResources(std::move(remote_load));
 
   if (USE_NEW_SCHEDULER && client_id != client_id_) {
-    // RAY_LOG(ERROR) << "NEW_SCHEDULER HeartbeatAdded  : AddOrUpdateNode";
     new_resource_scheduler_->AddOrUpdateNode(client_id.Binary(),
                                              remote_total.GetResourceMap(),
                                              remote_available.GetResourceMap());
-    NewSchedulerScheduleMoreTasks();
+    NewSchedulerSchedulePendingTasks();
     return;
   }
 
@@ -915,22 +912,18 @@ void NodeManager::ProcessClientMessage(
 
   switch (message_type_value) {
   case protocol::MessageType::RegisterClientRequest: {
-    // RAY_LOG(ERROR) << "--------------- ProcessRegisterClientRequestMessage";
     ProcessRegisterClientRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::TaskDone: {
-    // RAY_LOG(ERROR) << "--------------- HandleWorkerAvailable";
     HandleWorkerAvailable(client);
   } break;
   case protocol::MessageType::DisconnectClient: {
-    // RAY_LOG(ERROR) << "--------------- DisconnectClient";
     ProcessDisconnectClientMessage(client);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
     return;
   } break;
   case protocol::MessageType::IntentionalDisconnectClient: {
-    // RAY_LOG(ERROR) << "--------------- IntentionalDisconnectClient";
     ProcessDisconnectClientMessage(client, /* intentional_disconnect = */ true);
     // We don't need to receive future messages from this client,
     // because it's already disconnected.
@@ -940,42 +933,33 @@ void NodeManager::ProcessClientMessage(
     // For tasks submitted via the raylet path, we must make sure to order the
     // task submission so that tasks are always submitted after the tasks that
     // they depend on.
-    // RAY_LOG(ERROR) << "--------------- SubmitTask";
     ProcessSubmitTaskMessage(message_data);
   } break;
   case protocol::MessageType::SetResourceRequest: {
-    // RAY_LOG(ERROR) << "--------------- SetResourceRequest";
     ProcessSetResourceRequest(client, message_data);
   } break;
   case protocol::MessageType::FetchOrReconstruct: {
-    // RAY_LOG(ERROR) << "--------------- FetchOrReconstruct";
     ProcessFetchOrReconstructMessage(client, message_data);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskBlocked: {
-    // RAY_LOG(ERROR) << "--------------- NotifyDirectCallTaskBlocked";
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
     HandleDirectCallTaskBlocked(worker);
   } break;
   case protocol::MessageType::NotifyDirectCallTaskUnblocked: {
     std::shared_ptr<Worker> worker = worker_pool_.GetRegisteredWorker(client);
-    // RAY_LOG(ERROR) << "--------------- NotifyDirectCallTaskUnblocked";
     HandleDirectCallTaskUnblocked(worker);
   } break;
   case protocol::MessageType::NotifyUnblocked: {
     auto message = flatbuffers::GetRoot<protocol::NotifyUnblocked>(message_data);
-    // RAY_LOG(ERROR) << "--------------- NotifyUnblocked";
     HandleTaskUnblocked(client, from_flatbuf<TaskID>(*message->task_id()));
   } break;
   case protocol::MessageType::WaitRequest: {
-    // RAY_LOG(ERROR) << "--------------- WaitRequest";
     ProcessWaitRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::WaitForDirectActorCallArgsRequest: {
-    // RAY_LOG(ERROR) << "--------------- WaitForDirectActorCallArgsRequest";
     ProcessWaitForDirectActorCallArgsRequestMessage(client, message_data);
   } break;
   case protocol::MessageType::PushErrorRequest: {
-    // RAY_LOG(ERROR) << "--------------- PushErrorRequest";
     ProcessPushErrorRequestMessage(message_data);
   } break;
   case protocol::MessageType::PushProfileEventsRequest: {
@@ -990,7 +974,6 @@ void NodeManager::ProcessClientMessage(
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
     // Clean up objects from the object store.
     object_manager_.FreeObjects(object_ids, message->local_only());
-    // RAY_LOG(ERROR) << "--------------- FreeObjectsInObjectStoreRequest";
     if (message->delete_creating_tasks()) {
       // Clean up their creating tasks from GCS.
       std::vector<TaskID> creating_task_ids;
@@ -1001,15 +984,12 @@ void NodeManager::ProcessClientMessage(
     }
   } break;
   case protocol::MessageType::PrepareActorCheckpointRequest: {
-    // RAY_LOG(ERROR) << "--------------- PrepareActorCheckpointRequest";
     ProcessPrepareActorCheckpointRequest(client, message_data);
   } break;
   case protocol::MessageType::NotifyActorResumedFromCheckpoint: {
-    // RAY_LOG(ERROR) << "--------------- NotifyActorResumedFromCheckpoint";
     ProcessNotifyActorResumedFromCheckpoint(message_data);
   } break;
   case protocol::MessageType::ReportActiveObjectIDs: {
-    // RAY_LOG(ERROR) << "--------------- ReportActiveObjectIDs";
     ProcessReportActiveObjectIDs(client, message_data);
   } break;
 
@@ -1127,8 +1107,7 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   worker_pool_.PushWorker(std::move(worker));
 
   if (USE_NEW_SCHEDULER) {
-    // RAY_LOG(ERROR) << "NEW_SCHEDULER HandleWorkerAvailable DispatchDirectCallTasks";
-    DispatchDirectCallTasks();
+    DispatchScheduledTasksToWorkers();
     return;
   }
 
@@ -1233,7 +1212,6 @@ void NodeManager::ProcessDisconnectClientMessage(
         task_resources, cluster_resource_map_[client_id].GetTotalResources());
     cluster_resource_map_[client_id].Release(task_resources.ToResourceSet());
     if (USE_NEW_SCHEDULER) {
-      // RAY_LOG(ERROR) << "NEW_SCHEDULER ProcessDisconnectClientMessage AddNodeAvailableResources";
       new_resource_scheduler_->AddNodeAvailableResources(
           client_id_.Binary(), task_resources.ToResourceSet().GetResourceMap());
     }
@@ -1244,7 +1222,6 @@ void NodeManager::ProcessDisconnectClientMessage(
         lifetime_resources, cluster_resource_map_[client_id].GetTotalResources());
     cluster_resource_map_[client_id].Release(lifetime_resources.ToResourceSet());
     if (USE_NEW_SCHEDULER) {
-      // RAY_LOG(ERROR) << "NEW_SCHEDULER(1) ProcessDisconnectClientMessage AddNodeAvailableResources";
       new_resource_scheduler_->AddNodeAvailableResources(
           client_id_.Binary(), lifetime_resources.ToResourceSet().GetResourceMap());
     }
@@ -1492,10 +1469,10 @@ void NodeManager::ProcessSubmitTaskMessage(const uint8_t *message_data) {
   SubmitTask(Task(task_message), Lineage());
 }
 
-void NodeManager::DispatchDirectCallTasks() {
+void NodeManager::DispatchScheduledTasksToWorkers() {
   RAY_CHECK(USE_NEW_SCHEDULER);
-  while (!new_runnable_queue_.empty()) {
-    auto task = new_runnable_queue_.front();
+  while (!tasks_to_dispatch_.empty()) {
+    auto task = tasks_to_dispatch_.front();
     auto reply = task.first;
     std::shared_ptr<Worker> worker =
         worker_pool_.PopWorker(task.second.GetTaskSpecification());
@@ -1503,27 +1480,28 @@ void NodeManager::DispatchDirectCallTasks() {
       return;
     }
     reply(worker, ClientID::Nil(), "", -1);
-    new_runnable_queue_.pop_front();
+    tasks_to_dispatch_.pop_front();
   }
 }
 
-void NodeManager::NewSchedulerScheduleMoreTasks() {
+void NodeManager::NewSchedulerSchedulePendingTasks() {
   RAY_CHECK(USE_NEW_SCHEDULER);
-  while (!new_pending_queue_.empty()) {
-    auto work = new_pending_queue_.front();
+  while (!tasks_to_schedule_.empty()) {
+    auto work = tasks_to_schedule_.front();
     auto task = work.second;
     auto request_resources =
         task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
     int64_t violations = 0;
     std::string node_id_string =
         new_resource_scheduler_->GetBestSchedulableNode(request_resources, &violations);
-    if (node_id_string == std::to_string(-1)) {
+    if (node_id_string.empty()) {
+      /// There is no node that has available resources to run the request.
       break;
     } else {
       new_resource_scheduler_->SubtractNodeAvailableResources(node_id_string,
                                                               request_resources);
       if (node_id_string == client_id_.Binary()) {
-        new_runnable_queue_.push_back(work);
+        tasks_to_dispatch_.push_back(work);
       } else {
         ClientID node_id = ClientID::FromBinary(node_id_string);
         GcsNodeInfo node_info;
@@ -1534,10 +1512,10 @@ void NodeManager::NewSchedulerScheduleMoreTasks() {
         work.first(nullptr, node_id, node_info.node_manager_address(),
                    node_info.node_manager_port());
       }
-      new_pending_queue_.pop_front();
+      tasks_to_schedule_.pop_front();
     }
   }
-  DispatchDirectCallTasks();
+  DispatchScheduledTasksToWorkers();
 }
 
 void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
@@ -1572,8 +1550,8 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
           send_reply_callback(Status::OK(), nullptr, nullptr);
         },
         task);
-    new_pending_queue_.push_back(work);
-    NewSchedulerScheduleMoreTasks();
+    tasks_to_schedule_.push_back(work);
+    NewSchedulerSchedulePendingTasks();
     return;
   }
 
@@ -1621,7 +1599,7 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     RAY_CHECK(it != leased_worker_resources_.end());
     new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), it->second);
     leased_worker_resources_.erase(it);
-    NewSchedulerScheduleMoreTasks();
+    NewSchedulerSchedulePendingTasks();
   }
 
   leased_workers_.erase(worker_port);

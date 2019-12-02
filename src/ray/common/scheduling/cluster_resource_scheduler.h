@@ -158,6 +158,13 @@ class ClusterResourceScheduler {
   ///  \return -1, if no node can schedule the current request; otherwise,
   ///          return the ID of a node that can schedule the task request.
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
+  
+  /// Similar to
+  ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations)
+  /// but the return value is different:
+  /// \return "", if no node can schedule the current request; otherwise,
+  ///          return the ID in string format of a node that can schedule the
+  //           task request.
   std::string GetBestSchedulableNode(
       const std::unordered_map<std::string, double> &task_request, int64_t *violations);
 
