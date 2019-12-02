@@ -8,14 +8,14 @@ import RemoveIcon from "@material-ui/icons/Remove";
 import classNames from "classnames";
 import React from "react";
 import { NodeInfoResponse } from "../../api";
-import CPU from "./features/CPU";
-import Disk from "./features/Disk";
-import { makeErrorsFeature } from "./features/Errors";
-import Host from "./features/Host";
-import { makeLogsFeature } from "./features/Logs";
-import RAM from "./features/RAM";
-import Uptime from "./features/Uptime";
-import Workers from "./features/Workers";
+import { NodeCPU, WorkerCPU } from "./features/CPU";
+import { NodeDisk, WorkerDisk } from "./features/Disk";
+import { makeNodeErrors, makeWorkerErrors } from "./features/Errors";
+import { NodeHost, WorkerHost } from "./features/Host";
+import { makeNodeLogs, makeWorkerLogs } from "./features/Logs";
+import { NodeRAM, WorkerRAM } from "./features/RAM";
+import { NodeUptime, WorkerUptime } from "./features/Uptime";
+import { NodeWorkers, WorkerWorkers } from "./features/Workers";
 
 const styles = (theme: Theme) =>
   createStyles({
@@ -74,14 +74,20 @@ class NodeRowGroup extends React.Component<
     const { expanded } = this.state;
 
     const features = [
-      Host,
-      Workers,
-      Uptime,
-      CPU,
-      RAM,
-      Disk,
-      makeLogsFeature(logCounts),
-      makeErrorsFeature(errorCounts)
+      { NodeFeature: NodeHost, WorkerFeature: WorkerHost },
+      { NodeFeature: NodeWorkers, WorkerFeature: WorkerWorkers },
+      { NodeFeature: NodeUptime, WorkerFeature: WorkerUptime },
+      { NodeFeature: NodeCPU, WorkerFeature: WorkerCPU },
+      { NodeFeature: NodeRAM, WorkerFeature: WorkerRAM },
+      { NodeFeature: NodeDisk, WorkerFeature: WorkerDisk },
+      {
+        NodeFeature: makeNodeLogs(logCounts),
+        WorkerFeature: makeWorkerLogs(logCounts)
+      },
+      {
+        NodeFeature: makeNodeErrors(errorCounts),
+        WorkerFeature: makeWorkerErrors(errorCounts)
+      }
     ];
 
     return (
@@ -97,9 +103,9 @@ class NodeRowGroup extends React.Component<
               <RemoveIcon className={classes.expandCollapseIcon} />
             )}
           </TableCell>
-          {features.map(Feature => (
+          {features.map(({ NodeFeature }) => (
             <TableCell className={classes.cell}>
-              <Feature type="node" node={node} />
+              <NodeFeature node={node} />
             </TableCell>
           ))}
         </TableRow>
@@ -107,9 +113,9 @@ class NodeRowGroup extends React.Component<
           node.workers.map((worker, index: number) => (
             <TableRow hover key={index}>
               <TableCell className={classes.cell} />
-              {features.map(Feature => (
+              {features.map(({ WorkerFeature }) => (
                 <TableCell className={classes.cell}>
-                  <Feature type="worker" node={node} worker={worker} />
+                  <WorkerFeature node={node} worker={worker} />
                 </TableCell>
               ))}
             </TableRow>

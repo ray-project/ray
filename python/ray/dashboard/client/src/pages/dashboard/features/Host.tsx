@@ -1,17 +1,14 @@
 import React from "react";
-import { makeFeature } from "./makeFeature";
+import { NodeFeatureComponent, WorkerFeatureComponent } from "./types";
 
-const Host = makeFeature({
-  getFeatureForNode: ({ node }) => (
-    <React.Fragment>
-      {node.hostname} ({node.ip})
-    </React.Fragment>
-  ),
-  getFeatureForWorker: ({ worker }) => (
-    <React.Fragment>
-      {worker.cmdline[0].split("::", 2)[0]} (PID: {worker.pid})
-    </React.Fragment>
-  )
-});
+export const NodeHost: NodeFeatureComponent = ({ node }) => (
+  <React.Fragment>
+    {node.hostname} ({node.ip})
+  </React.Fragment>
+);
 
-export default Host;
+export const WorkerHost: WorkerFeatureComponent = ({ worker }) => (
+  <React.Fragment>
+    {worker.cmdline[0].split("::", 2)[0]} (PID: {worker.pid})
+  </React.Fragment>
+);

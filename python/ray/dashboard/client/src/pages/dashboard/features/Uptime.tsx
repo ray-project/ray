@@ -1,14 +1,11 @@
 import React from "react";
 import { formatUptime } from "../../../common/formatUtils";
-import { makeFeature } from "./makeFeature";
+import { NodeFeatureComponent, WorkerFeatureComponent } from "./types";
 
-const Uptime = makeFeature({
-  getFeatureForNode: ({ node }) => (
-    <React.Fragment>{formatUptime(node.boot_time)}</React.Fragment>
-  ),
-  getFeatureForWorker: ({ worker }) => (
-    <React.Fragment>{formatUptime(worker.create_time)}</React.Fragment>
-  )
-});
+export const NodeUptime: NodeFeatureComponent = ({ node }) => (
+  <React.Fragment>{formatUptime(node.boot_time)}</React.Fragment>
+);
 
-export default Uptime;
+export const WorkerUptime: WorkerFeatureComponent = ({ worker }) => (
+  <React.Fragment>{formatUptime(worker.create_time)}</React.Fragment>
+);

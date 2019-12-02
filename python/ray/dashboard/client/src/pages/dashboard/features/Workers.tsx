@@ -1,13 +1,10 @@
 import React from "react";
-import { makeFeature } from "./makeFeature";
+import { NodeFeatureComponent, WorkerFeatureComponent } from "./types";
 
-const Workers = makeFeature({
-  getFeatureForNode: ({ node }) => (
-    <React.Fragment>{node.workers.length}</React.Fragment>
-  ),
-  getFeatureForWorker: ({ worker }) => (
-    <React.Fragment>{worker.cmdline[0].split("::", 2)[1]}</React.Fragment>
-  )
-});
+export const NodeWorkers: NodeFeatureComponent = ({ node }) => (
+  <React.Fragment>{node.workers.length}</React.Fragment>
+);
 
-export default Workers;
+export const WorkerWorkers: WorkerFeatureComponent = ({ worker }) => (
+  <React.Fragment>{worker.cmdline[0].split("::", 2)[1]}</React.Fragment>
+);
