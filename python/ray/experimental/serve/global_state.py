@@ -1,18 +1,23 @@
 import ray
 from ray.experimental.serve.constants import (
-    BOOTSTRAP_KV_STORE_CONN_KEY, DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT,
-    SERVE_NURSERY_NAME)
+    BOOTSTRAP_KV_STORE_CONN_KEY,
+    DEFAULT_HTTP_HOST,
+    DEFAULT_HTTP_PORT,
+    SERVE_NURSERY_NAME,
+)
 from ray.experimental.serve.kv_store_service import (
-    BackendTable, RoutingTable, TrafficPolicyTable)
-from ray.experimental.serve.metric import (MetricMonitor,
-                                           start_metric_monitor_loop)
+    BackendTable,
+    RoutingTable,
+    TrafficPolicyTable,
+)
+from ray.experimental.serve.metric import MetricMonitor
 from ray.experimental.serve.queues import CentralizedQueuesActor
 from ray.experimental.serve.server import HTTPActor
 
 
 def start_initial_state(kv_store_connector):
-    nursery_handle = ActorNursery.remote()
-    ray.experimental.register_actor(SERVE_NURSERY_NAME, nursery_handle)
+    nursery_handle = ActorNursery.options(
+        is_detached=True, name=SERVE_NURSERY_NAME).remote()
 
     ray.get(
         nursery_handle.store_bootstrap_state.remote(
@@ -36,9 +41,10 @@ class ActorNursery:
 
         self.bootstrap_state = dict()
 
-    def start_actor(self, actor_cls, init_args, tag):
+    def start_actor(self, actor_cls, init_args, tag, is_async=False):
         """Start an actor and add it to the nursery"""
-        handle = actor_cls.remote(*init_args)
+        handle = actor_cls.options(
+            is_direct_call=is_async, is_asyncio=is_async).remote(*init_args)
         self.actor_handles[handle] = tag
         return [handle]
 
@@ -115,15 +121,18 @@ class GlobalState:
 
         return self.actor_handle_cache["queue_actor"]
 
-    def init_or_get_metric_monitor(self, gc_window_seconds=3600):
+    def init_or_get_metric_monitor(self,
+                                   gc_window_seconds=3600,
+                                   scrape_duration_seconds=5):
         if "metric_monitor" not in self.actor_handle_cache:
             [handle] = ray.get(
                 self.actor_nursery_handle.start_actor.remote(
                     MetricMonitor,
-                    init_args=(gc_window_seconds, ),
-                    tag="metric_monitor"))
+                    init_args=(gc_window_seconds, scrape_duration_seconds),
+                    tag="metric_monitor"),
+                is_async=True)
 
-            start_metric_monitor_loop.remote(handle)
+            handle.start_main_loop.remote()
 
             if "queue_actor" in self.actor_handle_cache:
                 handle.add_target.remote(

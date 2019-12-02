@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import numpy as np
@@ -8,13 +9,15 @@ import ray
 
 @ray.remote(num_cpus=0)
 class MetricMonitor:
-    def __init__(self, gc_window_seconds=3600):
+    def __init__(self, gc_window_seconds=3600, scrape_duration_sceonds=5):
         """Metric monitor scrapes metrics from ray serve actors
         and allow windowed query operations.
 
         Args:
             gc_window_seconds(int): How long will we keep the metric data in
                 memory. Data older than the gc_window will be deleted.
+            scrape_duration_seconds(int): The duration which we will call the
+                actor to collect metric.
         """
         #: Mapping actor ID (hex) -> actor handle
         self.actor_handles = dict()
@@ -23,6 +26,8 @@ class MetricMonitor:
 
         self.gc_window_seconds = gc_window_seconds
         self.latest_gc_time = time.time()
+
+        self.scrape_duration_seconds = scrape_duration_sceonds
 
     def is_ready(self):
         return True
@@ -35,7 +40,12 @@ class MetricMonitor:
         hex_id = target_handle._actor_id.hex()
         self.actor_handles.pop(hex_id)
 
-    def scrape(self):
+    async def start_main_loop(self):
+        while True:
+            await self.scrape()
+            await asyncio.sleep(self.scrape_duration_seconds)
+
+    async def scrape(self):
         # If expected gc time has passed, we will perform metric value GC.
         expected_gc_time = self.latest_gc_time + self.gc_window_seconds
         if expected_gc_time < time.time():
@@ -132,8 +142,8 @@ class MetricMonitor:
         data_types = filtered_df["type"].unique().tolist()
         assert data_types == [
             "list"
-        ], ("Can't aggreagte over non-list type. {} has type {}".format(
-            metric_name, data_types))
+        ], "Can't aggreagte over non-list type. {} has type {}".format(
+            metric_name, data_types)
 
         aggregated_metric = {}
         for window in agg_windows_seconds:
@@ -148,10 +158,3 @@ class MetricMonitor:
                 aggregated_metric[result_key] = value
 
         return aggregated_metric
-
-
-@ray.remote(num_cpus=0)
-def start_metric_monitor_loop(monitor_handle, duration_s=5):
-    while True:
-        ray.get(monitor_handle.scrape.remote())
-        time.sleep(duration_s)
