@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 import org.ray.api.Ray;
+import org.ray.runtime.util.NetworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.SkipException;
@@ -22,7 +23,6 @@ public abstract class BaseMultiLanguageTest {
 
   private static final String PLASMA_STORE_SOCKET_NAME = "/tmp/ray/test/plasma_store_socket";
   private static final String RAYLET_SOCKET_NAME = "/tmp/ray/test/raylet_socket";
-  private static final String NODE_MANAGER_PORT = "9900";
 
   /**
    * Execute an external command.
@@ -66,6 +66,8 @@ public abstract class BaseMultiLanguageTest {
       }
     }
 
+    String nodeManagerPort = String.valueOf(NetworkUtil.getUnusedPort());
+
     // Start ray cluster.
     String workerOptions =
         " -classpath " + System.getProperty("java.class.path");
@@ -76,7 +78,7 @@ public abstract class BaseMultiLanguageTest {
         "--redis-port=6379",
         String.format("--plasma-store-socket-name=%s", PLASMA_STORE_SOCKET_NAME),
         String.format("--raylet-socket-name=%s", RAYLET_SOCKET_NAME),
-        String.format("--node-manager-port=%s", NODE_MANAGER_PORT),
+        String.format("--node-manager-port=%s", nodeManagerPort),
         "--load-code-from-local",
         "--include-java",
         "--java-worker-options=" + workerOptions
@@ -96,7 +98,7 @@ public abstract class BaseMultiLanguageTest {
     System.setProperty("ray.redis.address", "127.0.0.1:6379");
     System.setProperty("ray.object-store.socket-name", PLASMA_STORE_SOCKET_NAME);
     System.setProperty("ray.raylet.socket-name", RAYLET_SOCKET_NAME);
-    System.setProperty("ray.raylet.node-manager-port", NODE_MANAGER_PORT);
+    System.setProperty("ray.raylet.node-manager-port", nodeManagerPort);
     Ray.init();
   }
 
