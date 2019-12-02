@@ -62,10 +62,10 @@ class RayTrialExecutorTest(unittest.TestCase):
 
         # Timeout on first two attempts, then succeed on subsequent gets.
         side_effects = [RayTimeoutError, RayTimeoutError, ray_get, ray_get]
-        with patch("ray.get", side_effect=side_effects), \
-             patch.object(self.trial_executor, "_start_trial") as mock_start:
-            mock_start.side_effect = start_trial
-            self.trial_executor.start_trial(trial, checkpoint=trial.checkpoint)
+        with patch.object(self.trial_executor, "_start_trial") as mock_start:
+            with patch("ray.get", side_effect=side_effects):
+                mock_start.side_effect = start_trial
+                self.trial_executor.start_trial(trial, trial.checkpoint)
 
         # Trial starts successfully on 3rd attempt.
         assert mock_start.call_count == 3

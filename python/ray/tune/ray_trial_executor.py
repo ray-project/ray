@@ -81,7 +81,7 @@ class RayTrialExecutor(TrialExecutor):
 
         if (self._reuse_actors and reuse_allowed
                 and self._cached_actor is not None):
-            logger.debug("Trial %s: Reusing cached runner {}",
+            logger.debug("Trial %s: Reusing cached runner %s", trial,
                          self._cached_actor)
             existing_runner = self._cached_actor
             self._cached_actor = None
@@ -138,8 +138,15 @@ class RayTrialExecutor(TrialExecutor):
     def _start_trial(self, trial, checkpoint=None, runner=None):
         """Starts trial and restores last result if trial was paused.
 
-        Raises:
-            RuntimeError if restoring from checkpoint fails.
+        Args:
+            trial (Trial): The trial to start.
+            checkpoint (Optional[Checkpoint]): The checkpoint to restore from.
+                If None, and no trial checkpoint exists, the trial is started
+                from the beginning.
+            runner (Trainable): The remote runner to use. This can be the
+                cached actor. If None, a new runner is created.
+
+        See `RayTrialExecutor.restore` for possible errors raised.
         """
         prior_status = trial.status
         self.set_status(trial, Trial.RUNNING)
@@ -222,14 +229,16 @@ class RayTrialExecutor(TrialExecutor):
                 self._stop_trial(trial, error=True, error_msg=error_msg)
                 break  # don't retry fatal Tune errors
             except RayTimeoutError:
-                logger.warning(
-                    "Trial %s: Runner task timed out. This could be due to "
-                    "slow worker startup.", trial)
                 # Reuse the existing runner on retries.
                 remote_runner = trial.runner
+                warning = ("Runner task timed out. This could be due to "
+                           "slow worker startup.")
                 if attempts == TRIAL_START_ATTEMPTS:
                     error_msg = traceback.format_exc()
                     self._stop_trial(trial, error=True, error_msg=error_msg)
+                else:
+                    warning += " Reusing the same runner."
+                logger.warning("Trial %s: %s", trial, warning)
             except Exception:
                 logger.exception("Trial %s: Error starting runner.", trial)
                 time.sleep(2)
@@ -573,6 +582,11 @@ class RayTrialExecutor(TrialExecutor):
 
         This will also sync the trial results to a new location
         if restoring on a different node.
+
+        Raises:
+            RuntimeError: This error is raised if no runner is found.
+            RayTimeoutError: This error is raised if a remote call to the
+                runner times out.
         """
         if checkpoint is None or checkpoint.value is None:
             checkpoint = trial.checkpoint
@@ -583,7 +597,7 @@ class RayTrialExecutor(TrialExecutor):
                 "Trial {}: Unable to restore - no runner found.".format(trial))
         value = checkpoint.value
         if checkpoint.storage == Checkpoint.MEMORY:
-            assert type(value) != Checkpoint, type(value)
+            assert not isinstance(value, Checkpoint), type(value)
             trial.runner.restore_from_object.remote(value)
         else:
             logger.info("Trial %s: Attempting restore from %s", trial, value)
