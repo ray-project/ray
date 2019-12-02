@@ -22,7 +22,7 @@ QueueItem Queue::FrontProcessed() {
   STREAMING_CHECK(buffer_queue_.size() != 0) << "WriterQueue Pop fail";
 
   if (watershed_iter_ == buffer_queue_.begin()) {
-    return NullQueueItem();
+    return InvalidQueueItem();
   }
 
   QueueItem item = buffer_queue_.front();
@@ -34,7 +34,7 @@ QueueItem Queue::PopProcessed() {
   STREAMING_CHECK(buffer_queue_.size() != 0) << "WriterQueue Pop fail";
 
   if (watershed_iter_ == buffer_queue_.begin()) {
-    return NullQueueItem();
+    return InvalidQueueItem();
   }
 
   QueueItem item = buffer_queue_.front();

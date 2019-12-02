@@ -33,14 +33,15 @@ class Queue {
   /// \param[in] transport transport to send items to peer.
   Queue(ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
       : queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
-    buffer_queue_.push_back(NullQueueItem());
+    buffer_queue_.push_back(InvalidQueueItem());
     watershed_iter_ = buffer_queue_.begin();
   }
 
   virtual ~Queue() {}
 
-  /// Push item into queue, return false is queue is full.
+  /// Push an item into the queue.
   /// \param[in] item the QueueItem object to be send to peer.
+  /// \return false if the queue is full.
   bool Push(QueueItem item);
 
   /// Get the front of item which in processed state.

@@ -41,10 +41,12 @@ class QueueService {
 
   /// Dispatch message buffer to asio service synchronously, and wait for handle result.
   /// \param[in] buffer serialized message received from peer actor.
+  /// \return handle result.
   std::shared_ptr<LocalMemoryBuffer> DispatchMessageSync(std::shared_ptr<LocalMemoryBuffer> buffer);
 
   /// Get transport to a peer actor specified by actor_id.
   /// \param[in] actor_id actor id of peer actor
+  /// \return transport
   std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
 
   /// The actual function where message being dispatched, called by DispatchMessageAsync and DispatchMessageSync.
@@ -62,6 +64,7 @@ class QueueService {
   void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id);
 
   /// Obtain the actor id of the peer actor specified by queue_id.
+  /// \return actor id
   ActorID GetPeerActorID(const ObjectID &queue_id);
 
   /// Release all queues in current queue service.
@@ -161,17 +164,6 @@ class DownstreamService : public QueueService {
   virtual void DispatchMessageInternal(
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
-  /// Used to support synchronize check queue request
-  using SendMsgCallback = std::function<void(bool success)>;
-  struct CheckQueueRequest {
-    CheckQueueRequest() {}
-    CheckQueueRequest(const ActorID &actor_id, const ObjectID &queue_id,
-                      SendMsgCallback callback = nullptr)
-        : actor_id_(actor_id), queue_id_(queue_id), callback_(callback) {}
-    ActorID actor_id_;
-    ObjectID queue_id_;
-    SendMsgCallback callback_;
-  };
 
   static std::shared_ptr<DownstreamService> CreateService(CoreWorker* core_worker, const ActorID &actor_id);
   static std::shared_ptr<DownstreamService> GetService();
@@ -180,7 +172,6 @@ class DownstreamService : public QueueService {
 
   private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>> downstream_queues_;
-  std::unordered_map<ObjectID, CheckQueueRequest> check_queue_requests_;
   static std::shared_ptr<DownstreamService> downstream_service_;
 };
 

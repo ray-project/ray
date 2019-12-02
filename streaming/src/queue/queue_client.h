@@ -27,6 +27,7 @@ public:
   /// Post buffer to downstream queue service, asynchronously.
   void OnReaderMessage(std::shared_ptr<LocalMemoryBuffer> buffer);
   /// Post buffer to downstream queue service, synchronously.
+  /// \return handle result.
   std::shared_ptr<LocalMemoryBuffer> OnReaderMessageSync(std::shared_ptr<LocalMemoryBuffer> buffer);
 
 private:
