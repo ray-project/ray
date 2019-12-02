@@ -13,11 +13,6 @@ inline ray::CoreWorker &GetCoreWorker(jlong nativeCoreWorkerPointer) {
 extern "C" {
 #endif
 
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeGetLanguage
- * Signature: (J)I
- */
 JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLanguage(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
@@ -28,11 +23,6 @@ JNIEXPORT jint JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeGetLangua
   return (jint)native_actor_handle->ActorLanguage();
 }
 
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeIsDirectCallActor
- * Signature: (J)Z
- */
 JNIEXPORT jboolean JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
@@ -44,11 +34,6 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeIsDirectCallActor(
   return native_actor_handle->IsDirectCallActor();
 }
 
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeGetActorCreationTaskFunctionDescriptor
- * Signature: (J)Ljava/util/List;
- */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDescriptor(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
@@ -61,11 +46,6 @@ Java_org_ray_runtime_actor_NativeRayActor_nativeGetActorCreationTaskFunctionDesc
   return NativeStringVectorToJavaStringList(env, function_descriptor);
 }
 
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeSerialize
- * Signature: (J)[B
- */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSerialize(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray actorId) {
   auto actor_id = JavaByteArrayToId<ray::ActorID>(env, actorId);
@@ -78,11 +58,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeSer
   return bytes;
 }
 
-/*
- * Class:     org_ray_runtime_actor_NativeRayActor
- * Method:    nativeDeserialize
- * Signature: ([B)J
- */
 JNIEXPORT jbyteArray JNICALL Java_org_ray_runtime_actor_NativeRayActor_nativeDeserialize(
     JNIEnv *env, jclass o, jlong nativeCoreWorkerPointer, jbyteArray data) {
   auto buffer = JavaByteArrayToNativeBuffer(env, data);

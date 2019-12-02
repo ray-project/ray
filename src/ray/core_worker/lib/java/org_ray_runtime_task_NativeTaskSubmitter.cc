@@ -114,12 +114,6 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 extern "C" {
 #endif
 
-/*
- * Class:     org_ray_runtime_task_NativeTaskSubmitter
- * Method:    nativeSubmitTask
- * Signature:
- * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
- */
 JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
     jobject args, jint numReturns, jobject callOptions) {
@@ -136,12 +130,6 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
   return NativeIdVectorToJavaByteArrayList(env, return_ids);
 }
 
-/*
- * Class:     org_ray_runtime_task_NativeTaskSubmitter
- * Method:    nativeCreateActor
- * Signature:
- * (JLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;Lorg/ray/api/options/ActorCreationOptions;)J
- */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jobject functionDescriptor,
@@ -159,12 +147,6 @@ Java_org_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
   return IdToJavaByteArray<ray::ActorID>(env, actor_id);
 }
 
-/*
- * Class:     org_ray_runtime_task_NativeTaskSubmitter
- * Method:    nativeSubmitActorTask
- * Signature:
- * (JJLorg/ray/runtime/functionmanager/FunctionDescriptor;Ljava/util/List;ILorg/ray/api/options/CallOptions;)Ljava/util/List;
- */
 JNIEXPORT jobject JNICALL
 Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
     JNIEnv *env, jclass p, jlong nativeCoreWorkerPointer, jbyteArray actorId,

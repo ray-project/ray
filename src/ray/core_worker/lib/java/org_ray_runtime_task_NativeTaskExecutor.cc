@@ -12,11 +12,6 @@ extern "C" {
 
 using ray::ClientID;
 
-/*
- * Class:     org_ray_runtime_task_NativeTaskExecutor
- * Method:    nativePrepareCheckpoint
- * Signature: (J)[B
- */
 JNIEXPORT jbyteArray JNICALL
 Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer) {
@@ -34,11 +29,6 @@ Java_org_ray_runtime_task_NativeTaskExecutor_nativePrepareCheckpoint(
   return result;
 }
 
-/*
- * Class:     org_ray_runtime_task_NativeTaskExecutor
- * Method:    nativeNotifyActorResumedFromCheckpoint
- * Signature: (J[B)V
- */
 JNIEXPORT void JNICALL
 Java_org_ray_runtime_task_NativeTaskExecutor_nativeNotifyActorResumedFromCheckpoint(
     JNIEnv *env, jclass, jlong nativeCoreWorkerPointer, jbyteArray checkpointId) {
