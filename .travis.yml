@@ -48,7 +48,7 @@ matrix:
       script:
         - export PATH="$HOME/miniconda/bin:$PATH"
         - cd python
-        - pip install -e .
+        - travis_wait 60 pip install -e .
         - cd ..
         - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/test_logical_graph.py; fi
 
