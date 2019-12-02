@@ -99,32 +99,32 @@ class CoreWorkerDirectActorTaskSubmitter {
   rpc::ClientFactoryFn client_factory_;
 
   /// Mutex to proect the various maps below.
-  mutable std::mutex mutex_;
+  mutable absl::Mutex mu_;
 
   /// Map from actor id to actor state. This only includes actors that we send tasks to.
-  std::unordered_map<ActorID, ActorStateData> actor_states_;
+  absl::flat_hash_map<ActorID, ActorStateData> actor_states_ GUARDED_BY(mu_);
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
   /// We use shared_ptr to enable shared_from_this for pending client callbacks.
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      rpc_clients_;
+  absl::flat_hash_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      rpc_clients_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
   absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
-      pending_requests_;
+      pending_requests_ GUARDED_BY(mu_);
 
   /// Map from actor id to the send position of the next task to queue for send
   /// for that actor. This is always at or ahead of next_send_position_.
-  absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_;
+  absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
 
   /// Map from actor id to the send position of the next task to send to that actor.
   /// Note that this differs from the sequence number in that it is independent of
   /// CallerId sequencing and only used for flow control.
-  absl::flat_hash_map<ActorID, int64_t> next_send_position_;
+  absl::flat_hash_map<ActorID, int64_t> next_send_position_ GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
