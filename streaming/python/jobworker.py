@@ -111,7 +111,7 @@ class JobWorker(object):
 
     def on_writer_message(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
-        self.writer_client.on_writer_message_sync(buffer)
+        self.writer_client.on_writer_message(buffer)
 
     def on_writer_message_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
