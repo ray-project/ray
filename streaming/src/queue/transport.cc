@@ -10,7 +10,7 @@ static constexpr int TASK_OPTION_RETURN_NUM_1 = 1;
 void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function) {
   STREAMING_LOG(INFO) << "Transport::Send buffer size: " << buffer->Size();
   std::unordered_map<std::string, double> resources;
-  TaskOptions options{TASK_OPTION_RETURN_NUM_0, resources};
+  TaskOptions options{TASK_OPTION_RETURN_NUM_0, true, resources};
 
   char meta_data[3] = {'R', 'A', 'W'};
   std::shared_ptr<LocalMemoryBuffer> meta =
@@ -49,7 +49,7 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &fun
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int64_t timeout_ms) {
   std::unordered_map<std::string, double> resources;
-  TaskOptions options{TASK_OPTION_RETURN_NUM_1, resources};
+  TaskOptions options{TASK_OPTION_RETURN_NUM_1, true, resources};
 
   char meta_data[3] = {'R', 'A', 'W'};
   std::shared_ptr<LocalMemoryBuffer> meta =

@@ -1084,6 +1084,7 @@ cdef class CoreWorker:
             c_vector[size_t] data_sizes
             c_string metadata_str
             c_vector[shared_ptr[CBuffer]] metadatas
+            shared_ptr[CBuffer] meta
 
         if return_ids.size() == 0:
             return
