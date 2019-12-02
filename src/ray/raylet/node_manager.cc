@@ -1080,13 +1080,13 @@ void NodeManager::HandleWorkerAvailable(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(worker);
+  bool worker_idle = true;
   // If the worker was assigned a task, mark it as finished.
-  bool worker_available = true;
   if (!worker->GetAssignedTaskId().IsNil()) {
-    worker_available = FinishAssignedTask(*worker);
+    worker_idle = FinishAssignedTask(*worker);
   }
 
-  if (worker_available) {
+  if (worker_idle) {
     // Return the worker to the idle pool.
     worker_pool_.PushWorker(std::move(worker));
   }
@@ -2189,10 +2189,10 @@ bool NodeManager::FinishAssignedTask(Worker &worker) {
     // direct actor creation calls because this ID is used later if the actor
     // requires objects from plasma.
     worker.AssignTaskId(TaskID::Nil());
-    return true;
-  } else {
-    return false;
   }
+  // Direct actors will be assigned tasks via the core worker and therefore are
+  // not idle.
+  return !spec.IsDirectActorCreationCall();
 }
 
 std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
