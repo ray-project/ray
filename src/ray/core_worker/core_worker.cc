@@ -165,7 +165,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       },
       ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
 
-  task_manager_.reset(new TaskManager(memory_store_));
+  task_manager_.reset(
+      new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
+        RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+      }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
   // Create an entry for the driver task in the task table. This task is
@@ -589,7 +592,7 @@ void CoreWorker::PinObjectReferences(const TaskSpecification &task_spec,
 Status CoreWorker::SubmitTask(const RayFunction &function,
                               const std::vector<TaskArg> &args,
                               const TaskOptions &task_options,
-                              std::vector<ObjectID> *return_ids) {
+                              std::vector<ObjectID> *return_ids, int max_retries) {
   TaskSpecBuilder builder;
   const int next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -605,7 +608,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
       return_ids);
   TaskSpecification task_spec = builder.Build();
   if (task_options.is_direct_call) {
-    task_manager_->AddPendingTask(task_spec);
+    task_manager_->AddPendingTask(task_spec, max_retries);
     PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {

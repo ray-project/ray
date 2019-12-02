@@ -44,7 +44,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void CompletePendingTask(const TaskID &, const rpc::PushTaskReply &) override {
     num_tasks_complete++;
   }
-  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) override {
+  void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override {
     num_tasks_failed++;
   }
 
