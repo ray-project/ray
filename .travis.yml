@@ -34,7 +34,7 @@ matrix:
         - if [ $RAY_CI_JAVA_AFFECTED != "1" ]; then exit; fi
         - ./java/test.sh
 
-    - os: linux
+    - os: linux osx
       env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore TESTSUITE=streaming
       script:
         - export PATH="$HOME/miniconda/bin:$PATH"
