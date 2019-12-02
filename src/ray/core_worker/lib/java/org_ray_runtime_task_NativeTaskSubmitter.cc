@@ -98,16 +98,16 @@ inline ray::ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                    java_actor_creation_options_default_use_direct_call);
   }
 
-  ray::ActorCreationOptions action_creation_options{
+  ray::ActorCreationOptions actor_creation_options{
       static_cast<uint64_t>(max_reconstructions),
       use_direct_call,
-      1,
+      /*max_concurrency=*/1,
       resources,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
       /*is_asyncio=*/false};
-  return action_creation_options;
+  return actor_creation_options;
 }
 
 #ifdef __cplusplus
