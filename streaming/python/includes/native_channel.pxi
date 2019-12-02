@@ -41,7 +41,6 @@ from ray.streaming.includes.libstreaming cimport (
 
 import logging
 from ray.function_manager import FunctionDescriptor
-import ray.streaming.runtime.channel as channel
 
 
 channel_logger = logging.getLogger(__name__)
@@ -174,6 +173,7 @@ cdef class DataWriter:
             msg = "initialize writer failed, status={}".format(<uint32_t>status)
             channel_logger.error(msg)
             del c_writer
+            import ray.streaming.runtime.channel as channel
             raise channel.ChannelInitException(msg, qid_vector_to_list(remain_id_vec))
 
         c_writer.Run()
@@ -264,6 +264,8 @@ cdef class DataReader:
         cdef uint32_t bundle_type = <uint32_t>(bundle.get().meta.get().GetBundleType())
         if <uint32_t> status != <uint32_t> libstreaming.StatusOK:
             if <uint32_t> status == <uint32_t> libstreaming.StatusInterrupted:
+                # avoid cyclic import
+                import ray.streaming.runtime.channel as channel
                 raise channel.ChannelInterruptException("reader interrupted")
             elif <uint32_t> status == <uint32_t> libstreaming.StatusInitQueueFailed:
                 raise Exception("init channel failed")
