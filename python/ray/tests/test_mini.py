@@ -16,32 +16,28 @@ def test_basic_task_api(ray_start_regular):
         return 1
 
     assert ray.get(f_simple.remote()) == 1
-    assert ray.get(f_simple.remote()) == 1
-    assert ray.get(f_simple.remote()) == 1
 
+    # Test multiple return values.
 
-#
-#    # Test multiple return values.
-#
-#    @ray.remote(num_return_vals=3)
-#    def f_multiple_returns():
-#        return 1, 2, 3
-#
-#    x_id1, x_id2, x_id3 = f_multiple_returns.remote()
-#    assert ray.get([x_id1, x_id2, x_id3]) == [1, 2, 3]
-#
-#    # Test arguments passed by value.
-#
-#    @ray.remote
-#    def f_args_by_value(x):
-#        return x
-#
-#    for arg in test_values:
-#        assert ray.get(f_args_by_value.remote(arg)) == arg
-#
-#    # Test arguments passed by ID.
-#
-#    # Test keyword arguments.
+    @ray.remote(num_return_vals=3)
+    def f_multiple_returns():
+        return 1, 2, 3
+
+    x_id1, x_id2, x_id3 = f_multiple_returns.remote()
+    assert ray.get([x_id1, x_id2, x_id3]) == [1, 2, 3]
+
+    # Test arguments passed by value.
+
+    @ray.remote
+    def f_args_by_value(x):
+        return x
+
+    for arg in test_values:
+        assert ray.get(f_args_by_value.remote(arg)) == arg
+
+    # Test arguments passed by ID.
+
+    # Test keyword arguments.
 
 
 def test_put_api(ray_start_regular):
