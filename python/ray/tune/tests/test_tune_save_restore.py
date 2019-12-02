@@ -54,8 +54,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         _register_all()
 
     def _get_trial_dir(self, absolute_exp_dir):
-        dirs = glob(os.path.join(absolute_exp_dir,
-                                 self.MockTrainable._name + "*"))
+        dirs = glob(
+            os.path.join(absolute_exp_dir, self.MockTrainable._name + "*"))
         absolute_trial_dir = dirs[0]
         return absolute_trial_dir
 
@@ -97,9 +97,7 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
         trial_name = os.path.basename(abs_trial_dir)
         # Get relative checkpoint path.
-        checkpoint_path = os.path.join(local_dir,
-                                       exp_name,
-                                       trial_name,
+        checkpoint_path = os.path.join(local_dir, exp_name, trial_name,
                                        TrialDirSchema.CHECKPOINT_DIR,
                                        "checkpoint_1/checkpoint-1")
         abs_checkpoint_path = os.path.abspath(

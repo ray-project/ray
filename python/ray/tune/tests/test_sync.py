@@ -13,7 +13,6 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import TuneError
 from ray.tune.syncer import CommandBasedClient
 
 if sys.version_info >= (3, 3):

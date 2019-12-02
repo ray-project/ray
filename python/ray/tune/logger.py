@@ -14,11 +14,9 @@ import numpy as np
 
 import ray.cloudpickle as cloudpickle
 from ray.tune.util import flatten_dict
-from ray.tune.syncer import get_syncer
-from ray.tune.result import (NODE_IP, TRAINING_ITERATION, TIME_TOTAL_S,
-                             TIMESTEPS_TOTAL, EXPR_PARAM_FILE,
-                             EXPR_PARAM_PICKLE_FILE, EXPR_PROGRESS_FILE,
-                             EXPR_RESULT_FILE)
+from ray.tune.result import (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
+                             EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE,
+                             EXPR_PROGRESS_FILE, EXPR_RESULT_FILE)
 
 logger = logging.getLogger(__name__)
 
@@ -386,11 +384,7 @@ class UnifiedLogger(Logger):
             and JSON loggers.
     """
 
-    def __init__(self,
-                 config,
-                 logdir,
-                 trial=None,
-                 loggers=None):
+    def __init__(self, config, logdir, trial=None, loggers=None):
         if loggers is None:
             self._logger_cls_list = DEFAULT_LOGGERS
         else:

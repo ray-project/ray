@@ -22,10 +22,8 @@ from ray.rllib.utils.memory import ray_get_and_free
 from ray.rllib.utils import try_import_tf
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.trainable import Trainable
-from ray.tune.trial import ExportFormat, TrialDirSchema
+from ray.tune.trial import ExportFormat
 from ray.tune.resources import Resources
-from ray.tune.logger import UnifiedLogger
-from ray.tune.result import DEFAULT_RESULTS_DIR
 
 tf = try_import_tf()
 
@@ -371,24 +369,12 @@ class Trainer(Trainable):
 
         # Vars to synchronize to workers on each train call
         self.global_vars = {"timestep": 0}
-
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(env or config.get("env"))
-        identifier = "{}_{}".format(self._name, self._env_id)
 
-        # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
-            trial_dir_schema = TrialDirSchema(identifier, DEFAULT_RESULTS_DIR)
-
-            def default_logger_creator(config):
-                """Creates a Unified logger with a default logdir prefix
-                containing the agent name and the env id
-                """
-                trial_dir_schema.makedirs()
-                logdir = trial_dir_schema.logdir
-                return UnifiedLogger(config, logdir, loggers=None)
-
-            logger_creator = default_logger_creator
+            # Assign an ID to be used by Trainable to create the trial dir.
+            self._id = "{}_{}".format(self._name, self._env_id)
 
         Trainable.__init__(self, config, logger_creator)
 

@@ -15,7 +15,6 @@ from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.logger import pretty_print, UnifiedLogger
 from ray.tune.syncer import get_syncer
-from ray.tune.sync_client import no_op
 from ray.tune.util import flatten_dict
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -252,10 +251,7 @@ class Trial(object):
         if not self.result_logger:
             self.trial_dir_schema.makedirs()
             self.result_logger = UnifiedLogger(
-                self.config,
-                self.logdir,
-                trial=self,
-                loggers=self.loggers)
+                self.config, self.logdir, trial=self, loggers=self.loggers)
 
     @property
     def node_ip(self):
