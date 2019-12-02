@@ -33,14 +33,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
       auto req_no = next_sequence_number_to_assign_[actor_id]++;
-      auto inserted = pending_requests_[actor_id].emplace(req_no,
-                                                          std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(req_no, std::move(request));
       RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
       auto req_no = next_sequence_number_to_assign_[actor_id]++;
-      auto inserted = pending_requests_[actor_id].emplace(req_no,
-                                                          std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(req_no, std::move(request));
       RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
     } else {
