@@ -35,6 +35,12 @@ matrix:
         - ./java/test.sh
 
     - os: linux
+      env: BAZEL_PYTHON_VERSION=PY3 PYTHON=3.5 PYTHONWARNINGS=ignore TESTSUITE=streaming
+      script:
+        - export PATH="$HOME/miniconda/bin:$PATH"
+        - if [ $RAY_CI_PYTHON_AFFECTED == "1" ]; then python -c 'import sys;exit(sys.version_info>=(3,5))' || python -m pytest -v --durations=5 --timeout=300 streaming/python/tests/test_logical_graph.py; fi
+
+    - os: linux
       env: LINT=1 PYTHONWARNINGS=ignore
       before_install:
         - sudo apt-get update -qq
