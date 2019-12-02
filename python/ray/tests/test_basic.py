@@ -1253,6 +1253,36 @@ def test_direct_call_simple(ray_start_cluster):
             range(1, 101))
 
 
+# https://github.com/ray-project/ray/issues/6329
+def test_call_actors_indirect_through_tasks(ray_start_regular):
+    @ray.remote
+    class Counter(object):
+        def __init__(self, value):
+            self.value = int(value)
+
+        def increase(self, delta):
+            self.value += int(delta)
+            return self.value
+
+    @ray.remote
+    def foo(object):
+        return ray.get(object.increase.remote(1))
+
+    @ray.remote
+    def bar(object):
+        return ray.get(object.increase.remote(1))
+
+    @ray.remote
+    def zoo(object):
+        return ray.get(object[0].increase.remote(1))
+
+    c = Counter.remote(0)
+    for _ in range(0, 100):
+        ray.get(foo.remote(c))
+        ray.get(bar.remote(c))
+        ray.get(zoo.remote([c]))
+
+
 def test_direct_call_refcount(ray_start_regular):
     @ray.remote
     def f(x):
