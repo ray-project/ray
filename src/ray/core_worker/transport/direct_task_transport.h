@@ -76,7 +76,8 @@ class CoreWorkerDirectTaskSubmitter {
   /// Push a task to a specific worker.
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
-                      const SchedulingKey &task_queue_key, TaskSpecification &task_spec);
+                      const SchedulingKey &task_queue_key,
+                      const TaskSpecification &task_spec);
 
   // Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;
