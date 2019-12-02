@@ -89,7 +89,7 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     return nullptr;
   }
   STREAMING_CHECK(results[0]->HasData());
-  if (results[0]->GetSize() == 4) {
+  if (results[0]->GetData()->Size() == 4) {
     STREAMING_LOG(WARNING) << "peer actor may not ready yet, should retry.";
     return nullptr;
   }

@@ -1,6 +1,6 @@
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
-from libcpp.memory cimport shared_ptr, make_shared
+from libcpp.memory cimport shared_ptr, make_shared, dynamic_pointer_cast
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.list cimport list as c_list
@@ -85,10 +85,7 @@ cdef class ReaderClient:
             shared_ptr[CLocalMemoryBuffer] result_buffer
         with nogil:
             result_buffer = self.client.OnReaderMessageSync(local_buf)
-        cdef:
-            uint8_t* result_data = result_buffer.get().Data()
-            int32_t result_data_size = result_buffer.get().Size()
-        return result_data[:result_data_size]
+        return Buffer.make(dynamic_pointer_cast[CBuffer, CLocalMemoryBuffer](result_buffer))
 
 
 cdef class WriterClient:
@@ -129,10 +126,7 @@ cdef class WriterClient:
             shared_ptr[CLocalMemoryBuffer] result_buffer
         with nogil:
             result_buffer = self.client.OnWriterMessageSync(local_buf)
-        cdef:
-            uint8_t* result_data = result_buffer.get().Data()
-            int32_t result_data_size = result_buffer.get().Size()
-        return result_data[:result_data_size]
+        return Buffer.make(dynamic_pointer_cast[CBuffer, CLocalMemoryBuffer](result_buffer))
 
 
 cdef class DataWriter:

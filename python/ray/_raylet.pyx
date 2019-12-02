@@ -34,6 +34,7 @@ from libcpp.memory cimport (
     unique_ptr,
 )
 from libcpp.string cimport string as c_string
+from libc.string cimport memcpy
 from libcpp.utility cimport pair
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
@@ -1083,8 +1084,8 @@ cdef class CoreWorker:
         cdef:
             c_vector[size_t] data_sizes
             c_string metadata_str
-            c_vector[shared_ptr[CBuffer]] metadatas
             shared_ptr[CBuffer] meta
+            c_vector[shared_ptr[CBuffer]] metadatas
 
         if return_ids.size() == 0:
             return
@@ -1099,10 +1100,10 @@ cdef class CoreWorker:
                 serialized_objects.append(output)
                 data_sizes.push_back(0)
                 metadatas.push_back(string_to_buffer(b''))
-            elif type(output) is bytes:
-                # treat bytes as raw data
+            elif type(output) is Buffer:
+                # take Buffer as raw data
                 serialized_objects.append(output)
-                data_sizes.push_back(len(output))
+                data_sizes.push_back(output.size)
                 metadata_str = RAW_BUFFER_METADATA
                 meta = dynamic_pointer_cast[
                     CBuffer, LocalMemoryBuffer](
@@ -1120,12 +1121,17 @@ cdef class CoreWorker:
         check_status(self.core_worker.get().AllocateReturnObjects(
             return_ids, data_sizes, metadatas, returns))
 
+        cdef Buffer buf
         for i, serialized_object in enumerate(serialized_objects):
             # A nullptr is returned if the object already exists.
             if returns[0][i].get() == NULL:
                 continue
             if serialized_object is NoReturn:
                 returns[0][i].reset()
+            elif type(serialized_object) is Buffer:
+                buf = serialized_object
+                memcpy(returns[0][i].get().GetData().get().Data(),
+                       buf.buffer.get().Data(), buf.buffer.get().Size())
             else:
                 write_serialized_object(
                     serialized_object, returns[0][i].get().GetData())
