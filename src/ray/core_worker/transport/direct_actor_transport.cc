@@ -32,12 +32,12 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // actor handle (e.g. from unpickling), in that case it might be desirable
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
-      auto req_no = next_sequence_number_to_assign_[actor_id]++;
+      auto req_no = next_send_position_to_assign_[actor_id]++;
       auto inserted = pending_requests_[actor_id].emplace(req_no, std::move(request));
       RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
-      auto req_no = next_sequence_number_to_assign_[actor_id]++;
+      auto req_no = next_send_position_to_assign_[actor_id]++;
       auto inserted = pending_requests_[actor_id].emplace(req_no, std::move(request));
       RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
@@ -89,8 +89,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
       pending_requests_.erase(pending_it);
     }
 
-    next_sequence_number_.erase(actor_id);
-    next_sequence_number_to_assign_.erase(actor_id);
+    next_send_position_.erase(actor_id);
+    next_send_position_to_assign_.erase(actor_id);
 
     // No need to clean up tasks that have been sent and are waiting for
     // replies. They will be treated as failed once the connection dies.
@@ -103,7 +103,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   auto head = requests.begin();
-  while (head != requests.end() && head->first == next_sequence_number_[actor_id]) {
+  while (head != requests.end() && head->first == next_send_position_[actor_id]) {
     auto request = std::move(head->second);
     head = requests.erase(head);
 
@@ -117,7 +117,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
-  next_sequence_number_[actor_id]++;
+  next_send_position_[actor_id]++;
 
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),

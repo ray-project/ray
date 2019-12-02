@@ -117,13 +117,14 @@ class CoreWorkerDirectActorTaskSubmitter {
   absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
       pending_requests_;
 
-  /// Map from actor id to the sequence number of the next task to queue for send
-  /// for that actor. This is always at or ahead of next_sequence_number_.
-  std::unordered_map<ActorID, int64_t> next_sequence_number_to_assign_;
+  /// Map from actor id to the send position of the next task to queue for send
+  /// for that actor. This is always at or ahead of next_send_position_.
+  std::unordered_map<ActorID, int64_t> next_send_position_to_assign_;
 
-  /// Map from actor id to the sequence number of the next task to send to that
-  /// actor.
-  std::unordered_map<ActorID, int64_t> next_sequence_number_;
+  /// Map from actor id to the send position of the next task to send to that actor.
+  /// Note that this differs from the sequence number in that it is independent of
+  /// CallerId sequencing and only used for flow control.
+  std::unordered_map<ActorID, int64_t> next_send_position_;
 
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
