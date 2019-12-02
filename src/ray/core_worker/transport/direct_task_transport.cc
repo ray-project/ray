@@ -144,6 +144,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(const rpc::WorkerAddress &add
   auto task_id = task_spec.TaskId();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
+  // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
+  // fails, then the task data will be gone when the TaskManager attempts to
+  // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   RAY_CHECK_OK(client.PushNormalTask(
       std::move(request), [this, task_id, scheduling_key, addr](

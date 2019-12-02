@@ -20,6 +20,9 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto task_id = task_spec.TaskId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+    // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
+    // fails, then the task data will be gone when the TaskManager attempts to
+    // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
     std::unique_lock<std::mutex> guard(mutex_);
