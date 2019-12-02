@@ -17,11 +17,6 @@ class StreamingConfig {
   static uint32_t DEFAULT_EMPTY_MESSAGE_TIME_INTERVAL;
   static const uint32_t MESSAGE_BUNDLE_MAX_SIZE;
 
-  /* Reference PR : https://github.com/apache/arrow/pull/2522
-   * py-module import c++-python extension with static std::string will
-   * crash becase of double free, double-linked or corruption (randomly).
-   * So replace std::string by enum (uint32).
-   */
  private:
   uint32_t ring_buffer_capacity_ = DEFAULT_RING_BUFFER_CAPACITY;
 
