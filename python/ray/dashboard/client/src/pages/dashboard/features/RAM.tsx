@@ -1,7 +1,7 @@
 import React from "react";
 import { formatByteAmount, formatUsage } from "../../../common/formatUtils";
 import UsageBar from "../../../common/UsageBar";
-import { makeFeature } from "./Feature";
+import { makeFeature } from "./makeFeature";
 
 const RAM = makeFeature({
   getFeatureForNode: ({ node }) => (

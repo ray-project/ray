@@ -1,5 +1,5 @@
 import React from "react";
-import { makeFeature } from "./Feature";
+import { makeFeature } from "./makeFeature";
 
 const Workers = makeFeature({
   getFeatureForNode: ({ node }) => (

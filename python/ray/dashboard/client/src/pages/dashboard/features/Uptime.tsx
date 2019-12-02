@@ -1,6 +1,6 @@
 import React from "react";
 import { formatUptime } from "../../../common/formatUtils";
-import { makeFeature } from "./Feature";
+import { makeFeature } from "./makeFeature";
 
 const Uptime = makeFeature({
   getFeatureForNode: ({ node }) => (

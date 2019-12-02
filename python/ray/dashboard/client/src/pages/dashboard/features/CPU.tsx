@@ -1,6 +1,6 @@
 import React from "react";
 import UsageBar from "../../../common/UsageBar";
-import { makeFeature } from "./Feature";
+import { makeFeature } from "./makeFeature";
 
 const CPU = makeFeature({
   getFeatureForNode: ({ node }) => (

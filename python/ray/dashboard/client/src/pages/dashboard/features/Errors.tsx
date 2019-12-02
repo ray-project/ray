@@ -2,7 +2,7 @@ import Link from "@material-ui/core/Link";
 import Typography from "@material-ui/core/Typography";
 import React from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { makeFeature } from "./Feature";
+import { makeFeature } from "./makeFeature";
 
 export const makeErrorsFeature = (errorCounts: {
   perWorker: { [pid: string]: number };
