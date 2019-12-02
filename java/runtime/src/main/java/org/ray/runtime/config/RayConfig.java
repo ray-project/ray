@@ -19,7 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field.
+ * Configurations of Ray runtime.
+ * See `ray.default.conf` for the meaning of each field.
  */
 public class RayConfig {
 
@@ -250,8 +251,10 @@ public class RayConfig {
   }
 
   /**
-   * Create a RayConfig by reading configuration in the following order: 1. System properties. 2.
-   * `ray.conf` file. 3. `ray.default.conf` file.
+   * Create a RayConfig by reading configuration in the following order:
+   * 1. System properties.
+   * 2. `ray.conf` file.
+   * 3. `ray.default.conf` file.
    */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
