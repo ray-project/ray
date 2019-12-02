@@ -515,8 +515,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Finish assigning a task that was successfully sent to a worker.
   ///
+  /// \param worker Worker that the task is assigned to.
   /// \param task_id Id of the task.
-  /// \param worker Worker which the task is assigned to.
   /// \return void.
   void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id);
 
