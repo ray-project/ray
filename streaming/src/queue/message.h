@@ -18,7 +18,7 @@ class Message {
   /// Construct a Message instance.
   /// \param[in] actor_id ActorID of message sender.
   /// \param[in] peer_actor_id ActorID of message receiver.
-  /// \param[in] queue_id queue id to identify which queue the message sent to.
+  /// \param[in] queue_id queue id to identify which queue the message is sent to.
   /// \param[in] buffer an optional param, a chunk of data to send.
   Message(const ActorID &actor_id, const ActorID &peer_actor_id, const ObjectID &queue_id,
           std::shared_ptr<LocalMemoryBuffer> buffer = nullptr)
@@ -41,7 +41,7 @@ class Message {
   /// \return message type.
   virtual queue::protobuf::StreamingQueueMessageType Type() = 0;
 
-  /// All subclass should implement `ToProtobuf` to serialize its own protobuf data.
+  /// All subclasses should implement `ToProtobuf` to serialize its own protobuf data.
   virtual void ToProtobuf(std::string *output) = 0;
  protected:
   ActorID actor_id_;
@@ -54,7 +54,9 @@ class Message {
   static const uint32_t MagicNum;
 };
 
-/// Wrap StreamingQueueDataMsg
+/// Wrap StreamingQueueDataMsg in streaming_queue.proto.
+/// DataMessage encapsulates the memory buffer of QueueItem, a one-to-one relationship exists
+/// between DataMessage and QueueItem.
 class DataMessage : public Message {
  public:
   DataMessage(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
@@ -76,7 +78,9 @@ class DataMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType;
 };
 
-/// Wrap StreamingQueueNotificationMsg
+/// Wrap StreamingQueueNotificationMsg in streaming_queue.proto.
+/// NotificationMessage, downstream queues sends to upstream queues, for the data reader to inform 
+/// the data writer of the consumed offset.
 class NotificationMessage : public Message {
  public:
   NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -97,7 +101,9 @@ class NotificationMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };
 
-/// Wrap StreamingQueueCheckMsg
+/// Wrap StreamingQueueCheckMsg in streaming_queue.proto.
+/// CheckMessage, upstream queues sends to downstream queues, fot the data writer to check whether
+/// the corresponded downstream queue is read or not.
 class CheckMessage : public Message {
  public:
   CheckMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -115,7 +121,9 @@ class CheckMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType;
 };
 
-/// Wrap StreamingQueueCheckRspMsg
+/// Wrap StreamingQueueCheckRspMsg in streaming_queue.proto.
+/// CheckRspMessage, downstream queues sends to upstream queues, the response message to CheckMessage
+/// to indicate whether downstream queue is ready or not.
 class CheckRspMessage : public Message {
  public:
   CheckRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -134,7 +142,8 @@ class CheckRspMessage : public Message {
       queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType;
 };
 
-/// Wrap StreamingQueueTestInitMsg
+/// Wrap StreamingQueueTestInitMsg in streaming_queue.proto.
+/// TestInitMessage, used for test, driver sends to test workers to init test suite.
 class TestInitMessage : public Message {
  public:
   TestInitMessage(const queue::protobuf::StreamingQueueTestRole role,
@@ -191,7 +200,9 @@ class TestInitMessage : public Message {
   uint64_t param_;
 };
 
-/// Wrap StreamingQueueTestCheckStatusRspMsg
+/// Wrap StreamingQueueTestCheckStatusRspMsg in streaming_queue.proto.
+/// TestCheckStatusRspMsg, used for test, driver sends to test workers to check 
+/// whether test has completed or failed.
 class TestCheckStatusRspMsg : public Message {
  public:
   TestCheckStatusRspMsg(const std::string test_name, bool status)

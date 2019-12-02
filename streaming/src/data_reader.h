@@ -35,7 +35,7 @@ struct StreamingReaderMsgPtrComparator {
 };
 
 /// DataReader will fetch data bundles from channels of upstream workers, once
-/// invoked user thread. Firstly put them into a priority queue ordered by bundle
+/// invoked by user thread. Firstly put them into a priority queue ordered by bundle
 /// comparator that's related meta-data, then pop out the top bunlde to user
 /// thread every time, so that the order of the message can be guranteed, which
 /// will also facilitate our future implementation of fault tolerance. Finally
