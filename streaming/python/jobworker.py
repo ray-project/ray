@@ -50,7 +50,7 @@ class JobWorker(object):
         logger.info("init operator instance %s", self.__class__.__name__)
         self.env = env
 
-        if env.config.queue_type == Config.NATIVE_QUEUE:
+        if env.config.channel_type == Config.NATIVE_CHANNEL:
             core_worker = ray.worker.global_worker.core_worker
             reader_async_func = FunctionDescriptor(__name__, self.on_reader_message.__name__,
                                                    self.__class__.__name__)

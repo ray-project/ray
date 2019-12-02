@@ -39,18 +39,11 @@ class Conf(object):
 
     This class includes all information about the configuration of the
     streaming environment.
-
-    Attributes:
-         A batched queue configuration includes the max queue size,
-         the size of each batch (in number of elements), the batch flush
-         timeout, and the number of batches to prefetch from plasma
-         parallelism (int): The number of isntances (actors) for each logical
-         dataflow operator (default: 1)
     """
 
-    def __init__(self, parallelism=1, queue_type=Config.MEMORY_QUEUE):
+    def __init__(self, parallelism=1, channel_type=Config.MEMORY_CHANNEL):
         self.parallelism = parallelism
-        self.queue_type = queue_type
+        self.channel_type = channel_type
         # ...
 
 
@@ -169,7 +162,7 @@ class ExecutionGraph:
                      dst_operator_id, dst_instance_index):
         from_task_id = self.env.execution_graph.get_task_id(src_operator_id, src_instance_index)
         to_task_id = self.env.execution_graph.get_task_id(dst_operator_id, dst_instance_index)
-        return channel.generate_qid(from_task_id, to_task_id, self.build_time)
+        return channel.ChannelID.gen_id(from_task_id, to_task_id, self.build_time)
 
     def _gen_task_id(self):
         task_id = self.task_id_counter
@@ -311,10 +304,6 @@ class Environment(object):
     # Sets the same level of parallelism for all operators in the environment
     def set_parallelism(self, parallelism):
         self.config.parallelism = parallelism
-
-    # Sets batched queue configuration for the environment
-    def set_queue_config(self, queue_config):
-        self.config.queue_config = queue_config
 
     # Creates and registers a user-defined data source
     # TODO (john): There should be different types of sources, e.g. sources

@@ -31,8 +31,6 @@ def _hash(value):
         return int(hashlib.sha1(value).hexdigest(), 16)
 
 
-# A data channel is a batched queue between two
-# operator instances in a streaming environment
 class DataChannel(object):
     """A data channel for actor-to-actor communication.
 
@@ -100,19 +98,19 @@ class DataInput(object):
         logger.info("DataInput input_actors %s", input_actors)
         conf = {
             Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id,
-            Config.QUEUE_TYPE: self.env.config.queue_type
+            Config.CHANNEL_TYPE: self.env.config.channel_type
         }
         self.reader = channel.DataReader(channels, input_actors, conf)
 
     def pull(self):
-        # pull from queue
-        queue_item = self.reader.read(100)
-        while queue_item is None:
+        # pull from channel
+        item = self.reader.read(100)
+        while item is None:
             time.sleep(0.001)
-            queue_item = self.reader.read(100)
-        msg_data = queue_item.body()
+            item = self.reader.read(100)
+        msg_data = item.body()
         if msg_data == _CLOSE_FLAG:
-            self.closed[queue_item.queue_id] = True
+            self.closed[item.channel_id] = True
             if len(self.closed) == len(self.input_channels):
                 return None
             else:
@@ -217,7 +215,7 @@ class DataOutput(object):
 
         conf = {
             Config.TASK_JOB_ID: ray.runtime_context._get_runtime_context().current_driver_id,
-            Config.QUEUE_TYPE: self.env.config.queue_type
+            Config.CHANNEL_TYPE: self.env.config.channel_type
         }
         self.writer = channel.DataWriter(channel_ids, to_actors, conf)
 
@@ -232,9 +230,6 @@ class DataOutput(object):
         # must ensure DataWriter send None flag to peer actor
         self.writer.stop()
 
-    # Pushes the record to the output
-    # Each individual output queue flushes batches to plasma periodically
-    # based on 'batch_max_size' and 'batch_max_time'
     def push(self, record):
         target_channels = []
         # Forward record
@@ -277,12 +272,9 @@ class DataOutput(object):
 
         msg_data = pickle.dumps(record)
         for c in target_channels:
-            # send data to queue
+            # send data to channel
             self.writer.write(c.qid, msg_data)
 
-    # Pushes a list of records to the output
-    # Each individual output queue flushes batches to plasma periodically
-    # based on 'batch_max_size' and 'batch_max_time'
     def push_all(self, records):
         for record in records:
             self.push(record)

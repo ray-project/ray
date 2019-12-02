@@ -35,7 +35,7 @@ if __name__ == "__main__":
     ray.init(local_mode=False)
 
     # A Ray streaming environment with the default configuration
-    env = Environment(config=Conf(queue_type=Config.NATIVE_QUEUE))
+    env = Environment(config=Conf(channel_type=Config.NATIVE_CHANNEL))
 
     # Stream represents the ouput of the filter and
     # can be forked into other dataflows
