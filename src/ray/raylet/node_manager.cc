@@ -14,9 +14,6 @@
 
 namespace {
 
-// TODO: Turn this into an environment variable.
-// const bool USE_NEW_SCHEDULER = true;
-
 #define RAY_CHECK_ENUM(x, y) \
   static_assert(static_cast<int>(x) == static_cast<int>(y), "protocol mismatch")
 
@@ -111,7 +108,8 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       actor_registry_(),
       node_manager_server_("NodeManager", config.node_manager_port),
       node_manager_service_(io_service, *this),
-      client_call_manager_(io_service) {
+      client_call_manager_(io_service),
+      new_scheduler_enabled_(RayConfig::instance().new_scheduler_enabled()) {
   RAY_CHECK(heartbeat_period_.count() > 0);
   // Initialize the resource map with own cluster resource configuration.
   ClientID local_client_id = gcs_client_->client_table().GetLocalClientId();
@@ -125,8 +123,6 @@ NodeManager::NodeManager(boost::asio::io_service &io_service,
       }));
   RAY_CHECK_OK(object_manager_.SubscribeObjDeleted(
       [this](const ObjectID &object_id) { HandleObjectMissing(object_id); }));
-
-  new_scheduler_enabled_ = RayConfig::instance().new_scheduler_enabled();
 
   if (new_scheduler_enabled_) {
     SchedulingResources &local_resources = cluster_resource_map_[local_client_id];

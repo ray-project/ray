@@ -1,6 +1,5 @@
 #include <sstream>
 
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/util/logging.h"
 
