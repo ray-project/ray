@@ -67,7 +67,6 @@ QueueItem Queue::PopPendingBlockTimeout(uint64_t timeout_us) {
     return item;
 
   } else {
-    /// TODO:
     uint8_t data[1];
     return QueueItem(QUEUE_INVALID_SEQ_ID, data, 1, 0, true);
   }
@@ -76,7 +75,6 @@ QueueItem Queue::PopPendingBlockTimeout(uint64_t timeout_us) {
 QueueItem Queue::BackPending() {
   std::unique_lock<std::mutex> lock(mutex_);
   if (std::next(watershed_iter_) == buffer_queue_.end()) {
-    /// TODO
     uint8_t data[1];
     return QueueItem(QUEUE_INVALID_SEQ_ID, data, 1, 0, true);
   }
@@ -202,10 +200,8 @@ void ReaderQueue::OnData(QueueItem &item) {
   }
 
   last_recv_seq_id_ = item.SeqId();
-  /// TODO: Should not parse
-  last_recv_msg_id_ = item.MaxMsgId();
-  STREAMING_LOG(DEBUG) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_
-                       << " msg_id: " << last_recv_msg_id_;
+  STREAMING_LOG(DEBUG) << "ReaderQueue::OnData seq_id: " << last_recv_seq_id_;
+
   Push(item);
   expect_seq_id_++;
 }

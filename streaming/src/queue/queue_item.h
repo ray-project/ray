@@ -17,8 +17,19 @@ namespace streaming {
 using ray::ObjectID;
 const uint64_t QUEUE_INVALID_SEQ_ID = std::numeric_limits<uint64_t>::max();
 
+/// QueueItem is the element stored in `Queue`. Actually, when DataWriter pushes a message bundle
+/// into queue, the bundle is packed into one QueueItem, so a one-to-one relationship exists
+/// between message bundle and QueueItem.
+/// Meanwhile, the QueueItem is also the minimum unit to send through direct actor call. Each QueueItem
+/// holds a LocalMemoryBuffer shared_ptr, which will be sent out by Transport.
 class QueueItem {
  public:
+  /// Construct a QueueItem object
+  /// \param[in] seq_id the sequential id assigned by DataWriter for a message bundle and QueueItem
+  /// \param[in] data the data buffer to be stored in this QueueItem
+  /// \param[in] data_size the data size in bytes
+  /// \param[in] timestamp the time when this QueueItem created
+  /// \param[in] raw whether the data content is raw bytes, only used in some tests
   QueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
             bool raw = false)
       : seq_id_(seq_id),
@@ -61,12 +72,8 @@ class QueueItem {
   virtual ~QueueItem() = default;
 
   uint64_t SeqId() { return seq_id_; }
-
   bool IsRaw() { return raw_; }
 
-  /// Parse this QueueItem content to get last message id.
-  /// Should not be called too frequently.
-  /// TODO: Add msg_id_ member variable and set it when PushQueueItem
   uint64_t MaxMsgId() {
     if (raw_) {
       return 0;

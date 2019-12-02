@@ -89,8 +89,6 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
     return nullptr;
   }
   STREAMING_CHECK(results[0]->HasData());
-  /// TODO: size 4 means byte[] array size 1, we will remove this by adding protobuf
-  /// command.
   if (results[0]->GetSize() == 4) {
     STREAMING_LOG(WARNING) << "peer actor may not ready yet, should retry.";
     return nullptr;

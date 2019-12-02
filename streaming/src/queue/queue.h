@@ -31,7 +31,6 @@ class Queue {
   /// \param[in] queue_id the unique identification of a pair of queues (upstream and downstream).
   /// \param[in] size max size of the queue in bytes.
   /// \param[in] transport transport to send items to peer.
-  ///
   Queue(ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
       : queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
     buffer_queue_.push_back(NullQueueItem());
@@ -178,7 +177,6 @@ class ReaderQueue : public Queue {
         peer_actor_id_(peer_actor_id),
         min_consumed_id_(QUEUE_INVALID_SEQ_ID),
         last_recv_seq_id_(QUEUE_INVALID_SEQ_ID),
-        last_recv_msg_id_(0),
         expect_seq_id_(1),
         transport_(transport) {}
 
@@ -191,7 +189,6 @@ class ReaderQueue : public Queue {
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
 
   uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
-  uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
 
   void SetExpectSeqId(uint64_t expect) { expect_seq_id_ = expect; }
  private:
@@ -203,7 +200,6 @@ class ReaderQueue : public Queue {
   ActorID peer_actor_id_;
   uint64_t min_consumed_id_;
   uint64_t last_recv_seq_id_;
-  uint64_t last_recv_msg_id_;
   uint64_t expect_seq_id_;
   std::shared_ptr<PromiseWrapper> promise_for_pull_;
   std::shared_ptr<Transport> transport_;
