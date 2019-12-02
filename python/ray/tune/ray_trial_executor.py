@@ -607,8 +607,8 @@ class RayTrialExecutor(TrialExecutor):
             with warn_if_slow("sync_to_new_location"):
                 trial.sync_logger_to_new_location(worker_ip)
             with warn_if_slow("restore_from_disk"):
-                ray.get(
-                    trial.runner.restore.remote(value), DEFAULT_GET_TIMEOUT)
+                # TODO(ujvl): Take blocking restores out of the control loop.
+                ray.get(trial.runner.restore.remote(value))
         trial.last_result = checkpoint.result
 
     def export_trial_if_needed(self, trial):
