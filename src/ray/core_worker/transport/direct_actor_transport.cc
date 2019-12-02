@@ -10,6 +10,9 @@ namespace ray {
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
+
+  // We must fix the send order prior to resolving dependencies, which may complete
+  // out of order. This ensures we preserve the client-side send order.
   int64_t send_pos = -1;
   {
     absl::MutexLock lock(&mu_);
