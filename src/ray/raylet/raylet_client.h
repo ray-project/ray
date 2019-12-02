@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <boost/asio/detail/socket_holder.hpp>
+
 #include "ray/common/status.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
@@ -25,6 +27,7 @@ using ray::rpc::ProfileTableData;
 using MessageType = ray::protocol::MessageType;
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
+using Socket = boost::asio::detail::socket_holder;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
 
 class RayletConnection {
@@ -40,7 +43,6 @@ class RayletConnection {
   /// \return The connection information.
   RayletConnection(const std::string &raylet_socket, int num_retries, int64_t timeout);
 
-  ~RayletConnection() { close(conn_); }
   /// Notify the raylet that this client is disconnecting gracefully. This
   /// is used by actors to exit gracefully so that the raylet doesn't
   /// propagate an error message to the driver.
@@ -55,8 +57,8 @@ class RayletConnection {
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
-  /// File descriptor of the Unix domain socket that connects to raylet.
-  int conn_;
+  /// The Unix domain socket that connects to raylet.
+  Socket conn_;
   /// A mutex to protect stateful operations of the raylet client.
   std::mutex mutex_;
   /// A mutex to protect write operations of the raylet client.
