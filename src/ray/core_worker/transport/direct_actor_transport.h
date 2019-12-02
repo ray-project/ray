@@ -118,7 +118,7 @@ class CoreWorkerDirectActorTaskSubmitter {
       pending_requests_ GUARDED_BY(mu_);
 
   /// Map from actor id to the send position of the next task to queue for send
-  /// for that actor. This is always at or ahead of next_send_position_.
+  /// for that actor. This is always greater than or equal to next_send_position_.
   absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
 
   /// Map from actor id to the send position of the next task to send to that actor.
