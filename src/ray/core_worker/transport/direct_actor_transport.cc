@@ -7,10 +7,6 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
-  return request->task_spec().actor_task_spec().actor_counter();
-}
-
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
@@ -36,12 +32,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // actor handle (e.g. from unpickling), in that case it might be desirable
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
-      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
+      auto req_no = next_sequence_number_to_assign_[actor_id]++;
+      auto inserted = pending_requests_[actor_id].emplace(req_no,
                                                           std::move(request));
       RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
-      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
+      auto req_no = next_sequence_number_to_assign_[actor_id]++;
+      auto inserted = pending_requests_[actor_id].emplace(req_no,
                                                           std::move(request));
       RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
@@ -94,6 +92,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     }
 
     next_sequence_number_.erase(actor_id);
+    next_sequence_number_to_assign_.erase(actor_id);
 
     // No need to clean up tasks that have been sent and are waiting for
     // replies. They will be treated as failed once the connection dies.
@@ -120,10 +119,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
-
-  auto task_number = GetRequestNumber(request);
-  RAY_CHECK(next_sequence_number_[actor_id] == task_number)
-      << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
   next_sequence_number_[actor_id]++;
 
   RAY_CHECK_OK(client.PushActorTask(
