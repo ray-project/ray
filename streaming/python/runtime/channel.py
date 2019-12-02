@@ -218,6 +218,8 @@ class DataWriter:
     def stop(self):
         logger.info("stopping channel writer.")
         self.writer.stop()
+        # destruct DataWriter
+        self.writer = None
 
     def close(self):
         logger.info("closing channel writer.")
@@ -264,6 +266,8 @@ class DataReader:
     def stop(self):
         logger.info("stopping Data Reader.")
         self.reader.stop()
+        # destruct DataReader
+        self.reader = None
 
     def close(self):
         logger.info("closing Data Reader.")

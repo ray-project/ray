@@ -129,7 +129,7 @@ uint64_t DataWriter::WriteMessageToBufferRing(const ObjectID &q_id, uint8_t *dat
   return write_message_id;
 }
 
-StreamingStatus DataWriter::InitChannel(const ObjectID &q_id, const ActorID &actor_id, 
+StreamingStatus DataWriter::InitChannel(const ObjectID &q_id, const ActorID &actor_id,
                                         uint64_t channel_message_id,
                                         uint64_t queue_size) {
   ProducerChannelInfo &channel_info = channel_info_map_[q_id];
@@ -172,8 +172,8 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   transfer_config_->Set(ConfigEnum::QUEUE_ID_VECTOR, queue_id_vec);
 
   for (size_t i = 0; i < queue_id_vec.size(); ++i) {
-    StreamingStatus status =
-        InitChannel(queue_id_vec[i], actor_ids[i], channel_message_id_vec[i], queue_size_vec[i]);
+    StreamingStatus status = InitChannel(queue_id_vec[i], actor_ids[i],
+                                         channel_message_id_vec[i], queue_size_vec[i]);
     if (status != StreamingStatus::OK) {
       return status;
     }
@@ -298,6 +298,13 @@ bool DataWriter::CollectFromRingBuffer(ProducerChannelInfo &channel_info,
 }
 
 void DataWriter::Stop() {
+  for (auto &output_queue : output_queue_ids_) {
+    ProducerChannelInfo &channel_info = channel_info_map_[output_queue];
+    while (!channel_info.writer_ring_buffer->IsEmpty()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
   runtime_context_->SetRuntimeStatus(RuntimeStatus::Interrupted);
 }
 }  // namespace streaming

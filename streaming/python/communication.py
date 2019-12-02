@@ -121,8 +121,7 @@ class DataInput(object):
             return pickle.loads(msg_data)
 
     def close(self):
-        # don't stop StreamingReader to since empty message may still in sending
-        pass
+        self.reader.stop()
 
 
 # Selects output channel(s) and pushes data
@@ -228,9 +227,10 @@ class DataOutput(object):
         _CLOSE_FLAG is used as special type of record that is propagated from sources
         to sink to notify that the end of data in a stream.
         """
-        for channel in self.channels:
-            self.writer.write(channel.qid, _CLOSE_FLAG)
-        # stop StreamingWriter may cause None flag not sent to peer actor
+        for c in self.channels:
+            self.writer.write(c.qid, _CLOSE_FLAG)
+        # must ensure DataWriter send None flag to peer actor
+        self.writer.stop()
 
     # Pushes the record to the output
     # Each individual output queue flushes batches to plasma periodically
@@ -238,20 +238,20 @@ class DataOutput(object):
     def push(self, record):
         target_channels = []
         # Forward record
-        for channel in self.forward_channels:
+        for c in self.forward_channels:
             logger.debug("[writer] Push record '{}' to channel {}".format(
-                record, channel))
-            target_channels.append(channel)
+                record, c))
+            target_channels.append(c)
         # Forward record
         index = 0
         for channels in self.round_robin_channels:
             self.round_robin_indexes[index] += 1
             if self.round_robin_indexes[index] == len(channels):
                 self.round_robin_indexes[index] = 0  # Reset index
-            channel = channels[self.round_robin_indexes[index]]
+            c = channels[self.round_robin_indexes[index]]
             logger.debug("[writer] Push record '{}' to channel {}".format(
-                record, channel))
-            target_channels.append(channel)
+                record, c))
+            target_channels.append(c)
             index += 1
         # Hash-based shuffling by key
         if self.shuffle_key_exists:
@@ -259,26 +259,26 @@ class DataOutput(object):
             h = _hash(key)
             for channels in self.shuffle_key_channels:
                 num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
+                c = channels[h % num_instances]
                 logger.debug(
                     "[key_shuffle] Push record '{}' to channel {}".format(
-                        record, channel))
-                target_channels.append(channel)
+                        record, c))
+                target_channels.append(c)
         elif self.shuffle_exists:  # Hash-based shuffling per destination
             h = _hash(record)
             for channels in self.shuffle_channels:
                 num_instances = len(channels)  # Downstream instances
-                channel = channels[h % num_instances]
+                c = channels[h % num_instances]
                 logger.debug("[shuffle] Push record '{}' to channel {}".format(
-                    record, channel))
-                target_channels.append(channel)
+                    record, c))
+                target_channels.append(c)
         else:  # TODO (john): Handle rescaling
             pass
 
         msg_data = pickle.dumps(record)
-        for channel in target_channels:
+        for c in target_channels:
             # send data to queue
-            self.writer.write(channel.qid, msg_data)
+            self.writer.write(c.qid, msg_data)
 
     # Pushes a list of records to the output
     # Each individual output queue flushes batches to plasma periodically
