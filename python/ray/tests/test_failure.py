@@ -308,7 +308,7 @@ def test_worker_raising_exception(ray_start_regular):
 
 def test_worker_dying(ray_start_regular):
     # Define a remote function that will kill the worker that runs it.
-    @ray.remote
+    @ray.remote(max_retries=0)
     def f():
         eval("exit()")
 

@@ -20,7 +20,10 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     const auto task_id = task_spec.TaskId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-    request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+    // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
+    // fails, then the task data will be gone when the TaskManager attempts to
+    // access the task.
+    request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
     std::unique_lock<std::mutex> guard(mutex_);
 
@@ -45,7 +48,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     } else {
       // Actor is dead, treat the task as failure.
       RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
-      task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+      task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
     }
   });
 
@@ -85,7 +88,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
         auto request = std::move(head->second);
         head = pending_it->second.erase(head);
         auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-        task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
       }
       pending_requests_.erase(pending_it);
     }
@@ -123,21 +126,15 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
       << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
   next_sequence_number_[actor_id]++;
 
-  auto status = client.PushActorTask(
+  RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
-          // Note that this might be the __ray_terminate__ task, so we don't log
-          // loudly with ERROR here.
-          RAY_LOG(INFO) << "Task failed with error: " << status;
-          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
-      });
-  if (!status.ok()) {
-    task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
-  }
+      }));
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {

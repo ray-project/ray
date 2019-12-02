@@ -162,6 +162,7 @@ def call_ray_start(request):
     # Kill the Ray cluster.
     subprocess.check_output(["ray", "stop"])
 
+
 @pytest.fixture
 def call_ray_stop_only():
     yield

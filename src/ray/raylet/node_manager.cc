@@ -2691,7 +2691,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
 
   if (success) {
     auto spec = assigned_task.GetTaskSpecification();
-    // We successfully assigned the task to the worker->
+    // We successfully assigned the task to the worker.
     worker->AssignTaskId(spec.TaskId());
     worker->AssignJobId(spec.JobId());
     // TODO(swang): For actors with multiple actor handles, to
@@ -2707,7 +2707,7 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
     RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
   } else {
     RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
-    // We failed to send the task to the worker, so disconnect the worker->
+    // We failed to send the task to the worker, so disconnect the worker.
     ProcessDisconnectClientMessage(worker->Connection());
     // Queue this task for future assignment. We need to do this since
     // DispatchTasks() removed it from the ready queue. The task will be
