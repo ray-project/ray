@@ -329,10 +329,9 @@ void ClusterResourceScheduler::ResourceMapToTaskRequest(
   }
 }
 
-void ClusterResourceScheduler::UpdateResourceCapacity(
-    const std::string& client_id_string,
-    const std::string& resource_name,
-    int64_t resource_total) {
+void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
+                                                      const std::string &resource_name,
+                                                      int64_t resource_total) {
   int64_t client_id = string_to_int_map_.Get(client_id_string);
   auto it = nodes_.find(client_id);
   if (it == nodes_.end()) {
@@ -379,9 +378,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(
   }
 }
 
-void ClusterResourceScheduler::DeleteResource(
-    const std::string& client_id_string,
-    const std::string& resource_name) {
+void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
+                                              const std::string &resource_name) {
   int64_t client_id = string_to_int_map_.Get(client_id_string);
   auto it = nodes_.find(client_id);
   if (it == nodes_.end()) {
@@ -410,24 +408,25 @@ void ClusterResourceScheduler::DeleteResource(
   }
 }
 
-
-bool ClusterResourceScheduler::EqualNodeResources(
-    const NodeResources &node_resources1, const NodeResources &node_resources2) {
+bool ClusterResourceScheduler::EqualNodeResources(const NodeResources &node_resources1,
+                                                  const NodeResources &node_resources2) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (node_resources1.capacities[i].total != node_resources2.capacities[i].total) {
       return false;
     }
-    if (node_resources1.capacities[i].available != node_resources2.capacities[i].available) {
+    if (node_resources1.capacities[i].available !=
+        node_resources2.capacities[i].available) {
       return false;
     }
   }
 
-  if (node_resources1.custom_resources.size() != node_resources2.custom_resources.size()) {
+  if (node_resources1.custom_resources.size() !=
+      node_resources2.custom_resources.size()) {
     return true;
   }
 
   for (auto it1 = node_resources1.custom_resources.begin();
-      it1 != node_resources1.custom_resources.end(); ++it1) {
+       it1 != node_resources1.custom_resources.end(); ++it1) {
     auto it2 = node_resources2.custom_resources.find(it1->first);
     if (it2 == node_resources2.custom_resources.end()) {
       return false;
@@ -442,38 +441,41 @@ bool ClusterResourceScheduler::EqualNodeResources(
   return true;
 }
 
-std::string ClusterResourceScheduler::NodeResourcesDebugString(const NodeResources& node_resources) {
+std::string ClusterResourceScheduler::NodeResourcesDebugString(
+    const NodeResources &node_resources) {
   std::stringstream buffer;
   buffer << "  node predefined resources {";
-  for (size_t i = 0; i < node_resources.capacities.size(); i++ ) {
-    buffer << "(" << node_resources.capacities[i].total << ":" <<
-      node_resources.capacities[i].available << ") ";
+  for (size_t i = 0; i < node_resources.capacities.size(); i++) {
+    buffer << "(" << node_resources.capacities[i].total << ":"
+           << node_resources.capacities[i].available << ") ";
   }
   buffer << "}" << std::endl;
 
   buffer << "  node custom resources {";
   for (auto it = node_resources.custom_resources.begin();
-    it != node_resources.custom_resources.end(); ++it) {
-    buffer << it->first << ":(" << it->second.total << ":" << it->second.available << ") ";
+       it != node_resources.custom_resources.end(); ++it) {
+    buffer << it->first << ":(" << it->second.total << ":" << it->second.available
+           << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
 }
 
-std::string ClusterResourceScheduler::TaskRequestDebugString(const TaskRequest& task_request) {
+std::string ClusterResourceScheduler::TaskRequestDebugString(
+    const TaskRequest &task_request) {
   std::stringstream buffer;
   buffer << std::endl << "  request predefined resources {";
-  for (size_t i = 0; i < task_request.predefined_resources.size(); i++ ) {
-    buffer << "(" << task_request.predefined_resources[i].demand << ":" <<
-      task_request.predefined_resources[i].soft << ") ";
+  for (size_t i = 0; i < task_request.predefined_resources.size(); i++) {
+    buffer << "(" << task_request.predefined_resources[i].demand << ":"
+           << task_request.predefined_resources[i].soft << ") ";
   }
   buffer << "}" << std::endl;
 
   buffer << "  request custom resources {";
-  for (size_t i = 0; i < task_request.custom_resources.size(); i++ ) {
-    buffer << task_request.custom_resources[i].id << ":" <<
-      "(" << task_request.custom_resources[i].req.demand << ":" <<
-      task_request.custom_resources[i].req.soft << ") ";
+  for (size_t i = 0; i < task_request.custom_resources.size(); i++) {
+    buffer << task_request.custom_resources[i].id << ":"
+           << "(" << task_request.custom_resources[i].req.demand << ":"
+           << task_request.custom_resources[i].req.soft << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();

@@ -24,7 +24,7 @@ enum MessageType:int {
   DisconnectClient,
   // Notify the raylet that this client is disconnecting gracefully.
   // This is sent from a worker to a raylet.
-  IntentionalDisconnectClient,//6
+  IntentionalDisconnectClient,
   // Tell a worker to execute a task. This is sent from a raylet to a
   // worker.
   ExecuteTask,
@@ -36,7 +36,7 @@ enum MessageType:int {
   NotifyUnblocked,
   // Notify the current worker is blocked. This is only used by direct task calls;
   // otherwise the block command is piggybacked on other messages.
-  NotifyDirectCallTaskBlocked,//10
+  NotifyDirectCallTaskBlocked,
   // Notify the current worker is unblocked. This is only used by direct task calls.
   NotifyDirectCallTaskUnblocked,
   // A request to get the task frontier for an actor, called by the actor when

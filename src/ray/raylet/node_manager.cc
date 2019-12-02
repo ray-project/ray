@@ -586,8 +586,7 @@ void NodeManager::ResourceCreateUpdated(const ClientID &client_id,
                                                      new_resource_capacity);
     }
     if (new_scheduler_enabled_) {
-      new_resource_scheduler_->UpdateResourceCapacity(client_id.Binary(),
-                                                      resource_label,
+      new_resource_scheduler_->UpdateResourceCapacity(client_id.Binary(), resource_label,
                                                       new_resource_capacity);
     }
   }
@@ -2006,7 +2005,7 @@ void NodeManager::HandleDirectCallTaskBlocked(const std::shared_ptr<Worker> &wor
     // TODO (ion): replace this hard coded # of CPUs.
     std::unordered_map<std::string, double> task_request;
     task_request.emplace(kCPU_ResourceLabel, 1.);
-    new_resource_scheduler_->AddNodeAvailableResources( client_id_.Binary(), task_request);
+    new_resource_scheduler_->AddNodeAvailableResources(client_id_.Binary(), task_request);
     return;
   }
   if (!worker || worker->GetAssignedTaskId().IsNil() || worker->IsBlocked()) {
