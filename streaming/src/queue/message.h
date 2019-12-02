@@ -16,9 +16,9 @@ namespace streaming {
 class Message {
  public:
   /// Construct a Message instance.
-  /// \param[in] actor_id ActorID of message sender
-  /// \param[in] peer_actor_id ActorID of message receiver
-  /// \param[in] queue_id queue id to identify which queue the message sent to
+  /// \param[in] actor_id ActorID of message sender.
+  /// \param[in] peer_actor_id ActorID of message receiver.
+  /// \param[in] queue_id queue id to identify which queue the message sent to.
   /// \param[in] buffer an optional param, a chunk of data to send.
   Message(const ActorID &actor_id, const ActorID &peer_actor_id, const ObjectID &queue_id,
           std::shared_ptr<LocalMemoryBuffer> buffer = nullptr)
@@ -33,12 +33,15 @@ class Message {
   ObjectID QueueId() { return queue_id_; }
   std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
-  /// Pack all meta data and data to a LocalMemoryBuffer, which can be send through direct actor call
+  /// Serialize all meta data and data to a LocalMemoryBuffer, which can be send through direct actor call.
+  /// \return serialized buffer .
   std::unique_ptr<LocalMemoryBuffer> ToBytes();
 
+  /// Get message type.
+  /// \return message type.
   virtual queue::protobuf::StreamingQueueMessageType Type() = 0;
 
-  /// All subclass should implement `ToProtobuf` to serialize its own protobuf data
+  /// All subclass should implement `ToProtobuf` to serialize its own protobuf data.
   virtual void ToProtobuf(std::string *output) = 0;
  protected:
   ActorID actor_id_;

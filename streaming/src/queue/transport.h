@@ -31,6 +31,7 @@ class Transport {
   /// \param[in] buffer buffer to be sent.
   /// \param[in] function the function descriptor of peer's function.
   /// \param[in] timeout_ms max time to wait for result.
+  /// \return peer function's result.
   virtual std::shared_ptr<LocalMemoryBuffer> SendForResult(
       std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int64_t timeout_ms);
   /// Send buffer and get result with retry.
@@ -39,6 +40,7 @@ class Transport {
   /// \param[in] function the function descriptor of peer's function.
   /// \param[in] max retry count
   /// \param[in] timeout_ms max time to wait for result.
+  /// \return peer function's result.
   std::shared_ptr<LocalMemoryBuffer> SendForResultWithRetry(
       std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt, int64_t timeout_ms);
 

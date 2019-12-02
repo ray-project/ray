@@ -73,7 +73,12 @@ class QueueItem {
 
   uint64_t SeqId() { return seq_id_; }
   bool IsRaw() { return raw_; }
+  uint64_t TimeStamp() { return timestamp_; }
+  size_t DataSize() { return buffer_->Size(); }
+  std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
+  /// Get max message id in this item.
+  /// \return max message id.
   uint64_t MaxMsgId() {
     if (raw_) {
       return 0;
@@ -81,12 +86,6 @@ class QueueItem {
     auto message_bundle = StreamingMessageBundleMeta::FromBytes(buffer_->Data());
     return message_bundle->GetLastMessageId();
   }
-
-  uint64_t TimeStamp() { return timestamp_; }
-
-  size_t DataSize() { return buffer_->Size(); }
-
-  std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
  protected:
   uint64_t seq_id_;
@@ -96,9 +95,9 @@ class QueueItem {
   std::shared_ptr<LocalMemoryBuffer> buffer_;
 };
 
-class NullQueueItem : public QueueItem {
+class InvalidQueueItem : public QueueItem {
  public:
-  NullQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0) {}
+  InvalidQueueItem() : QueueItem(QUEUE_INVALID_SEQ_ID, data_, 1, 0) {}
  private:
   uint8_t data_[1];
 };
