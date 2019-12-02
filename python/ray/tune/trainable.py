@@ -72,12 +72,14 @@ class Trainable(object):
         self.config = config or {}
 
         if logger_creator:
-            # Tune always passes in a no-op logger_creator.
             self._result_logger = logger_creator(self.config)
             self._logdir = self._result_logger.logdir
-            # The checkpoint directory must be initialized explicitly by
-            # calling _init_checkpoint_dir.
-            self._checkpoint_dir = None
+            # The trial dir is the same as the logdir for non-Tune use-cases.
+            trial_dir = TrialDirSchema.root_from(self._logdir)
+            self._checkpoint_dir = os.path.join(trial_dir,
+                                                TrialDirSchema.CHECKPOINT_DIR)
+            if not os.path.exists(self._checkpoint_dir):
+                os.makedirs(self._checkpoint_dir)
         else:
             name = getattr(self, "_id", self.__class__.__name__)
             dir_schema = TrialDirSchema(name, DEFAULT_RESULTS_DIR)
@@ -109,18 +111,6 @@ class Trainable(object):
         self._local_ip = ray.services.get_node_ip_address()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
-
-    def _init_checkpoint_dir(self, checkpoint_dir):
-        """Initializes the default checkpoint directory.
-
-        This directory is used if one is not passed into save().
-
-        Args:
-            checkpoint_dir (str): Path to checkpoint directory.
-        """
-        self._checkpoint_dir = checkpoint_dir
-        if not os.path.exists(self._checkpoint_dir):
-            os.makedirs(self._checkpoint_dir)
 
     @classmethod
     def default_resource_request(cls, config):

@@ -119,10 +119,7 @@ class RayTrialExecutor(TrialExecutor):
         logger.info("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
-        runner = cls.remote(config=trial.config, logger_creator=logger_creator)
-        # Initialize the checkpoint directory.
-        runner._init_checkpoint_dir.remote(trial.checkpoint_dir)
-        return runner
+        return cls.remote(config=trial.config, logger_creator=logger_creator)
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""

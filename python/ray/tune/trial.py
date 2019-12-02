@@ -99,6 +99,18 @@ class TrialDirSchema(object):
         """Directory containing checkpoints taken on the remote worker."""
         return os.path.join(self.root_dir, TrialDirSchema.CHECKPOINT_DIR)
 
+    @staticmethod
+    def root_from(source_path):
+        """Gets the root dir from the source.
+
+        For trial directories not created by TrialDirSchema, this is the
+        same path.
+        """
+        if os.path.basename(source_path) in (TrialDirSchema.REMOTE_LOGDIR,
+                                             TrialDirSchema.CHECKPOINT_DIR):
+            return os.path.dirname(source_path)
+        return source_path
+
 
 class ExportFormat(object):
     """Describes the format to export the trial Trainable.
