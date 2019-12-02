@@ -106,8 +106,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
     RAY_CHECK(task_execution_callback_ != nullptr);
     auto execute_task = std::bind(&CoreWorker::ExecuteTask, this, std::placeholders::_1,
                                   std::placeholders::_2, std::placeholders::_3);
-    raylet_task_receiver_ = std::unique_ptr<CoreWorkerRayletTaskReceiver>(
-        new CoreWorkerRayletTaskReceiver(raylet_client_, execute_task, exit_handler));
+    raylet_task_receiver_ =
+        std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
+            local_raylet_client_, execute_task, exit_handler));
     direct_task_receiver_ =
         std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
             worker_context_, task_execution_service_, execute_task, exit_handler));
@@ -124,22 +125,22 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   // instead of crashing.
   auto grpc_client = rpc::NodeManagerWorkerClient::make(
       node_ip_address, node_manager_port, *client_call_manager_);
-  ClientID raylet_id;
-  raylet_client_ = std::shared_ptr<RayletClient>(new RayletClient(
+  ClientID local_raylet_id;
+  local_raylet_client_ = std::shared_ptr<RayletClient>(new RayletClient(
       std::move(grpc_client), raylet_socket,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
-      language_, &raylet_id, core_worker_server_.GetPort()));
+      language_, &local_raylet_id, core_worker_server_.GetPort()));
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(*raylet_client_);
+    direct_task_receiver_->Init(*local_raylet_client_);
   }
 
   // Set our own address.
-  RAY_CHECK(!raylet_id.IsNil());
+  RAY_CHECK(!local_raylet_id.IsNil());
   rpc_address_.set_ip_address(node_ip_address);
   rpc_address_.set_port(core_worker_server_.GetPort());
-  rpc_address_.set_raylet_id(raylet_id.Binary());
+  rpc_address_.set_raylet_id(local_raylet_id.Binary());
 
   // Set timer to periodically send heartbeats containing active object IDs to the raylet.
   // If the heartbeat timeout is < 0, the heartbeats are disabled.
@@ -157,13 +158,13 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   io_thread_ = std::thread(&CoreWorker::RunIOService, this);
 
-  plasma_store_provider_.reset(
-      new CoreWorkerPlasmaStoreProvider(store_socket, raylet_client_, check_signals_));
+  plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
+      store_socket, local_raylet_client_, check_signals_));
   memory_store_.reset(new CoreWorkerMemoryStore(
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr, raylet_client_));
+      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
@@ -203,14 +204,14 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
 
   direct_task_submitter_ =
       std::unique_ptr<CoreWorkerDirectTaskSubmitter>(new CoreWorkerDirectTaskSubmitter(
-          raylet_client_, client_factory,
+          local_raylet_client_, client_factory,
           [this](const rpc::Address &address) {
             auto grpc_client = rpc::NodeManagerWorkerClient::make(
                 address.ip_address(), address.port(), *client_call_manager_);
             return std::shared_ptr<RayletClient>(
                 new RayletClient(std::move(grpc_client)));
           },
-          memory_store_, task_manager_,
+          memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory, io_service_));
 }
@@ -236,8 +237,8 @@ void CoreWorker::Shutdown() {
 void CoreWorker::Disconnect() {
   io_service_.stop();
   gcs_client_->Disconnect();
-  if (raylet_client_) {
-    RAY_IGNORE_EXPR(raylet_client_->Disconnect());
+  if (local_raylet_client_) {
+    RAY_IGNORE_EXPR(local_raylet_client_->Disconnect());
   }
 }
 
@@ -273,7 +274,7 @@ void CoreWorker::ReportActiveObjectIDs() {
     RAY_LOG(INFO) << active_object_ids.size() << " object IDs are currently in scope.";
   }
 
-  if (!raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
+  if (!local_raylet_client_->ReportActiveObjectIDs(active_object_ids).ok()) {
     RAY_LOG(ERROR) << "Raylet connection failed. Shutting down.";
     Shutdown();
   }
@@ -613,7 +614,7 @@ Status CoreWorker::SubmitTask(const RayFunction &function,
     return direct_task_submitter_->SubmitTask(task_spec);
   } else {
     PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-    return raylet_client_->SubmitTask(task_spec);
+    return local_raylet_client_->SubmitTask(task_spec);
   }
 }
 
@@ -652,7 +653,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
   // need to manually resolve direct call args here.
   resolver_->ResolveDependencies(task_spec, [this, task_spec]() {
-    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
+    RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
   });
   return Status::OK();
 }
@@ -696,7 +697,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
     status = direct_actor_submitter_->SubmitTask(task_spec);
   } else {
     PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-    RAY_CHECK_OK(raylet_client_->SubmitTask(task_spec));
+    RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
   }
   return status;
 }
