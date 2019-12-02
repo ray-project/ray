@@ -49,15 +49,15 @@ To tell the Ray scheduler a task or actor requires a certain amount of available
       def __init__(self, a, b):
           pass
 
-In the above example, the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``_remote()`` as follows:
+In the above example, the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``.options()`` as follows:
 
 .. code-block:: python
 
   # override the memory quota to 100MiB when submitting the task
-  some_function._remote(memory=100 * 1024 * 1024, kwargs={"x": 1})
+  some_function.options(memory=100 * 1024 * 1024).remote(x=1)
 
   # override the memory quota to 1GiB when creating the actor
-  SomeActor._remote(memory=1000 * 1024 * 1024, kwargs={"a": 1, "b": 2})
+  SomeActor.options(memory=1000 * 1024 * 1024).remote(a=1, b=2)
 
 **Enforcement**: If an actor exceeds its memory quota, calls to it will throw ``RayOutOfMemoryError`` and it may be killed. Memory quota is currently enforced on a best-effort basis for actors only (but quota is taken into account during scheduling in all cases).
 
