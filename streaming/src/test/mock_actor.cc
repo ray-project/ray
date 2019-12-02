@@ -280,12 +280,12 @@ class TestSuiteFactory {
 class StreamingWorker {
  public:
   StreamingWorker(const std::string &store_socket, const std::string &raylet_socket,
-                  const gcs::GcsClientOptions &gcs_options)
+                  int node_manager_port, const gcs::GcsClientOptions &gcs_options)
       : test_suite_(nullptr), peer_actor_handle_(nullptr) {
     worker_ = std::make_shared<CoreWorker>(
         WorkerType::WORKER, Language::PYTHON, store_socket, raylet_socket,
-        JobID::FromInt(1), gcs_options, "", "127.0.0.1",
-        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7, _8));
+        JobID::FromInt(1), gcs_options, "", "127.0.0.1", node_manager_port,
+        std::bind(&StreamingWorker::ExecuteTask, this, _1, _2, _3, _4, _5, _6, _7));
 
     RayFunction reader_async_call_func{ray::Language::PYTHON, {"reader_async_call_func"}};
     RayFunction reader_sync_call_func{ray::Language::PYTHON, {"reader_sync_call_func"}};
@@ -308,7 +308,6 @@ class StreamingWorker {
                      const std::vector<std::shared_ptr<RayObject>> &args,
                      const std::vector<ObjectID> &arg_reference_ids,
                      const std::vector<ObjectID> &return_ids,
-                     const bool return_results_directly,
                      std::vector<std::shared_ptr<RayObject>> *results) {
     // Only one arg param used in streaming.
     STREAMING_CHECK(args.size() >= 1) << "args.size() = " << args.size();
@@ -425,12 +424,13 @@ class StreamingWorker {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  RAY_CHECK(argc == 3);
+  RAY_CHECK(argc == 4);
   auto store_socket = std::string(argv[1]);
   auto raylet_socket = std::string(argv[2]);
+  auto node_manager_port = std::stoi(std::string(argv[3]));
 
   ray::gcs::GcsClientOptions gcs_options("127.0.0.1", 6379, "");
-  ray::streaming::StreamingWorker worker(store_socket, raylet_socket, gcs_options);
+  ray::streaming::StreamingWorker worker(store_socket, raylet_socket, node_manager_port, gcs_options);
   worker.StartExecutingTasks();
   return 0;
 }

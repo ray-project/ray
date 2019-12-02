@@ -14,11 +14,12 @@ static void flushall_redis(void) {
 class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
  public:
   StreamingQueueTestBase(int num_nodes, std::string raylet_exe, std::string store_exe,
-                         std::string actor_exe)
+                         int port, std::string actor_exe)
       : gcs_options_("127.0.0.1", 6379, ""),
         raylet_executable_(raylet_exe),
         store_executable_(store_exe),
-        actor_executable_(actor_exe) {
+        actor_executable_(actor_exe),
+        node_manager_port_(port) {
     // flush redis first.
     flushall_redis();
 
@@ -37,7 +38,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     // a task can be scheduled to the desired node.
     for (int i = 0; i < num_nodes; i++) {
       raylet_socket_names_[i] =
-          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", "127.0.0.1",
+          StartRaylet(raylet_store_socket_names_[i], "127.0.0.1", node_manager_port_+i, "127.0.0.1",
                       "\"CPU,4.0,resource" + std::to_string(i) + ",10\"");
     }
   }
@@ -80,12 +81,12 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   }
 
   std::string StartRaylet(std::string store_socket_name, std::string node_ip_address,
-                          std::string redis_address, std::string resource) {
+                          int port, std::string redis_address, std::string resource) {
     std::string raylet_socket_name = "/tmp/raylet" + RandomObjectID().Hex();
     std::string ray_start_cmd = raylet_executable_;
     ray_start_cmd.append(" --raylet_socket_name=" + raylet_socket_name)
         .append(" --store_socket_name=" + store_socket_name)
-        .append(" --object_manager_port=0 --node_manager_port=0")
+        .append(" --object_manager_port=0 --node_manager_port=" + std::to_string(port))
         .append(" --node_ip_address=" + node_ip_address)
         .append(" --redis_address=" + redis_address)
         .append(" --redis_port=6379")
@@ -93,7 +94,8 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
         .append(" --maximum_startup_concurrency=10")
         .append(" --static_resource_list=" + resource)
         .append(" --python_worker_command=\"" + actor_executable_ + " " +
-                store_socket_name + " " + raylet_socket_name + "\"")
+                store_socket_name + " " + raylet_socket_name + " " +
+                std::to_string(port) + "\"")
         .append(" --config_list=initial_reconstruction_timeout_milliseconds,2000")
         .append(" & echo $! > " + raylet_socket_name + ".pid");
 
@@ -128,7 +130,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(msg.ToBytes(), nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, resources};
+    TaskOptions options{0, true, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"init"}};
 
@@ -142,7 +144,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{0, resources};
+    TaskOptions options{0, true, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"execute_test", test}};
 
@@ -156,7 +158,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(
         TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr, true)));
     std::unordered_map<std::string, double> resources;
-    TaskOptions options{1, resources};
+    TaskOptions options{1, true, resources};
     std::vector<ObjectID> return_ids;
     RayFunction func{ray::Language::PYTHON, {"check_current_test_status"}};
 
@@ -223,7 +225,9 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     args.emplace_back(TaskArg::PassByValue(std::make_shared<RayObject>(buffer, nullptr)));
 
     ActorCreationOptions actor_options{
-        max_reconstructions, is_direct_call, resources, resources, {}};
+      max_reconstructions,   is_direct_call,
+      /*max_concurrency*/ 1, resources,           resources, {},
+      /*is_detached*/ false, /*is_asyncio*/ false};
 
     // Create an actor.
     ActorID actor_id;
@@ -255,7 +259,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
     STREAMING_LOG(INFO) << "Sub process: writer.";
 
     CoreWorker driver(WorkerType::DRIVER, Language::PYTHON, raylet_store_socket_names_[0],
-                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "",
+                      raylet_socket_names_[0], NextJobId(), gcs_options_, "", "", node_manager_port_,
                       nullptr);
 
     // Create writer and reader actors
@@ -302,6 +306,7 @@ class StreamingQueueTestBase : public ::testing::TestWithParam<uint64_t> {
   std::string raylet_executable_;
   std::string store_executable_;
   std::string actor_executable_;
+  int node_manager_port_;
 };
 
 }  // namespace streaming
