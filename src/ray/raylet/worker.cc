@@ -137,8 +137,8 @@ Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set
       task.GetTaskExecutionSpec().GetMessage());
   request.set_resource_ids(resource_id_set.Serialize());
 
-  return status = rpc_client_->AssignTask(request, [](Status status,
-                                                      const rpc::AssignTaskReply &reply) {
+  return rpc_client_->AssignTask(request, [](Status status,
+                                             const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
       RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }

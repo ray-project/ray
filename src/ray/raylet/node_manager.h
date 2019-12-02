@@ -210,8 +210,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                   bool forwarded = false);
   /// Assign a task to a worker. The task is assumed to be in the READY queue.
   ///
-  /// \param task The task in question.
-  void AssignTask(const std::shared_ptr<Worker> &worker, const Task &task);
+  /// \param[in] worker The worker to assign the task to.
+  /// \param[in] task The task in question.
+  /// \param[out] post_assign_callbacks Vector of callbacks that will be appended
+  /// to with any logic that should run after the DispatchTasks loop runs.
+  void AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
+                  std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
@@ -514,7 +518,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \param task_id Id of the task.
   /// \param worker Worker which the task is assigned to.
   /// \return void.
-  void FinishAssignTask(const TaskID &task_id, const std::shared_ptr<Worker> &worker);
+  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id);
 
   /// Handle a `WorkerLease` request.
   void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,

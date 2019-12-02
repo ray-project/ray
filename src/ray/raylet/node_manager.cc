@@ -832,6 +832,7 @@ void NodeManager::DispatchTasks(
           return local_queues_.NumRunning(a->first) < local_queues_.NumRunning(b->first);
         });
   }
+  std::vector<std::function<void()>> post_assign_callbacks;
   // Approximate fair round robin between classes.
   for (const auto &it : fair_order) {
     const auto &task_resources =
@@ -847,11 +848,18 @@ void NodeManager::DispatchTasks(
 
       // Try to get an idle worker to execute this task. If nullptr, there
       // aren't any available workers so we can't assign the task.
-      std::shared_ptr<Worker> worker = worker_pool_.PopWorker(spec);
+      std::shared_ptr<Worker> worker =
+          worker_pool_.PopWorker(task.GetTaskSpecification());
       if (worker != nullptr) {
-        AssignTask(worker, task);
+        AssignTask(worker, task, &post_assign_callbacks);
       }
     }
+  }
+  // Call the callbacks from the AssignTask calls above. These need to be called
+  // after the above loop, as they may alter the scheduling queues and invalidate
+  // the loop iterator.
+  for (auto &func : post_assign_callbacks) {
+    func();
   }
 }
 
@@ -2061,58 +2069,67 @@ void NodeManager::EnqueuePlaceableTask(const Task &task) {
   task_dependency_manager_.TaskPending(task);
 }
 
-void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &task);
-const TaskSpecification &spec = task.GetTaskSpecification();
+void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
+                             std::vector<std::function<void()>> *post_assign_callbacks) {
+  const TaskSpecification &spec = task.GetTaskSpecification();
+  RAY_CHECK(post_assign_callbacks);
 
-// If this is an actor task, check that the new task has the correct counter.
-if (spec.IsActorTask()) {
-  // An actor task should only be ready to be assigned if it matches the
-  // expected task counter.
-  int64_t expected_task_counter =
-      GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
-  RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
-      << "Expected actor counter: " << expected_task_counter << ", task " << spec.TaskId()
-      << " has: " << spec.ActorCounter();
-}
+  // If this is an actor task, check that the new task has the correct counter.
+  if (spec.IsActorTask()) {
+    // An actor task should only be ready to be assigned if it matches the
+    // expected task counter.
+    int64_t expected_task_counter =
+        GetExpectedTaskCounter(actor_registry_, spec.ActorId(), spec.CallerId());
+    RAY_CHECK(static_cast<int64_t>(spec.ActorCounter()) == expected_task_counter)
+        << "Expected actor counter: " << expected_task_counter << ", task "
+        << spec.TaskId() << " has: " << spec.ActorCounter();
+  }
 
-RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
-               << worker->Pid();
-flatbuffers::FlatBufferBuilder fbb;
+  RAY_LOG(DEBUG) << "Assigning task " << spec.TaskId() << " to worker with pid "
+                 << worker->Pid();
+  flatbuffers::FlatBufferBuilder fbb;
 
-// Resource accounting: acquire resources for the assigned task.
-auto acquired_resources = local_available_resources_.Acquire(spec.GetRequiredResources());
-const auto &my_client_id = gcs_client_ -> client_table().GetLocalClientId();
-cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
+  // Resource accounting: acquire resources for the assigned task.
+  auto acquired_resources =
+      local_available_resources_.Acquire(spec.GetRequiredResources());
+  const auto &my_client_id = gcs_client_->client_table().GetLocalClientId();
+  cluster_resource_map_[my_client_id].Acquire(spec.GetRequiredResources());
 
-if (spec.IsActorCreationTask()) {
-  // Check that the actor's placement resource requirements are satisfied.
-  RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
-      cluster_resource_map_[my_client_id].GetTotalResources()));
-  worker->SetLifetimeResourceIds(acquired_resources);
-} else {
-  worker->SetTaskResourceIds(acquired_resources);
-}
-
-if (task.OnDispatch() != nullptr) {
-  task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
-  FinishAssignTask(worker, spec.TaskId());
-} else {
-  ResourceIdSet resource_id_set =
-      worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
-  if (worker->AssignTask(task, resource_id_set).ok()) {
-    RAY_LOG(DEBUG) << "Assigned task " << spec.TaskId() << " to worker "
-                   << worker->WorkerID();
-    FinishAssignTask(worker, spec.TaskId());
+  if (spec.IsActorCreationTask()) {
+    // Check that the actor's placement resource requirements are satisfied.
+    RAY_CHECK(spec.GetRequiredPlacementResources().IsSubset(
+        cluster_resource_map_[my_client_id].GetTotalResources()));
+    worker->SetLifetimeResourceIds(acquired_resources);
   } else {
-    RAY_LOG(ERROR) << "Failed to assign task " << spec.TaskId() << " to worker "
-                   << worker->WorkerID() << ", disconnecting client";
-    // We failed to send the task to the worker, so disconnect the worker
-    // and retry dispatching the task.
-    ProcessDisconnectClientMessage(worker->Connection());
-    DispatchTasks(MakeTasksByClass({task}));
+    worker->SetTaskResourceIds(acquired_resources);
+  }
+
+  auto task_id = spec.TaskId();
+  if (task.OnDispatch() != nullptr) {
+    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
+    post_assign_callbacks->push_back(
+        [this, worker, task_id]() { FinishAssignTask(worker, task_id); });
+  } else {
+    ResourceIdSet resource_id_set =
+        worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
+    if (worker->AssignTask(task, resource_id_set).ok()) {
+      RAY_LOG(DEBUG) << "Assigned task " << task_id << " to worker "
+                     << worker->WorkerId();
+      post_assign_callbacks->push_back(
+          [this, worker, task_id]() { FinishAssignTask(worker, task_id); });
+    } else {
+      RAY_LOG(ERROR) << "Failed to assign task " << task_id << " to worker "
+                     << worker->WorkerId() << ", disconnecting client";
+      post_assign_callbacks->push_back([this, worker, task_id]() {
+        // We failed to send the task to the worker, so disconnect the worker
+        // and retry dispatching the task.
+        ProcessDisconnectClientMessage(worker->Connection());
+        DispatchTasks(
+            MakeTasksByClass({local_queues_.GetTaskOfState(task_id, TaskState::READY)}));
+      });
+    }
   }
 }
-}  // namespace raylet
 
 void NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
@@ -2839,6 +2856,6 @@ void NodeManager::RecordMetrics() {
                              {{stats::ValueTypeKey, "max_num_handles"}});
 }
 
-}  // namespace ray
+}  // namespace raylet
 
 }  // namespace ray
