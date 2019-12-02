@@ -180,6 +180,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
 
+  static std::mutex sched_mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
   static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_;
   static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_;
