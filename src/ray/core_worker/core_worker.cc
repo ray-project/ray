@@ -213,7 +213,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           },
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
-  future_resolver_.reset(new FutureResolver(memory_store_, client_factory, io_service_));
+  future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
 }
 
 CoreWorker::~CoreWorker() {

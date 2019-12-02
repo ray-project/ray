@@ -94,9 +94,8 @@ message GetObjectStatusRequest {
 
 message GetObjectStatusReply {
   enum ObjectStatus {
-    PENDING = 0;
-    CREATED = 1;
-    WRONG_OWNER = 2;
+    CREATED = 0;
+    WRONG_OWNER = 1;
   }
   ObjectStatus status = 1;
 }
