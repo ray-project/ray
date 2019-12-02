@@ -27,10 +27,10 @@ export interface NodeInfoResponse {
     now: number;
     hostname: string;
     ip: string;
-    boot_time: number;
-    cpu: number;
-    cpus: [number, number];
-    mem: [number, number, number];
+    boot_time: number; // System boot time expressed in seconds since epoch
+    cpu: number; // System-wide CPU utilization expressed as a percentage
+    cpus: [number, number]; // Number of logical CPUs and physical CPUs
+    mem: [number, number, number]; // Total, available, and used percentage of memory
     disk: {
       [path: string]: {
         total: number;
@@ -40,7 +40,7 @@ export interface NodeInfoResponse {
       };
     };
     load_avg: [[number, number, number], [number, number, number]];
-    net: [number, number];
+    net: [number, number]; // Sent and received network traffic in bytes / second
     workers: Array<{
       pid: number;
       create_time: number;
@@ -59,7 +59,7 @@ export interface NodeInfoResponse {
         vms: number;
         rss: number;
       };
-      memory_full_info: null;
+      memory_full_info: null; // Currently unused as it requires superuser permission on some systems
     }>;
   }>;
   log_counts: {
