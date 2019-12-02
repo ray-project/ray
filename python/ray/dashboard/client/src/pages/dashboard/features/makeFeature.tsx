@@ -9,14 +9,14 @@ export const makeFeature = ({
   getFeatureForNode,
   getFeatureForWorker
 }: {
-  getFeatureForNode({ node }: { node: Node }): React.ReactElement;
-  getFeatureForWorker({
+  getFeatureForNode: ({ node }: { node: Node }) => React.ReactElement;
+  getFeatureForWorker: ({
     node,
     worker
   }: {
     node: Node;
     worker: Worker;
-  }): React.ReactElement;
+  }) => React.ReactElement;
 }) => (
   data:
     | { type: "node"; node: Node }
