@@ -513,12 +513,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void HandleDisconnectedActor(const ActorID &actor_id, bool was_local,
                                bool intentional_disconnect);
 
-  /// Finish assigning a task that was successfully sent to a worker.
+  /// Finish assigning a task to a worker.
   ///
   /// \param worker Worker that the task is assigned to.
   /// \param task_id Id of the task.
+  /// \param success Whether or not assigning the task was successful.
   /// \return void.
-  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id);
+  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
+                        bool success);
 
   /// Handle a `WorkerLease` request.
   void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,

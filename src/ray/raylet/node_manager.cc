@@ -2107,25 +2107,23 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   auto task_id = spec.TaskId();
   if (task.OnDispatch() != nullptr) {
     task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
-    post_assign_callbacks->push_back(
-        [this, worker, task_id]() { FinishAssignTask(worker, task_id); });
+    post_assign_callbacks->push_back([this, worker, task_id]() {
+      FinishAssignTask(worker, task_id, /*success=*/true);
+    });
   } else {
     ResourceIdSet resource_id_set =
         worker->GetTaskResourceIds().Plus(worker->GetLifetimeResourceIds());
     if (worker->AssignTask(task, resource_id_set).ok()) {
       RAY_LOG(DEBUG) << "Assigned task " << task_id << " to worker "
                      << worker->WorkerId();
-      post_assign_callbacks->push_back(
-          [this, worker, task_id]() { FinishAssignTask(worker, task_id); });
+      post_assign_callbacks->push_back([this, worker, task_id]() {
+        FinishAssignTask(worker, task_id, /*success=*/true);
+      });
     } else {
       RAY_LOG(ERROR) << "Failed to assign task " << task_id << " to worker "
                      << worker->WorkerId() << ", disconnecting client";
       post_assign_callbacks->push_back([this, worker, task_id]() {
-        // We failed to send the task to the worker, so disconnect the worker
-        // and retry dispatching the task.
-        ProcessDisconnectClientMessage(worker->Connection());
-        DispatchTasks(
-            MakeTasksByClass({local_queues_.GetTaskOfState(task_id, TaskState::READY)}));
+        FinishAssignTask(worker, task_id, /*success=*/false);
       });
     }
   }
@@ -2253,51 +2251,52 @@ void NodeManager::FinishAssignedActorTask(Worker &worker, const Task &task) {
     // Lookup the parent actor id.
     auto parent_task_id = task_spec.ParentTaskId();
     int port = worker.Port();
-    RAY_CHECK_OK(gcs_client_->raylet_task_table().Lookup(
-        JobID::Nil(), parent_task_id,
-        /*success_callback=*/
-        [this, task_spec, resumed_from_checkpoint, port](
-            ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
-            const TaskTableData &parent_task_data) {
-          // The task was in the GCS task table. Use the stored task spec to
-          // get the parent actor id.
-          Task parent_task(parent_task_data.task());
-          ActorID parent_actor_id = ActorID::Nil();
-          if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
-            parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-          } else if (parent_task.GetTaskSpecification().IsActorTask()) {
-            parent_actor_id = parent_task.GetTaskSpecification().ActorId();
-          }
-          FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                          resumed_from_checkpoint, port);
-        },
-        /*failure_callback=*/
-        [this, task_spec, resumed_from_checkpoint, port](ray::gcs::RedisGcsClient *client,
-                                                         const TaskID &parent_task_id) {
-          // The parent task was not in the GCS task table. It should most likely be in
-          // the
-          // lineage cache.
-          ActorID parent_actor_id = ActorID::Nil();
-          if (lineage_cache_.ContainsTask(parent_task_id)) {
-            // Use a copy of the cached task spec to get the parent actor id.
-            Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
-            if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
-              parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
-            } else if (parent_task.GetTaskSpecification().IsActorTask()) {
-              parent_actor_id = parent_task.GetTaskSpecification().ActorId();
-            }
-          } else {
-            RAY_LOG(WARNING)
-                << "Task metadata not found in either GCS or lineage cache. It may have "
-                   "been "
-                   "evicted "
-                << "by the redis LRU configuration. Consider increasing the memory "
-                   "allocation via "
-                << "ray.init(redis_max_memory=<max_memory_bytes>).";
-          }
-          FinishAssignedActorCreationTask(parent_actor_id, task_spec,
-                                          resumed_from_checkpoint, port);
-        }));
+    RAY_CHECK_OK(
+        gcs_client_->raylet_task_table().Lookup(
+            JobID::Nil(), parent_task_id,
+            /*success_callback=*/
+            [this, task_spec, resumed_from_checkpoint, port](
+                ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id,
+                const TaskTableData &parent_task_data) {
+              // The task was in the GCS task table. Use the stored task spec to
+              // get the parent actor id.
+              Task parent_task(parent_task_data.task());
+              ActorID parent_actor_id = ActorID::Nil();
+              if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
+                parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+              } else if (parent_task.GetTaskSpecification().IsActorTask()) {
+                parent_actor_id = parent_task.GetTaskSpecification().ActorId();
+              }
+              FinishAssignedActorCreationTask(parent_actor_id, task_spec,
+                                              resumed_from_checkpoint, port);
+            },
+            /*failure_callback=*/
+            [this, task_spec, resumed_from_checkpoint, port](
+                ray::gcs::RedisGcsClient *client, const TaskID &parent_task_id) {
+              // The parent task was not in the GCS task table. It should most likely be
+              // in the lineage cache.
+              ActorID parent_actor_id = ActorID::Nil();
+              if (lineage_cache_.ContainsTask(parent_task_id)) {
+                // Use a copy of the cached task spec to get the parent actor id.
+                Task parent_task = lineage_cache_.GetTaskOrDie(parent_task_id);
+                if (parent_task.GetTaskSpecification().IsActorCreationTask()) {
+                  parent_actor_id = parent_task.GetTaskSpecification().ActorCreationId();
+                } else if (parent_task.GetTaskSpecification().IsActorTask()) {
+                  parent_actor_id = parent_task.GetTaskSpecification().ActorId();
+                }
+              } else {
+                RAY_LOG(WARNING)
+                    << "Task metadata not found in either GCS or lineage cache. It may "
+                       "have "
+                       "been "
+                       "evicted "
+                    << "by the redis LRU configuration. Consider increasing the memory "
+                       "allocation via "
+                    << "ray.init(redis_max_memory=<max_memory_bytes>).";
+              }
+              FinishAssignedActorCreationTask(parent_actor_id, task_spec,
+                                              resumed_from_checkpoint, port);
+            }));
   } else {
     auto actor_entry = actor_registry_.find(actor_id);
     RAY_CHECK(actor_entry != actor_registry_.end());
@@ -2680,7 +2679,7 @@ void NodeManager::ForwardTask(
 }
 
 void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
-                                   const TaskID &task_id) {
+                                   const TaskID &task_id, bool success) {
   // Remove the ASSIGNED task from the READY queue.
   Task assigned_task;
   TaskState state;
@@ -2690,21 +2689,33 @@ void NodeManager::FinishAssignTask(const std::shared_ptr<Worker> &worker,
   }
   RAY_CHECK(state == TaskState::READY);
 
-  auto spec = assigned_task.GetTaskSpecification();
-  // We successfully assigned the task to the worker.
-  worker->AssignTaskId(spec.TaskId());
-  worker->AssignJobId(spec.JobId());
-  // TODO(swang): For actors with multiple actor handles, to
-  // guarantee that tasks are replayed in the same order after a
-  // failure, we must update the task's execution dependency to be
-  // the actor's current execution dependency.
+  if (success) {
+    auto spec = assigned_task.GetTaskSpecification();
+    // We successfully assigned the task to the worker->
+    worker->AssignTaskId(spec.TaskId());
+    worker->AssignJobId(spec.JobId());
+    // TODO(swang): For actors with multiple actor handles, to
+    // guarantee that tasks are replayed in the same order after a
+    // failure, we must update the task's execution dependency to be
+    // the actor's current execution dependency.
 
-  // Mark the task as running.
-  // (See design_docs/task_states.rst for the state transition diagram.)
-  local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
-  // Notify the task dependency manager that we no longer need this task's
-  // object dependencies.
-  RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+    // Mark the task as running.
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    local_queues_.QueueTasks({assigned_task}, TaskState::RUNNING);
+    // Notify the task dependency manager that we no longer need this task's
+    // object dependencies.
+    RAY_CHECK(task_dependency_manager_.UnsubscribeGetDependencies(spec.TaskId()));
+  } else {
+    RAY_LOG(WARNING) << "Failed to send task to worker, disconnecting client";
+    // We failed to send the task to the worker, so disconnect the worker->
+    ProcessDisconnectClientMessage(worker->Connection());
+    // Queue this task for future assignment. We need to do this since
+    // DispatchTasks() removed it from the ready queue. The task will be
+    // assigned to a worker once one becomes available.
+    // (See design_docs/task_states.rst for the state transition diagram.)
+    local_queues_.QueueTasks({assigned_task}, TaskState::READY);
+    DispatchTasks(MakeTasksByClass({assigned_task}));
+  }
 }
 
 void NodeManager::DumpDebugState() const {
