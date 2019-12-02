@@ -1,5 +1,5 @@
 load("//bazel:ray.bzl", "define_java_module")
-load("@build_stack_rules_proto//java:java_proto_compile.bzl", "java_proto_compile")
+load("@rules_proto_grpc//java:defs.bzl", "java_proto_compile")
 
 exports_files([
     "testng.xml",

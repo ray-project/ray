@@ -7,7 +7,7 @@ import unittest
 import tempfile
 import shutil
 
-from ray.tune.logger import tf2_compat_logger, JsonLogger, CSVLogger
+from ray.tune.logger import tf2_compat_logger, JsonLogger, CSVLogger, TBXLogger
 
 Trial = namedtuple("MockTrial", ["evaluated_params", "trial_id"])
 
@@ -54,6 +54,16 @@ class LoggerSuite(unittest.TestCase):
         logger.on_result(result(2, 4))
         logger.close()
 
+    def testTBX(self):
+        config = {"a": 2, "b": 5}
+        t = Trial(evaluated_params=config, trial_id="tbx")
+        logger = TBXLogger(config=config, logdir=self.test_dir, trial=t)
+        logger.on_result(result(2, 4))
+        logger.on_result(result(2, 4))
+        logger.close()
+
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

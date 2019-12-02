@@ -3,24 +3,27 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import logging
 import os
-import pytest
 import sys
 import tempfile
 import threading
 import time
 
 import numpy as np
+import pytest
 import redis
 
 import ray
 import ray.ray_constants as ray_constants
-from ray.tests.cluster_utils import Cluster
-from ray.tests.utils import (
+from ray.cluster_utils import Cluster
+from ray.test_utils import (
     relevant_errors,
     wait_for_errors,
     RayTestTimeoutException,
 )
+
+RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
 
 
 def test_failed_task(ray_start_regular):
@@ -301,7 +304,6 @@ def test_worker_raising_exception(ray_start_regular):
     f.remote()
 
     wait_for_errors(ray_constants.WORKER_CRASH_PUSH_ERROR, 1)
-    wait_for_errors(ray_constants.WORKER_DIED_PUSH_ERROR, 1)
 
 
 def test_worker_dying(ray_start_regular):
@@ -490,13 +492,17 @@ def test_version_mismatch(shutdown_only):
     ray.__version__ = ray_version
 
 
-def test_warning_monitor_died(shutdown_only):
-    ray.init(num_cpus=0)
+def test_warning_monitor_died(ray_start_2_cpus):
+    @ray.remote
+    def f():
+        pass
 
-    time.sleep(1)  # Make sure the monitor has started.
+    # Wait for the monitor process to start.
+    ray.get(f.remote())
+    time.sleep(1)
 
     # Cause the monitor to raise an exception by pushing a malformed message to
-    # Redis. This will probably kill the raylets and the raylet_monitor in
+    # Redis. This will probably kill the raylet and the raylet_monitor in
     # addition to the monitor.
     fake_id = 20 * b"\x00"
     malformed_message = "asdf"
@@ -535,6 +541,7 @@ def test_export_large_objects(ray_start_regular):
     wait_for_errors(ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR, 2)
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO detect resource deadlock")
 def test_warning_for_resource_deadlock(shutdown_only):
     # Check that we get warning messages for infeasible tasks.
     ray.init(num_cpus=1)
@@ -634,6 +641,83 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
 
     [g.remote() for _ in range(num_cpus * 4)]
     wait_for_errors(ray_constants.WORKER_POOL_LARGE_ERROR, 1)
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 0), reason="This test requires Python 3.")
+def test_warning_for_many_duplicate_remote_functions_and_actors(shutdown_only):
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    def create_remote_function():
+        @ray.remote
+        def g():
+            return 1
+
+        return ray.get(g.remote())
+
+    for _ in range(ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD - 1):
+        ray.get(create_remote_function.remote())
+
+    import io
+    log_capture_string = io.StringIO()
+    ch = logging.StreamHandler(log_capture_string)
+
+    # TODO(rkn): It's terrible to have to rely on this implementation detail,
+    # the fact that the warning comes from ray.import_thread.logger. However,
+    # I didn't find a good way to capture the output for all loggers
+    # simultaneously.
+    ray.import_thread.logger.addHandler(ch)
+
+    ray.get(create_remote_function.remote())
+
+    start_time = time.time()
+    while time.time() < start_time + 10:
+        log_contents = log_capture_string.getvalue()
+        if len(log_contents) > 0:
+            break
+
+    ray.import_thread.logger.removeHandler(ch)
+
+    assert "remote function" in log_contents
+    assert "has been exported {} times.".format(
+        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD) in log_contents
+
+    # Now test the same thing but for actors.
+
+    @ray.remote
+    def create_actor_class():
+        # Require a GPU so that the actor is never actually created and we
+        # don't spawn an unreasonable number of processes.
+        @ray.remote(num_gpus=1)
+        class Foo(object):
+            pass
+
+        Foo.remote()
+
+    for _ in range(ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD - 1):
+        ray.get(create_actor_class.remote())
+
+    log_capture_string = io.StringIO()
+    ch = logging.StreamHandler(log_capture_string)
+
+    # TODO(rkn): As mentioned above, it's terrible to have to rely on this
+    # implementation detail.
+    ray.import_thread.logger.addHandler(ch)
+
+    ray.get(create_actor_class.remote())
+
+    start_time = time.time()
+    while time.time() < start_time + 10:
+        log_contents = log_capture_string.getvalue()
+        if len(log_contents) > 0:
+            break
+
+    ray.import_thread.logger.removeHandler(ch)
+
+    assert "actor" in log_contents
+    assert "has been exported {} times.".format(
+        ray_constants.DUPLICATE_REMOTE_FUNCTION_THRESHOLD) in log_contents
 
 
 def test_redis_module_failure(ray_start_regular):
@@ -795,3 +879,122 @@ def test_fill_object_store_exception(ray_start_cluster_head):
 
     with pytest.raises(ray.exceptions.ObjectStoreFullError):
         ray.put(np.zeros(10**8 + 2, dtype=np.uint8))
+
+
+@pytest.mark.skipif(
+    not RAY_FORCE_DIRECT,
+    reason="raylet path attempts reconstruction for evicted objects")
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 1,
+        "num_cpus": 2,
+    }, {
+        "num_nodes": 2,
+        "num_cpus": 1,
+    }],
+    indirect=True)
+def test_direct_call_eviction(ray_start_cluster):
+    @ray.remote
+    def large_object():
+        return np.zeros(10 * 1024 * 1024)
+
+    obj = large_object.remote()
+    assert (isinstance(ray.get(obj), np.ndarray))
+    # Evict the object.
+    ray.internal.free([obj])
+    while ray.worker.global_worker.core_worker.object_exists(obj):
+        time.sleep(1)
+    # ray.get throws an exception.
+    with pytest.raises(ray.exceptions.UnreconstructableError):
+        ray.get(obj)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    # If the object is passed by reference, the task throws an
+    # exception.
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(dependent_task.remote(obj))
+
+
+@pytest.mark.skipif(
+    not RAY_FORCE_DIRECT,
+    reason="raylet path attempts reconstruction for evicted objects")
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 1,
+        "num_cpus": 2,
+    }, {
+        "num_nodes": 2,
+        "num_cpus": 1,
+    }],
+    indirect=True)
+def test_direct_call_serialized_id_eviction(ray_start_cluster):
+    @ray.remote
+    def large_object():
+        return np.zeros(10 * 1024 * 1024)
+
+    @ray.remote
+    def get(obj_ids):
+        print("get", obj_ids)
+        obj_id = obj_ids[0]
+        assert (isinstance(ray.get(obj_id), np.ndarray))
+        # Evict the object.
+        ray.internal.free(obj_ids)
+        while ray.worker.global_worker.core_worker.object_exists(obj_id):
+            time.sleep(1)
+        with pytest.raises(ray.exceptions.UnreconstructableError):
+            ray.get(obj_id)
+        print("get done", obj_ids)
+
+    obj = large_object.remote()
+    ray.get(get.remote([obj]))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster", [{
+        "num_nodes": 2,
+        "num_cpus": 1,
+    }, {
+        "num_nodes": 1,
+        "num_cpus": 2,
+    }],
+    indirect=True)
+def test_serialized_id(ray_start_cluster):
+    @ray.remote
+    def small_object():
+        # Sleep a bit before creating the object to force a timeout
+        # at the getter.
+        time.sleep(1)
+        return 1
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    @ray.remote
+    def get(obj_ids, test_dependent_task):
+        print("get", obj_ids)
+        obj_id = obj_ids[0]
+        if test_dependent_task:
+            assert ray.get(dependent_task.remote(obj_id)) == 1
+        else:
+            assert ray.get(obj_id) == 1
+
+    obj = small_object.remote()
+    ray.get(get.remote([obj], False))
+
+    obj = small_object.remote()
+    ray.get(get.remote([obj], True))
+
+    obj = ray.put(1)
+    ray.get(get.remote([obj], False))
+
+    obj = ray.put(1)
+    ray.get(get.remote([obj], True))
+
+
+if __name__ == "__main__":
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

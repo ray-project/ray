@@ -95,8 +95,10 @@ cdef class TaskSpec:
                         :self.task_spec.get().ArgMetadataSize(i)]
                     if metadata == RAW_BUFFER_METADATA:
                         obj = data
-                    else:
+                    elif metadata == PICKLE_BUFFER_METADATA:
                         obj = pickle.loads(data)
+                    else:
+                        obj = data
                     arg_list.append(obj)
         elif lang == <int32_t>LANGUAGE_JAVA:
             arg_list = num_args * ["<java-argument>"]
@@ -108,7 +110,7 @@ cdef class TaskSpec:
         return_id_list = []
         for i in range(self.task_spec.get().NumReturns()):
             return_id_list.append(
-                ObjectID(self.task_spec.get().ReturnId(i).Binary()))
+                ObjectID(self.task_spec.get().ReturnIdForPlasma(i).Binary()))
         return return_id_list
 
     def required_resources(self):

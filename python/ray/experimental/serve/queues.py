@@ -23,11 +23,8 @@ class Query:
 
 
 class WorkIntent:
-    def __init__(self, work_object_id=None):
-        if work_object_id is None:
-            self.work_object_id = ray.ObjectID.from_random()
-        else:
-            self.work_object_id = work_object_id
+    def __init__(self, replica_handle):
+        self.replica_handle = replica_handle
 
 
 class CentralizedQueues:
@@ -45,15 +42,15 @@ class CentralizedQueues:
             "service-name", request_args, request_kwargs, request_context)
         # nothing happens, request is queued.
         # returns result ObjectID, which will contains the final result
-        >>> queue.dequeue_request('backend-1')
+        >>> queue.dequeue_request('backend-1', replica_handle)
         # nothing happens, work intention is queued.
         # return work ObjectID, which will contains the future request payload
         >>> queue.link('service-name', 'backend-1')
-        # here the enqueue_requester is matched with worker, request
-        # data is put into work ObjectID, and the worker processes the request
+        # here the enqueue_requester is matched with replica, request
+        # data is put into work ObjectID, and the replica processes the request
         # and store the result into result ObjectID
 
-    Traffic policy splits the traffic among different workers
+    Traffic policy splits the traffic among different replicas
     probabilistically:
 
     1. When all backends are ready to receive traffic, we will randomly
@@ -98,11 +95,23 @@ class CentralizedQueues:
         self.flush()
         return query.result_object_id.binary()
 
-    def dequeue_request(self, backend):
-        intention = WorkIntent()
+    def dequeue_request(self, backend, replica_handle):
+        intention = WorkIntent(replica_handle)
         self.workers[backend].append(intention)
         self.flush()
-        return intention.work_object_id.binary()
+
+    def remove_and_destory_replica(self, backend, replica_handle):
+        # NOTE: this function scale by O(#replicas for the backend)
+        new_queue = deque()
+        target_id = replica_handle._actor_id
+
+        for work_intent in self.workers[backend]:
+            if work_intent.replica_handle._actor_id != target_id:
+                new_queue.append(work_intent)
+
+        self.workers[backend] = new_queue
+
+        replica_handle.__ray_terminate__.remote()
 
     def link(self, service, backend):
         logger.debug("Link %s with %s", service, backend)
@@ -159,8 +168,7 @@ class CentralizedQueues:
                         buffer_queue.popleft(),
                         work_queue.popleft(),
                     )
-                    ray.worker.global_worker.put_object(
-                        request, work.work_object_id)
+                    work.replica_handle._ray_serve_call.remote(request)
 
 
 @ray.remote

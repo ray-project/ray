@@ -2,9 +2,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import logging
 from functools import wraps
 
+from ray import cloudpickle as pickle
 from ray.function_manager import FunctionDescriptor
 import ray.signature
 
@@ -23,7 +25,10 @@ class RemoteFunction(object):
 
     Attributes:
         _function: The original function.
-        _function_descriptor: The function descriptor.
+        _function_descriptor: The function descriptor. This is not defined
+            until the remote function is first invoked because that is when the
+            function is pickled, and the pickled function is used to compute
+            the function descriptor.
         _function_name: The module and function name.
         _num_cpus: The default number of CPUs to use for invocations of this
             remote function.
@@ -56,9 +61,6 @@ class RemoteFunction(object):
     def __init__(self, function, num_cpus, num_gpus, memory,
                  object_store_memory, resources, num_return_vals, max_calls):
         self._function = function
-        self._function_descriptor = FunctionDescriptor.from_function(function)
-        self._function_descriptor_list = (
-            self._function_descriptor.get_function_descriptor_list())
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -87,6 +89,7 @@ class RemoteFunction(object):
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
+        self.direct_call_enabled = bool(os.environ.get("RAY_FORCE_DIRECT"))
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "
@@ -110,10 +113,31 @@ class RemoteFunction(object):
             num_gpus=num_gpus,
             resources=resources)
 
+    def options(self, **options):
+        """Convenience method for executing a task with options.
+
+        Same arguments as func._remote(), but returns a wrapped function
+        that a non-underscore .remote() can be called on.
+
+        Examples:
+            # The following two calls are equivalent.
+            >>> func._remote(num_cpus=4, args=[x, y])
+            >>> func.options(num_cpus=4).remote(x, y)
+        """
+
+        func_cls = self
+
+        class FuncWrapper(object):
+            def remote(self, *args, **kwargs):
+                return func_cls._remote(args=args, kwargs=kwargs, **options)
+
+        return FuncWrapper()
+
     def _remote(self,
                 args=None,
                 kwargs=None,
                 num_return_vals=None,
+                is_direct_call=None,
                 num_cpus=None,
                 num_gpus=None,
                 memory=None,
@@ -123,10 +147,25 @@ class RemoteFunction(object):
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
+        # If this function was not exported in this session and job, we need to
+        # export this function again, because the current GCS doesn't have it.
         if self._last_export_session_and_job != worker.current_session_and_job:
-            # If this function was not exported in this session and job,
-            # we need to export this function again, because current GCS
-            # doesn't have it.
+            # There is an interesting question here. If the remote function is
+            # used by a subsequent driver (in the same script), should the
+            # second driver pickle the function again? If yes, then the remote
+            # function definition can differ in the second driver (e.g., if
+            # variables in its closure have changed). We probably want the
+            # behavior of the remote function in the second driver to be
+            # independent of whether or not the function was invoked by the
+            # first driver. This is an argument for repickling the function,
+            # which we do here.
+            self._pickled_function = pickle.dumps(self._function)
+
+            self._function_descriptor = FunctionDescriptor.from_function(
+                self._function, self._pickled_function)
+            self._function_descriptor_list = (
+                self._function_descriptor.get_function_descriptor_list())
+
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
 
@@ -135,6 +174,8 @@ class RemoteFunction(object):
 
         if num_return_vals is None:
             num_return_vals = self._num_return_vals
+        if is_direct_call is None:
+            is_direct_call = self.direct_call_enabled
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -142,8 +183,11 @@ class RemoteFunction(object):
             memory, object_store_memory, resources)
 
         def invocation(args, kwargs):
-            list_args = ray.signature.flatten_args(self._function_signature,
-                                                   args, kwargs)
+            if not args and not kwargs and not self._function_signature:
+                list_args = []
+            else:
+                list_args = ray.signature.flatten_args(
+                    self._function_signature, args, kwargs)
 
             if worker.mode == ray.worker.LOCAL_MODE:
                 object_ids = worker.local_mode_manager.execute(
@@ -152,7 +196,7 @@ class RemoteFunction(object):
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._function_descriptor_list, list_args, num_return_vals,
-                    resources)
+                    is_direct_call, resources)
 
             if len(object_ids) == 1:
                 return object_ids[0]

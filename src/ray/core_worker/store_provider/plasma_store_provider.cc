@@ -7,7 +7,7 @@
 namespace ray {
 
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
-    const std::string &store_socket, const std::unique_ptr<RayletClient> &raylet_client,
+    const std::string &store_socket, const std::shared_ptr<RayletClient> raylet_client,
     std::function<Status()> check_signals)
     : raylet_client_(raylet_client) {
   check_signals_ = check_signals;
@@ -27,6 +27,7 @@ Status CoreWorkerPlasmaStoreProvider::SetClientOptions(std::string name,
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
                                           const ObjectID &object_id) {
+  RAY_CHECK(!object.IsInPlasmaError()) << object_id;
   std::shared_ptr<Buffer> data;
   RAY_RETURN_NOT_OK(Create(object.GetMetadata(),
                            object.HasData() ? object.GetData()->Size() : 0, object_id,
@@ -46,6 +47,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
                                              const size_t data_size,
                                              const ObjectID &object_id,
                                              std::shared_ptr<Buffer> *data) {
+  RAY_CHECK(!object_id.IsDirectCallType());
   auto plasma_id = object_id.ToPlasmaId();
   std::shared_ptr<arrow::Buffer> arrow_buffer;
   {
@@ -81,11 +83,12 @@ Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
-    std::unordered_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
-    int64_t timeout_ms, bool fetch_only, const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    absl::flat_hash_set<ObjectID> &remaining, const std::vector<ObjectID> &batch_ids,
+    int64_t timeout_ms, bool fetch_only, bool in_direct_call, const TaskID &task_id,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(batch_ids, fetch_only, task_id));
+  RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
+      batch_ids, fetch_only, /*mark_worker_blocked*/ !in_direct_call, task_id));
 
   std::vector<plasma::ObjectID> plasma_batch_ids;
   plasma_batch_ids.reserve(batch_ids.size());
@@ -116,6 +119,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
       (*results)[object_id] = result_object;
       remaining.erase(object_id);
       if (result_object->IsException()) {
+        RAY_CHECK(!result_object->IsInPlasmaError());
         *got_exception = true;
       }
     }
@@ -124,14 +128,27 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
   return Status::OK();
 }
 
+Status UnblockIfNeeded(const std::shared_ptr<RayletClient> &client,
+                       const WorkerContext &ctx) {
+  if (ctx.CurrentTaskIsDirectCall()) {
+    if (ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+      return client->NotifyDirectCallTaskUnblocked();
+    } else {
+      return Status::OK();  // We don't need to release resources.
+    }
+  } else {
+    return client->NotifyUnblocked(ctx.GetCurrentTaskID());
+  }
+}
+
 Status CoreWorkerPlasmaStoreProvider::Get(
-    const std::unordered_set<ObjectID> &object_ids, int64_t timeout_ms,
-    const TaskID &task_id,
-    std::unordered_map<ObjectID, std::shared_ptr<RayObject>> *results,
+    const absl::flat_hash_set<ObjectID> &object_ids, int64_t timeout_ms,
+    const WorkerContext &ctx,
+    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
   int64_t batch_size = RayConfig::instance().worker_fetch_request_size();
   std::vector<ObjectID> batch_ids;
-  std::unordered_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
+  absl::flat_hash_set<ObjectID> remaining(object_ids.begin(), object_ids.end());
 
   // First, attempt to fetch all of the required objects once without reconstructing.
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
@@ -141,9 +158,10 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     for (int64_t i = start; i < batch_size && i < total_size; i++) {
       batch_ids.push_back(id_vector[start + i]);
     }
-    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
-                                                 /*fetch_only=*/true, task_id, results,
-                                                 got_exception));
+    RAY_RETURN_NOT_OK(
+        FetchAndGetFromPlasmaStore(remaining, batch_ids, /*timeout_ms=*/0,
+                                   /*fetch_only=*/true, ctx.CurrentTaskIsDirectCall(),
+                                   ctx.GetCurrentTaskID(), results, got_exception));
   }
 
   // If all objects were fetched already, return.
@@ -156,6 +174,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // objects are all fetched if timeout is -1.
   int unsuccessful_attempts = 0;
   bool should_break = false;
+  bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
   while (!remaining.empty() && !should_break) {
     batch_ids.clear();
@@ -171,14 +190,19 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     if (remaining_timeout >= 0) {
       batch_timeout = std::min(remaining_timeout, batch_timeout);
       remaining_timeout -= batch_timeout;
-      should_break = remaining_timeout <= 0;
+      timed_out = remaining_timeout <= 0;
     }
 
     size_t previous_size = remaining.size();
-    RAY_RETURN_NOT_OK(FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
-                                                 /*fetch_only=*/false, task_id, results,
-                                                 got_exception));
-    should_break = should_break || *got_exception;
+    // This is a separate IPC from the FetchAndGet in direct call mode.
+    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    }
+    RAY_RETURN_NOT_OK(
+        FetchAndGetFromPlasmaStore(remaining, batch_ids, batch_timeout,
+                                   /*fetch_only=*/false, ctx.CurrentTaskIsDirectCall(),
+                                   ctx.GetCurrentTaskID(), results, got_exception));
+    should_break = timed_out || *got_exception;
 
     if ((previous_size - remaining.size()) < batch_ids.size()) {
       unsuccessful_attempts++;
@@ -188,15 +212,20 @@ Status CoreWorkerPlasmaStoreProvider::Get(
       Status status = check_signals_();
       if (!status.ok()) {
         // TODO(edoakes): in this case which status should we return?
-        RAY_RETURN_NOT_OK(raylet_client_->NotifyUnblocked(task_id));
+        RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_client_, ctx));
         return status;
       }
     }
   }
 
+  if (!remaining.empty() && timed_out) {
+    RAY_RETURN_NOT_OK(UnblockIfNeeded(raylet_client_, ctx));
+    return Status::TimedOut("Get timed out: some object(s) not ready.");
+  }
+
   // Notify unblocked because we blocked when calling FetchOrReconstruct with
   // fetch_only=false.
-  return raylet_client_->NotifyUnblocked(task_id);
+  return UnblockIfNeeded(raylet_client_, ctx);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
@@ -206,10 +235,9 @@ Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &object_ids,
-                                           int num_objects, int64_t timeout_ms,
-                                           const TaskID &task_id,
-                                           std::unordered_set<ObjectID> *ready) {
+Status CoreWorkerPlasmaStoreProvider::Wait(
+    const absl::flat_hash_set<ObjectID> &object_ids, int num_objects, int64_t timeout_ms,
+    const WorkerContext &ctx, absl::flat_hash_set<ObjectID> *ready) {
   std::vector<ObjectID> id_vector(object_ids.begin(), object_ids.end());
 
   bool should_break = false;
@@ -223,8 +251,14 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
       should_break = remaining_timeout <= 0;
     }
 
-    RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector, num_objects, call_timeout, false,
-                                           task_id, &result_pair));
+    // This is a separate IPC from the Wait in direct call mode.
+    if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+      RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskBlocked());
+    }
+    RAY_RETURN_NOT_OK(
+        raylet_client_->Wait(id_vector, num_objects, call_timeout, false,
+                             /*mark_worker_blocked*/ !ctx.CurrentTaskIsDirectCall(),
+                             ctx.GetCurrentTaskID(), &result_pair));
 
     if (result_pair.first.size() >= static_cast<size_t>(num_objects)) {
       should_break = true;
@@ -236,11 +270,14 @@ Status CoreWorkerPlasmaStoreProvider::Wait(const std::unordered_set<ObjectID> &o
       RAY_RETURN_NOT_OK(check_signals_());
     }
   }
+  if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
+    RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
+  }
   return Status::OK();
 }
 
 Status CoreWorkerPlasmaStoreProvider::Delete(
-    const std::unordered_set<ObjectID> &object_ids, bool local_only,
+    const absl::flat_hash_set<ObjectID> &object_ids, bool local_only,
     bool delete_creating_tasks) {
   std::vector<ObjectID> object_id_vector(object_ids.begin(), object_ids.end());
   return raylet_client_->FreeObjects(object_id_vector, local_only, delete_creating_tasks);
@@ -252,7 +289,7 @@ std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
 }
 
 void CoreWorkerPlasmaStoreProvider::WarnIfAttemptedTooManyTimes(
-    int num_attempts, const std::unordered_set<ObjectID> &remaining) {
+    int num_attempts, const absl::flat_hash_set<ObjectID> &remaining) {
   if (num_attempts % RayConfig::instance().object_store_get_warn_per_num_attempts() ==
       0) {
     std::ostringstream oss;

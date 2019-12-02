@@ -33,6 +33,9 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
   ///
+  /// \param io_service The event loop for this client.
+  /// Must be single-threaded io_service (get more information from RedisAsioClient).
+  ///
   /// \return Status
   Status Connect(boost::asio::io_service &io_service);
 

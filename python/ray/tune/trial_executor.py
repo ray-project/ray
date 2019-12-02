@@ -6,6 +6,7 @@ from __future__ import print_function
 import logging
 
 from ray.tune.trial import Trial, Checkpoint
+from ray.tune.error import TuneError
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,8 @@ class TrialExecutor(object):
             trial (Trial): Trial to checkpoint.
             status (Trial.status): Status to set trial to.
         """
+        logger.debug("Trial %s: Changing status from %s to %s.", trial,
+                     trial.status, status)
         trial.status = status
         if status in [Trial.TERMINATED, Trial.ERROR]:
             self.try_checkpoint_metadata(trial)
@@ -48,14 +51,16 @@ class TrialExecutor(object):
         Args:
             trial (Trial): Trial to checkpoint.
         """
-        if trial._checkpoint.storage == Checkpoint.MEMORY:
-            logger.debug("Not saving data for trial w/ memory checkpoint.")
+        if trial.checkpoint.storage == Checkpoint.MEMORY:
+            logger.debug("Trial %s: Not saving data for memory checkpoint.",
+                         trial)
             return
         try:
-            logger.debug("Saving trial metadata.")
+            logger.debug("Trial %s: Saving trial metadata.", trial)
             self._cached_trial_state[trial.trial_id] = trial.__getstate__()
         except Exception:
-            logger.exception("Error checkpointing trial metadata.")
+            logger.exception("Trial %s: Error checkpointing trial metadata.",
+                             trial)
 
     def get_checkpoints(self):
         """Returns a copy of mapping of the trial ID to pickled metadata."""
@@ -118,7 +123,6 @@ class TrialExecutor(object):
 
     def resume_trial(self, trial):
         """Resumes PAUSED trials. This is a blocking call."""
-
         assert trial.status == Trial.PAUSED, trial.status
         self.start_trial(trial)
 
@@ -149,6 +153,27 @@ class TrialExecutor(object):
     def on_step_end(self, trial_runner):
         """A hook called after running one step of the trial event loop."""
         pass
+
+    def on_no_available_trials(self, trial_runner):
+        if self._queue_trials:
+            return
+        for trial in trial_runner.get_trials():
+            if trial.status == Trial.PENDING:
+                if not self.has_resources(trial.resources):
+                    raise TuneError(
+                        ("Insufficient cluster resources to launch trial: "
+                         "trial requested {} but the cluster has only {}. "
+                         "Pass `queue_trials=True` in "
+                         "ray.tune.run() or on the command "
+                         "line to queue trials until the cluster scales "
+                         "up or resources become available. {}").format(
+                             trial.resources.summary_string(),
+                             self.resource_string(),
+                             trial.get_trainable_cls().resource_help(
+                                 trial.config)))
+            elif trial.status == Trial.PAUSED:
+                raise TuneError("There are paused trials, but no more pending "
+                                "trials with sufficient resources.")
 
     def get_next_available_trial(self):
         """Blocking call that waits until one result is ready.
@@ -188,7 +213,7 @@ class TrialExecutor(object):
     def restore(self, trial, checkpoint=None):
         """Restores training state from a checkpoint.
 
-        If checkpoint is None, try to restore from trial._checkpoint.
+        If checkpoint is None, try to restore from trial.checkpoint.
         If restoring fails, the trial status will be set to ERROR.
 
         Args:

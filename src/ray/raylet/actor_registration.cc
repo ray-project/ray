@@ -36,7 +36,7 @@ ActorRegistration::ActorRegistration(const ActorTableData &actor_table_data,
 }
 
 const ClientID ActorRegistration::GetNodeManagerId() const {
-  return ClientID::FromBinary(actor_table_data_.node_manager_id());
+  return ClientID::FromBinary(actor_table_data_.address().raylet_id());
 }
 
 const ObjectID ActorRegistration::GetActorCreationDependency() const {
