@@ -16,10 +16,10 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
   request.set_owner_id(owner_id.Binary());
-  auto status = it->second->GetObjectStatus(
+  RAY_CHECK_OK(it->second->GetObjectStatus(
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
-        if (!status.ok() || reply.status() == GetObjectStatusReply::WRONG_OWNER) {
+        if (!status.ok() || reply.status() == rpc::GetObjectStatusReply::WRONG_OWNER) {
           RAY_LOG(ERROR)
               << "Error retrieving the value of object ID " << object_id
               << " that was deserialized. Probably, the task or actor that created the "
@@ -30,8 +30,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
         // plasma.
         RAY_CHECK_OK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                            object_id));
-      });
-  RAY_CHECK_OK(status);
+      }));
 }
 
 }  // namespace ray
