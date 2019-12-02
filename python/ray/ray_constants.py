@@ -177,8 +177,7 @@ LOG_MONITOR_MAX_OPEN_FILES = 200
 
 # A constant used as object metadata to indicate the object is raw binary.
 RAW_BUFFER_METADATA = b"RAW"
-# '__RAY_DUMMY__' for positional args
-DUMMY_METADATA = b"DUMMY"
+ASCII_METADATA = b"ASCII"
 PICKLE5_BUFFER_METADATA = b"PICKLE5"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"

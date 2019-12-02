@@ -32,17 +32,20 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(local_mode=True)
+    ray.init(local_mode=False)
 
     # A Ray streaming environment with the default configuration
-    env = Environment(config=Conf(queue_type=Config.MEMORY_QUEUE))
+    env = Environment(config=Conf(queue_type=Config.NATIVE_QUEUE))
 
     # Stream represents the ouput of the filter and
     # can be forked into other dataflows
     stream = env.read_text_file(args.input_file) \
-                .shuffle() \
-                .flat_map(splitter) \
-                .inspect(lambda x: print("result", x))     # Prints the contents of the
+        .shuffle() \
+        .flat_map(splitter) \
+        .set_parallelism(2) \
+        .filter(filter_fn) \
+        .set_parallelism(2) \
+        .inspect(lambda x: print("result", x))     # Prints the contents of the
     # stream to stdout
     start = time.time()
     env_handle = env.execute()

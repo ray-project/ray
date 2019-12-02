@@ -18,14 +18,15 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &fun
 
   std::vector<TaskArg> args;
   if (function.GetLanguage() == Language::PYTHON) {
-    char dummy_meta[5] = {'D', 'U', 'M', 'M', 'Y'};
-     std::shared_ptr<LocalMemoryBuffer> dummy_meta_buf =
-      std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy_meta, 5, true);
-    char dummy[1] = {' '};
+    // see _raylet.pyx for assci
+    char ascii_meta[5] = {'A', 'S', 'C', 'I', 'I'};
+     std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
+      std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
+    auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
-        std::make_shared<LocalMemoryBuffer>((uint8_t *)(dummy), 1, true);
+        std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
     args.emplace_back(TaskArg::PassByValue(
-        std::make_shared<RayObject>(std::move(dummyBuffer), dummy_meta_buf, true)));
+        std::make_shared<RayObject>(std::move(dummyBuffer), ascii_meta_buf, true)));
   }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
@@ -56,15 +57,14 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
 
   std::vector<TaskArg> args;
   if (function.GetLanguage() == Language::PYTHON) {
-    char dummy_meta[5] = {'D', 'U', 'M', 'M', 'Y'};
-     std::shared_ptr<LocalMemoryBuffer> dummy_meta_buf =
-      std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy_meta, 5, true);
-    char dummy[1] = {' '};
+    char ascii_meta[5] = {'A', 'S', 'C', 'I', 'I'};
+     std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
+      std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
+    auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
-        std::make_shared<LocalMemoryBuffer>(
-            (uint8_t *)(dummy), 1, true);
-    args.emplace_back(
-        TaskArg::PassByValue(std::make_shared<RayObject>(dummyBuffer, dummy_meta_buf, true)));
+        std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
+    args.emplace_back(TaskArg::PassByValue(
+        std::make_shared<RayObject>(std::move(dummyBuffer), ascii_meta_buf, true)));
   }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(buffer, meta, true)));

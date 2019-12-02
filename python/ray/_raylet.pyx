@@ -91,7 +91,7 @@ from ray.ray_constants import (
     DEFAULT_PUT_OBJECT_DELAY,
     DEFAULT_PUT_OBJECT_RETRIES,
     RAW_BUFFER_METADATA,
-    DUMMY_METADATA,
+    ASCII_METADATA,
     PICKLE5_BUFFER_METADATA,
 )
 from ray.signature import DUMMY_TYPE
@@ -433,8 +433,8 @@ cdef deserialize_args(
                 meta = Buffer.make(c_args[i].get().GetMetadata()).to_pybytes()
                 if meta == RAW_BUFFER_METADATA:
                     args.append(data)
-                elif meta == DUMMY_METADATA:
-                    args.append(DUMMY_TYPE)
+                elif meta == ASCII_METADATA:
+                    args.append(data.to_pybytes().decode('ascii'))
                 else:
                     raise Exception("Unsupported meta " + str(meta))
             else:
