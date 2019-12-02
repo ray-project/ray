@@ -194,7 +194,7 @@ If we instantiate an actor, we can pass the handle around to various tasks.
 Actor Pool (Experimental)
 -------------------------
 
-The ``ray.experimental.actor_pool`` module contains a utility class, ``ActorPool``.
+The ``ray.experimental`` module contains a utility class, ``ActorPool``.
 This class is similar to multiprocessing.Pool and lets you schedule Ray tasks over a fixed pool of actors.
 
 .. code-block::

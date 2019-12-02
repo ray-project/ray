@@ -6,19 +6,19 @@ import ray
 
 
 class ActorPool(object):
-    """Utility class to operate on a fixed pool of actors."""
+    """Utility class to operate on a fixed pool of actors.
+
+    Arguments:
+        actors (list): List of Ray actor handles to use in this pool.
+
+    Examples:
+        >>> a1, a2 = Actor.remote(), Actor.remote()
+        >>> pool = ActorPool([a1, a2])
+        >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+        [2, 4, 6, 8]
+    """
+
     def __init__(self, actors):
-        """Create an Actor pool from a list of existing actors.
-
-        Arguments:
-            actors (list): List of Ray actor handles to use in this pool.
-
-        Examples:
-            >>> a1, a2 = Actor.remote(), Actor.remote()
-            >>> pool = ActorPool([a1, a2])
-            >>> print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
-            [2, 4, 6, 8]
-        """
         # actors to be used
         self._idle_actors = list(actors)
 
