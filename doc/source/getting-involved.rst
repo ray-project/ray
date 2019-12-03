@@ -53,7 +53,7 @@ burden and speedup review process.
 
 .. code-block:: shell
 
-    pytest ray/python/ray/Ray/tests/
+    pytest ray/python/ray/tests/
 
 Documentation should be documented in `Google style <https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html>`__ format.
 
