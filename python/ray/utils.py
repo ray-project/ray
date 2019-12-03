@@ -614,3 +614,34 @@ def try_to_create_directory(directory_path, warn_if_exist=True):
     # Change the log directory permissions so others can use it. This is
     # important when multiple people are using the same machine.
     try_make_directory_shared(directory_path)
+
+
+def try_to_symlink(symlink_path, target_path):
+    """Attempt to create a symlink.
+
+    If the symlink path exists and isn't a symlink, the symlink will not be
+    created. If a symlink exists in the path, it will be attempted to be
+    removed and replaced.
+
+    Args:
+        symlink_path: The path at which to create the symlink.
+        target_path: The path the symlink should point to.
+    """
+    symlink_path = os.path.expanduser(symlink_path)
+    target_path = os.path.expanduser(target_path)
+
+    if os.path.exists(symlink_path):
+        if os.path.islink(symlink_path):
+            # Try to remove existing symlink.
+            try:
+                os.remove(symlink_path)
+            except OSError:
+                return
+        else:
+            # There's an existing non-symlink file, don't overwrite it.
+            return
+
+    try:
+        os.symlink(target_path, symlink_path)
+    except OSError:
+        return

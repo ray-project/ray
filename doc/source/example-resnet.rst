@@ -40,8 +40,8 @@ Then run the training script that matches the dataset you downloaded.
       --num_gpus=1
 
 To run the training script on a cluster with multiple machines, you will need
-to also pass in the flag ``--redis-address=<redis_address>``, where
-``<redis-address>`` is the address of the Redis server on the head node.
+to also pass in the flag ``--address=<address>``, where
+``<address>`` is the address of the Redis server on the head node.
 
 The script will print out the IP address that the log files are stored on. In
 the single-node case, you can ignore this and run tensorboard on the current

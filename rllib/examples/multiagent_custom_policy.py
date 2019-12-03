@@ -69,7 +69,7 @@ if __name__ == "__main__":
                     "pg_policy": (None, obs_space, act_space, {}),
                     "random": (RandomPolicy, obs_space, act_space, {}),
                 },
-                "policy_mapping_fn": tune.function(
+                "policy_mapping_fn": (
                     lambda agent_id: ["pg_policy", "random"][agent_id % 2]),
             },
         },

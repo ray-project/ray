@@ -14,9 +14,9 @@ from ray.tests.utils import (run_string_as_driver,
 
 
 def test_error_isolation(call_ray_start):
-    redis_address = call_ray_start
+    address = call_ray_start
     # Connect a driver to the Ray cluster.
-    ray.init(redis_address=redis_address)
+    ray.init(address=address)
 
     # There shouldn't be any errors yet.
     assert len(ray.errors()) == 0
@@ -48,7 +48,7 @@ def test_error_isolation(call_ray_start):
 import ray
 import time
 
-ray.init(redis_address="{}")
+ray.init(address="{}")
 
 time.sleep(1)
 assert len(ray.errors()) == 0
@@ -70,7 +70,7 @@ assert len(ray.errors()) == 1
 assert "{}" in ray.errors()[0]["message"]
 
 print("success")
-""".format(redis_address, error_string2, error_string2)
+""".format(address, error_string2, error_string2)
 
     out = run_string_as_driver(driver_script)
     # Make sure the other driver succeeded.
@@ -85,16 +85,16 @@ print("success")
 def test_remote_function_isolation(call_ray_start):
     # This test will run multiple remote functions with the same names in
     # two different drivers. Connect a driver to the Ray cluster.
-    redis_address = call_ray_start
+    address = call_ray_start
 
-    ray.init(redis_address=redis_address)
+    ray.init(address=address)
 
     # Start another driver and make sure that it can define and call its
     # own commands with the same names.
     driver_script = """
 import ray
 import time
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 def f():
     return 3
@@ -105,7 +105,7 @@ for _ in range(10000):
     result = ray.get([f.remote(), g.remote(0, 0)])
     assert result == [3, 4]
 print("success")
-""".format(redis_address)
+""".format(address)
 
     out = run_string_as_driver(driver_script)
 
@@ -128,32 +128,32 @@ print("success")
 def test_driver_exiting_quickly(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
-    redis_address = call_ray_start
+    address = call_ray_start
 
-    ray.init(redis_address=redis_address)
+    ray.init(address=address)
 
     # Define a driver that creates an actor and exits.
     driver_script1 = """
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 class Foo(object):
     def __init__(self):
         pass
 Foo.remote()
 print("success")
-""".format(redis_address)
+""".format(address)
 
     # Define a driver that creates some tasks and exits.
     driver_script2 = """
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 def f():
     return 1
 f.remote()
 print("success")
-""".format(redis_address)
+""".format(address)
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
@@ -205,14 +205,14 @@ ray.get([a.log.remote(), f.remote()])
     "call_ray_start", ["ray start --head --num-cpus=1 --num-gpus=1"],
     indirect=True)
 def test_drivers_release_resources(call_ray_start):
-    redis_address = call_ray_start
+    address = call_ray_start
 
     # Define a driver that creates an actor and exits.
     driver_script1 = """
 import time
 import ray
 
-ray.init(redis_address="{}")
+ray.init(address="{}")
 
 @ray.remote
 def f(duration):
@@ -237,7 +237,7 @@ foos = [Foo.remote() for _ in range(100)]
 [f.remote(10 ** 6) for _ in range(100)]
 
 print("success")
-""".format(redis_address)
+""".format(address)
 
     driver_script2 = (driver_script1 +
                       "import sys\nsys.stdout.flush()\ntime.sleep(10 ** 6)\n")
@@ -392,7 +392,7 @@ def test_calling_start_ray_head():
     ],
     indirect=True)
 def test_using_hostnames(call_ray_start):
-    ray.init(node_ip_address="localhost", redis_address="localhost:6379")
+    ray.init(node_ip_address="localhost", address="localhost:6379")
 
     @ray.remote
     def f():
@@ -407,7 +407,7 @@ def test_connecting_in_local_case(ray_start_regular):
     # Define a driver that just connects to Redis.
     driver_script = """
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 print("success")
 """.format(address_info["redis_address"])
 
@@ -436,7 +436,7 @@ def train_func(config, reporter):  # add a reporter arg
         reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
 
 os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
-ray.init(redis_address="{}")
+ray.init(address="{}")
 ray.tune.register_trainable("train_func", train_func)
 
 tune.run_experiments({{
@@ -463,16 +463,16 @@ print("success")
 def test_driver_exiting_when_worker_blocked(call_ray_start):
     # This test will create some drivers that submit some tasks and then
     # exit without waiting for the tasks to complete.
-    redis_address = call_ray_start
+    address = call_ray_start
 
-    ray.init(redis_address=redis_address)
+    ray.init(address=address)
 
     # Define a driver that creates two tasks, one that runs forever and the
     # other blocked on the first in a `ray.get`.
     driver_script = """
 import time
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 def f():
     time.sleep(10**6)
@@ -482,7 +482,7 @@ def g():
 g.remote()
 time.sleep(1)
 print("success")
-""".format(redis_address)
+""".format(address)
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
@@ -496,7 +496,7 @@ print("success")
     driver_script = """
 import time
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 def f():
     time.sleep(10**6)
@@ -506,7 +506,7 @@ def g():
 g.remote()
 time.sleep(1)
 print("success")
-""".format(redis_address)
+""".format(address)
 
     # Create some drivers and let them exit and make sure everything is
     # still alive.
@@ -520,7 +520,7 @@ print("success")
     driver_script_template = """
 import time
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 def g(x):
     return
@@ -534,7 +534,7 @@ print("success")
     for _ in range(3):
         nonexistent_id_bytes = _random_string()
         nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
-        driver_script = driver_script_template.format(redis_address,
+        driver_script = driver_script_template.format(address,
                                                       nonexistent_id_hex)
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.
@@ -547,7 +547,7 @@ print("success")
     driver_script_template = """
 import time
 import ray
-ray.init(redis_address="{}")
+ray.init(address="{}")
 @ray.remote
 def g():
     ray.wait(ray.ObjectID(ray.utils.hex_to_binary("{}")))
@@ -561,7 +561,7 @@ print("success")
     for _ in range(3):
         nonexistent_id_bytes = _random_string()
         nonexistent_id_hex = ray.utils.binary_to_hex(nonexistent_id_bytes)
-        driver_script = driver_script_template.format(redis_address,
+        driver_script = driver_script_template.format(address,
                                                       nonexistent_id_hex)
         out = run_string_as_driver(driver_script)
         # Simulate the nonexistent dependency becoming available.

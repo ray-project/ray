@@ -117,7 +117,7 @@ Serialization: Numpy Arrays
 ---------------------------
 
 Ray optimizes for numpy arrays by using the `Apache Arrow`_ data format.
-The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will result in a copy into the local process memory.
+The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
 
 There are some advantages to this form of serialization:
 

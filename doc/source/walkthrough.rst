@@ -15,7 +15,7 @@ large cluster. To run this walkthrough, install Ray with ``pip install -U ray``.
   import ray
 
   # Start Ray. If you're connecting to an existing cluster, you would use
-  # ray.init(redis_address=<cluster-redis-address>) instead.
+  # ray.init(address=<cluster-address>) instead.
   ray.init()
 
 See the `Configuration <configure.html>`__ documentation for the various ways to

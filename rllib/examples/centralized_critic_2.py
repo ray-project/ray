@@ -139,7 +139,7 @@ if __name__ == "__main__":
             "env": GlobalObsTwoStepGame,
             "batch_mode": "complete_episodes",
             "callbacks": {
-                "on_postprocess_traj": tune.function(fill_in_actions),
+                "on_postprocess_traj": fill_in_actions,
             },
             "num_workers": 0,
             "multiagent": {
@@ -149,8 +149,7 @@ if __name__ == "__main__":
                     "pol2": (None, GlobalObsTwoStepGame.observation_space,
                              GlobalObsTwoStepGame.action_space, {}),
                 },
-                "policy_mapping_fn": tune.function(
-                    lambda x: "pol1" if x == 0 else "pol2"),
+                "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
             },
             "model": {
                 "custom_model": "cc_model",
