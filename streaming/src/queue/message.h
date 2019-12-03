@@ -1,18 +1,19 @@
 #ifndef _STREAMING_QUEUE_MESSAGE_H_
 #define _STREAMING_QUEUE_MESSAGE_H_
 
-#include "ray/common/id.h"
-#include "ray/common/buffer.h"
 #include "protobuf/streaming_queue.pb.h"
+#include "ray/common/buffer.h"
+#include "ray/common/id.h"
 #include "util/streaming_logging.h"
 
 namespace ray {
 namespace streaming {
 
 /// Base class of all message classes.
-/// All payloads transferred through direct actor call are packed into a unified package, 
-/// consisting of protobuf-formatted metadata and data, including data and control messages.
-/// These message classes wrap the package defined in protobuf/streaming_queue.proto respectively.
+/// All payloads transferred through direct actor call are packed into a unified package,
+/// consisting of protobuf-formatted metadata and data, including data and control
+/// messages. These message classes wrap the package defined in
+/// protobuf/streaming_queue.proto respectively.
 class Message {
  public:
   /// Construct a Message instance.
@@ -33,8 +34,8 @@ class Message {
   ObjectID QueueId() { return queue_id_; }
   std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
-  /// Serialize all meta data and data to a LocalMemoryBuffer, which can be send through direct actor call.
-  /// \return serialized buffer .
+  /// Serialize all meta data and data to a LocalMemoryBuffer, which can be send through
+  /// direct actor call. \return serialized buffer .
   std::unique_ptr<LocalMemoryBuffer> ToBytes();
 
   /// Get message type.
@@ -43,6 +44,7 @@ class Message {
 
   /// All subclasses should implement `ToProtobuf` to serialize its own protobuf data.
   virtual void ToProtobuf(std::string *output) = 0;
+
  protected:
   ActorID actor_id_;
   ActorID peer_actor_id_;
@@ -55,8 +57,8 @@ class Message {
 };
 
 /// Wrap StreamingQueueDataMsg in streaming_queue.proto.
-/// DataMessage encapsulates the memory buffer of QueueItem, a one-to-one relationship exists
-/// between DataMessage and QueueItem.
+/// DataMessage encapsulates the memory buffer of QueueItem, a one-to-one relationship
+/// exists between DataMessage and QueueItem.
 class DataMessage : public Message {
  public:
   DataMessage(const ActorID &actor_id, const ActorID &peer_actor_id, ObjectID queue_id,
@@ -74,13 +76,13 @@ class DataMessage : public Message {
   uint64_t seq_id_;
   bool raw_;
 
-  const queue::protobuf::StreamingQueueMessageType type_ = 
+  const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType;
 };
 
 /// Wrap StreamingQueueNotificationMsg in streaming_queue.proto.
-/// NotificationMessage, downstream queues sends to upstream queues, for the data reader to inform 
-/// the data writer of the consumed offset.
+/// NotificationMessage, downstream queues sends to upstream queues, for the data reader
+/// to inform the data writer of the consumed offset.
 class NotificationMessage : public Message {
  public:
   NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -97,13 +99,13 @@ class NotificationMessage : public Message {
 
  private:
   uint64_t seq_id_;
-  const queue::protobuf::StreamingQueueMessageType type_ = 
+  const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };
 
 /// Wrap StreamingQueueCheckMsg in streaming_queue.proto.
-/// CheckMessage, upstream queues sends to downstream queues, fot the data writer to check whether
-/// the corresponded downstream queue is read or not.
+/// CheckMessage, upstream queues sends to downstream queues, fot the data writer to check
+/// whether the corresponded downstream queue is read or not.
 class CheckMessage : public Message {
  public:
   CheckMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -117,13 +119,13 @@ class CheckMessage : public Message {
   queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:
-  const queue::protobuf::StreamingQueueMessageType type_ = 
+  const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType;
 };
 
 /// Wrap StreamingQueueCheckRspMsg in streaming_queue.proto.
-/// CheckRspMessage, downstream queues sends to upstream queues, the response message to CheckMessage
-/// to indicate whether downstream queue is ready or not.
+/// CheckRspMessage, downstream queues sends to upstream queues, the response message to
+/// CheckMessage to indicate whether downstream queue is ready or not.
 class CheckRspMessage : public Message {
  public:
   CheckRspMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
@@ -138,7 +140,7 @@ class CheckRspMessage : public Message {
 
  private:
   queue::protobuf::StreamingQueueError err_code_;
-  const queue::protobuf::StreamingQueueMessageType type_ = 
+  const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType;
 };
 
@@ -147,14 +149,19 @@ class CheckRspMessage : public Message {
 class TestInitMessage : public Message {
  public:
   TestInitMessage(const queue::protobuf::StreamingQueueTestRole role,
-              const ActorID &actor_id, const ActorID &peer_actor_id,
-              const std::string actor_handle_serialized, 
-              const std::vector<ObjectID> &queue_ids, const std::vector<ObjectID> &rescale_queue_ids,
-              std::string test_suite_name, std::string test_name,
-              uint64_t param)
+                  const ActorID &actor_id, const ActorID &peer_actor_id,
+                  const std::string actor_handle_serialized,
+                  const std::vector<ObjectID> &queue_ids,
+                  const std::vector<ObjectID> &rescale_queue_ids,
+                  std::string test_suite_name, std::string test_name, uint64_t param)
       : Message(actor_id, peer_actor_id, queue_ids[0]),
-  actor_handle_serialized_(actor_handle_serialized), queue_ids_(queue_ids), rescale_queue_ids_(rescale_queue_ids),
-  role_(role), test_suite_name_(test_suite_name), test_name_(test_name), param_(param) {}
+        actor_handle_serialized_(actor_handle_serialized),
+        queue_ids_(queue_ids),
+        rescale_queue_ids_(rescale_queue_ids),
+        role_(role),
+        test_suite_name_(test_suite_name),
+        test_name_(test_name),
+        param_(param) {}
   virtual ~TestInitMessage() {}
 
   static std::shared_ptr<TestInitMessage> FromBytes(uint8_t *bytes);
@@ -165,7 +172,7 @@ class TestInitMessage : public Message {
   std::vector<ObjectID> QueueIds() { return queue_ids_; }
   std::vector<ObjectID> RescaleQueueIds() { return rescale_queue_ids_; }
   std::string TestSuiteName() { return test_suite_name_; }
-  std::string TestName() { return test_name_;}
+  std::string TestName() { return test_name_; }
   uint64_t Param() { return param_; }
 
   std::string ToString() {
@@ -188,8 +195,9 @@ class TestInitMessage : public Message {
     os << " param: " << param_;
     return os.str();
   }
+
  private:
-  const queue::protobuf::StreamingQueueMessageType type_ = 
+  const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueTestInitMsgType;
   std::string actor_handle_serialized_;
   std::vector<ObjectID> queue_ids_;
@@ -201,7 +209,7 @@ class TestInitMessage : public Message {
 };
 
 /// Wrap StreamingQueueTestCheckStatusRspMsg in streaming_queue.proto.
-/// TestCheckStatusRspMsg, used for test, driver sends to test workers to check 
+/// TestCheckStatusRspMsg, used for test, driver sends to test workers to check
 /// whether test has completed or failed.
 class TestCheckStatusRspMsg : public Message {
  public:
@@ -216,12 +224,12 @@ class TestCheckStatusRspMsg : public Message {
   bool Status() { return status_; }
 
  private:
-  const queue::protobuf::StreamingQueueMessageType type_ = 
+  const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueTestCheckStatusRspMsgType;
   std::string test_name_;
   bool status_;
 };
 
-}
-}
+}  // namespace streaming
+}  // namespace ray
 #endif

@@ -21,16 +21,17 @@ enum QueueType { UPSTREAM = 0, DOWNSTREAM };
 
 /// A queue-like data structure, which does not delete it's item after poped.
 /// The lifecycle of each item is:
-/// - Pending, a item is pushed into queue, but has not been processed (sent out or consumed),
+/// - Pending, a item is pushed into queue, but has not been processed (sent out or
+/// consumed),
 /// - Processed, has been handled by user, but should not be deleted
 /// - Evicted, useless to user, should be poped and destroyed.
 /// At present, this data structure is implemented with one std::list,
 /// using a watershed iterator to divided.
 class Queue {
  public:
-  /// \param[in] queue_id the unique identification of a pair of queues (upstream and downstream).
-  /// \param[in] size max size of the queue in bytes.
-  /// \param[in] transport transport to send items to peer.
+  /// \param[in] queue_id the unique identification of a pair of queues (upstream and
+  /// downstream). \param[in] size max size of the queue in bytes. \param[in] transport
+  /// transport to send items to peer.
   Queue(ObjectID queue_id, uint64_t size, std::shared_ptr<Transport> transport)
       : queue_id_(queue_id), max_data_size_(size), data_size_(0), data_size_sent_(0) {
     buffer_queue_.push_back(InvalidQueueItem());
@@ -142,8 +143,8 @@ class WriterQueue : public Queue {
 
   uint64_t GetMinConsumedSeqID() { return min_consumed_id_; }
 
-  void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) { 
-    peer_last_msg_id_ = msg_id; 
+  void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) {
+    peer_last_msg_id_ = msg_id;
     peer_last_seq_id_ = seq_id;
   }
 
@@ -192,6 +193,7 @@ class ReaderQueue : public Queue {
   uint64_t GetLastRecvSeqId() { return last_recv_seq_id_; }
 
   void SetExpectSeqId(uint64_t expect) { expect_seq_id_ = expect; }
+
  private:
   void Notify(uint64_t seq_id);
   void CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args);

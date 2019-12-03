@@ -1,11 +1,11 @@
 #include "queue_service.h"
-#include "utils.h"
 #include "util/streaming_util.h"
+#include "utils.h"
 
 namespace ray {
 namespace streaming {
 
-constexpr uint64_t COMMON_SYNC_CALL_TIMEOUTT_MS = 5*1000;
+constexpr uint64_t COMMON_SYNC_CALL_TIMEOUTT_MS = 5 * 1000;
 
 std::shared_ptr<UpstreamService> UpstreamService::upstream_service_ = nullptr;
 std::shared_ptr<DownstreamService> DownstreamService::downstream_service_ = nullptr;
@@ -20,10 +20,12 @@ std::shared_ptr<Message> QueueService::ParseMessage(
   uint8_t *bytes = buffer->Data();
   uint8_t *p_cur = bytes;
   uint32_t *magic_num = (uint32_t *)p_cur;
-  STREAMING_CHECK(*magic_num == Message::MagicNum) << *magic_num << " " << Message::MagicNum;
+  STREAMING_CHECK(*magic_num == Message::MagicNum)
+      << *magic_num << " " << Message::MagicNum;
 
   p_cur += sizeof(Message::MagicNum);
-  queue::protobuf::StreamingQueueMessageType *type = (queue::protobuf::StreamingQueueMessageType *)p_cur;
+  queue::protobuf::StreamingQueueMessageType *type =
+      (queue::protobuf::StreamingQueueMessageType *)p_cur;
 
   std::shared_ptr<Message> message = nullptr;
   switch (*type) {
@@ -78,7 +80,8 @@ std::shared_ptr<Transport> QueueService::GetOutTransport(const ObjectID &queue_i
 
 void QueueService::SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id) {
   actors_.emplace(queue_id, actor_id);
-  out_transports_.emplace(queue_id, std::make_shared<ray::streaming::Transport>(core_worker_, actor_id));
+  out_transports_.emplace(
+      queue_id, std::make_shared<ray::streaming::Transport>(core_worker_, actor_id));
 }
 
 ActorID QueueService::GetPeerActorID(const ObjectID &queue_id) {
@@ -88,8 +91,8 @@ ActorID QueueService::GetPeerActorID(const ObjectID &queue_id) {
 }
 
 void QueueService::Release() {
-    actors_.clear();
-    out_transports_.clear();
+  actors_.clear();
+  out_transports_.clear();
 }
 
 void QueueService::Start() {
@@ -104,7 +107,8 @@ void QueueService::Stop() {
   }
 }
 
-std::shared_ptr<UpstreamService> UpstreamService::CreateService(CoreWorker* core_worker, const ActorID &actor_id) {
+std::shared_ptr<UpstreamService> UpstreamService::CreateService(CoreWorker *core_worker,
+                                                                const ActorID &actor_id) {
   if (nullptr == upstream_service_) {
     upstream_service_ = std::make_shared<UpstreamService>(core_worker, actor_id);
   }
@@ -115,11 +119,10 @@ std::shared_ptr<UpstreamService> UpstreamService::GetService() {
   return upstream_service_;
 }
 
-std::shared_ptr<WriterQueue> UpstreamService::CreateUpstreamQueue(const ObjectID &queue_id,
-                                                         const ActorID &peer_actor_id,
-                                                         uint64_t size) {
-  STREAMING_LOG(INFO) << "CreateUpstreamQueue: " << queue_id
-                      << " " << actor_id_ << "->" << peer_actor_id;
+std::shared_ptr<WriterQueue> UpstreamService::CreateUpstreamQueue(
+    const ObjectID &queue_id, const ActorID &peer_actor_id, uint64_t size) {
+  STREAMING_LOG(INFO) << "CreateUpstreamQueue: " << queue_id << " " << actor_id_ << "->"
+                      << peer_actor_id;
   std::shared_ptr<WriterQueue> queue = GetUpQueue(queue_id);
   if (queue != nullptr) {
     STREAMING_LOG(WARNING) << "Duplicate to create up queue." << queue_id;
@@ -127,7 +130,7 @@ std::shared_ptr<WriterQueue> UpstreamService::CreateUpstreamQueue(const ObjectID
   }
 
   queue = std::unique_ptr<streaming::WriterQueue>(new streaming::WriterQueue(
-            queue_id, actor_id_, peer_actor_id, size, GetOutTransport(queue_id)));
+      queue_id, actor_id_, peer_actor_id, size, GetOutTransport(queue_id)));
   upstream_queues_[queue_id] = queue;
 
   return queue;
@@ -155,15 +158,17 @@ bool UpstreamService::CheckQueueSync(const ObjectID &queue_id) {
 
   auto transport_it = GetOutTransport(queue_id);
   STREAMING_CHECK(transport_it != nullptr);
-  std::shared_ptr<LocalMemoryBuffer> result_buffer =
-      transport_it->SendForResultWithRetry(std::move(buffer), DownstreamService::PEER_SYNC_FUNCTION, 10, COMMON_SYNC_CALL_TIMEOUTT_MS);
+  std::shared_ptr<LocalMemoryBuffer> result_buffer = transport_it->SendForResultWithRetry(
+      std::move(buffer), DownstreamService::PEER_SYNC_FUNCTION, 10,
+      COMMON_SYNC_CALL_TIMEOUTT_MS);
   if (result_buffer == nullptr) {
     return false;
   }
 
   std::shared_ptr<Message> result_msg = ParseMessage(result_buffer);
-  STREAMING_CHECK(result_msg->Type() ==
-                  queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType);
+  STREAMING_CHECK(
+      result_msg->Type() ==
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType);
   std::shared_ptr<CheckRspMessage> check_rsp_msg =
       std::dynamic_pointer_cast<CheckRspMessage>(result_msg);
   STREAMING_LOG(INFO) << "CheckQueueSync return queue_id: " << check_rsp_msg->QueueId();
@@ -172,8 +177,9 @@ bool UpstreamService::CheckQueueSync(const ObjectID &queue_id) {
   return queue::protobuf::StreamingQueueError::OK == check_rsp_msg->Error();
 }
 
-void UpstreamService::WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
-                              std::vector<ObjectID> &failed_queues) {
+void UpstreamService::WaitQueues(const std::vector<ObjectID> &queue_ids,
+                                 int64_t timeout_ms,
+                                 std::vector<ObjectID> &failed_queues) {
   failed_queues.insert(failed_queues.begin(), queue_ids.begin(), queue_ids.end());
   uint64_t start_time_us = current_time_ms();
   uint64_t current_time_us = start_time_us;
@@ -198,28 +204,33 @@ void UpstreamService::DispatchMessageInternal(
   std::shared_ptr<Message> msg = ParseMessage(buffer);
   STREAMING_LOG(DEBUG) << "QueueService::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
-                       << " peer actorid: " << msg->PeerActorId()
-                       << " type: " << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
+                       << " peer actorid: " << msg->PeerActorId() << " type: "
+                       << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
 
-  if (msg->Type() == queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType) {
+  if (msg->Type() ==
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType) {
     OnNotify(std::dynamic_pointer_cast<NotificationMessage>(msg));
-  } else if (msg->Type() == queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType) {
+  } else if (msg->Type() ==
+             queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckRspMsgType) {
     STREAMING_CHECK(false) << "Should not receive StreamingQueueCheckRspMsg";
   } else {
     STREAMING_CHECK(false) << "message type should be added: "
-                           << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
+                           << queue::protobuf::StreamingQueueMessageType_Name(
+                                  msg->Type());
   }
 }
 
 void UpstreamService::OnNotify(std::shared_ptr<NotificationMessage> notify_msg) {
   auto queue = GetUpQueue(notify_msg->QueueId());
-    if (queue == nullptr) {
-        STREAMING_LOG(WARNING) << "Can not find queue for " << queue::protobuf::StreamingQueueMessageType_Name(notify_msg->Type())
-                             << ", maybe queue has been destroyed, ignore it."
-                             << " seq id: " << notify_msg->SeqId();
-      return;
-    }
-    queue->OnNotify(notify_msg);
+  if (queue == nullptr) {
+    STREAMING_LOG(WARNING) << "Can not find queue for "
+                           << queue::protobuf::StreamingQueueMessageType_Name(
+                                  notify_msg->Type())
+                           << ", maybe queue has been destroyed, ignore it."
+                           << " seq id: " << notify_msg->SeqId();
+    return;
+  }
+  queue->OnNotify(notify_msg);
 }
 
 void UpstreamService::ReleaseAllUpQueues() {
@@ -228,7 +239,8 @@ void UpstreamService::ReleaseAllUpQueues() {
   Release();
 }
 
-std::shared_ptr<DownstreamService> DownstreamService::CreateService(CoreWorker* core_worker, const ActorID &actor_id) {
+std::shared_ptr<DownstreamService> DownstreamService::CreateService(
+    CoreWorker *core_worker, const ActorID &actor_id) {
   if (nullptr == downstream_service_) {
     downstream_service_ = std::make_shared<DownstreamService>(core_worker, actor_id);
   }
@@ -243,10 +255,10 @@ bool DownstreamService::DownstreamQueueExists(const ObjectID &queue_id) {
   return nullptr != GetDownQueue(queue_id);
 }
 
-std::shared_ptr<ReaderQueue> DownstreamService::CreateDownstreamQueue(const ObjectID &queue_id,
-                                                           const ActorID &peer_actor_id) {
-  STREAMING_LOG(INFO) << "CreateDownstreamQueue: " << queue_id
-                      << " " << peer_actor_id << "->" << actor_id_;
+std::shared_ptr<ReaderQueue> DownstreamService::CreateDownstreamQueue(
+    const ObjectID &queue_id, const ActorID &peer_actor_id) {
+  STREAMING_LOG(INFO) << "CreateDownstreamQueue: " << queue_id << " " << peer_actor_id
+                      << "->" << actor_id_;
   auto it = downstream_queues_.find(queue_id);
   if (it != downstream_queues_.end()) {
     STREAMING_LOG(WARNING) << "Duplicate to create down queue!!!! " << queue_id;
@@ -270,7 +282,8 @@ std::shared_ptr<streaming::ReaderQueue> DownstreamService::GetDownQueue(
 
 std::shared_ptr<LocalMemoryBuffer> DownstreamService::OnCheckQueue(
     std::shared_ptr<CheckMessage> check_msg) {
-  queue::protobuf::StreamingQueueError err_code = queue::protobuf::StreamingQueueError::OK;
+  queue::protobuf::StreamingQueueError err_code =
+      queue::protobuf::StreamingQueueError::OK;
 
   auto down_queue = downstream_queues_.find(check_msg->QueueId());
   if (down_queue == downstream_queues_.end()) {
@@ -297,12 +310,14 @@ void DownstreamService::DispatchMessageInternal(
   std::shared_ptr<Message> msg = ParseMessage(buffer);
   STREAMING_LOG(DEBUG) << "QueueService::DispatchMessageInternal: "
                        << " qid: " << msg->QueueId() << " actorid " << msg->ActorId()
-                       << " peer actorid: " << msg->PeerActorId()
-                       << " type: " << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
+                       << " peer actorid: " << msg->PeerActorId() << " type: "
+                       << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
 
-  if (msg->Type() == queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType) {
+  if (msg->Type() ==
+      queue::protobuf::StreamingQueueMessageType::StreamingQueueDataMsgType) {
     OnData(std::dynamic_pointer_cast<DataMessage>(msg));
-  } else if (msg->Type() == queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType) {
+  } else if (msg->Type() ==
+             queue::protobuf::StreamingQueueMessageType::StreamingQueueCheckMsgType) {
     std::shared_ptr<LocalMemoryBuffer> check_result =
         this->OnCheckQueue(std::dynamic_pointer_cast<CheckMessage>(msg));
     if (callback != nullptr) {
@@ -310,21 +325,23 @@ void DownstreamService::DispatchMessageInternal(
     }
   } else {
     STREAMING_CHECK(false) << "message type should be added: "
-                           << queue::protobuf::StreamingQueueMessageType_Name(msg->Type());
+                           << queue::protobuf::StreamingQueueMessageType_Name(
+                                  msg->Type());
   }
 }
 
 void DownstreamService::OnData(std::shared_ptr<DataMessage> msg) {
-    auto queue = GetDownQueue(msg->QueueId());
-    if (queue == nullptr) {
-      STREAMING_LOG(WARNING) << "Can not find queue for " << queue::protobuf::StreamingQueueMessageType_Name(msg->Type())
-                             << ", maybe queue has been destroyed, ignore it."
-                             << " seq id: " << msg->SeqId();
-      return;
-    }
+  auto queue = GetDownQueue(msg->QueueId());
+  if (queue == nullptr) {
+    STREAMING_LOG(WARNING) << "Can not find queue for "
+                           << queue::protobuf::StreamingQueueMessageType_Name(msg->Type())
+                           << ", maybe queue has been destroyed, ignore it."
+                           << " seq id: " << msg->SeqId();
+    return;
+  }
 
-    QueueItem item(msg);
-    queue->OnData(item);
+  QueueItem item(msg);
+  queue->OnData(item);
 }
 
 }  // namespace streaming

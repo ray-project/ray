@@ -1,8 +1,8 @@
 #ifndef _STREAMING_QUEUE_UTILS_H_
 #define _STREAMING_QUEUE_UTILS_H_
+#include <chrono>
 #include <future>
 #include <thread>
-#include <chrono>
 #include "ray/util/util.h"
 
 namespace ray {

@@ -15,12 +15,12 @@
 namespace ray {
 namespace streaming {
 
-/// DataWriter is designed for data transporting between upstream and //downstream.
+/// DataWriter is designed for data transporting between upstream and downstream.
 /// After the user sends the data, it does not immediately send the data to
 /// downstream, but caches it in the corresponding memory ring buffer. There is
-/// a spearate transfer thread(setup in WriterLoopForward function ) to collect
+/// a spearate transfer thread(setup in WriterLoopForward function) to collect
 /// the messages from all the ringbuffers, and write them to the corresponding
-/// transmission channel, which is backed StreamingQueue. Actually, the
+/// transmission channels, which is backed StreamingQueue. Actually, the
 /// advantage is that the user thread will not be affected by the transmission
 /// speed during the data transfer. And also the transfer thread can automatically
 /// batch the catched data from memory buffer into a data bundle to reduce
@@ -91,7 +91,6 @@ class DataWriter {
   /// \param queue_id_vec queue id vector
   /// \param channel_message_id_vec channel seq id is related with message checkpoint
   /// \param queue_size queue size (memory size not length)
-
   StreamingStatus Init(const std::vector<ObjectID> &channel_ids,
                        const std::vector<ActorID> &actor_ids,
                        const std::vector<uint64_t> &channel_message_id_vec,
@@ -106,7 +105,6 @@ class DataWriter {
   ///  \param data_size
   ///  \param message_type
   ///  \return message seq iq
-
   uint64_t WriteMessageToBufferRing(
       const ObjectID &q_id, uint8_t *data, uint32_t data_size,
       StreamingMessageType message_type = StreamingMessageType::Message);

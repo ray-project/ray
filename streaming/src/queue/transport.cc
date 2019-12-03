@@ -20,8 +20,8 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &fun
   if (function.GetLanguage() == Language::PYTHON) {
     // see _raylet.pyx for assci
     char ascii_meta[5] = {'A', 'S', 'C', 'I', 'I'};
-     std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
-      std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
+    std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
+        std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
     auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
@@ -30,12 +30,12 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &fun
   }
   args.emplace_back(
       TaskArg::PassByValue(std::make_shared<RayObject>(std::move(buffer), meta, true)));
-  
+
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<ObjectID> return_ids;
   std::vector<std::shared_ptr<RayObject>> results;
-  ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, function, args,
-                                                         options, &return_ids);
+  ray::Status st =
+      core_worker_->SubmitActorTask(peer_actor_id_, function, args, options, &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask failed. " << st;
   }
@@ -47,7 +47,8 @@ void Transport::Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &fun
 }
 
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
-    std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int64_t timeout_ms) {
+    std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function,
+    int64_t timeout_ms) {
   std::unordered_map<std::string, double> resources;
   TaskOptions options{TASK_OPTION_RETURN_NUM_1, true, resources};
 
@@ -58,8 +59,8 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
   std::vector<TaskArg> args;
   if (function.GetLanguage() == Language::PYTHON) {
     char ascii_meta[5] = {'A', 'S', 'C', 'I', 'I'};
-     std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
-      std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
+    std::shared_ptr<LocalMemoryBuffer> ascii_meta_buf =
+        std::make_shared<LocalMemoryBuffer>((uint8_t *)ascii_meta, 5, true);
     auto dummy = "__RAY_DUMMY__";
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
@@ -71,8 +72,8 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
 
   STREAMING_CHECK(core_worker_ != nullptr);
   std::vector<ObjectID> return_ids;
-  ray::Status st = core_worker_->SubmitActorTask(peer_actor_id_, function, args,
-                                                 options, &return_ids);
+  ray::Status st =
+      core_worker_->SubmitActorTask(peer_actor_id_, function, args, options, &return_ids);
   if (!st.ok()) {
     STREAMING_LOG(ERROR) << "SubmitActorTask fail.";
   }
@@ -101,9 +102,11 @@ std::shared_ptr<LocalMemoryBuffer> Transport::SendForResult(
 }
 
 std::shared_ptr<LocalMemoryBuffer> Transport::SendForResultWithRetry(
-    std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt, int64_t timeout_ms) {
+    std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt,
+    int64_t timeout_ms) {
   STREAMING_LOG(INFO) << "SendForResultWithRetry retry_cnt: " << retry_cnt
-                      << " timeout_ms: " << timeout_ms << " function: " << function.GetFunctionDescriptor()[0];
+                      << " timeout_ms: " << timeout_ms
+                      << " function: " << function.GetFunctionDescriptor()[0];
   std::shared_ptr<LocalMemoryBuffer> buffer_shared = std::move(buffer);
   for (int cnt = 0; cnt < retry_cnt; cnt++) {
     auto result = SendForResult(buffer_shared, function, timeout_ms);

@@ -8,32 +8,30 @@
 namespace ray {
 namespace streaming {
 
-/// Transport is the transfer endpoint to a specific actor, buffers can be sent to peer through
-/// direct actor call.
+/// Transport is the transfer endpoint to a specific actor, buffers can be sent to peer
+/// through direct actor call.
 class Transport {
  public:
   /// Construct a Transport object.
-  /// \param[in] core_worker CoreWorker C++ pointer of current actor, which we call direct actor call
+  /// \param[in] core_worker CoreWorker C++ pointer of current actor, which we call direct
+  /// actor call
   ///            interface with.
   /// \param[in] peer_actor_id actor id of peer actor
-  Transport(CoreWorker* core_worker, const ActorID &peer_actor_id)
-      : core_worker_(core_worker),
-        peer_actor_id_(peer_actor_id) {
-  }
+  Transport(CoreWorker *core_worker, const ActorID &peer_actor_id)
+      : core_worker_(core_worker), peer_actor_id_(peer_actor_id) {}
   virtual ~Transport() = default;
 
   /// Send buffer asynchronously, peer's `function` will be called.
   /// \param[in] buffer buffer to be sent.
   /// \param[in] function the function descriptor of peer's function.
   virtual void Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function);
-  /// Send buffer synchronously, peer's `function` will be called, and return the peer function's
-  /// return value.
-  /// \param[in] buffer buffer to be sent.
-  /// \param[in] function the function descriptor of peer's function.
-  /// \param[in] timeout_ms max time to wait for result.
-  /// \return peer function's result.
+  /// Send buffer synchronously, peer's `function` will be called, and return the peer
+  /// function's return value. \param[in] buffer buffer to be sent. \param[in] function
+  /// the function descriptor of peer's function. \param[in] timeout_ms max time to wait
+  /// for result. \return peer function's result.
   virtual std::shared_ptr<LocalMemoryBuffer> SendForResult(
-      std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int64_t timeout_ms);
+      std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function,
+      int64_t timeout_ms);
   /// Send buffer and get result with retry.
   /// return value.
   /// \param[in] buffer buffer to be sent.
@@ -42,10 +40,11 @@ class Transport {
   /// \param[in] timeout_ms max time to wait for result.
   /// \return peer function's result.
   std::shared_ptr<LocalMemoryBuffer> SendForResultWithRetry(
-      std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt, int64_t timeout_ms);
+      std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt,
+      int64_t timeout_ms);
 
  private:
-  CoreWorker* core_worker_;
+  CoreWorker *core_worker_;
   ActorID peer_actor_id_;
 };
 }  // namespace streaming
