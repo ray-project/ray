@@ -41,12 +41,16 @@ class DragonflySearch(SuggestionAlgorithm):
 
     Example:
         >>> from dragonfly.opt.gp_bandit import EuclideanGPBandit
-        >>> from dragonfly.exd.worker_manager import SyntheticWorkerManager
-        >>> from dragonfly.utils.euclidean_synthetic_functions import get_syn_func_caller # noqa: E501
-        >>> func_caller = get_syn_func_caller('hartmann6',
-                noise_type='gauss', noise_scale=0.1)
-        >>> worker_manager = SyntheticWorkerManager(1, time_distro='const')
-        >>> optimizer = EuclideanGPBandit(func_caller, worker_manager)
+        >>> from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
+        >>> from dragonfly import load_config
+        >>> domain_vars = [{'name': 'x', 'type': 'float', 'min': 0, 'max': 1, 'dim': 3}]
+        >>> domain_constraints = [
+                {'name': 'quadrant', 'constraint': 'np.linalg.norm(x[0:2]) <= 0.5'},
+        >>> ]
+        >>> config_params = {'domain': domain_vars, 'domain_constraints': domain_constraints}
+        >>> config = load_config(config_params)
+        >>> func_caller = EuclideanFunctionCaller(None, config.domain)
+        >>> optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
         >>> algo = DragonflySearch(optimizer,
         >>>     max_concurrent=4,
         >>>     metric="mean_loss",
@@ -63,7 +67,7 @@ class DragonflySearch(SuggestionAlgorithm):
                  evaluated_rewards=None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
-            You can install Dragonlfy with the command:
+            You can install Dragonfly with the command:
             `pip install dragonfly`."""
         assert type(max_concurrent) is int and max_concurrent > 0
         assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
