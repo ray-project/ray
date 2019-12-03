@@ -1181,10 +1181,24 @@ cdef class CoreWorker:
             async_set_result_callback,
             <void*>future)
 
-cdef void async_set_result_callback(shared_ptr[CRayObject] obj, void *future):
-    # TODO(simon): descrialize obj
+cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
+                                    CObjectID object_id,
+                                    void *future):
+
+    cdef:
+        c_vector[shared_ptr[CRayObject]] objects_to_deserialize
+
+    # TODO(simon): suport multiple
+    objects_to_deserialize.push_back(obj)
+    data_metadata_pairs = RayObjectsToDataMetadataPairs(
+        objects_to_deserialize)
+
+    ids_to_deserialize = [ObjectID(object_id.Binary())]
+
+    objects = ray.worker.global_worker.deserialize_objects(
+        data_metadata_pairs, ids_to_deserialize)
 
     # void* and cast to object is the Cython recommended way of passing python
     # object into callback.
     # https://github.com/cython/cython/blob/master/Demos/callback/cheese.pyx
-    (<object>future).set_result("Hi it's fulfilled!")
+    (<object>future).set_result(objects[0])

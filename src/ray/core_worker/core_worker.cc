@@ -1075,10 +1075,10 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback callback,
                           void *python_future) {
   // RAY_CHECK(worker_context_.CurrentActorIsAsync());
   RAY_CHECK(object_id.IsDirectCallType());
-  memory_store_->GetAsync(
-      object_id, [python_future, callback](std::shared_ptr<RayObject> ray_object) {
-        callback(ray_object, python_future);
-      });
+  memory_store_->GetAsync(object_id, [python_future, callback,
+                                      object_id](std::shared_ptr<RayObject> ray_object) {
+    callback(ray_object, object_id, python_future);
+  });
 }
 
 }  // namespace ray
