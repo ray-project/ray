@@ -65,7 +65,7 @@ type Extension struct {
 	// pod image
 	Image string `json:"image,omitempty"`
 
-	// logic groupName for worker in same group, can be functional or in size meaning
+	// logical groupName for worker in same group, can be functional or in size meaning
 	GroupName string `json:"groupName,omitempty"`
 
 	// command to start ray
