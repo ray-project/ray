@@ -119,6 +119,7 @@ class DataReader {
   StreamingStatus GetMessageFromChannel(ConsumerChannelInfo &channel_info,
                                         std::shared_ptr<DataBundle> &message);
 
+  /// Get top item from prioprity queue.
   StreamingStatus GetMergedMessageBundle(std::shared_ptr<DataBundle> &message,
                                          bool &is_valid_break);
 };

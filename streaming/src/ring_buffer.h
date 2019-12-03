@@ -177,11 +177,14 @@ class RingBufferImplLockFree : public AbstractRingBufferImpl<T> {
 
 enum class StreamingRingBufferType : uint8_t { SPSC_LOCK, SPSC };
 
+/// StreamingRinggBuffer is factory to generate two different buffers. In data
+/// writer, we use lock-free single producer single consumer (SPSC) ring buffer
+/// to hold messages from user thread because SPSC has much better performance
+/// than lock style. Since the SPSC_LOCK is useful to our event-driver model(
+/// we will use that buffer to optimize our thread model in the future), so
+/// it cann't be removed currently.
 class StreamingRingBuffer {
  private:
-  // TODO(lingxuan.zlx):
-  // boost circular was used casuse of simplifing implementation,
-  // and there are some room space for optimization in future.
   std::shared_ptr<AbstractRingBufferImpl<StreamingMessagePtr>> message_buffer_;
 
   StreamingTransientBuffer transient_buffer_;

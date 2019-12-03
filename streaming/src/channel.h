@@ -17,6 +17,8 @@ struct StreamingQueueInfo {
   uint64_t consumed_seq_id = 0;
 };
 
+/// PrducerChannelinfo and ConsumerChannelInfo contains channel information and
+/// its metrics that help us to debug or show important messages in logging.
 struct ProducerChannelInfo {
   ObjectID channel_id;
   StreamingRingBufferPtr writer_ring_buffer;
@@ -45,15 +47,14 @@ struct ConsumerChannelInfo {
   ActorID actor_id;
 };
 
-/// There are two types of channel:
-///   * ProducerChannel
-///    * ConsumerChannel
+/// Two types of channel are presented:
+///   * ProducerChannel is supporting all writing operations for upperlevel.
+///   * ConsumerChannel is for all reader operations.
 ///  They share similar interfaces:
-///    * CreateTransferChannel
-///    * DestoryTransferChannel
-///    * ClearTransferCheckpoint(it's empty and supported now, we will add 
+///    * ClearTransferCheckpoint(it's empty and unsupported now, we will add 
 ///      implementation in next PR)
-///    * NotifychannelConsumed
+///    * NotifychannelConsumed (notify owner of channel which range data should
+//       be release to avoid out of memory)
 ///  but some differences in read/write function.(named ProduceItemTochannel and
 ///  ConsumeItemFrom channel)
 class ProducerChannel {
@@ -130,6 +131,8 @@ class StreamingQueueConsumer : public ConsumerChannel {
   std::shared_ptr<ReaderQueue> queue_;
 };
 
+/// MockProducer and Mockconsumer are independent implementation of channels that
+/// conduct a very simple memory channel for unit tests or intergation test.
 class MockProducer : public ProducerChannel {
  public:
   explicit MockProducer(std::shared_ptr<Config> &transfer_config,
