@@ -14,6 +14,7 @@
 #include <boost/asio/error.hpp>
 #include <boost/bind.hpp>
 
+#include "absl/time/clock.h"
 #include "plasma/client.h"
 
 #include "ray/common/id.h"
@@ -36,7 +37,7 @@ struct ObjectManagerConfig {
   int object_manager_port;
   /// The time in milliseconds to wait before retrying a pull
   /// that fails due to client id lookup.
-  uint pull_timeout_ms;
+  unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
   /// The store socket name.
@@ -188,7 +189,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The object's object id.
   /// \return Status of whether the pull request successfully initiated.
-  ray::Status Pull(const ObjectID &object_id);
+  ray::Status Pull(const ObjectID &object_id) override;
 
   /// Try to Pull an object from one of its expected client locations. If there
   /// are more client locations to try after this attempt, then this method
@@ -206,7 +207,7 @@ class ObjectManager : public ObjectManagerInterface,
   ///
   /// \param object_id The ObjectID.
   /// \return Void.
-  void CancelPull(const ObjectID &object_id);
+  void CancelPull(const ObjectID &object_id) override;
 
   /// Callback definition for wait.
   using WaitCallback = std::function<void(const std::vector<ray::ObjectID> &found,

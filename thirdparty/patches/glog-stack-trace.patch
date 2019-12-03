@@ -1,0 +1,22 @@
+diff --git bazel/glog.bzl bazel/glog.bzl
+index 4c11f12..2510ecc 100644
+--- bazel/glog.bzl
++++ bazel/glog.bzl
+@@ -17,7 +17,6 @@ def glog_library(namespace = "google", with_gflags = 1, **kwargs):
+         "-DGLOG_BAZEL_BUILD",
+         "-DHAVE_STDINT_H",
+         "-DHAVE_STRING_H",
+-        "-DHAVE_UNWIND_H",
+     ] + (["-DHAVE_LIB_GFLAGS"] if with_gflags else [])
+ 
+     linux_or_darwin_copts = [
+@@ -37,6 +36,8 @@ def glog_library(namespace = "google", with_gflags = 1, **kwargs):
+         "-DHAVE_SYS_TIME_H",
+         # Enable dumping stacktrace upon sigaction.
+         "-DHAVE_SIGACTION",
++        "-DHAVE_EXECINFO_H",
++        "-DHAVE_SYMBOLIZE",
+         # For logging.cc.
+         "-DHAVE_PREAD",
+         "-DHAVE___ATTRIBUTE__",
+-- 

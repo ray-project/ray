@@ -290,13 +290,15 @@ class RolloutWorker(EvaluatorInterface):
                     dim=model_config.get("dim"),
                     framestack=model_config.get("framestack"))
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
 
             def wrap(env):
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
 
         self.env = wrap(self.env)
@@ -752,6 +754,8 @@ class RolloutWorker(EvaluatorInterface):
             if tf and tf.executing_eagerly():
                 if hasattr(cls, "as_eager"):
                     cls = cls.as_eager()
+                    if policy_config["eager_tracing"]:
+                        cls = cls.with_tracing()
                 elif not issubclass(cls, TFPolicy):
                     pass  # could be some other type of policy
                 else:

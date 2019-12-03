@@ -40,7 +40,7 @@ Ray enables arbitrary Python functions to be executed asynchronously. These asyn
     def remote_function():
         return 1
 
-This causes a few things changes in behavior:
+This causes a few changes in behavior:
 
     1. **Invocation:** The regular version is called with ``regular_function()``, whereas the remote version is called with ``remote_function.remote()``.
     2. **Return values:** ``regular_function`` immediately executes and returns ``1``, whereas ``remote_function`` immediately returns an object ID (a future) and then creates a task that will be executed on a worker process. The result can be retrieved with ``ray.get``.
@@ -95,7 +95,7 @@ Note the following behaviors:
   -  The second task will not be executed until the first task has finished
      executing because the second task depends on the output of the first task.
   -  If the two tasks are scheduled on different machines, the output of the
-     first task (the value corresponding to ``x1_id``) will be sent over the
+     first task (the value corresponding to ``y1_id``) will be sent over the
      network to the machine where the second task is scheduled.
 
 Oftentimes, you may want to specify a task's resource requirements (for example
@@ -114,7 +114,7 @@ to execute the task. Ray can also handle arbitrary custom resources.
     * If you do not specify any resources in the ``@ray.remote`` decorator, the
       default is 1 CPU resource and no other resources.
     * If specifying CPUs, Ray does not enforce isolation (i.e., your task is
-      expected to honor its request.)
+      expected to honor its request).
     * If specifying GPUs, Ray does provide isolation in forms of visible devices
       (setting the environment variable ``CUDA_VISIBLE_DEVICES``), but it is the
       task's responsibility to actually use the GPUs (e.g., through a deep
@@ -145,7 +145,7 @@ Below are more examples of resource specifications:
   def f():
       return 1
 
-Further, remote function can return multiple object IDs.
+Further, remote functions can return multiple object IDs.
 
 .. code-block:: python
 
@@ -159,7 +159,7 @@ Further, remote function can return multiple object IDs.
 Objects in Ray
 --------------
 
-In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object IDs** to refer to them. Remote objects are stored in **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
+In Ray, we can create and compute on objects. We refer to these objects as **remote objects**, and we use **object IDs** to refer to them. Remote objects are stored in `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object stores**, and there is one object store per node in the cluster. In the cluster setting, we may not actually know which machine each object lives on.
 
 An **object ID** is essentially a unique ID that can be used to refer to a
 remote object. If you're familiar with futures, our object IDs are conceptually
@@ -178,7 +178,6 @@ Object IDs can be created in multiple ways.
 .. autofunction:: ray.put
     :noindex:
 
-
 .. important::
 
     Remote objects are immutable. That is, their values cannot be changed after
@@ -189,15 +188,33 @@ Object IDs can be created in multiple ways.
 Fetching Results
 ----------------
 
-The command ``ray.get(x_id)`` takes an object ID and creates a Python object
-from the corresponding remote object. For some objects like arrays, we can use
-shared memory and avoid copying the object.
+The command ``ray.get(x_id, timeout=None)`` takes an object ID and creates a Python object
+from the corresponding remote object. First, if the current node's object store
+does not contain the object, the object is downloaded. Then, if the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
+or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
+Otherwise, we deserialize the object data into a Python object.
 
 .. code-block:: python
 
     y = 1
     obj_id = ray.put(y)
     assert ray.get(obj_id) == 1
+
+You can also set a timeout to return early from a ``get`` that's blocking for too long.
+
+.. code-block:: python
+
+    from ray.exceptions import RayTimeoutError
+
+    @ray.remote
+    def long_running_function()
+        time.sleep(8)
+
+    obj_id = long_running_function.remote()
+    try:
+        ray.get(obj_id, timeout=4)
+    except RayTimeoutError:
+        print("`get` timed out.")
 
 .. autofunction:: ray.get
     :noindex:
@@ -214,6 +231,21 @@ works as follows.
 .. autofunction:: ray.wait
     :noindex:
 
+Object Eviction
+---------------
+
+When the object store gets full, objects will be evicted to make room for new objects.
+This happens in approximate LRU (least recently used) order. To avoid objects from
+being evicted, you can call ``ray.get`` and store their values instead. Numpy array
+objects cannot be evicted while they are mapped in any Python process. You can also
+configure `memory limits <memory-management.html>`__ to control object store usage by
+actors.
+
+.. note::
+
+    Objects created with ``ray.put`` are pinned in memory while a Python reference
+    to the object ID returned by the put exists. This only applies to the specific
+    ID returned by put, not IDs in general or copies of that IDs.
 
 Remote Classes (Actors)
 -----------------------

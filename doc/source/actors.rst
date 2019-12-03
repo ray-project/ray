@@ -1,5 +1,5 @@
-How-to: Using Actors
-====================
+Using Actors
+============
 
 An actor is essentially a stateful worker (or a service). When a new actor is
 instantiated, a new worker is created, and methods of the actor are scheduled on
@@ -121,9 +121,9 @@ requirements, you can do so as follows.
           self.value += 1
           return self.value
 
-  a1 = Counter._remote(num_cpus=1, resources={"Custom1": 1})
-  a2 = Counter._remote(num_cpus=2, resources={"Custom2": 1})
-  a3 = Counter._remote(num_cpus=3, resources={"Custom3": 1})
+  a1 = Counter.options(num_cpus=1, resources={"Custom1": 1}).remote()
+  a2 = Counter.options(num_cpus=2, resources={"Custom2": 1}).remote()
+  a3 = Counter.options(num_cpus=3, resources={"Custom3": 1}).remote()
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.
@@ -148,8 +148,7 @@ collected.
 Passing Around Actor Handles
 ----------------------------
 
-Actor handles can be passed into other tasks. To see an example of this, take a
-look at the `asynchronous parameter server example`_. To illustrate this with a
+Actor handles can be passed into other tasks. To illustrate this with a
 simple example, consider a simple actor definition.
 
 .. code-block:: python
@@ -190,5 +189,3 @@ If we instantiate an actor, we can pass the handle around to various tasks.
   for _ in range(10):
       time.sleep(1)
       print(ray.get(counter.get_counter.remote()))
-
-.. _`asynchronous parameter server example`: http://ray.readthedocs.io/en/latest/example-parameter-server.html

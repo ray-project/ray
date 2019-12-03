@@ -3,7 +3,6 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport unique_ptr
 from libcpp.string cimport string as c_string
 from libcpp.utility cimport pair
-from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 
 from ray.includes.common cimport (
@@ -38,8 +37,6 @@ cdef extern from "ray/protobuf/gcs.pb.h" nogil:
         GCSProfileTableData()
 
 
-ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
-    ResourceMappingType
 ctypedef pair[c_vector[CObjectID], c_vector[CObjectID]] WaitResultPair
 
 
@@ -51,15 +48,15 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
                       const CLanguage &language)
         CRayStatus Disconnect()
         CRayStatus SubmitTask(const CTaskSpec &task_spec)
-        CRayStatus GetTask(unique_ptr[CTaskSpec] *task_spec)
-        CRayStatus TaskDone()
         CRayStatus FetchOrReconstruct(c_vector[CObjectID] &object_ids,
                                       c_bool fetch_only,
+                                      c_bool is_direct_call_task,
                                       const CTaskID &current_task_id)
         CRayStatus NotifyUnblocked(const CTaskID &current_task_id)
         CRayStatus Wait(const c_vector[CObjectID] &object_ids,
                         int num_returns, int64_t timeout_milliseconds,
-                        c_bool wait_local, const CTaskID &current_task_id,
+                        c_bool wait_local, c_bool is_direct_call_task,
+                        const CTaskID &current_task_id,
                         WaitResultPair *result)
         CRayStatus PushError(const CJobID &job_id, const c_string &type,
                              const c_string &error_message, double timestamp)
@@ -71,9 +68,10 @@ cdef extern from "ray/raylet/raylet_client.h" nogil:
                                           CActorCheckpointID &checkpoint_id)
         CRayStatus NotifyActorResumedFromCheckpoint(
             const CActorID &actor_id, const CActorCheckpointID &checkpoint_id)
-        CRayStatus SetResource(const c_string &resource_name, const double capacity, const CClientID &client_Id)
+        CRayStatus SetResource(const c_string &resource_name,
+                               const double capacity,
+                               const CClientID &client_Id)
         CLanguage GetLanguage() const
         CWorkerID GetWorkerID() const
         CJobID GetJobID() const
         c_bool IsWorker() const
-        const ResourceMappingType &GetResourceIDs() const

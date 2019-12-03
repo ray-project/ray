@@ -27,6 +27,13 @@ enum TaskType {
   ACTOR_TASK = 2;
 }
 
+// Address of a worker or node manager.
+message Address {
+  bytes raylet_id = 1;
+  string ip_address = 2;
+  int32 port = 3;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -48,21 +55,30 @@ message TaskSpec {
   bytes parent_task_id = 6;
   // A count of the number of tasks submitted by the parent task before this one.
   uint64 parent_counter = 7;
+  // Task ID of the caller. This is the same as parent_task_id for non-actors.
+  // This is the actor ID (embedded in a nil task ID) for actors.
+  bytes caller_id = 8;
+  /// Address of the caller.
+  Address caller_address = 9;
   // Task arguments.
-  repeated TaskArg args = 8;
+  repeated TaskArg args = 10;
   // Number of return objects.
-  uint64 num_returns = 9;
+  uint64 num_returns = 11;
   // Quantities of the different resources required by this task.
-  map<string, double> required_resources = 10;
+  map<string, double> required_resources = 12;
   // The resources required for placing this task on a node. If this is empty,
   // then the placement resources are equal to the required_resources.
-  map<string, double> required_placement_resources = 11;
+  map<string, double> required_placement_resources = 13;
   // Task specification for an actor creation task.
   // This field is only valid when `type == ACTOR_CREATION_TASK`.
   ActorCreationTaskSpec actor_creation_task_spec = 14;
   // Task specification for an actor task.
   // This field is only valid when `type == ACTOR_TASK`.
   ActorTaskSpec actor_task_spec = 15;
+  // Whether this task is a direct call task.
+  bool is_direct_call = 16;
+  // Number of times this task may be retried on worker failure.
+  int32 max_retries = 17;
 }
 
 // Argument in the task.
@@ -74,6 +90,8 @@ message TaskArg {
   repeated bytes object_ids = 1;
   // Data for pass-by-value arguments.
   bytes data = 2;
+  // Metadata for pass-by-value arguments.
+  bytes metadata = 3;
 }
 
 // Task spec of an actor creation task.
@@ -85,25 +103,27 @@ message ActorCreationTaskSpec {
   uint64 max_actor_reconstructions = 3;
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
-  // the placeholder strings (`RAY_WORKER_OPTION_0`, `RAY_WORKER_OPTION_1`, etc) in the
-  // worker command.
+  // the placeholder strings (`RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_0`,
+  // `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER_1`, etc) in the worker command.
   repeated string dynamic_worker_options = 4;
+  // Whether direct actor call is used.
+  bool is_direct_call = 5;
+  // The max number of concurrent calls for direct call actors.
+  int32 max_concurrency = 6;
+  // Whether the actor is persistent
+  bool is_detached = 7;
+  // Whether the actor use async actor calls
+  bool is_asyncio = 8;
 }
 
 // Task spec of an actor task.
 message ActorTaskSpec {
   // Actor ID of the actor that this task is executed on.
   bytes actor_id = 2;
-  // The ID of the handle that was used to submit the task. This should be
-  // unique across handles with the same actor_id.
-  bytes actor_handle_id = 3;
   // The dummy object ID of the actor creation task.
   bytes actor_creation_dummy_object_id = 4;
   // Number of tasks that have been submitted to this actor so far.
   uint64 actor_counter = 5;
-  // This will be populated with all of the new actor handles that were forked
-  // from this handle since the last task on this handle was submitted.
-  repeated bytes new_actor_handles = 6;
   // The dummy object ID of the previous actor task.
   bytes previous_actor_task_dummy_object_id = 7;
 }

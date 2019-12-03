@@ -3,9 +3,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
+import sys
 import unittest
 
 import ray
+from ray.exceptions import RayTimeoutError
 from ray.rllib import _register_all
 from ray.tune import Trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
@@ -13,6 +16,12 @@ from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.resources import Resources
+from ray.cluster_utils import Cluster
+
+if sys.version_info >= (3, 3):
+    from unittest.mock import patch
+else:
+    from mock import patch
 
 
 class RayTrialExecutorTest(unittest.TestCase):
@@ -40,6 +49,28 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
+
+    def testSaveRestoreTimeout(self):
+        trial = Trial("__fake")
+        self.trial_executor.start_trial(trial)
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.save(trial, Checkpoint.DISK)
+        self.trial_executor.set_status(trial, Trial.PAUSED)
+
+        ray_get = ray.get
+        start_trial = self.trial_executor._start_trial
+
+        # Timeout on first two attempts, then succeed on subsequent gets.
+        side_effects = [RayTimeoutError, RayTimeoutError, ray_get, ray_get]
+        with patch.object(self.trial_executor, "_start_trial") as mock_start:
+            with patch("ray.get", side_effect=side_effects):
+                mock_start.side_effect = start_trial
+                self.trial_executor.start_trial(trial, trial.checkpoint)
+
+        # Trial starts successfully on 3rd attempt.
+        assert mock_start.call_count == 3
+        self.assertEqual(Trial.RUNNING, trial.status)
+        self.trial_executor.stop_trial(trial)
 
     def testPauseResume(self):
         """Tests that pausing works for trials in flight."""
@@ -112,6 +143,71 @@ class RayTrialExecutorTest(unittest.TestCase):
         return suggester.next_trials()
 
 
+class RayExecutorQueueTest(unittest.TestCase):
+    def setUp(self):
+        self.trial_executor = RayTrialExecutor(
+            queue_trials=True, refresh_period=0)
+        self.cluster = Cluster(
+            initialize_head=True,
+            connect=True,
+            head_node_args={
+                "num_cpus": 1,
+                "_internal_config": json.dumps({
+                    "num_heartbeats_timeout": 10
+                })
+            })
+        # Pytest doesn't play nicely with imports
+        _register_all()
+
+    def tearDown(self):
+        ray.shutdown()
+        self.cluster.shutdown()
+        _register_all()  # re-register the evicted objects
+
+    def testQueueTrial(self):
+        """Tests that reset handles NotImplemented properly."""
+
+        def create_trial(cpu, gpu=0):
+            return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
+
+        cpu_only = create_trial(1, 0)
+        self.assertTrue(self.trial_executor.has_resources(cpu_only.resources))
+        self.trial_executor.start_trial(cpu_only)
+
+        gpu_only = create_trial(0, 1)
+        self.assertTrue(self.trial_executor.has_resources(gpu_only.resources))
+
+    def testHeadBlocking(self):
+        def create_trial(cpu, gpu=0):
+            return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
+
+        gpu_trial = create_trial(1, 1)
+        self.assertTrue(self.trial_executor.has_resources(gpu_trial.resources))
+        self.trial_executor.start_trial(gpu_trial)
+
+        # TODO(rliaw): This behavior is probably undesirable, but right now
+        # trials with different resource requirements is not often used.
+        cpu_only_trial = create_trial(1, 0)
+        self.assertFalse(
+            self.trial_executor.has_resources(cpu_only_trial.resources))
+
+        self.cluster.add_node(num_cpus=1, num_gpus=1)
+        self.cluster.wait_for_nodes()
+
+        self.assertTrue(
+            self.trial_executor.has_resources(cpu_only_trial.resources))
+        self.trial_executor.start_trial(cpu_only_trial)
+
+        cpu_only_trial2 = create_trial(1, 0)
+        self.assertTrue(
+            self.trial_executor.has_resources(cpu_only_trial2.resources))
+        self.trial_executor.start_trial(cpu_only_trial2)
+
+        cpu_only_trial3 = create_trial(1, 0)
+        self.assertFalse(
+            self.trial_executor.has_resources(cpu_only_trial3.resources))
+
+
 class LocalModeExecutorTest(RayTrialExecutorTest):
     def setUp(self):
         self.trial_executor = RayTrialExecutor(queue_trials=False)
@@ -123,4 +219,6 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

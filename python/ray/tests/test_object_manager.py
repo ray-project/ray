@@ -11,7 +11,7 @@ import time
 import warnings
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 # TODO(yuhguo): This test file requires a lot of CPU/memory, and
 # better be put in Jenkins. However, it fails frequently in Jenkins, but
@@ -237,8 +237,8 @@ def test_object_transfer_retry(ray_start_cluster):
 
     x_ids = [f.remote(10**i) for i in [1, 2, 3, 4]]
     assert not any(
-        ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+        ray.worker.global_worker.core_worker.object_exists(x_id)
+        for x_id in x_ids)
 
     # Get the objects locally to cause them to be transferred. This is the
     # first time the objects are getting transferred, so it should happen
@@ -257,8 +257,8 @@ def test_object_transfer_retry(ray_start_cluster):
     for _ in range(15):
         ray.put(x)
     assert not any(
-        ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+        ray.worker.global_worker.core_worker.object_exists(x_id)
+        for x_id in x_ids)
 
     end_time = time.time()
     # Make sure that the first time the objects get transferred, it happens
@@ -277,8 +277,8 @@ def test_object_transfer_retry(ray_start_cluster):
     for _ in range(15):
         ray.put(x)
     assert not any(
-        ray.worker.global_worker.plasma_client.contains(
-            ray.pyarrow.plasma.ObjectID(x_id.binary())) for x_id in x_ids)
+        ray.worker.global_worker.core_worker.object_exists(x_id)
+        for x_id in x_ids)
 
     time.sleep(repeated_push_delay)
 
@@ -325,3 +325,9 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
     do_transfers()
     do_transfers()
     do_transfers()
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+    sys.exit(pytest.main(["-v", __file__]))

@@ -33,11 +33,8 @@ idle_timeout_minutes: 5
 # Cloud-provider specific configuration.
 provider:
     type: aws
-    region: us-west-2
-    # Availability zone(s), comma-separated, that nodes may be launched in.
-    # Nodes are currently spread between zones by a round-robin approach,
-    # however this implementation detail should not be relied upon.
-    availability_zone: us-west-2b
+    region: us-east-1
+    availability_zone: us-east-1a
 
 # How Ray will authenticate with newly launched nodes.
 auth:
@@ -53,7 +50,7 @@ auth:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 head_node:
     InstanceType: <<<HEAD_TYPE>>>
-    ImageId: ami-0027dfad6168539c7  # Amazon Deep Learning AMI (Ubuntu), Version 21.2
+    ImageId: ami-0757fc5a639fe7666
 
     # You can provision additional disk space with a conf as follows
     BlockDeviceMappings:
@@ -69,11 +66,11 @@ head_node:
 # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
 worker_nodes:
     InstanceType: <<<WORKER_TYPE>>>
-    ImageId: ami-0027dfad6168539c7  # Amazon Deep Learning AMI (Ubuntu), Version 21.2
+    ImageId: ami-0757fc5a639fe7666
 
     # Run workers on spot by default. Comment this out to use on-demand.
-    InstanceMarketOptions:
-        MarketType: spot
+#    InstanceMarketOptions:
+#        MarketType: spot
         # Additional options can be found in the boto docs, e.g.
         #   SpotOptions:
         #       MaxPrice: MAX_HOURLY_PRICE
@@ -89,11 +86,9 @@ file_mounts: {
 
 # List of shell commands to run to set up nodes.
 setup_commands:
-    - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_<<<PYTHON_VERSION>>>/bin:$PATH"' >> ~/.bashrc
-    - ray || wget https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<<<RAY_VERSION>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
-    - rllib || pip install -U ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
-    - pip install tensorflow-gpu==1.12.0
-    - echo "sudo halt" | at now + 60 minutes
+    - wget --quiet https://s3-us-west-2.amazonaws.com/ray-wheels/releases/<<<RAY_VERSION>>>/<<<RAY_COMMIT>>>/ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl
+    - source activate tensorflow_p36 && pip install -U ray-<<<RAY_VERSION>>>-<<<WHEEL_STR>>>-manylinux1_x86_64.whl[rllib]
+    - source activate tensorflow_p36 && pip install ray[rllib] ray[debug]
     # Consider uncommenting these if you also want to run apt-get commands during setup
     # - sudo pkill -9 apt-get || true
     # - sudo pkill -9 dpkg || true
@@ -109,9 +104,9 @@ worker_setup_commands: []
 # Command to start ray on the head node. You don't need to change this.
 head_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - ulimit -n 65536; source activate tensorflow_p36 && OMP_NUM_THREADS=1 ray start --head --redis-port=6379 --object-manager-port=8076 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # Command to start ray on worker nodes. You don't need to change this.
 worker_start_ray_commands:
     - ray stop
-    - ulimit -n 65536; ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+    - ulimit -n 65536; source activate tensorflow_p36 && OMP_NUM_THREADS=1 ray start --redis-address=$RAY_HEAD_IP:6379 --object-manager-port=8076

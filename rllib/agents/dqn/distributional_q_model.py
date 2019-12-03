@@ -152,9 +152,9 @@ class DistributionalQModel(TFModelV2):
             return state_score
 
         if tf.executing_eagerly():
+            from tensorflow.python.ops import variable_scope
             # Have to use a variable store to reuse variables in eager mode
-            import tensorflow.contrib as tfc
-            store = tfc.eager.EagerVariableStore()
+            store = variable_scope.EagerVariableStore()
 
             # Save the scope objects, since in eager we will execute this
             # path repeatedly and there is no guarantee it will always be run

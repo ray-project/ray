@@ -73,9 +73,11 @@ inline void SetObjectTypeFlag(ObjectType object_type, ObjectIDFlagsType *flags) 
 }
 
 inline void SetTransportTypeFlag(uint8_t transport_type, ObjectIDFlagsType *flags) {
+  // TODO(ekl) we should be masking for all the SET operations in this file.
+  auto mask = static_cast<ObjectIDFlagsType>(1) << kTransportTypeBitsOffset;
   const ObjectIDFlagsType transport_type_bits =
       static_cast<ObjectIDFlagsType>(transport_type) << kTransportTypeBitsOffset;
-  *flags = (*flags bitor transport_type_bits);
+  *flags = ((*flags bitand ~mask) bitor transport_type_bits);
 }
 
 inline bool CreatedByTask(ObjectIDFlagsType flags) {
@@ -146,6 +148,22 @@ bool ObjectID::IsPutObject() const {
 
 bool ObjectID::IsReturnObject() const {
   return ::ray::GetObjectType(this->GetFlags()) == ObjectType::RETURN_OBJECT;
+}
+
+ObjectID ObjectID::WithTransportType(TaskTransportType transport_type) const {
+  ObjectID copy = ObjectID::FromBinary(Binary());
+  ObjectIDFlagsType flags = GetFlags();
+  SetTransportTypeFlag(static_cast<uint8_t>(transport_type), &flags);
+  std::memcpy(copy.id_ + TaskID::kLength, &flags, sizeof(flags));
+  return copy;
+}
+
+ObjectID ObjectID::WithPlasmaTransportType() const {
+  return WithTransportType(TaskTransportType::RAYLET);
+}
+
+ObjectID ObjectID::WithDirectTransportType() const {
+  return WithTransportType(TaskTransportType::DIRECT);
 }
 
 uint8_t ObjectID::GetTransportType() const {
@@ -280,10 +298,6 @@ TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
 }
 
 TaskID ObjectID::TaskId() const {
-  if (!CreatedByTask()) {
-    // TODO(qwang): Should be RAY_CHECK here.
-    RAY_LOG(WARNING) << "Shouldn't call this on a non-task object id: " << this->Hex();
-  }
   return TaskID::FromBinary(
       std::string(reinterpret_cast<const char *>(id_), TaskID::Size()));
 }
@@ -344,22 +358,6 @@ ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
   std::memcpy(ret.id_ + TaskID::kLength + kFlagsBytesLength, &object_index,
               sizeof(object_index));
   return ret;
-}
-
-const ActorHandleID ComputeNextActorHandleId(const ActorHandleID &actor_handle_id,
-                                             int64_t num_forks) {
-  // Compute hashes.
-  SHA256_CTX ctx;
-  sha256_init(&ctx);
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(actor_handle_id.Data()),
-                actor_handle_id.Size());
-  sha256_update(&ctx, reinterpret_cast<const BYTE *>(&num_forks), sizeof(num_forks));
-
-  // Compute the final actor handle ID from the hash.
-  BYTE buff[DIGEST_SIZE];
-  sha256_final(&ctx, buff);
-  RAY_CHECK(DIGEST_SIZE >= ActorHandleID::Size());
-  return ActorHandleID::FromBinary(std::string(buff, buff + ActorHandleID::Size()));
 }
 
 JobID JobID::FromInt(uint32_t value) {

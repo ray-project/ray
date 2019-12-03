@@ -7,6 +7,15 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
 
 echo "PYTHON is $PYTHON"
 
+# If we are in Travis, most of the compilation result will be cached.
+# This means we are I/O bounded. By default, Bazel set the number of concurrent
+# jobs to the the number cores on the machine, which are not efficient for 
+# network bounded cache downloading workload. Therefore we increase the number
+# of jobs to 50
+if [[ "$TRAVIS" == "true" ]]; then
+  echo "build --jobs=50" >> $HOME/.bazelrc
+fi
+
 if [[ "$PYTHON" == "2.7" ]]; then
 
   pushd "$ROOT_DIR/../../python"
@@ -17,6 +26,12 @@ elif [[ "$PYTHON" == "3.5" ]]; then
   export PATH="$HOME/miniconda/bin:$PATH"
 
   pushd "$ROOT_DIR/../../python"
+    pushd ray/dashboard/client
+      source $HOME/.nvm/nvm.sh
+      nvm use node
+      npm ci
+      npm run build
+    popd
     python setup.py install --user
   popd
 
@@ -26,8 +41,8 @@ elif [[ "$LINT" == "1" ]]; then
   pushd "$ROOT_DIR/../../python"
     python setup.py install --user
   popd
-
 else
   echo "Unrecognized Python version."
   exit 1
 fi
+
