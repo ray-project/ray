@@ -79,7 +79,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Void.
   void PushActorTask(rpc::CoreWorkerClientInterface &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
-                     const ActorID &actor_id, const TaskID &task_id, int num_returns);
+                     const ActorID &actor_id, const TaskID &task_id, int num_returns)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
@@ -87,7 +88,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id);
+  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Whether the specified actor is alive.
   ///
