@@ -67,7 +67,7 @@ TFTrainer Example
 
 Below is an example of using Ray's TFTrainer. Under the hood, ``TFTrainer`` will create *replicas* of your model (controlled by ``num_replicas``) which are each managed by a worker.
 
-.. literalinclude:: ../../python/ray/experimental/sgd/examples/tensorflow_train_example.py
+.. literalinclude:: ../../../../python/ray/experimental/sgd/examples/tensorflow_train_example.py
    :language: python
 
 

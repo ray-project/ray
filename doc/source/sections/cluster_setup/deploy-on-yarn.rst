@@ -173,7 +173,7 @@ You can use the following command to launch the application as specified by the 
 
 Once it has been submitted, you can see the job running on the YARN dashboard.
 
-.. image:: images/yarn-job.png
+.. image:: ../../images/yarn-job.png
 
 Cleaning Up
 -----------

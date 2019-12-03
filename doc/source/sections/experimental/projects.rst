@@ -83,7 +83,7 @@ Here is an example for a minimal project format:
 
 Project files have to adhere to the following schema:
 
-.. jsonschema:: ../../python/ray/projects/schema.json
+.. jsonschema:: ../../../../python/ray/projects/schema.json
 
 Cluster file format (cluster.yaml)
 ----------------------------------

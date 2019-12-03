@@ -88,7 +88,7 @@ Common Parameters
 
 The following is a list of the common algorithm hyperparameters:
 
-.. literalinclude:: ../../rllib/agents/trainer.py
+.. literalinclude:: ../../../../rllib/agents/trainer.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

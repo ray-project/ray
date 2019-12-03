@@ -44,7 +44,7 @@ SpaceInvaders  646                               ~300
 
 **Ape-X specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/dqn/apex.py
+.. literalinclude:: ../../../../rllib/agents/dqn/apex.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -91,7 +91,7 @@ SpaceInvaders  843                              ~300
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/impala/impala.py
+.. literalinclude:: ../../../../rllib/agents/impala/impala.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -113,7 +113,7 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ppo/appo.py
+.. literalinclude:: ../../../../rllib/agents/ppo/appo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -150,7 +150,7 @@ SpaceInvaders  692                       ~600
 
 **A3C-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/a3c/a3c.py
+.. literalinclude:: ../../../../rllib/agents/a3c/a3c.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -168,7 +168,7 @@ Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **DDPG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ddpg/ddpg.py
+.. literalinclude:: ../../../../rllib/agents/ddpg/ddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -200,7 +200,7 @@ SpaceInvaders  650                       1001                           1025    
 
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/dqn/dqn.py
+.. literalinclude:: ../../../../rllib/agents/dqn/dqn.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -217,7 +217,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/pg/pg.py
+.. literalinclude:: ../../../../rllib/agents/pg/pg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -261,7 +261,7 @@ HalfCheetah    9664                       ~7700
 
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ppo/ppo.py
+.. literalinclude:: ../../../../rllib/agents/ppo/ppo.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -280,7 +280,7 @@ Tuned examples: `Pendulum-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/sac/sac.py
+.. literalinclude:: ../../../../rllib/agents/sac/sac.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -297,7 +297,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **ARS-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/ars/ars.py
+.. literalinclude:: ../../../../rllib/agents/ars/ars.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -318,7 +318,7 @@ Tuned examples: `Humanoid-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 **ES-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/es/es.py
+.. literalinclude:: ../../../../rllib/agents/es/es.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -333,7 +333,7 @@ Tuned examples: `Two-step game <https://github.com/ray-project/ray/blob/master/r
 
 **QMIX-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/qmix/qmix.py
+.. literalinclude:: ../../../../rllib/agents/qmix/qmix.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -346,7 +346,7 @@ Multi-Agent Deep Deterministic Policy Gradient (contrib/MADDPG)
 
 Tuned examples: `Multi-Agent Particle Environment <https://github.com/wsjeon/maddpg-rllib/tree/master/plots>`__, `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/twostep_game.py>`__
 
-.. literalinclude:: ../../rllib/contrib/maddpg/maddpg.py
+.. literalinclude:: ../../../../rllib/contrib/maddpg/maddpg.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -360,7 +360,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/marwil/marwil.py
+.. literalinclude:: ../../../../rllib/agents/marwil/marwil.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

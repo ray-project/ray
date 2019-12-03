@@ -1,6 +1,3 @@
-Ray
-===
-
 .. raw:: html
 
   <embed>
@@ -9,9 +6,7 @@ Ray
 
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-**Ray is a fast and simple framework for building and running distributed applications.**
-
-.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
+**Ray is a fast and simple framework for building and running distributed applications from a laptop to a cluster.**
 
 Ray is packaged with the following libraries for accelerating machine learning workloads:
 
@@ -23,6 +18,8 @@ Ray is packaged with the following libraries for accelerating machine learning w
 Star us on `on GitHub`_. You can also get started by visiting our `Tutorials <https://github.com/ray-project/tutorial>`_. For the latest wheels (nightlies), see the `installation page <installation.html>`__.
 
 .. _`on GitHub`: https://github.com/ray-project/ray
+
+.. tip:: Join our `community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray!
 
 
 Quick Start
@@ -223,81 +220,16 @@ Getting Involved
 .. _`Pull Requests`: https://github.com/ray-project/ray/pulls
 
 
-
 .. toctree::
-   :maxdepth: -1
-   :caption: Installation
+  :maxdepth: 3
+  :name: Documentation
 
-   installation.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Ray Core
-
-   using-ray.rst
-   Tutorials <https://github.com/ray-project/tutorial>
-   Examples <auto_examples/overview.rst>
-   package-ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Deploying Ray (Cluster Setup)
-
-   autoscaling.rst
-   using-ray-on-a-cluster.rst
-   deploy-on-yarn.rst
-   deploy-on-kubernetes.rst
-   deploying-on-slurm.rst
-
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Tune
-
-   tune.rst
-   tune-tutorial.rst
-   tune-usage.rst
-   tune-distributed.rst
-   tune-schedulers.rst
-   tune-searchalg.rst
-   tune-package-ref.rst
-   tune-design.rst
-   tune-examples.rst
-   tune-contrib.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: RLlib
-
-   rllib.rst
-   rllib-toc.rst
-   rllib-training.rst
-   rllib-env.rst
-   rllib-models.rst
-   rllib-algorithms.rst
-   rllib-offline.rst
-   rllib-concepts.rst
-   rllib-examples.rst
-   rllib-dev.rst
-   rllib-package-ref.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Experimental
-
-   distributed_training.rst
-   tf_distributed_training.rst
-   pandas_on_ray.rst
-   projects.rst
-   signals.rst
-   async_api.rst
-   serve.rst
-
-.. toctree::
-   :maxdepth: -1
-   :caption: Development and Internals
-
-   development.rst
-   profiling.rst
-   fault-tolerance.rst
-   getting-involved.rst
+  Installation <sections/installation/installation>
+  Using Ray <sections/using_ray/using_ray>
+  Deploying Ray (Cluster Setup) <sections/cluster_setup/cluster_setup>
+  Examples <sections/examples/examples>
+  Tune <sections/tune/tune>
+  RLlib <sections/rllib/rllib>
+  Experimental <sections/experimental/experimental>
+  Development <sections/development/development>
+  Community <sections/community/community>

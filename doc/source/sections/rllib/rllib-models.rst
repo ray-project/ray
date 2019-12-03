@@ -25,7 +25,7 @@ Built-in Model Parameters
 
 The following is a list of the built-in model hyperparameters:
 
-.. literalinclude:: ../../rllib/models/catalog.py
+.. literalinclude:: ../../../../rllib/models/catalog.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

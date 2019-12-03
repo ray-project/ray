@@ -3,7 +3,7 @@ Tune: A Scalable Hyperparameter Tuning Library
 
 .. tip:: Help make Tune better by taking our 3 minute `Ray Tune User Survey <https://forms.gle/7u5eH1avbTfpZ3dE6>`_!
 
-.. image:: images/tune.png
+.. image:: ../../images/tune.png
     :scale: 30%
     :align: center
 
@@ -45,7 +45,7 @@ To run this example, you will need to install the following:
 
 This example runs a small grid search to train a CNN using PyTorch and Tune.
 
-.. literalinclude:: ../../python/ray/tune/tests/example.py
+.. literalinclude:: ../../../../python/ray/tune/tests/example.py
    :language: python
    :start-after: __quick_start_begin__
    :end-before: __quick_start_end__
@@ -83,14 +83,14 @@ Distributed Quick Start
     args = parser.parse_args()
     ray.init(address=args.ray_address)
 
-Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../python/ray/tune/examples/mnist_pytorch.py>`
+Alternatively, download a full example script here: :download:`mnist_pytorch.py <../../../../python/ray/tune/examples/mnist_pytorch.py>`
 
 2. Download the following example Ray cluster configuration as ``tune-local-default.yaml`` and replace the appropriate fields:
 
-.. literalinclude:: ../../python/ray/tune/examples/tune-local-default.yaml
+.. literalinclude:: ../../../../python/ray/tune/examples/tune-local-default.yaml
    :language: yaml
 
-Alternatively, download it here: :download:`tune-local-default.yaml <../../python/ray/tune/examples/tune-local-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
+Alternatively, download it here: :download:`tune-local-default.yaml <../../../../python/ray/tune/examples/tune-local-default.yaml>`. See `Ray cluster docs here <autoscaling.html>`_.
 
 3. Run ``ray submit`` like the following.
 
@@ -151,3 +151,22 @@ If Tune helps you in your academic research, you are encouraged to cite `our pap
         journal={arXiv preprint arXiv:1807.05118},
         year={2018}
     }
+
+.. _HyperOpt with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_example.py
+.. _Nevergrad with HyperBand: https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/nevergrad_example.py
+
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Tune
+
+   tune-tutorial.rst
+   tune-usage.rst
+   tune-distributed.rst
+   tune-schedulers.rst
+   tune-searchalg.rst
+   tune-package-ref.rst
+   tune-design.rst
+   tune-examples.rst
+   tune-contrib.rst
+

@@ -52,21 +52,21 @@ One common use case for using Ray with PyTorch is to parallelize the training of
 Suppose we have a simple network definition (this one is modified from the
 PyTorch documentation).
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../../../examples/doc_code/torch_example.py
    :language: python
    :start-after: __torch_model_start__
    :end-before: __torch_model_end__
 
 Along with these helper training functions:
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../../../examples/doc_code/torch_example.py
    :language: python
    :start-after: __torch_helper_start__
    :end-before: __torch_helper_end
 
 Let's now define a class that captures the training process.
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../../../examples/doc_code/torch_example.py
    :language: python
    :start-after: __torch_net_start__
    :end-before: __torch_net_end
@@ -74,7 +74,7 @@ Let's now define a class that captures the training process.
 
 To train multiple models, you can convert the above class into a Ray Actor class.
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../../../examples/doc_code/torch_example.py
    :language: python
    :start-after: __torch_ray_start__
    :end-before: __torch_ray_end__
@@ -82,7 +82,7 @@ To train multiple models, you can convert the above class into a Ray Actor class
 
 Then, we can instantiate multiple copies of the Model, each running on different processes. If GPU is enabled, each copy runs on a different GPU. See the `GPU guide <using-ray-with-gpus.html>`_ for more information.
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../../../examples/doc_code/torch_example.py
    :language: python
    :start-after: __torch_actor_start__
    :end-before: __torch_actor_end__
@@ -91,6 +91,6 @@ Then, we can instantiate multiple copies of the Model, each running on different
 We can then use ``set_weights`` and ``get_weights`` to move the weights of the neural network around. The below example averages the weights of the two networks and sends them back to update the original actors.
 
 
-.. literalinclude:: ../examples/doc_code/torch_example.py
+.. literalinclude:: ../../../examples/doc_code/torch_example.py
    :language: python
    :start-after: __weight_average_start__

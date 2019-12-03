@@ -91,7 +91,7 @@ Example: Converting external experiences to batch format
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
 This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v0 to disk:
 
-.. literalinclude:: ../../rllib/examples/saving_experiences.py
+.. literalinclude:: ../../../../rllib/examples/saving_experiences.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -155,7 +155,7 @@ Input API
 
 You can configure experience input for an agent using the following options:
 
-.. literalinclude:: ../../rllib/agents/trainer.py
+.. literalinclude:: ../../../../rllib/agents/trainer.py
    :language: python
    :start-after: === Offline Datasets ===
    :end-before: Specify where experiences should be saved
@@ -170,7 +170,7 @@ Output API
 
 You can configure experience output for an agent using the following options:
 
-.. literalinclude:: ../../rllib/agents/trainer.py
+.. literalinclude:: ../../../../rllib/agents/trainer.py
    :language: python
    :start-after: shuffle_buffer_size
    :end-before: Settings for Multi-Agent Environments

@@ -65,7 +65,7 @@ at the beginning and then to ship only the weights between the workers.
 Suppose we have a simple network definition (this one is modified from the
 TensorFlow documentation).
 
-.. literalinclude:: ../examples/doc_code/tf_example.py
+.. literalinclude:: ../../../examples/doc_code/tf_example.py
    :language: python
    :start-after: __tf_model_start__
    :end-before: __tf_model_end__
@@ -73,14 +73,14 @@ TensorFlow documentation).
 It is strongly recommended you create actors to handle this. To do this, first initialize
 ray and define an Actor class:
 
-.. literalinclude:: ../examples/doc_code/tf_example.py
+.. literalinclude:: ../../../examples/doc_code/tf_example.py
    :language: python
    :start-after: __ray_start__
    :end-before: __ray_end__
 
 Then, we can instantiate this actor and train it on the separate process:
 
-.. literalinclude:: ../examples/doc_code/tf_example.py
+.. literalinclude:: ../../../examples/doc_code/tf_example.py
    :language: python
    :start-after: __actor_start__
    :end-before: __actor_end__
@@ -90,7 +90,7 @@ We can then use ``set_weights`` and ``get_weights`` to move the weights of the n
 around. This allows us to manipulate weights between different models running in parallel without shipping the actual TensorFlow graphs, which are much more complex Python objects.
 
 
-.. literalinclude:: ../examples/doc_code/tf_example.py
+.. literalinclude:: ../../../examples/doc_code/tf_example.py
    :language: python
    :start-after: __weight_average_start__
 

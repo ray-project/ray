@@ -8,7 +8,7 @@ Overview
 
 There are several ways that Ray applications use memory:
 
-.. image:: images/memory.svg
+.. image:: ../../images/memory.svg
 
 Ray system memory: this is memory used internally by Ray
   - **Redis**: memory used for storing task lineage and object metadata. When Redis becomes full, lineage will start to be be LRU evicted, which makes the corresponding objects ineligible for reconstruction on failure.

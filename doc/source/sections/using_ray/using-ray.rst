@@ -9,6 +9,7 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
 
 .. toctree::
    :maxdepth: -1
+   :caption:  Using Ray
 
    walkthrough.rst
    actors.rst
@@ -18,5 +19,7 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
    configure.rst
    troubleshooting.rst
    advanced.rst
-   using-ray-with-tensorflow.rst
-   using-ray-with-pytorch.rst
+   package-ref.rst
+   Tutorials <https://github.com/ray-project/tutorial>
+   ../examples/using-ray-with-tensorflow.rst
+   ../examples/using-ray-with-pytorch.rst

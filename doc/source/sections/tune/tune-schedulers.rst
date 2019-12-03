@@ -123,17 +123,17 @@ Implementation details may deviate slightly from theory but are focused on incre
 
 1. Both ``s_max`` (representing the ``number of brackets - 1``) and ``eta``, representing the downsampling rate, are fixed.  In many practical settings, ``R``, which represents some resource unit and often the number of training iterations, can be set reasonably large, like ``R >= 200``. For simplicity, assume ``eta = 3``. Varying ``R`` between ``R = 200`` and ``R = 1000`` creates a huge range of the number of trials needed to fill up all brackets.
 
-.. image:: images/hyperband_bracket.png
+.. image:: ../../images/hyperband_bracket.png
 
 On the other hand, holding ``R`` constant at ``R = 300`` and varying ``eta`` also leads to HyperBand configurations that are not very intuitive:
 
-.. image:: images/hyperband_eta.png
+.. image:: ../../images/hyperband_eta.png
 
 The implementation takes the same configuration as the example given in the paper and exposes ``max_t``, which is not a parameter in the paper.
 
 2. The example in the `post <https://homes.cs.washington.edu/~jamieson/hyperband.html>`_ to calculate ``n_0`` is actually a little different than the algorithm given in the paper. In this implementation, we implement ``n_0`` according to the paper (which is `n` in the below example):
 
-.. image:: images/hyperband_allocation.png
+.. image:: ../../images/hyperband_allocation.png
 
 
 3. There are also implementation specific details like how trials are placed into brackets which are not covered in the paper. This implementation places trials within brackets according to smaller bracket first - meaning that with low number of trials, there will be less early stopping.

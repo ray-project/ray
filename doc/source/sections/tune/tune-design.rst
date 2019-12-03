@@ -4,7 +4,7 @@ Tune Design Guide
 In this part of the documentation, we overview the design and architecture
 of Tune.
 
-.. image:: images/tune-arch.png
+.. image:: ../../images/tune-arch.png
 
 The blue boxes refer to internal components, and green boxes are public-facing.
 Please refer to the package reference for `user-facing APIs <tune-package-ref.html>`__.

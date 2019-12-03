@@ -9,7 +9,7 @@ nodes) maintains global shared parameters of a machine-learning model
 (e.g., a neural network) while the data and computation of calculating
 updates (i.e., gradient descent updates) are distributed over worker nodes.
 
-.. image:: ../images/param_actor.png
+.. image:: ../../../images/param_actor.png
     :align: center
 
 Parameter servers are a core part of many machine learning applications. This
