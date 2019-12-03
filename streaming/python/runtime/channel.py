@@ -42,7 +42,7 @@ class ChannelID:
         return self.channel_id_str
 
     @staticmethod
-    def gen_random_qid():
+    def gen_random_id():
         """Generate a random channel id string
         """
         res = ""
