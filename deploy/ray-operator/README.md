@@ -1,4 +1,4 @@
-# Ray-Operator Documentation
+# Ray Kubernetes Operator
 
 [Kubernetes](https://kubernetes.io/) is an open-source system for automating deployment, scaling, and management of containerized applications. It is playing an important role in the next generation cloud-infra. 
 
