@@ -19,6 +19,16 @@ pickle5_path = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "pickle5_files")
 sys.path.insert(0, pickle5_path)
 
+# Expose ray related symbols which may be dependent by other shared
+# liraries such as _streaming.so. Only linux needs this.
+from os.path import dirname
+so_path = os.path.join(dirname(__file__), "_raylet.so")
+if os.path.exists(so_path):
+    import ctypes
+    from ctypes import CDLL
+    CDLL(so_path, ctypes.RTLD_GLOBAL)
+
+
 # MUST import ray._raylet before pyarrow to initialize some global variables.
 # It seems the library related to memory allocation in pyarrow will destroy the
 # initialization of grpc if we import pyarrow at first.
