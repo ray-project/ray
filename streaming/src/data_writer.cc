@@ -48,9 +48,9 @@ void DataWriter::WriterLoopForward() {
     }
 
     if (empty_messge_send_count == output_queue_ids_.size()) {
-      // sleep if empty message was sent in all channel
+      // Sleep if empty message was sent in all channel.
       uint64_t sleep_time_ = current_time_ms() - min_passby_message_ts;
-      // sleep_time can be bigger than time interval because of network jitter
+      // Sleep_time can be bigger than time interval because of network jitter.
       if (sleep_time_ <= runtime_context_->GetConfig().GetEmptyMessageTimeInterval()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(
             runtime_context_->GetConfig().GetEmptyMessageTimeInterval() - sleep_time_));
@@ -61,7 +61,7 @@ void DataWriter::WriterLoopForward() {
 
 StreamingStatus DataWriter::WriteChannelProcess(ProducerChannelInfo &channel_info,
                                                 bool *is_empty_message) {
-  // no message in buffer, empty message will be sent to downstream queue
+  // No message in buffer, empty message will be sent to downstream queue.
   uint64_t buffer_remain = 0;
   StreamingStatus write_queue_flag = WriteBufferToChannel(channel_info, buffer_remain);
   int64_t current_ts = current_time_ms();
@@ -83,7 +83,7 @@ StreamingStatus DataWriter::WriteBufferToChannel(ProducerChannelInfo &channel_in
     return StreamingStatus::EmptyRingBuffer;
   }
 
-  // flush transient buffer to queue first
+  // Flush transient buffer to queue first.
   if (buffer_ptr->IsTransientAvaliable()) {
     return WriteTransientBufferToChannel(channel_info);
   }
@@ -138,7 +138,6 @@ StreamingStatus DataWriter::InitChannel(const ObjectID &q_id, const ActorID &act
   channel_info.actor_id = actor_id;
   channel_info.queue_size = queue_size;
   STREAMING_LOG(WARNING) << " Init queue [" << q_id << "]";
-  // init queue
   channel_info.writer_ring_buffer = std::make_shared<StreamingRingBuffer>(
       runtime_context_->GetConfig().GetRingBufferCapacity(),
       StreamingRingBufferType::SPSC);
