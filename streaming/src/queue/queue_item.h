@@ -24,12 +24,13 @@ const uint64_t QUEUE_INVALID_SEQ_ID = std::numeric_limits<uint64_t>::max();
 /// LocalMemoryBuffer shared_ptr, which will be sent out by Transport.
 class QueueItem {
  public:
-  /// Construct a QueueItem object
+  /// Construct a QueueItem object.
   /// \param[in] seq_id the sequential id assigned by DataWriter for a message bundle and
-  /// QueueItem \param[in] data the data buffer to be stored in this QueueItem \param[in]
-  /// data_size the data size in bytes \param[in] timestamp the time when this QueueItem
-  /// created \param[in] raw whether the data content is raw bytes, only used in some
-  /// tests
+  /// QueueItem.
+  /// \param[in] data the data buffer to be stored in this QueueItem.
+  /// \param[in] data_size the data size in bytes.
+  /// \param[in] timestamp the time when this QueueItem created.
+  /// \param[in] raw whether the data content is raw bytes, only used in some tests.
   QueueItem(uint64_t seq_id, uint8_t *data, uint32_t data_size, uint64_t timestamp,
             bool raw = false)
       : seq_id_(seq_id),

@@ -53,18 +53,20 @@ class QueueService {
   std::shared_ptr<Transport> GetOutTransport(const ObjectID &actor_id);
 
   /// The actual function where message being dispatched, called by DispatchMessageAsync
-  /// and DispatchMessageSync. \param[in] buffer serialized message received from peer
-  /// actor. \param[in] callback the callback function used by DispatchMessageSync, called
-  /// after message processed complete.
-  ///            The std::shared_ptr<LocalMemoryBuffer> parameter is the return value.
+  /// and DispatchMessageSync.
+  /// \param[in] buffer serialized message received from peer actor.
+  /// \param[in] callback the callback function used by DispatchMessageSync, called
+  ///            after message processed complete. The std::shared_ptr<LocalMemoryBuffer>
+  ///            parameter is the return value.
   virtual void DispatchMessageInternal(
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) = 0;
 
   /// Save actor_id of the peer actor specified by queue_id. For a upstream queue, the
   /// peer actor refer specifically to the actor in current ray cluster who has a
-  /// downstream queue with same queue_id, and vice versa. \param[in] queue_id queue id of
-  /// current queue \param[in] actor_id actor_id actor id of corresponded peer actor
+  /// downstream queue with same queue_id, and vice versa.
+  /// \param[in] queue_id queue id of current queue.
+  /// \param[in] actor_id actor_id actor id of corresponded peer actor.
   void SetPeerActorID(const ObjectID &queue_id, const ActorID &actor_id);
 
   /// Obtain the actor id of the peer actor specified by queue_id.
@@ -119,10 +121,9 @@ class UpstreamService : public QueueService {
   /// Check whether the upstream queue specified by queue_id exists or not.
   bool UpstreamQueueExists(const ObjectID &queue_id);
   /// Wait all queues in queue_ids vector ready, until timeout.
-  /// \param[in] queue_ids a group of queues
-  /// \param[in] timeout_ms max timeout time interval for wait all queues
-  /// \param[out] failed_queues a group of queues which are not ready when timeout
-  /// \param[type]
+  /// \param[in] queue_ids a group of queues.
+  /// \param[in] timeout_ms max timeout time interval for wait all queues.
+  /// \param[out] failed_queues a group of queues which are not ready when timeout.
   void WaitQueues(const std::vector<ObjectID> &queue_ids, int64_t timeout_ms,
                   std::vector<ObjectID> &failed_queues);
   /// Handle notify message from corresponded downstream queue.
