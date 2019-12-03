@@ -57,7 +57,7 @@ type RayClusterImage struct {
 
 type Extension struct {
 	// the size of this pod group
-	Size int32 `json:"size"`
+	NumNudes int32 `json:"numNodes"`
 
 	// worker/head
 	Type string `json:"type,omitempty"`
