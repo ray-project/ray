@@ -17,7 +17,7 @@ $TRAIN --local-dir=$TMP --run=IMPALA --checkpoint-freq=1 \
     --stop='{"training_iteration": 1}'
 find $TMP
 
-CHECKPOINT_PATH=`ls $TMP/default/*/checkpoint_1/checkpoint-1`
+CHECKPOINT_PATH=`ls $TMP/default/*/checkpoints/checkpoint_1/checkpoint-1`
 echo "Checkpoint path $CHECKPOINT_PATH"
 test -e "$CHECKPOINT_PATH"
 
