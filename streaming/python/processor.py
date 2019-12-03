@@ -208,7 +208,7 @@ class KeyBy:
 class Source:
     def __init__(self, operator):
         # The user-defined source with a get_next() method
-        self.source = operator.other_args
+        self.source = operator.logic
 
     # Starts the source by calling get_next() repeatedly
     def run(self, input_gate, output_gate):

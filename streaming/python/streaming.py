@@ -313,7 +313,7 @@ class Environment(object):
         source_id = self.gen_operator_id()
         source_stream = DataStream(self, source_id)
         self.operators[source_id] = Operator(
-            source_id, OpType.Source, processor.Source, "Source", other=source)
+            source_id, OpType.Source, processor.Source, "Source", logic=source)
         return source_stream
 
     # Creates and registers a new data source that reads a
