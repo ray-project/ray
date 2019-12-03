@@ -221,8 +221,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Handle a worker finishing its assigned task.
   ///
   /// \param worker The worker that finished the task.
-  /// \return Void.
-  void FinishAssignedTask(Worker &worker);
+  /// \return Whether the worker should be returned to the idle pool. This is
+  /// only false for direct actor creation calls, which should never be
+  /// returned to idle.
+  bool FinishAssignedTask(Worker &worker);
   /// Helper function to produce actor table data for a newly created actor.
   ///
   /// \param task_spec Task specification of the actor creation task that created the

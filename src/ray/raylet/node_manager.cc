@@ -1108,25 +1108,27 @@ void NodeManager::HandleWorkerAvailable(
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<Worker> &worker) {
   RAY_CHECK(worker);
+  bool worker_idle = true;
   // If the worker was assigned a task, mark it as finished.
   if (!worker->GetAssignedTaskId().IsNil()) {
-    FinishAssignedTask(*worker);
+    worker_idle = FinishAssignedTask(*worker);
   }
 
-  // Return the worker to the idle pool.
-  worker_pool_.PushWorker(std::move(worker));
+  if (worker_idle) {
+    // Return the worker to the idle pool.
+    worker_pool_.PushWorker(std::move(worker));
+  }
 
   if (new_scheduler_enabled_) {
     DispatchScheduledTasksToWorkers();
-    return;
+  } else {
+    // Local resource availability changed: invoke scheduling policy for local node.
+    const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
+    cluster_resource_map_[local_client_id].SetLoadResources(
+        local_queues_.GetResourceLoad());
+    // Call task dispatch to assign work to the new worker.
+    DispatchTasks(local_queues_.GetReadyTasksByClass());
   }
-
-  // Local resource availability changed: invoke scheduling policy for local node.
-  const ClientID &local_client_id = gcs_client_->client_table().GetLocalClientId();
-  cluster_resource_map_[local_client_id].SetLoadResources(
-      local_queues_.GetResourceLoad());
-  // Call task dispatch to assign work to the new worker.
-  DispatchTasks(local_queues_.GetReadyTasksByClass());
 }
 
 void NodeManager::ProcessDisconnectClientMessage(
@@ -2271,7 +2273,7 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
   }
 }
 
-void NodeManager::FinishAssignedTask(Worker &worker) {
+bool NodeManager::FinishAssignedTask(Worker &worker) {
   TaskID task_id = worker.GetAssignedTaskId();
   RAY_LOG(DEBUG) << "Finished task " << task_id;
 
@@ -2306,12 +2308,19 @@ void NodeManager::FinishAssignedTask(Worker &worker) {
   // Notify the task dependency manager that this task has finished execution.
   task_dependency_manager_.TaskCanceled(task_id);
 
-  // Unset the worker's assigned task.
-  worker.AssignTaskId(TaskID::Nil());
   // Unset the worker's assigned job Id if this is not an actor.
   if (!spec.IsActorCreationTask() && !spec.IsActorTask()) {
     worker.AssignJobId(JobID::Nil());
   }
+  if (!spec.IsDirectActorCreationCall()) {
+    // Unset the worker's assigned task. We keep the assigned task ID for
+    // direct actor creation calls because this ID is used later if the actor
+    // requires objects from plasma.
+    worker.AssignTaskId(TaskID::Nil());
+  }
+  // Direct actors will be assigned tasks via the core worker and therefore are
+  // not idle.
+  return !spec.IsDirectActorCreationCall();
 }
 
 std::shared_ptr<ActorTableData> NodeManager::CreateActorTableDataFromCreationTask(
@@ -2634,10 +2643,16 @@ void NodeManager::HandleObjectLocal(const ObjectID &object_id) {
     local_queues_.FilterState(ready_task_id_set, TaskState::DRIVER);
     local_queues_.FilterState(ready_task_id_set, TaskState::WAITING_FOR_ACTOR_CREATION);
 
-    // Make sure that the remaining tasks are all WAITING.
+    // Make sure that the remaining tasks are all WAITING or direct call
+    // actors.
     auto ready_task_id_set_copy = ready_task_id_set;
     local_queues_.FilterState(ready_task_id_set_copy, TaskState::WAITING);
-    RAY_CHECK(ready_task_id_set_copy.empty());
+    // Filter out direct call actors. These are not tracked by the raylet and
+    // their assigned task ID is the actor ID.
+    for (const auto &id : ready_task_id_set_copy) {
+      RAY_CHECK(actor_registry_.count(id.ActorId()) > 0);
+      ready_task_id_set.erase(id);
+    }
 
     // Queue and dispatch the tasks that are ready to run (i.e., WAITING).
     auto ready_tasks = local_queues_.RemoveTasks(ready_task_id_set);
