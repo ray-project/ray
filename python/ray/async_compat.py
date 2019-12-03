@@ -3,7 +3,6 @@ This file should only be imported from Python 3.
 It will raise SyntaxError when importing from Python 2.
 """
 import ray
-from ray.experimental.async_api import init, as_future
 import asyncio
 
 
@@ -16,16 +15,16 @@ def sync_to_async(func):
     return wrapper
 
 
-async def get_async(object_id: ray.ObjectID):
+def get_async(object_id):
     """Asyncio compatible version of ray.get"""
+    from ray.experimental.async_api import init, as_future
     init()
+    loop = asyncio.get_event_loop()
+    core_worker = ray.worker.global_worker.core_worker
 
     if object_id.is_direct_call_type():
-        core_worker = ray.worker.global_worker.core_worker
-        future = core_worker.get_async(object_id)
-        result = await future
+        future = loop.create_future()
+        core_worker.get_async(object_id, future)
+        return future
     else:
-        result = await as_future(object_id)
-
-    return result
-
+        return as_future(object_id)

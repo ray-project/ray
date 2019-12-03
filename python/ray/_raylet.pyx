@@ -1173,11 +1173,18 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return self.core_worker.get().GetWorkerContext().CurrentActorIsAsync()
 
-    def get_async(self, object_id):
-        future = asyncio.Future()
-        self.core_worker.get().GetAsync(object_id, inner)
-        return future
+    def get_async(self, object_id, future):
+        cdef:
+            CObjectID c_object_id = (<ObjectID>object_id).native()
+        self.core_worker.get().GetAsync(
+            c_object_id,
+            async_set_result_callback,
+            <void*>future)
 
-cdef void inner(shared_ptr[CRayObject] obj):
-    print(obj)
-    future.set_result(obj)        
+cdef void async_set_result_callback(shared_ptr[CRayObject] obj, void *future):
+    # TODO(simon): descrialize obj
+
+    # void* and cast to object is the Cython recommended way of passing python
+    # object into callback.
+    # https://github.com/cython/cython/blob/master/Demos/callback/cheese.pyx
+    (<object>future).set_result("Hi it's fulfilled!")

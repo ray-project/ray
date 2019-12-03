@@ -35,7 +35,9 @@ from ray.includes.libraylet cimport CRayletClient
 
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
-ctypedef void (*ray_callack_function)(shared_ptr[CRayObject] result_object)
+
+ctypedef void (*ray_callack_function) \
+    (shared_ptr[CRayObject] result_object, void* user_data)
 
 cdef extern from "ray/core_worker/profiling.h" nogil:
     cdef cppclass CProfiler "ray::worker::Profiler":
@@ -146,4 +148,5 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
-        void GetAsync(const CObjectID &object_id, ray_callack_function callback)
+        void GetAsync(const CObjectID &object_id,
+                      ray_callack_function callback, void* python_future)
