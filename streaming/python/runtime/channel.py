@@ -2,7 +2,6 @@ import random
 import logging
 from queue import Queue
 from typing import List
-from abc import ABCMeta, abstractmethod
 
 import ray
 import ray.streaming._streaming as _streaming
@@ -138,8 +137,8 @@ logger = logging.getLogger(__name__)
 
 
 class DataWriter:
-    """
-    Data Writer
+    """Data Writer is a wrapper of streaming c++ DataWriter, which sends data to downstream
+     workers
     """
 
     def __init__(self, output_channels, to_actors: List[ActorHandle], conf: dict):
@@ -185,8 +184,8 @@ class DataWriter:
 
 
 class DataReader:
-    """
-    Data Reader
+    """Data Reader is wrapper of streaming c++ DataReader, which read data
+    from channels of upstream workers
     """
 
     def __init__(self, input_channels: List, from_actors: List[ActorHandle], conf: dict):
