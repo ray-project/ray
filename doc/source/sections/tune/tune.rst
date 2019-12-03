@@ -57,13 +57,13 @@ If TensorBoard is installed, automatically visualize all trial results:
     tensorboard --logdir ~/ray_results
 
 
-.. image:: images/tune-start-tb.png
+.. image:: ../../images/tune-start-tb.png
     :scale: 30%
     :align: center
 
 If using TF2 and TensorBoard, Tune will also automatically generate TensorBoard HParams output:
 
-.. image:: images/tune-hparams-coord.png
+.. image:: ../../images/tune-hparams-coord.png
     :scale: 20%
     :align: center
 

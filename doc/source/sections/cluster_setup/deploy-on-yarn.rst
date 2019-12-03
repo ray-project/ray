@@ -129,7 +129,7 @@ Clean up all started processes even if the application fails or is killed.
 
 Putting things together, we have:
 
-.. literalinclude:: ../yarn/ray-skein.yaml
+.. literalinclude:: yarn/ray-skein.yaml
    :language: yaml
    :start-after: # Head service
    :end-before: # Worker service
@@ -152,7 +152,7 @@ Start all of the processes needed on a ray worker node, blocking until killed by
 
 Putting things together, we have:
 
-.. literalinclude:: ../yarn/ray-skein.yaml
+.. literalinclude:: yarn/ray-skein.yaml
    :language: yaml
    :start-after: # Worker service
 
@@ -161,7 +161,7 @@ Running a Job
 
 Within your Ray script, use the following to connect to the started Ray cluster:
 
-.. literalinclude:: ../yarn/example.py
+.. literalinclude:: yarn/example.py
     :language: python
     :start-after: if __name__ == "__main__"
 
