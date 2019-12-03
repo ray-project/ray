@@ -18,8 +18,6 @@ public class BaseTest {
 
   @BeforeMethod(alwaysRun = true)
   public void setUpBase(Method method) {
-    LOGGER.info("===== Running test: "
-        + method.getDeclaringClass().getName() + "." + method.getName());
     Ray.init();
     // These files need to be deleted after each test case.
     filesToDelete = ImmutableList.of(
