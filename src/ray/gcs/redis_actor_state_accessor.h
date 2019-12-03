@@ -19,7 +19,7 @@ class RedisGcsClient;
 /// determined at submission time, and mutable fields which are determined at runtime).
 class RedisActorStateAccessor : public ActorStateAccessor {
  public:
-  explicit RedisActorStateAccessor(RedisGcsClient &client_impl);
+  explicit RedisActorStateAccessor(RedisGcsClient *client_impl);
 
   virtual ~RedisActorStateAccessor() {}
 
@@ -80,7 +80,7 @@ class RedisActorStateAccessor : public ActorStateAccessor {
   Status AsyncUnsubscribe(const ActorID &actor_id, const StatusCallback &done) override;
 
  private:
-  RedisGcsClient &client_impl_;
+  RedisGcsClient *client_impl_{nullptr};
   // Use a random ClientID for actor subscription. Because:
   // If we use ClientID::Nil, GCS will still send all actors' updates to this GCS Client.
   // Even we can filter out irrelevant updates, but there will be extra overhead.

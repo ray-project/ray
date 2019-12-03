@@ -7,8 +7,8 @@ namespace ray {
 
 namespace gcs {
 
-RedisActorStateAccessor::RedisActorStateAccessor(RedisGcsClient &client_impl)
-    : client_impl_(client_impl), actor_sub_executor_(client_impl_.actor_table()) {}
+RedisActorStateAccessor::RedisActorStateAccessor(RedisGcsClient *client_impl)
+    : client_impl_(client_impl), actor_sub_executor_(client_impl_->actor_table()) {}
 
 Status RedisActorStateAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
@@ -22,7 +22,7 @@ Status RedisActorStateAccessor::AsyncGet(
     callback(Status::OK(), result);
   };
 
-  ActorTable &actor_table = client_impl_.actor_table();
+  ActorTable &actor_table = client_impl_->actor_table();
   return actor_table.Lookup(JobID::Nil(), actor_id, on_done);
 }
 
@@ -43,7 +43,7 @@ Status RedisActorStateAccessor::AsyncRegister(
   };
 
   ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  ActorTable &actor_table = client_impl_.actor_table();
+  ActorTable &actor_table = client_impl_->actor_table();
   return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
                               /*log_length*/ 0);
 }
@@ -85,7 +85,7 @@ Status RedisActorStateAccessor::AsyncUpdate(
     }
   };
 
-  ActorTable &actor_table = client_impl_.actor_table();
+  ActorTable &actor_table = client_impl_->actor_table();
   return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
                               log_length);
 }

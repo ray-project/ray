@@ -137,7 +137,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
   resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
 
-  actor_accessor_.reset(new RedisActorStateAccessor(*this));
+  actor_accessor_.reset(new RedisActorStateAccessor(this));
 
   Status status = Attach(io_service);
   is_connected_ = status.ok();
