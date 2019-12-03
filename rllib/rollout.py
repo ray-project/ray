@@ -19,6 +19,8 @@ from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.evaluation.episode import _flatten_action
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.tune.result import EXPR_PARAM_PICKLE_FILE
+from ray.tune.trial import TrialDirSchema
 from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """
@@ -232,14 +234,17 @@ def run(args, parser):
     config = {}
     # Load configuration from file
     config_dir = os.path.dirname(args.checkpoint)
-    config_path = os.path.join(config_dir, "params.pkl")
+    config_path = os.path.join(config_dir, EXPR_PARAM_PICKLE_FILE)
     if not os.path.exists(config_path):
-        config_path = os.path.join(config_dir, "../params.pkl")
+        config_path = os.path.join(config_dir, "..", EXPR_PARAM_PICKLE_FILE)
+    if not os.path.exists(config_path):
+        trial_dir = TrialDirSchema.root_from(os.path.dirname(config_path))
+        config_path = os.path.join(trial_dir, EXPR_PARAM_PICKLE_FILE)
     if not os.path.exists(config_path):
         if not args.config:
             raise ValueError(
-                "Could not find params.pkl in either the checkpoint dir or "
-                "its parent directory.")
+                "Could not find {} in either the checkpoint dir, its parent "
+                "dir, or the trial dir.".format(EXPR_PARAM_PICKLE_FILE))
     else:
         with open(config_path, "rb") as f:
             config = pickle.load(f)
