@@ -210,12 +210,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
-  /// Assign a task. The task is assumed to not be queued in local_queues_.
+  /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
-  /// \param task The task in question.
-  /// \param post_assign_callbacks Set of functions to run after assignments finish.
-  /// \return true, if tasks was assigned to a worker, false otherwise.
-  bool AssignTask(const Task &task,
+  /// \param[in] worker The worker to assign the task to.
+  /// \param[in] task The task in question.
+  /// \param[out] post_assign_callbacks Vector of callbacks that will be appended
+  /// to with any logic that should run after the DispatchTasks loop runs.
+  void AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
                   std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
@@ -516,11 +517,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Finish assigning a task to a worker.
   ///
+  /// \param worker Worker that the task is assigned to.
   /// \param task_id Id of the task.
-  /// \param worker Worker which the task is assigned to.
-  /// \param success Whether the task is successfully assigned to the worker.
+  /// \param success Whether or not assigning the task was successful.
   /// \return void.
-  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
+  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
+                        bool success);
 
   /// Handle a `WorkerLease` request.
   void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
