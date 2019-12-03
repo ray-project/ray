@@ -73,8 +73,7 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options)
-    : GcsClientInterface(options) {}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {}
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);

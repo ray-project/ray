@@ -2,7 +2,7 @@
 #define RAY_GCS_REDIS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
-#include "ray/gcs/actor_state_accessor_interface.h"
+#include "ray/gcs/actor_state_accessor.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
@@ -17,7 +17,7 @@ class RedisGcsClient;
 /// RedisActorStateAccessor class encapsulates the implementation details of
 /// reading or writing or subscribing of actor's specification (immutable fields which
 /// determined at submission time, and mutable fields which are determined at runtime).
-class RedisActorStateAccessor : public ActorStateAccessorInterface {
+class RedisActorStateAccessor : public ActorStateAccessor {
  public:
   explicit RedisActorStateAccessor(RedisGcsClient &client_impl);
 

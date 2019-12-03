@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_ACTOR_STATE_ACCESSOR_INTERFACE_H
-#define RAY_GCS_ACTOR_STATE_ACCESSOR_INTERFACE_H
+#ifndef RAY_GCS_ACTOR_STATE_ACCESSOR_H
+#define RAY_GCS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
@@ -9,13 +9,13 @@ namespace ray {
 
 namespace gcs {
 
-/// \class ActorStateAccessorInterface
-/// ActorStateAccessorInterface class introduce the interface of
+/// \class ActorStateAccessor
+/// ActorStateAccessor class introduce the interface of
 /// reading or writing or subscribing of actor's specification (immutable fields which
 /// determined at submission time, and mutable fields which are determined at runtime).
-class ActorStateAccessorInterface {
+class ActorStateAccessor {
  public:
-  virtual ~ActorStateAccessorInterface() = default;
+  virtual ~ActorStateAccessor() = default;
 
   /// Get actor specification from GCS asynchronously.
   ///
@@ -77,11 +77,11 @@ class ActorStateAccessorInterface {
                                   const StatusCallback &done) = 0;
 
  protected:
-  ActorStateAccessorInterface() = default;
+  ActorStateAccessor() = default;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
 
-#endif  // RAY_GCS_ACTOR_STATE_ACCESSOR_INTERFACE_H
+#endif  // RAY_GCS_ACTOR_STATE_ACCESSOR_H
