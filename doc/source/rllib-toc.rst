@@ -18,6 +18,8 @@ Training APIs
 
    -  `Custom Training Workflows <rllib-training.html#custom-training-workflows>`__
 
+   -  `Computing Actions <rllib-training.html#computing-actions>`__
+
    -  `Accessing Policy State <rllib-training.html#accessing-policy-state>`__
 
    -  `Accessing Model State <rllib-training.html#accessing-model-state>`__
