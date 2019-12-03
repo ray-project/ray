@@ -122,8 +122,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
 
   /// Map from actor id to the send position of the next task to send to that actor.
-  /// Note that this differs from the PushTaskRequest's sequence number in that it increases
-  /// monotonically in this process independently of CallerId changes.
+  /// Note that this differs from the PushTaskRequest's sequence number in that it
+  /// increases monotonically in this process independently of CallerId changes.
   absl::flat_hash_map<ActorID, int64_t> next_send_position_ GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies;
