@@ -57,7 +57,7 @@ type RayClusterImage struct {
 
 type Extension struct {
 	// the size of this pod group
-	NumNudes int32 `json:"numNodes"`
+	NumNodes int32 `json:"numNodes"`
 
 	// worker/head
 	Type string `json:"type,omitempty"`
@@ -65,13 +65,16 @@ type Extension struct {
 	// pod image
 	Image string `json:"image,omitempty"`
 
-	// logical groupName for worker in same group, can be functional or in size meaning
+	// logical groupName for worker in same group, it's used for heterogeneous feature to distinguish different groups
+	// groupName is the unique identifier for the pods with the same configuration in one Ray Cluster
 	GroupName string `json:"groupName,omitempty"`
 
 	// command to start ray
 	Command string `json:"command,omitempty"`
 
 	// labels for pod, raycluster.component and rayclusters.ray.io/component-name are default labels, do not overwrite them.
+	// Labels are intended to be used to specify identifying attributes of objects that are meaningful and relevant to users,
+	// but do not directly imply semantics to the core system. Labels can be used to organize and to select subsets of objects.
 	Labels map[string]string `json:"labels,omitempty"`
 
 	// NodeSelector specifies a map of key-value pairs. For the pod to be eligible
@@ -80,26 +83,32 @@ type Extension struct {
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
 
 	// the affinity for pod.Optional
+	// it allows you to constrain which nodes your pod is eligible to be scheduled on, based on labels on the node.
 	Affinity *v1.Affinity `json:"affinity,omitempty"`
 
 	// the resource requirements for this group pod.
 	Resources v1.ResourceRequirements `json:"resources,omitempty"`
 
 	// Tolerations specifies the pod's tolerations.Optional
+	// Tolerations are applied to pods, and allow (but do not require) the pods to schedule onto nodes with matching taints.
 	Tolerations []v1.Toleration `json:"tolerations,omitempty"`
 
 	// List of environment variables to set in the container.Optional
+	// define environment variables for a container. This can be helpful in defining variables before setting up the container.
 	ContainerEnv []v1.EnvVar `json:"containerEnv,omitempty"`
 
 	// Head service suffix. So head can be accessed by domain name: {namespace}.svc , follows Kubernetes standard
 	HeadServiceSuffix string `json:"headServiceSuffix,omitempty"`
 
 	// Annotations for pod.Optional
+	// usage refers to https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
 	Annotations map[string]string `json:"annotations,omitempty"`
 
 	// Volume for the pod group.Optional
+	// At its core, a volume is just a directory, possibly with some data in it, which is accessible to the Containers in a Pod.
 	Volumes []v1.Volume `json:"volumes,omitempty"`
 
 	// VolumeMount for the pod group.Optional
+	// mount the volume to a path via name
 	VolumeMounts []v1.VolumeMount `json:"volumeMounts,omitempty"`
 }

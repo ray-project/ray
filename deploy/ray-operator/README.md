@@ -1,18 +1,12 @@
 # Ray Kubernetes Operator
 
-[Kubernetes](https://kubernetes.io/) is an open-source system for automating deployment, scaling, and management of containerized applications. It is playing an important role in the next generation cloud-infra. 
+The Ray Operator is a Kubernetes operator to automate provisioning, management, autoscaling and operations of Ray clusters deployed to Kubernetes.
 
-So running [Ray](https://ray.readthedocs.io/en/latest/) on Kubernetes will make Ray more acceptable to the industry.  
-
-The [CR(Custom Resource defined in Kubernetes)](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/) and the controller we propose allow users to customize almost all the configurations of Kubernetes and Ray. 
-
-The solution provides the following features:
-- A [CRD](https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions) of RayCluster used for the desired state.
-- Support Ray cluster with heterogeneous Pods, the pods will differ in CPU/MEM and other attributes.
-- Update the desired state following the Declarative API design concept.
-- HA for Ray [Operator](https://kubernetes.io/docs/concepts/extend-kubernetes/operator/).
-- Scaffold by [Kubebuilder](https://github.com/kubernetes-sigs/kubebuilder)
-- [Ray-Operator Proposal](https://docs.google.com/document/d/1vfXnwft1fY6HTKw2PUDFOh581KDt4zI2GBHhC1ji_uE/edit)
+Some of the main features of Ray-Operator are:
+- user management via CRD
+- heterogeneous pods in one Ray cluster with specific affinity, toleration and other pre-defined settings
+- monitoring via Prometheus
+- HA for Ray Kubernetes Operator, there will be a lead election if lead crashes
 
 ## File structure:
 > ```
