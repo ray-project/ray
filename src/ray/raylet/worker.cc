@@ -128,8 +128,7 @@ void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids)
   active_object_ids_ = object_ids;
 }
 
-void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
-                        const std::function<void(Status)> finish_assign_callback) {
+Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
   RAY_CHECK(port_ > 0);
   rpc::AssignTaskRequest request;
   request.mutable_task()->mutable_task_spec()->CopyFrom(
@@ -138,8 +137,8 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
       task.GetTaskExecutionSpec().GetMessage());
   request.set_resource_ids(resource_id_set.Serialize());
 
-  auto status = rpc_client_->AssignTask(request, [](Status status,
-                                                    const rpc::AssignTaskReply &reply) {
+  return rpc_client_->AssignTask(request, [](Status status,
+                                             const rpc::AssignTaskReply &reply) {
     if (!status.ok()) {
       RAY_LOG(DEBUG) << "Worker failed to finish executing task: " << status.ToString();
     }
@@ -147,14 +146,6 @@ void Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set,
     // and assigning new task will be done when raylet receives
     // `TaskDone` message.
   });
-  finish_assign_callback(status);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to assign task " << task.GetTaskSpecification().TaskId()
-                   << " to worker " << worker_id_;
-  } else {
-    RAY_LOG(DEBUG) << "Assigned task " << task.GetTaskSpecification().TaskId()
-                   << " to worker " << worker_id_;
-  }
 }
 
 void Worker::DirectActorCallArgWaitComplete(int64_t tag) {
