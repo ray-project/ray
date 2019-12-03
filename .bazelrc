@@ -9,17 +9,20 @@ build --action_env=PYTHON3_BIN_PATH
 build --action_env=USE_CLANG_CL=1
 # Enable build:windows, build:linux, build:macos, build:freebsd
 build --enable_platform_specific_config
+# TODO(mehrdadn): Revert the "-\\.(asm|S)$" exclusion when this Bazel bug
+#                 for compiling assembly files is fixed on Windows:
+#                 https://github.com/bazelbuild/bazel/issues/8924
 # Warnings should be errors
-build --per_file_copt=-.*/arrow/util/logging.cc@-Werror
+build --per_file_copt="-\\.(asm|S)$,-.*/arrow/util/logging\\.cc@-Werror"
 # Ignore warnings for protobuf generated files and external projects.
-build --per_file_copt='\\.pb\\.cc$@-w'
-build --per_file_copt='external/.*@-w'
+build --per_file_copt="-\\.(asm|S)$,\\.pb\\.cc$@-w"
+build --per_file_copt="-\\.(asm|S)$,external/.*@-w"
 # Ignore minor warnings for host tools, which we generally can't control
 build --host_copt="-Wno-builtin-macro-redefined"
 build --host_copt="-Wno-inconsistent-missing-override"
 build --host_copt="-Wno-microsoft-unqualified-friend"
 # This workaround is needed due to https://github.com/bazelbuild/bazel/issues/4341
-build --per_file_copt="external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
+build --per_file_copt="-\\.(asm|S)$,external/com_github_grpc_grpc/.*@-DGRPC_BAZEL_BUILD"
 build --http_timeout_scaling=5.0
 # This workaround is due to an incompatibility of
 # bazel_common/tools/maven/pom_file.bzl with Bazel 1.0

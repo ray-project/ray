@@ -11,6 +11,8 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/actor_registration.h"
 #include "ray/raylet/lineage_cache.h"
@@ -208,12 +210,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// \return Void.
   void SubmitTask(const Task &task, const Lineage &uncommitted_lineage,
                   bool forwarded = false);
-  /// Assign a task. The task is assumed to not be queued in local_queues_.
+  /// Assign a task to a worker. The task is assumed to not be queued in local_queues_.
   ///
-  /// \param task The task in question.
-  /// \param post_assign_callbacks Set of functions to run after assignments finish.
-  /// \return true, if tasks was assigned to a worker, false otherwise.
-  bool AssignTask(const Task &task,
+  /// \param[in] worker The worker to assign the task to.
+  /// \param[in] task The task in question.
+  /// \param[out] post_assign_callbacks Vector of callbacks that will be appended
+  /// to with any logic that should run after the DispatchTasks loop runs.
+  void AssignTask(const std::shared_ptr<Worker> &worker, const Task &task,
                   std::vector<std::function<void()>> *post_assign_callbacks);
   /// Handle a worker finishing its assigned task.
   ///
@@ -514,11 +517,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Finish assigning a task to a worker.
   ///
+  /// \param worker Worker that the task is assigned to.
   /// \param task_id Id of the task.
-  /// \param worker Worker which the task is assigned to.
-  /// \param success Whether the task is successfully assigned to the worker.
+  /// \param success Whether or not assigning the task was successful.
   /// \return void.
-  void FinishAssignTask(const TaskID &task_id, Worker &worker, bool success);
+  void FinishAssignTask(const std::shared_ptr<Worker> &worker, const TaskID &task_id,
+                        bool success);
 
   /// Handle a `WorkerLease` request.
   void HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &request,
@@ -543,6 +547,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Push an error to the driver if this node is full of actors and so we are
   /// unable to schedule new tasks or actors at all.
   void WarnResourceDeadlock();
+
+  /// Dispatch tasks to available workers.
+  void DispatchScheduledTasksToWorkers();
+
+  /// For the pending task at the head of tasks_to_schedule_, return a node
+  /// in the system (local or remote) that has enough resources available to
+  /// run the task, if any such node exist.
+  /// Repeat the process as long as we can schedule a task.
+  void NewSchedulerSchedulePendingTasks();
 
   // GCS client ID for this node.
   ClientID client_id_;
@@ -619,6 +632,25 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Map of workers leased out to direct call clients.
   std::unordered_map<int, std::shared_ptr<Worker>> leased_workers_;
+
+  /// Whether new schedule is enabled.
+  const bool new_scheduler_enabled_;
+
+  /// The new resource scheduler for direct task calls.
+  std::shared_ptr<ClusterResourceScheduler> new_resource_scheduler_;
+  /// Map of leased workers to their current resource usage.
+  std::unordered_map<int, std::unordered_map<std::string, double>>
+      leased_worker_resources_;
+
+  typedef std::function<void(std::shared_ptr<Worker>, ClientID spillback_to,
+                             std::string address, int port)>
+      ScheduleFn;
+
+  /// Queue of lease requests that are waiting for resources to become available.
+  /// TODO this should be a queue for each SchedulingClass
+  std::deque<std::pair<ScheduleFn, Task>> tasks_to_schedule_;
+  /// Queue of lease requests that should be scheduled onto workers.
+  std::deque<std::pair<ScheduleFn, Task>> tasks_to_dispatch_;
 };
 
 }  // namespace raylet

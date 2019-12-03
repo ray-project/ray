@@ -77,6 +77,8 @@ message TaskSpec {
   ActorTaskSpec actor_task_spec = 15;
   // Whether this task is a direct call task.
   bool is_direct_call = 16;
+  // Number of times this task may be retried on worker failure.
+  int32 max_retries = 17;
 }
 
 // Argument in the task.

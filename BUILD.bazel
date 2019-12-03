@@ -8,10 +8,15 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
+# TODO(mehrdadn): (How to) support dynamic linking?
+PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
+
 COPTS = ["-DRAY_USE_GLOG"] + select({
     "@bazel_tools//src/conditions:windows": [
+        "-DWIN32_LEAN_AND_MEAN=",  # Block the inclusion of WinSock.h, which is obsolete and causes errors
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
-    ],
+        "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
+    ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
     "//conditions:default": [
     ],
 })
@@ -211,6 +216,9 @@ cc_library(
         ],
     ),
     copts = COPTS,
+    includes = [
+        "@boost//:asio",
+    ],
     deps = [
         ":common_cc_proto",
         ":gcs_cc_proto",
@@ -270,7 +278,13 @@ cc_library(
     includes = [
         "src",
     ],
-    linkopts = ["-pthread"],
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         ":ray_util",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -302,7 +316,17 @@ cc_library(
         "src/ray/raylet/*.h",
     ]),
     copts = COPTS,
-    linkopts = ["-pthread"],
+    defines = select({
+        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     deps = [
         ":common_cc_proto",
         ":gcs",

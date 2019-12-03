@@ -71,6 +71,14 @@ py_test(
 )
 
 py_test(
+    name = "test_multinode_failures_direct",
+    size = "medium",
+    srcs = ["test_multinode_failures_direct.py", "test_multinode_failures.py"],
+    tags = ["exclusive", "manual"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_stress",
     size = "large",
     srcs = ["test_stress.py"],
