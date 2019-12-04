@@ -222,7 +222,17 @@ class StressTestObjectManager : public TestObjectManagerBase {
           if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
-          if (num_connected_clients == 2) {
+          if (num_connected_clients == 4) {
+            StartTests();
+          }
+        },
+        nullptr);
+    gcs_client_2->Nodes().AsyncSubscribeToNodeChange(
+        [this](const ClientID &node_id, const GcsNodeInfo &data) {
+          if (node_id == node_id_1 || node_id == node_id_2) {
+            num_connected_clients += 1;
+          }
+          if (num_connected_clients == 4) {
             StartTests();
           }
         },
