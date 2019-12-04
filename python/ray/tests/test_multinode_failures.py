@@ -16,6 +16,8 @@ import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.test_utils import RayTestTimeoutException
 
+RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_workers_separate_multinode(request):
@@ -83,10 +85,20 @@ def _test_component_failed(cluster, component_type):
     # Submit many tasks with many dependencies.
     @ray.remote
     def f(x):
+        if RAY_FORCE_DIRECT:
+            # Sleep to make sure that tasks actually fail mid-execution. We
+            # only use it for direct calls because the test already takes a
+            # long time to run with the raylet codepath.
+            time.sleep(0.01)
         return x
 
     @ray.remote
     def g(*xs):
+        if RAY_FORCE_DIRECT:
+            # Sleep to make sure that tasks actually fail mid-execution. We
+            # only use it for direct calls because the test already takes a
+            # long time to run with the raylet codepath.
+            time.sleep(0.01)
         return 1
 
     # Kill the component on all nodes except the head node as the tasks
@@ -138,11 +150,13 @@ def check_components_alive(cluster, component_type, check_component_alive):
 
 
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
+    "ray_start_cluster",
+    [{
         "num_cpus": 8,
         "num_nodes": 4,
         "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
         }),
     }],
     indirect=True)
@@ -157,14 +171,82 @@ def test_raylet_failed(ray_start_cluster):
 
 
 @pytest.mark.skipif(
+    RAY_FORCE_DIRECT,
+    reason="No reconstruction for objects placed in plasma yet")
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [{
+        # Force at least one task per node.
+        "num_cpus": 1,
+        "num_nodes": 4,
+        "object_store_memory": 1000 * 1024 * 1024,
+        "_internal_config": json.dumps({
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100,
+            "object_manager_pull_timeout_ms": 1000,
+            "object_manager_push_timeout_ms": 1000,
+            "object_manager_repeated_push_delay_ms": 1000,
+        }),
+    }],
+    indirect=True)
+def test_object_reconstruction(ray_start_cluster):
+    cluster = ray_start_cluster
+
+    # Submit tasks with dependencies in plasma.
+    @ray.remote
+    def large_value():
+        # Sleep for a bit to force tasks onto different nodes.
+        time.sleep(0.1)
+        return np.zeros(10 * 1024 * 1024)
+
+    @ray.remote
+    def g(x):
+        return
+
+    # Kill the component on all nodes except the head node as the tasks
+    # execute. Do this in a loop while submitting tasks between each
+    # component failure.
+    time.sleep(0.1)
+    worker_nodes = cluster.list_all_nodes()[1:]
+    assert len(worker_nodes) > 0
+    component_type = ray_constants.PROCESS_TYPE_RAYLET
+    for node in worker_nodes:
+        process = node.all_processes[component_type][0].process
+        # Submit a round of tasks with many dependencies.
+        num_tasks = len(worker_nodes)
+        xs = [large_value.remote() for _ in range(num_tasks)]
+        # Wait for the tasks to complete, then evict the objects from the local
+        # node.
+        for x in xs:
+            ray.get(x)
+            ray.internal.free([x], local_only=True)
+
+        # Kill a component on one of the nodes.
+        process.terminate()
+        time.sleep(1)
+        process.kill()
+        process.wait()
+        assert not process.poll() is None
+
+        # Make sure that we can still get the objects after the
+        # executing tasks died.
+        print("F", xs)
+        xs = [g.remote(x) for x in xs]
+        print("G", xs)
+        ray.get(xs)
+
+
+@pytest.mark.skipif(
     os.environ.get("RAY_USE_NEW_GCS") == "on",
     reason="Hanging with new GCS API.")
 @pytest.mark.parametrize(
-    "ray_start_cluster", [{
+    "ray_start_cluster",
+    [{
         "num_cpus": 8,
         "num_nodes": 2,
         "_internal_config": json.dumps({
-            "num_heartbeats_timeout": 100
+            # Raylet codepath is not stable with a shorter timeout.
+            "num_heartbeats_timeout": 10 if RAY_FORCE_DIRECT else 100
         }),
     }],
     indirect=True)
@@ -179,6 +261,7 @@ def test_plasma_store_failed(ray_start_cluster):
     check_components_alive(cluster, ray_constants.PROCESS_TYPE_RAYLET, False)
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor restart yet")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 4,

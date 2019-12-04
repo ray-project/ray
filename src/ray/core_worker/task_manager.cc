@@ -2,10 +2,11 @@
 
 namespace ray {
 
-void TaskManager::AddPendingTask(const TaskSpecification &spec) {
+void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId();
   absl::MutexLock lock(&mu_);
-  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), spec.NumReturns()).second);
+  std::pair<TaskSpecification, int> entry = {spec, max_retries};
+  RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -48,18 +49,48 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 }
 
-void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type) {
+void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) {
+  if (error_type == rpc::ErrorType::ACTOR_DIED) {
+    // Note that this might be the __ray_terminate__ task, so we don't log
+    // loudly with ERROR here.
+    RAY_LOG(INFO) << "Task " << task_id << " failed with error "
+                  << rpc::ErrorType_Name(error_type);
+  } else {
+    RAY_LOG(ERROR) << "Task " << task_id << " failed with error "
+                   << rpc::ErrorType_Name(error_type);
+  }
+
   RAY_LOG(DEBUG) << "Failing task " << task_id;
-  int64_t num_returns;
+  int num_retries_left = 0;
+  TaskSpecification spec;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
-    num_returns = it->second;
-    pending_tasks_.erase(it);
+    spec = it->second.first;
+    num_retries_left = it->second.second;
+    if (num_retries_left == 0) {
+      pending_tasks_.erase(it);
+    } else {
+      RAY_CHECK(num_retries_left > 0);
+      it->second.second--;
+    }
   }
 
+  // We should not hold the lock during these calls because they may trigger
+  // callbacks in this or other classes.
+  if (num_retries_left > 0) {
+    RAY_LOG(ERROR) << num_retries_left << " retries left for task " << spec.TaskId()
+                   << ", attempting to resubmit.";
+    retry_task_callback_(spec);
+  } else {
+    MarkPendingTaskFailed(task_id, spec.NumReturns(), error_type);
+  }
+}
+
+void TaskManager::MarkPendingTaskFailed(const TaskID &task_id, int64_t num_returns,
+                                        rpc::ErrorType error_type) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   for (int i = 0; i < num_returns; i++) {
