@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -180,11 +181,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
 
-  static std::mutex sched_mutex_;
+  static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_;
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_;
-  static int next_sched_id_;
+  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_ GUARDED_BY(mutex_);
+  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_ GUARDED_BY(mutex_);
+  static int next_sched_id_ GUARDED_BY(mutex_);
 };
 
 }  // namespace ray

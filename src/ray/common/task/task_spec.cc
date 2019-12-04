@@ -5,7 +5,7 @@
 
 namespace ray {
 
-std::mutex TaskSpecification::sched_mutex_;
+absl::Mutex TaskSpecification::mutex_;
 std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
 std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
@@ -14,7 +14,7 @@ int TaskSpecification::next_sched_id_;
 
 SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
     SchedulingClass id) {
-  std::lock_guard<std::mutex> lock(sched_mutex_);
+  absl::MutexLock lock(&mutex_);
   auto it = sched_id_to_cls_.find(id);
   RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
   return it->second;
@@ -32,7 +32,7 @@ void TaskSpecification::ComputeResources() {
 
   // Map the scheduling class descriptor to an integer for performance.
   auto sched_cls = std::make_pair(GetRequiredResources(), FunctionDescriptor());
-  std::lock_guard<std::mutex> lock(sched_mutex_);
+  absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
   if (it == sched_cls_to_id_.end()) {
     sched_cls_id_ = ++next_sched_id_;
