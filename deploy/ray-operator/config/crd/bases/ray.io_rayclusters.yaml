@@ -804,8 +804,8 @@ spec:
                       For the pod to be eligible to run on a node, the node must have
                       each of the indicated key-value pairs as labels.Optional
                     type: object
-                  numNodes:
-                    description: the size of this pod group
+                  replicas:
+                    description: the replicas of this pod group
                     format: int32
                     type: integer
                   resources:
@@ -2155,7 +2155,7 @@ spec:
                       type: object
                     type: array
                 required:
-                - numNodes
+                - replicas
                 type: object
               type: array
             imagePullPolicy:
