@@ -13,8 +13,8 @@ spec:
   imagePullPolicy: "Always"
 
   extensions:
-    # the pod size in this group typed worker
-    - size: 1
+    # the pod replicas in this group typed worker
+    - replicas: 1
       # logical group name, for this called small-group, also can be functional
       groupName: small-group
       # pod type
@@ -95,8 +95,8 @@ spec:
         - mountPath: /path/to/log
           name: log-volume
 
-    # the pod size in this group typed worker
-    - size: 1
+    # the pod replicas in this group typed worker
+    - replicas: 1
       # logical group name
       groupName: medium-group
       # pod type
@@ -177,8 +177,8 @@ spec:
         - mountPath: /path/to/log
           name: log-volume
 
-    # the pod size in this group typed head
-    - size: 1
+    # the pod replicas in this group typed head
+    - replicas: 1
       # logical group name
       groupName: headgroup
       # pod type
