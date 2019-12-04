@@ -7,7 +7,8 @@ namespace ray {
 namespace gcs {
 
 NodeStateAccessor::NodeStateAccessor(RedisGcsClient *client_impl)
-    : client_impl_(client_impl) {}
+    : client_impl_(client_impl),
+      cache_(new NodeStateCache(&client_impl->client_table())) {}
 
 Status NodeStateAccessor::RegisterSelf(const GcsNodeInfo &local_node_info) {
   ClientTable &client_table = client_impl_->client_table();
@@ -40,6 +41,14 @@ Status NodeStateAccessor::AsyncUnregister(const ClientID &node_id,
   return client_table.MarkDisconnected(node_id, on_done);
 }
 
+Status NodeStateAccessor::AsyncSubscribeToNodeChange(
+    const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+    const StatusCallback &done) {
+  RAY_CHECK(subscribe != nullptr);
+  ClientTable &client_table = client_impl_->client_table();
+  return client_table.SubscribeToNodeChange(subscribe, done);
+}
+
 Status NodeStateAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ClientID &id,
@@ -50,17 +59,11 @@ Status NodeStateAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &call
   return client_table.Lookup(on_done);
 }
 
-Status NodeStateAccessor::AsyncSubscribeToNodeChange(
-    const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.SubscribeToNodeChange(subscribe, done);
-}
+NodeStateCache &NodeStateAccessor::Cache() const { return *cache_; }
 
-boost::optional<GcsNodeInfo> NodeStateAccessor::GetFromCache(
-    const ClientID &node_id) const {
-  ClientTable &client_table = client_impl_->client_table();
+NodeStateCache::NodeStateCache(ClientTable *client_table) : client_table_(client_table) {}
+
+boost::optional<GcsNodeInfo> NodeStateCache::Get(const ClientID &node_id) const {
   GcsNodeInfo node_info;
   client_table.GetClient(node_id, node_info);
 
@@ -72,15 +75,12 @@ boost::optional<GcsNodeInfo> NodeStateAccessor::GetFromCache(
   return optional_node;
 }
 
-const std::unordered_map<ClientID, GcsNodeInfo> &NodeStateAccessor::GetAllFromCache()
-    const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.GetAllClients();
+const std::unordered_map<ClientID, GcsNodeInfo> &NodeStateCache::GetAll() const {
+  return client_table_->GetAllClients();
 }
 
-bool NodeStateAccessor::IsRemoved(const ClientID &node_id) const {
-  ClientTable &client_table = client_impl_->client_table();
-  return client_table.IsRemoved(node_id);
+bool NodeStateCache::IsRemoved(const ClientID &node_id) const {
+  return client_table_->IsRemoved(node_id);
 }
 
 }  // namespace gcs
