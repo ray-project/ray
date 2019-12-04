@@ -7,6 +7,7 @@
 #include <vector>
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
+#include "ray/gcs/entry_change_notification.h"
 #include "ray/gcs/tables.h"
 
 namespace ray {
@@ -21,7 +22,7 @@ class RedisGcsClient;
 /// and mutable fields like runtime state).
 class NodeStateAccessor {
  public:
-  explicit NodeStateAccessor(RedisGcsClient &client_impl);
+  explicit NodeStateAccessor(RedisGcsClient *client_impl);
 
   ~NodeStateAccessor() {}
 
@@ -37,17 +38,6 @@ class NodeStateAccessor {
   ///
   /// \return Status
   Status UnregisterSelf();
-
-  /// This callback is used to receive node information when a node member changed.
-  using NodeInfoCallback = std::function<void(const GcsNodeInfo &node_info)>;
-
-  /// Register callbacks to monitor the changes of node members.
-  ///
-  /// \param node_added_callback Callback that will be called if a new node is added.
-  /// \param node_removed_callback Callback that will be called if a node is removed.
-  /// TODO(micafan) Begin subscription to all nodes in this method.
-  void RegisterWatcher(const NodeInfoCallback &node_added_callback,
-                       const NodeInfoCallback &node_removed_callback);
 
   /// Get id of local node which registered by 'RegisterSelf'.
   ///
@@ -72,6 +62,15 @@ class NodeStateAccessor {
   /// \return Status
   Status AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback);
 
+  /// Subscribe to node add or node remove from GCS.
+  ///
+  /// \param subscribe Callback that will be called if a node is
+  /// added or a node is removed.
+  /// \param done Callback that will be called when subscription is complete.
+  Status AsyncSubscribeToNodeChange(
+      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const StatusCallback &done);
+
   /// Get node information from local cache.
   /// Non-thread safe.
   ///
@@ -86,12 +85,6 @@ class NodeStateAccessor {
   /// \return All nodes in cache.
   const std::unordered_map<ClientID, GcsNodeInfo> &GetAllFromCache() const;
 
-  /// Get the ids of all nodes from local cache.
-  /// Non-thread safe.
-  ///
-  /// \return The ids of all nodes.
-  std::vector<ClientID> GetAllIdsFromCache() const;
-
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
   ///
@@ -100,7 +93,7 @@ class NodeStateAccessor {
   bool IsRemoved(const ClientID &node_id) const;
 
  private:
-  RedisGcsClient &client_impl_;
+  RedisGcsClient *client_impl_{nullptr};
 };
 
 }  // namespace gcs
