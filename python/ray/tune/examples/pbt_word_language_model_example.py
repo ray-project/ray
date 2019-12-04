@@ -517,19 +517,18 @@ if __name__ == '__main__':
         LanguageModel,
         name="word_language_model_exp",
         scheduler=pbt,
-        **{
-            "resources_per_trial": {
-                "cpu": 1,
-                "gpu": 0.1 if args.cuda else 0,
-            },
-            "stop": {
-                "training_iteration": 50,
-            },
-            "num_samples": 12,
-            "config": {
-                "args": args,
-                "corpus": corpus,
-                "lr": 20,
-                "dropout": 0.2
-            },
-        })
+        resources_per_trial={
+            "cpu": 1,
+            "gpu": 0.1 if args.cuda else 0
+        },
+        stop={
+            "training_iteration": 50
+        },
+        num_samples=12,
+        config={
+            "args": args,
+            "corpus": corpus,
+            "lr": 20,
+            "dropout": 0.2
+        }
+    )
