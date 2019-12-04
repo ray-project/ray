@@ -559,7 +559,8 @@ class CoreWorker {
   mutable absl::Mutex actor_handles_mutex_;
 
   /// Map from actor ID to a handle to that actor.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_ GUARDED_BY(actor_handles_mutex_);
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorHandle>> actor_handles_
+      GUARDED_BY(actor_handles_mutex_);
 
   /// Resolve local and remote dependencies for actor creation.
   std::unique_ptr<LocalDependencyResolver> resolver_;
