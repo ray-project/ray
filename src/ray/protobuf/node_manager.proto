@@ -4,17 +4,9 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 
-// Submit a task for execution.
-message SubmitTaskRequest {
-  TaskSpec task_spec = 1;
-}
-
-message SubmitTaskReply {
-}
-
 // Request a worker from the raylet with the specified resources.
 message WorkerLeaseRequest {
-  // Task containing the requested resources.
+  // TaskSpec containing the requested resources.
   TaskSpec resource_spec = 1;
 }
 
@@ -90,8 +82,6 @@ message NodeStatsReply {
 
 // Service for inter-node-manager communication.
 service NodeManagerService {
-  // Submit a task (from a local or remote worker) to the node manager.
-  rpc SubmitTask(SubmitTaskRequest) returns (SubmitTaskReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(WorkerLeaseRequest) returns (WorkerLeaseReply);
   // Release a worker back to its raylet.

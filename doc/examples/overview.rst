@@ -36,3 +36,15 @@ Examples Overview
 .. customgalleryitem::
    :tooltip: Distributed Fault-Tolerant BERT training for FAIRSeq using Ray.
    :description: :doc:`/auto_examples/plot_example-lm`
+
+.. toctree::
+   :hidden:
+
+   plot_parameter_server.rst
+   plot_example-a3c.rst
+   plot_hyperparameter.rst
+   plot_pong_example.rst
+   plot_lbfgs.rst
+   plot_newsreader.rst
+   plot_streaming.rst
+   plot_example-lm.rst

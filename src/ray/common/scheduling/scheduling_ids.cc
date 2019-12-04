@@ -9,6 +9,17 @@ int64_t StringIdMap::Get(const std::string &string_id) {
   }
 };
 
+std::string StringIdMap::Get(uint64_t id) {
+  std::string id_string;
+  auto it = int_to_string_.find(id);
+  if (it == int_to_string_.end()) {
+    id_string = std::to_string(-1);
+  } else {
+    id_string = it->second;
+  }
+  return id_string;
+};
+
 int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   auto sit = string_to_int_.find(string_id);
   if (sit == string_to_int_.end()) {
