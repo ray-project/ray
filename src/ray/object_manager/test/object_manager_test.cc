@@ -434,13 +434,13 @@ class TestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "Server node ids:"
                    << "\n";
-    auto data = gcs_client_1->Nodes().GetFromCache(node_id_1);
+    auto data = gcs_client_1->Nodes().Cache().Get(node_id_1);
     RAY_LOG(DEBUG) << (ClientID::FromBinary(data->node_id()).IsNil());
     RAY_LOG(DEBUG) << "Server 1 NodeID=" << ClientID::FromBinary(data->node_id());
     RAY_LOG(DEBUG) << "Server 1 NodeIp=" << data->node_manager_address();
     RAY_LOG(DEBUG) << "Server 1 NodePort=" << data->node_manager_port();
     ASSERT_EQ(node_id_1, ClientID::FromBinary(data->node_id()));
-    auto data2 = gcs_client_1->Nodes().GetFromCache(node_id_2);
+    auto data2 = gcs_client_1->Nodes().Cache().Get(node_id_2);
     RAY_LOG(DEBUG) << "Server 2 NodeID=" << ClientID::FromBinary(data2->node_id());
     RAY_LOG(DEBUG) << "Server 2 NodeIp=" << data2->node_manager_address();
     RAY_LOG(DEBUG) << "Server 2 NodePort=" << data2->node_manager_port();

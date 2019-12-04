@@ -3,6 +3,7 @@
 
 #include <boost/optional.hpp>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <vector>
 #include "ray/common/id.h"
@@ -15,6 +16,7 @@ namespace ray {
 namespace gcs {
 
 class RedisGcsClient;
+class NodeStateCache;
 
 /// \class NodeStateAccessor
 /// NodeStateAccessor class encapsulates the implementation details of
@@ -67,9 +69,28 @@ class NodeStateAccessor {
   /// \param subscribe Callback that will be called if a node is
   /// added or a node is removed.
   /// \param done Callback that will be called when subscription is complete.
+  /// \return Status
   Status AsyncSubscribeToNodeChange(
       const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
       const StatusCallback &done);
+
+  /// Get nodes cache. The cache stores node information subscribed from GCS.
+  /// It provides read-only interfaces such as `Get`.
+  ///
+  /// \return NodeStateCache
+  NodeStateCache &Cache() const;
+
+ private:
+  RedisGcsClient *client_impl_{nullptr};
+  std::unique_ptr<NodeStateCache> cache_{nullptr};
+};
+
+/// \class NodeStateCache
+/// NodeStateCache stores node information subscribed from GCS.
+/// It provides read-only interfaces such as `Get`, `GetAll`...
+class NodeStateCache {
+ public:
+  explicit NodeStateCache(ClientTable *client_table);
 
   /// Get node information from local cache.
   /// Non-thread safe.
@@ -77,13 +98,13 @@ class NodeStateAccessor {
   /// \param node_id The ID of node to look up in local cache.
   /// \return The item returned by GCS. If the item to read doesn't exist,
   /// this optional object is empty.
-  boost::optional<GcsNodeInfo> GetFromCache(const ClientID &node_id) const;
+  boost::optional<GcsNodeInfo> Get(const ClientID &node_id) const;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.
   ///
   /// \return All nodes in cache.
-  const std::unordered_map<ClientID, GcsNodeInfo> &GetAllFromCache() const;
+  const std::unordered_map<ClientID, GcsNodeInfo> &GetAll() const;
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -93,7 +114,7 @@ class NodeStateAccessor {
   bool IsRemoved(const ClientID &node_id) const;
 
  private:
-  RedisGcsClient *client_impl_{nullptr};
+  ClientTable *client_table_{nullptr};
 };
 
 }  // namespace gcs

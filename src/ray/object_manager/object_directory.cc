@@ -32,7 +32,7 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
   }
   // Filter out the removed clients from the object locations.
   for (auto it = node_ids->begin(); it != node_ids->end();) {
-    if (gcs_client->Nodes().IsRemoved(*it)) {
+    if (gcs_client->Nodes().Cache().IsRemoved(*it)) {
       it = node_ids->erase(it);
     } else {
       it++;
@@ -106,7 +106,7 @@ ray::Status ObjectDirectory::ReportObjectRemoved(
 
 void ObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
-  auto node_info = gcs_client_->Nodes().GetFromCache(connection_info.client_id);
+  auto node_info = gcs_client_->Nodes().Cache().Get(connection_info.client_id);
   if (node_info) {
     ClientID result_node_id = ClientID::FromBinary(node_info->node_id());
     RAY_CHECK(result_node_id == connection_info.client_id);
@@ -119,7 +119,7 @@ void ObjectDirectory::LookupRemoteConnectionInfo(
 
 std::vector<RemoteConnectionInfo> ObjectDirectory::LookupAllRemoteConnections() const {
   std::vector<RemoteConnectionInfo> remote_connections;
-  const auto &node_map = gcs_client_->Nodes().GetAllFromCache();
+  const auto &node_map = gcs_client_->Nodes().Cache().GetAll();
   for (const auto &item : node_map) {
     RemoteConnectionInfo info(item.first);
     LookupRemoteConnectionInfo(info);

@@ -145,7 +145,7 @@ ray::Status NodeManager::RegisterGcs() {
                                                        const TaskID &task_id,
                                                        const TaskLeaseData &task_lease) {
     const ClientID node_manager_id = ClientID::FromBinary(task_lease.node_manager_id());
-    if (gcs_client_->Nodes().IsRemoved(node_manager_id)) {
+    if (gcs_client_->Nodes().Cache().IsRemoved(node_manager_id)) {
       // The node manager that added the task lease is already removed. The
       // lease is considered inactive.
       reconstruction_policy_.HandleTaskLeaseNotification(task_id, 0);
@@ -2563,7 +2563,7 @@ void NodeManager::ForwardTask(
     const std::function<void(const ray::Status &, const Task &)> &on_error) {
   // Override spillback for direct tasks.
   if (task.OnSpillback() != nullptr) {
-    auto node_info = gcs_client_->Nodes().GetFromCache(node_id);
+    auto node_info = gcs_client_->Nodes().Cache().Get(node_id);
     RAY_CHECK(node_info)
         << "Spilling back to a node manager, but no GCS info found for node " << node_id;
     task.OnSpillback()(node_id, node_info->node_manager_address(),

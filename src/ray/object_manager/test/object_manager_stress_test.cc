@@ -424,11 +424,11 @@ class StressTestObjectManager : public TestObjectManagerBase {
     RAY_LOG(DEBUG) << "\n"
                    << "All connected nodes:"
                    << "\n";
-    auto data = gcs_client_1->Nodes().GetFromCache(node_id_1);
+    auto data = gcs_client_1->Nodes().Cache().Get(node_id_1);
     RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data->node_id()) << "\n"
                    << "NodeIp=" << data->node_manager_address() << "\n"
                    << "NodePort=" << data->node_manager_port();
-    auto data2 = gcs_client_1->Nodes().GetFromCache(node_id_2);
+    auto data2 = gcs_client_1->Nodes().Cache().Get(node_id_2);
     RAY_LOG(DEBUG) << "NodeID=" << ClientID::FromBinary(data2->node_id()) << "\n"
                    << "NodeIp=" << data2->node_manager_address() << "\n"
                    << "NodePort=" << data2->node_manager_port();

@@ -206,13 +206,13 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
     RAY_LOG(INFO) << "\n"
                   << "All connected clients:"
                   << "\n";
-    auto data = gcs_client_2->Nodes().GetFromCache(node_id_1);
+    auto data = gcs_client_2->Nodes().Cache().Get(node_id_1);
     RAY_LOG(INFO) << (ClientID::FromBinary(data->node_id()).IsNil());
     RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data->node_id());
     RAY_LOG(INFO) << "ClientIp=" << data->node_manager_address();
     RAY_LOG(INFO) << "ClientPort=" << data->node_manager_port();
     rpc::GcsNodeInfo data2;
-    gcs_client_1->Nodes().GetFromCache(node_id_2);
+    gcs_client_1->Nodes().Cache().Get(node_id_2);
     RAY_LOG(INFO) << "ClientID=" << ClientID::FromBinary(data2->node_id());
     RAY_LOG(INFO) << "ClientIp=" << data2->node_manager_address();
     RAY_LOG(INFO) << "ClientPort=" << data2->node_manager_port();
