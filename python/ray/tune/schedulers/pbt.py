@@ -241,7 +241,7 @@ class PopulationBasedTraining(FIFOScheduler):
 
         if trial in upper_quantile:
             state.last_checkpoint = trial_runner.trial_executor.save(
-                trial, Checkpoint.MEMORY)
+                trial, Checkpoint.MEMORY, result=result)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
