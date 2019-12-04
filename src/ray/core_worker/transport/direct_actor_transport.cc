@@ -7,15 +7,19 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
-  return request->task_spec().actor_task_spec().actor_counter();
-}
-
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() mutable {
+  // We must fix the send order prior to resolving dependencies, which may complete
+  // out of order. This ensures we preserve the client-side send order.
+  int64_t send_pos = -1;
+  {
+    absl::MutexLock lock(&mu_);
+    send_pos = next_send_position_to_assign_[task_spec.ActorId()]++;
+  }
+
+  resolver_.ResolveDependencies(task_spec, [this, send_pos, task_spec]() mutable {
     const auto &actor_id = task_spec.ActorId();
     const auto task_id = task_spec.TaskId();
 
@@ -25,7 +29,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // access the task.
     request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
-    std::unique_lock<std::mutex> guard(mutex_);
+    absl::MutexLock lock(&mu_);
 
     auto iter = actor_states_.find(actor_id);
     if (iter == actor_states_.end() ||
@@ -36,13 +40,11 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // actor handle (e.g. from unpickling), in that case it might be desirable
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
-      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
-                                                          std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
       RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
-      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
-                                                          std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
       RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
     } else {
@@ -59,7 +61,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
 void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     const ActorID &actor_id, const ActorTableData &actor_data) {
-  std::unique_lock<std::mutex> guard(mutex_);
+  absl::MutexLock lock(&mu_);
   actor_states_.erase(actor_id);
   actor_states_.emplace(
       actor_id, ActorStateData(actor_data.state(), actor_data.address().ip_address(),
@@ -93,7 +95,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
       pending_requests_.erase(pending_it);
     }
 
-    next_sequence_number_.erase(actor_id);
+    next_send_position_.erase(actor_id);
+    next_send_position_to_assign_.erase(actor_id);
 
     // No need to clean up tasks that have been sent and are waiting for
     // replies. They will be treated as failed once the connection dies.
@@ -106,7 +109,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   auto head = requests.begin();
-  while (head != requests.end() && head->first == next_sequence_number_[actor_id]) {
+  while (head != requests.end() && head->first == next_send_position_[actor_id]) {
     auto request = std::move(head->second);
     head = requests.erase(head);
 
@@ -120,11 +123,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
-
-  auto task_number = GetRequestNumber(request);
-  RAY_CHECK(next_sequence_number_[actor_id] == task_number)
-      << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
-  next_sequence_number_[actor_id]++;
+  next_send_position_[actor_id]++;
 
   RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
@@ -138,7 +137,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
-  std::unique_lock<std::mutex> guard(mutex_);
+  absl::MutexLock lock(&mu_);
 
   auto iter = actor_states_.find(actor_id);
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
