@@ -70,17 +70,14 @@ sys.path.insert(0, os.path.abspath("../../python/"))
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'sphinx.ext.autodoc', 
-    'sphinx.ext.viewcode', 
-    'sphinx.ext.napoleon',
-    'sphinx_click.ext', 
-    'sphinx-jsonschema', 
-    'sphinx_gallery.gen_gallery'
+    'sphinx.ext.autodoc', 'sphinx.ext.viewcode', 'sphinx.ext.napoleon',
+    'sphinx_click.ext', 'sphinx-jsonschema', 'sphinx_gallery.gen_gallery'
 ]
 
 sphinx_gallery_conf = {
     "examples_dirs": ["../examples"],  # path to example scripts
-    "gallery_dirs": ["sections/examples/auto_examples"],  # path where to save generated examples
+    "gallery_dirs": ["sections/examples/auto_examples"
+                     ],  # path where to save generated examples
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     # "filename_pattern": "tutorial.py",
