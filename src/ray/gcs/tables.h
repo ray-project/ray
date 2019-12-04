@@ -157,18 +157,6 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
-  /// Append a log entry to a key synchronously if and only if the log has the
-  /// given number of entries.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data to append to the log.
-  /// \param log_length The number of entries that the log must have for the
-  /// append to succeed.
-  /// \return Status
-  Status SyncAppendAt(const JobID &job_id, const ID &id,
-                      const std::shared_ptr<Data> &data, int log_length);
-
   /// Lookup the log values at a key asynchronously.
   ///
   /// \param job_id The ID of the job.
