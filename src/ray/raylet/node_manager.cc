@@ -174,11 +174,17 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Actors().AsyncSubscribe(actor_notification_callback, nullptr));
 
-  auto node_manager_node_added = [this](const GcsNodeInfo &data) { NodeAdded(data); };
-  auto node_manager_node_removed = [this](const GcsNodeInfo &data) { NodeRemoved(data); };
+  auto on_node_change = [this](const ClientID &node_id, const GcsNodeInfo &data) {
+    if (data.state() == GcsNodeInfo::ALIVE) {
+      NodeAdded(data);
+    } else {
+      RAY_CHECK(data.state() == GcsNodeInfo::DEAD);
+      NodeRemoved(data);
+    }
+  };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  gcs_client_->Nodes().RegisterWatcher(node_manager_node_added,
-                                       node_manager_node_removed);
+  RAY_RETURN_NOT_OK(
+      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
 
   // Subscribe to resource changes.
   const auto &resources_changed =

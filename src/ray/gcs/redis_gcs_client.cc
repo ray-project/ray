@@ -139,7 +139,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
   actor_accessor_.reset(new ActorStateAccessor(*this));
 
-  node_accessor_.reset(new NodeStateAccessor(*this));
+  node_accessor_.reset(new NodeStateAccessor(this));
 
   Status status = Attach(io_service);
   is_connected_ = status.ok();

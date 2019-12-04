@@ -136,10 +136,9 @@ class TestObjectManagerIntegration : public TestObjectManagerBase {
   void WaitConnections() {
     node_id_1 = gcs_client_1->Nodes().GetSelfId();
     node_id_2 = gcs_client_2->Nodes().GetSelfId();
-    gcs_client_1->Nodes().RegisterWatcher(
-        [this](const rpc::GcsNodeInfo &data) {
-          ClientID parsed_id = ClientID::FromBinary(data.node_id);
-          if (parsed_id == node_id_1 || parsed_id == node_id_2) {
+    gcs_client_1->Nodes().AsyncSubscribeToNodeChange(
+        [this](const ClientID &node_id, const rpc::GcsNodeInfo &data) {
+          if (node_id == node_id_1 || node_id == node_id_2) {
             num_connected_clients += 1;
           }
           if (num_connected_clients == 2) {

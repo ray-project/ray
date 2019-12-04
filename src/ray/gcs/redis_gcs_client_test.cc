@@ -1151,7 +1151,7 @@ TEST_F(TestGcsWithAsio, TestSetSubscribeCancel) {
 /// A helper class for ClientTable testing.
 class ClientTableTestHelper {
  public:
-  static void ClientTableNotification(gcs::RedisGcsClient *client,
+  static void ClientTableNotification(std::shared_ptr<gcs::RedisGcsClient> client,
                                       const ClientID &client_id, const GcsNodeInfo &data,
                                       bool is_alive) {
     ClientID added_id = local_client_id;
@@ -1167,13 +1167,18 @@ class ClientTableTestHelper {
 
   static void TestClientTableConnect(const JobID &job_id,
                                      std::shared_ptr<gcs::RedisGcsClient> client) {
-    // Register callbacks for when a client gets added and removed. The latter
+    // Subscribe to a node gets added and removed. The latter
     // event will stop the event loop.
-    client->client_table().RegisterClientAddedCallback(
-        [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-          ClientTableNotification(client, id, data, true);
-          test->Stop();
-        });
+    client->client_table().SubscribeToNodeChange(
+        [client](const ClientID &id, const GcsNodeInfo &data) {
+          // TODO(micafan)
+          RAY_LOG(INFO) << "Test alive=" << data.state() << " id=" << id;
+          if (data.state() == GcsNodeInfo::ALIVE) {
+            ClientTableNotification(client, id, data, true);
+            test->Stop();
+          }
+        },
+        nullptr);
 
     // Connect and disconnect to client table. We should receive notifications
     // for the addition and removal of our own entry.
@@ -1190,18 +1195,20 @@ class ClientTableTestHelper {
                                         std::shared_ptr<gcs::RedisGcsClient> client) {
     // Register callbacks for when a client gets added and removed. The latter
     // event will stop the event loop.
-    client->client_table().RegisterClientAddedCallback(
-        [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-          ClientTableNotification(client, id, data, /*is_insertion=*/true);
-          // Disconnect from the client table. We should receive a notification
-          // for the removal of our own entry.
-          RAY_CHECK_OK(client->client_table().Disconnect());
-        });
-    client->client_table().RegisterClientRemovedCallback(
-        [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-          ClientTableNotification(client, id, data, /*is_insertion=*/false);
-          test->Stop();
-        });
+    client->client_table().SubscribeToNodeChange(
+        [client](const ClientID &id, const GcsNodeInfo &data) {
+          if (data.state() == GcsNodeInfo::ALIVE) {
+            ClientTableNotification(client, id, data, /*is_insertion=*/true);
+            // Disconnect from the client table. We should receive a notification
+            // for the removal of our own entry.
+            RAY_CHECK_OK(client->client_table().Disconnect());
+          } else {
+            ClientTableNotification(client, id, data, /*is_insertion=*/false);
+            test->Stop();
+          }
+        },
+        nullptr);
+
     // Connect to the client table. We should receive notification for the
     // addition of our own entry.
     GcsNodeInfo local_node_info;
@@ -1217,15 +1224,16 @@ class ClientTableTestHelper {
       const JobID &job_id, std::shared_ptr<gcs::RedisGcsClient> client) {
     // Register callbacks for when a client gets added and removed. The latter
     // event will stop the event loop.
-    client->client_table().RegisterClientAddedCallback(
-        [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-          ClientTableNotification(client, id, data, true);
-        });
-    client->client_table().RegisterClientRemovedCallback(
-        [](gcs::RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data) {
-          ClientTableNotification(client, id, data, false);
-          test->Stop();
-        });
+    client->client_table().SubscribeToNodeChange(
+        [client](const ClientID &id, const GcsNodeInfo &data) {
+          if (data.state() == GcsNodeInfo::ALIVE) {
+            ClientTableNotification(client, id, data, true);
+          } else {
+            ClientTableNotification(client, id, data, false);
+            test->Stop();
+          }
+        },
+        nullptr);
     // Connect to then immediately disconnect from the client table. We should
     // receive notifications for the addition and removal of our own entry.
     GcsNodeInfo local_node_info;
@@ -1252,12 +1260,14 @@ class ClientTableTestHelper {
     RAY_CHECK_OK(client->client_table().MarkDisconnected(dead_client_id, nullptr));
     // Make sure we only get a notification for the removal of the client we
     // marked as dead.
-    client->client_table().RegisterClientRemovedCallback(
-        [dead_client_id](gcs::RedisGcsClient *client, const UniqueID &id,
-                         const GcsNodeInfo &data) {
-          ASSERT_EQ(ClientID::FromBinary(data.node_id()), dead_client_id);
-          test->Stop();
-        });
+    client->client_table().SubscribeToNodeChange(
+        [dead_client_id](const UniqueID &id, const GcsNodeInfo &data) {
+          if (data.state() == GcsNodeInfo::DEAD) {
+            ASSERT_EQ(ClientID::FromBinary(data.node_id()), dead_client_id);
+            test->Stop();
+          }
+        },
+        nullptr);
     test->Start();
   }
 };

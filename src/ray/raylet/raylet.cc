@@ -56,6 +56,7 @@ Raylet::Raylet(boost::asio::io_service &main_service, const std::string &socket_
       acceptor_(main_service, boost::asio::local::stream_protocol::endpoint(socket_name)),
       socket_(main_service) {
   self_node_info_.set_node_id(self_node_id_.Binary());
+  self_node_info_.set_state(GcsNodeInfo::ALIVE);
   self_node_info_.set_node_manager_address(node_ip_address);
   self_node_info_.set_raylet_socket_name(socket_name);
   self_node_info_.set_object_store_socket_name(object_manager_config.store_socket_name);

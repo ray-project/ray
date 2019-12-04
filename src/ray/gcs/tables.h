@@ -156,18 +156,6 @@ class Log : public LogInterface<ID, Data>, virtual public PubsubInterface<ID> {
                   const WriteCallback &done, const WriteCallback &failure,
                   int log_length);
 
-  /// Append a log entry to a key synchronously if and only if the log has the
-  /// given number of entries.
-  ///
-  /// \param job_id The ID of the job.
-  /// \param id The ID of the data that is added to the GCS.
-  /// \param data Data to append to the log.
-  /// \param log_length The number of entries that the log must have for the
-  /// append to succeed.
-  /// \return Status
-  Status SyncAppendAt(const JobID &job_id, const ID &id,
-                      const std::shared_ptr<Data> &data, int log_length);
-
   /// Lookup the log values at a key asynchronously.
   ///
   /// \param job_id The ID of the job.
@@ -847,19 +835,9 @@ class ProfileTable : private Log<UniqueID, ProfileTableData> {
 /// to reconnect, it must connect with a different ClientID.
 class ClientTable : public Log<ClientID, GcsNodeInfo> {
  public:
-  using ClientTableCallback = std::function<void(
-      RedisGcsClient *client, const ClientID &id, const GcsNodeInfo &data)>;
-  using DisconnectCallback = std::function<void(void)>;
   ClientTable(const std::vector<std::shared_ptr<RedisContext>> &contexts,
               RedisGcsClient *client)
-      : Log(contexts, client),
-        // We set the client log's key equal to nil so that all instances of
-        // ClientTable have the same key.
-        client_log_key_(),
-        disconnected_(false),
-        local_node_info_(),
-        client_added_callback_(nullptr),
-        client_removed_callback_(nullptr) {
+      : Log(contexts, client) {
     pubsub_channel_ = TablePubsub::CLIENT_PUBSUB;
     prefix_ = TablePrefix::CLIENT;
   };
@@ -887,15 +865,9 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status MarkDisconnected(const ClientID &dead_node_id, const WriteCallback &done);
 
-  /// Register a callback to call when a new client is added.
-  ///
-  /// \param callback The callback to register.
-  void RegisterClientAddedCallback(const ClientTableCallback &callback);
-
-  /// Register a callback to call when a client is removed.
-  ///
-  /// \param callback The callback to register.
-  void RegisterClientRemovedCallback(const ClientTableCallback &callback);
+  ray::Status SubscribeToNodeChange(
+      const SubscribeCallback<ClientID, GcsNodeInfo> &subscribe,
+      const StatusCallback &done);
 
   /// Get a client's information from the cache. The cache only contains
   /// information for clients that we've heard a notification for.
@@ -946,20 +918,30 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   ClientID client_log_key_;
 
  private:
+  using NodeChangeCallback =
+      std::function<void(const ClientID &id, const GcsNodeInfo &node_info)>;
+
+  /// Register a callback to call when a new node is added or a node is removed.
+  ///
+  /// \param callback The callback to register.
+  void RegisterNodeChangeCallback(const NodeChangeCallback &callback);
+
   /// Handle a client table notification.
   void HandleNotification(RedisGcsClient *client, const GcsNodeInfo &node_info);
-  /// Handle this client's successful connection to the GCS.
-  void HandleConnected(RedisGcsClient *client, const GcsNodeInfo &node_info);
+
   /// Whether this client has called Disconnect().
-  bool disconnected_;
-  /// This node's ID.
-  ClientID node_id_;
+  bool disconnected_{false};
+  /// This node's ID. It will be initialized when we call method `Connect(...)`.
+  ClientID local_node_id_;
   /// Information about this node.
   GcsNodeInfo local_node_info_;
-  /// The callback to call when a new client is added.
-  ClientTableCallback client_added_callback_;
-  /// The callback to call when a client is removed.
-  ClientTableCallback client_removed_callback_;
+  /// This ID is used in method `SubscribeToNodeChange(...)` to Subscribe and
+  /// RequestNotification.
+  /// The reason for not using `local_node_id_` is because it may not initialized
+  /// when we call method `SubscribeToNodeChange`.
+  ClientID subscribe_id_{ClientID::FromRandom()};
+  /// The callback to call when a new node is added or a node is removed.
+  NodeChangeCallback node_change_callback_{nullptr};
   /// A cache for information about all nodes.
   std::unordered_map<ClientID, GcsNodeInfo> node_cache_;
   /// The set of removed nodes.
