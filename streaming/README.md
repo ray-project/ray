@@ -8,19 +8,16 @@
         * `cd ray/streaming/java && bazel build all_modules`
         * `mvn clean install -Dmaven.test.skip=true`
 
-2. Build ray streaming python.
-Ray streaming python is packaged with ray, building ray will build python streaming too.
-```bash
-cd python
-pip install -e .
-```
-When only c++/cython files change:
-```bash
-bazel build //:ray_pkg
-```
+2. Build ray will build ray streaming python.
 
 3. Run examples
 ```bash
+# c++ test
+cd streaming/ && bazel test ...
+sh src/test/run_streamingqueue_test.sh
+cd ..
+
+# python test
 cd python/ray/streaming/
 pushd examples
 python simple.py --input-file toy.txt
