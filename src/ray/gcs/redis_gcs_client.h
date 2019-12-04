@@ -20,7 +20,7 @@ class RedisContext;
 class RAY_EXPORT RedisGcsClient : public GcsClient {
   // TODO(micafan) Will remove those friend class after we replace RedisGcsClient
   // with interface class GcsClient in raylet.
-  friend class RedisActorStateAccessor;
+  friend class RedisActorInfoAccessor;
   friend class SubscriptionExecutorTest;
 
  public:

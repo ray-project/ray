@@ -9,13 +9,13 @@ namespace ray {
 
 namespace gcs {
 
-/// \class ActorStateAccessor
-/// `ActorStateAccessor` is a sub-interface of `GcsClient`.
+/// \class ActorInfoAccessor
+/// `ActorInfoAccessor` is a sub-interface of `GcsClient`.
 /// This class includes all the methods that are related to accessing
 /// actor information in the GCS.
-class ActorStateAccessor {
+class ActorInfoAccessor {
  public:
-  virtual ~ActorStateAccessor() = default;
+  virtual ~ActorInfoAccessor() = default;
 
   /// Get actor specification from GCS asynchronously.
   ///
@@ -77,7 +77,7 @@ class ActorStateAccessor {
                                   const StatusCallback &done) = 0;
 
  protected:
-  ActorStateAccessor() = default;
+  ActorInfoAccessor() = default;
 };
 
 }  // namespace gcs

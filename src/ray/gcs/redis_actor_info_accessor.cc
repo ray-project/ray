@@ -1,4 +1,4 @@
-#include "ray/gcs/redis_actor_state_accessor.h"
+#include "ray/gcs/redis_actor_info_accessor.h"
 #include <boost/none.hpp>
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/logging.h"
@@ -7,10 +7,10 @@ namespace ray {
 
 namespace gcs {
 
-RedisActorStateAccessor::RedisActorStateAccessor(RedisGcsClient *client_impl)
+RedisActorInfoAccessor::RedisActorInfoAccessor(RedisGcsClient *client_impl)
     : client_impl_(client_impl), actor_sub_executor_(client_impl_->actor_table()) {}
 
-Status RedisActorStateAccessor::AsyncGet(
+Status RedisActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<ActorTableData> &callback) {
   RAY_CHECK(callback != nullptr);
   auto on_done = [callback](RedisGcsClient *client, const ActorID &actor_id,
@@ -25,7 +25,7 @@ Status RedisActorStateAccessor::AsyncGet(
   return client_impl_->actor_table().Lookup(JobID::Nil(), actor_id, on_done);
 }
 
-Status RedisActorStateAccessor::AsyncRegister(
+Status RedisActorInfoAccessor::AsyncRegister(
     const std::shared_ptr<ActorTableData> &data_ptr, const StatusCallback &callback) {
   auto on_success = [callback](RedisGcsClient *client, const ActorID &actor_id,
                                const ActorTableData &data) {
@@ -47,7 +47,7 @@ Status RedisActorStateAccessor::AsyncRegister(
                                               /*log_length*/ 0);
 }
 
-Status RedisActorStateAccessor::AsyncUpdate(
+Status RedisActorInfoAccessor::AsyncUpdate(
     const ActorID &actor_id, const std::shared_ptr<ActorTableData> &data_ptr,
     const StatusCallback &callback) {
   // The actor log starts with an ALIVE entry. This is followed by 0 to N pairs
@@ -88,22 +88,22 @@ Status RedisActorStateAccessor::AsyncUpdate(
                                               on_success, on_failure, log_length);
 }
 
-Status RedisActorStateAccessor::AsyncSubscribeAll(
+Status RedisActorInfoAccessor::AsyncSubscribeAll(
     const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return actor_sub_executor_.AsyncSubscribe(ClientID::Nil(), subscribe, done);
 }
 
-Status RedisActorStateAccessor::AsyncSubscribe(
+Status RedisActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id, const SubscribeCallback<ActorID, ActorTableData> &subscribe,
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   return actor_sub_executor_.AsyncSubscribe(node_id_, actor_id, subscribe, done);
 }
 
-Status RedisActorStateAccessor::AsyncUnsubscribe(const ActorID &actor_id,
-                                                 const StatusCallback &done) {
+Status RedisActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id,
+                                                const StatusCallback &done) {
   return actor_sub_executor_.AsyncUnsubscribe(node_id_, actor_id, done);
 }
 

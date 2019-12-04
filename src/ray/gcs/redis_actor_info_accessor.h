@@ -2,7 +2,7 @@
 #define RAY_GCS_REDIS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
-#include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/actor_info_accessor.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
@@ -13,14 +13,14 @@ namespace gcs {
 
 class RedisGcsClient;
 
-/// \class RedisActorStateAccessor
-/// `RedisActorStateAccessor` is an implementation of `ActorStateAccessor`
+/// \class RedisActorInfoAccessor
+/// `RedisActorInfoAccessor` is an implementation of `ActorInfoAccessor`
 /// that uses Redis as the backend storage.
-class RedisActorStateAccessor : public ActorStateAccessor {
+class RedisActorInfoAccessor : public ActorInfoAccessor {
  public:
-  explicit RedisActorStateAccessor(RedisGcsClient *client_impl);
+  explicit RedisActorInfoAccessor(RedisGcsClient *client_impl);
 
-  virtual ~RedisActorStateAccessor() {}
+  virtual ~RedisActorInfoAccessor() {}
 
   Status AsyncGet(const ActorID &actor_id,
                   const OptionalItemCallback<ActorTableData> &callback) override;
