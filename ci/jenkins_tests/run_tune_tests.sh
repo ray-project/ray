@@ -131,7 +131,7 @@ $SUPPRESS_OUTPUT --force-direct docker run --rm --shm-size=${SHM_SIZE} --memory=
     --smoke-test
 
 $SUPPRESS_OUTPUT --force-direct docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
-    python /ray/python/ray/tune/examples/dcgan_mnist_pbt/dcgan_mnist_pbt.py \
+    python /ray/python/ray/tune/examples/pbt_dcgan_mnist/pbt_dcgan_mnist.py \
     --smoke-test
 
 # uncomment once statsmodels is updated.
