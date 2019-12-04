@@ -41,7 +41,7 @@ matrix:
         - export PATH="$HOME/miniconda/bin:/home/travis/bin:$PATH"
       script:
         # Streaming cpp test.
-        - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bash streaming/src/test/run_streamingqueue_test.sh
+        - if [ $RAY_CI_STREAMING_CPP_AFFECTED == "1" ]; then ./ci/suppress_output bash streaming/src/test/run_streamingqueue_test.sh; fi
         - if [ RAY_CI_STREAMING_PYTHON_AFFECTED == "1" ]; then python -m pytest -v --durations=5 --timeout=300 python/ray/streaming/tests/; fi
 
     - os: linux
