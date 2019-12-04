@@ -180,14 +180,19 @@ todo_include_todos = False
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-import sphinx_rtd_theme
-html_theme = 'sphinx_rtd_theme'
-html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+html_theme = 'alabaster'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+# NOTE: Roboto is the default font family for Alabaster
+html_theme_options = {
+    'font_family': 'Source Sans Pro, Roboto, Arial', 
+    'body_max_width': 'auto',
+    'page_width': '80%',
+    'code_font_size': '0.8em',
+    'fixed_sidebar': False,
+}
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -227,7 +232,16 @@ html_static_path = ['_static']
 #html_use_smartypants = True
 
 # Custom sidebar templates, maps document names to template names.
-html_sidebars = {'**': ['index.html']}
+# Minimalist:
+# html_sidebars = {'**': ['index.html']}
+# Example from Alabaster documentatio:
+# html_sidebars = {'**': [
+#     'about.html',
+#     'index.html',
+#     'navigation.html',
+#     'relations.html',
+#     'searchbox.html',
+#     'donate.html']}
 
 # Additional templates that should be rendered to pages, maps page names to
 # template names.

@@ -1,3 +1,4 @@
+alabaster
 colorama
 click
 filelock
@@ -16,7 +17,6 @@ sphinx
 sphinx-click
 sphinx-gallery
 sphinx-jsonschema
-sphinx_rtd_theme
 tabulate
 pandas
 flask
