@@ -56,6 +56,9 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn, void *privdata,
   {
     // `redisvAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
+    if (!redis_async_context_) {
+      return Status::NotImplemented("...");
+    }
     ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
   }
 

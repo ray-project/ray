@@ -1621,6 +1621,7 @@ def make_decorator(num_return_vals=None,
                    object_store_memory=None,
                    resources=None,
                    max_calls=None,
+                   max_retries=None,
                    max_reconstructions=None,
                    worker=None):
     def decorator(function_or_class):
@@ -1633,7 +1634,8 @@ def make_decorator(num_return_vals=None,
 
             return ray.remote_function.RemoteFunction(
                 function_or_class, num_cpus, num_gpus, memory,
-                object_store_memory, resources, num_return_vals, max_calls)
+                object_store_memory, resources, num_return_vals, max_calls,
+                max_retries)
 
         if inspect.isclass(function_or_class):
             if num_return_vals is not None:
@@ -1732,6 +1734,7 @@ def remote(*args, **kwargs):
             "resources",
             "max_calls",
             "max_reconstructions",
+            "max_retries",
         ], error_string
 
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs else None
@@ -1751,6 +1754,7 @@ def remote(*args, **kwargs):
     max_reconstructions = kwargs.get("max_reconstructions")
     memory = kwargs.get("memory")
     object_store_memory = kwargs.get("object_store_memory")
+    max_retries = kwargs.get("max_retries")
 
     return make_decorator(
         num_return_vals=num_return_vals,
@@ -1761,4 +1765,5 @@ def remote(*args, **kwargs):
         resources=resources,
         max_calls=max_calls,
         max_reconstructions=max_reconstructions,
+        max_retries=max_retries,
         worker=worker)

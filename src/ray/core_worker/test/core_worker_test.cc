@@ -259,7 +259,8 @@ void CoreWorkerTest::TestNormalTask(std::unordered_map<std::string, double> &res
       options.is_direct_call = true;
 
       std::vector<ObjectID> return_ids;
-      RAY_CHECK_OK(driver.SubmitTask(func, args, options, &return_ids));
+      RAY_CHECK_OK(
+          driver.SubmitTask(func, args, options, &return_ids, /*max_retries=*/0));
 
       ASSERT_EQ(return_ids.size(), 1);
 

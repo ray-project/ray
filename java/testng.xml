@@ -9,5 +9,6 @@
     </test>
     <listeners>
         <listener class-name="org.ray.api.RayAlterSuiteListener" />
+        <listener class-name="org.ray.api.TestProgressListener" />
     </listeners>
 </suite>

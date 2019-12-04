@@ -30,7 +30,7 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 100)
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
 
 namespace ray {
 
@@ -89,7 +89,7 @@ class CoreWorker {
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  RayletClient &GetRayletClient() { return *raylet_client_; }
+  RayletClient &GetRayletClient() { return *local_raylet_client_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
@@ -280,7 +280,8 @@ class CoreWorker {
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status error if task submission fails, likely due to raylet failure.
   Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
+                    int max_retries);
 
   /// Create an actor.
   ///
@@ -524,7 +525,7 @@ class CoreWorker {
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
-  std::shared_ptr<RayletClient> raylet_client_;
+  std::shared_ptr<RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
