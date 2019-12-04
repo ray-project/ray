@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_ACTOR_STATE_ACCESSOR_H
-#define RAY_GCS_ACTOR_STATE_ACCESSOR_H
+#ifndef RAY_GCS_ACTOR_INFO_ACCESSOR_H
+#define RAY_GCS_ACTOR_INFO_ACCESSOR_H
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
@@ -84,4 +84,4 @@ class ActorInfoAccessor {
 
 }  // namespace ray
 
-#endif  // RAY_GCS_ACTOR_STATE_ACCESSOR_H
+#endif  // RAY_GCS_ACTOR_INFO_ACCESSOR_H

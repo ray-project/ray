@@ -1,3 +1,6 @@
+#ifndef RAY_GCS_ACCESSOR_TEST_BASE_H
+#define RAY_GCS_ACCESSOR_TEST_BASE_H
+
 #include <atomic>
 #include <chrono>
 #include <string>
@@ -74,3 +77,5 @@ class AccessorTestBase : public ::testing::Test {
 }  // namespace gcs
 
 }  // namespace ray
+
+#endif  // RAY_GCS_ACCESSOR_TEST_BASE_H
