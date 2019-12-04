@@ -266,8 +266,10 @@ void NodeManager::KillWorker(std::shared_ptr<Worker> worker) {
   retry_timer->expires_from_now(retry_duration);
   retry_timer->async_wait([retry_timer, worker](const boost::system::error_code &error) {
     RAY_LOG(DEBUG) << "Send SIGKILL to worker, pid=" << worker->Pid();
-    // Force kill worker. TODO(rkn): Is there some small danger that the worker
-    // has already died and the PID has been reassigned to a different process?
+    // Force kill worker. TODO(mehrdadn, rkn): The worker may have already died
+    // and had its PID reassigned to a different process, at least on Windows.
+    // On Linux, this may or may not be the case, depending on e.g. whether
+    // the process has been already waited on. Regardless, this must be fixed.
     kill(worker->Pid(), SIGKILL);
   });
 }
