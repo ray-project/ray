@@ -32,7 +32,7 @@ void UpdateObjectLocations(const GcsChangeMode change_mode,
   }
   // Filter out the removed clients from the object locations.
   for (auto it = node_ids->begin(); it != node_ids->end();) {
-    if (gcs_client->Nodes().IsRemoved(*it)) {
+    if (gcs_client->Nodes().Cache().IsRemoved(*it)) {
       it = node_ids->erase(it);
     } else {
       it++;
