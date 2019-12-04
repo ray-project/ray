@@ -810,9 +810,11 @@ Status CoreWorker::AllocateReturnObjects(
 }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
-                               const ResourceMappingType &resource_ids,
+                               const std::shared_ptr<ResourceMappingType> resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
-  resource_ids_ = resource_ids;
+  if (resource_ids != nullptr) {
+    resource_ids_ = *resource_ids;
+  }
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 

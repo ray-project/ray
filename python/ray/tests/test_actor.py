@@ -1152,7 +1152,6 @@ def setup_queue_actor():
     ray.shutdown()
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_fork(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1171,7 +1170,6 @@ def test_fork(setup_queue_actor):
         assert filtered_items == list(range(1))
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_fork_consistency(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1203,7 +1201,6 @@ def test_fork_consistency(setup_queue_actor):
         assert filtered_items == list(range(num_items_per_fork))
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_pickled_handle_consistency(setup_queue_actor):
     queue = setup_queue_actor
 
@@ -1237,7 +1234,6 @@ def test_pickled_handle_consistency(setup_queue_actor):
         assert filtered_items == list(range(num_items_per_fork))
 
 
-@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="TODO support block/unblock")
 def test_nested_fork(setup_queue_actor):
     queue = setup_queue_actor
 

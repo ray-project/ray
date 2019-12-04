@@ -23,6 +23,14 @@ py_test(
 )
 
 py_test(
+    name = "test_actor_resources_direct",
+    size = "large",
+    srcs = ["test_actor_resources.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_actor_failures",
     size = "large",
     srcs = ["test_actor_failures.py"],

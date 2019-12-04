@@ -443,12 +443,13 @@ class CoreWorker {
   /// Execute a task.
   ///
   /// \param spec[in] Task specification.
-  /// \param spec[in] Resource IDs of resources assigned to this worker.
+  /// \param spec[in] Resource IDs of resources assigned to this worker. If nullptr,
+  ///                 reuse the previously assigned resources.
   /// \param results[out] Result objects that should be returned by value (not via
   ///                     plasma).
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
-                     const ResourceMappingType &resource_ids,
+                     const std::shared_ptr<ResourceMappingType> resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Build arguments for task executor. This would loop through all the arguments
