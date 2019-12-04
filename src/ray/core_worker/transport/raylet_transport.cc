@@ -16,6 +16,12 @@ CoreWorkerRayletTaskReceiver::CoreWorkerRayletTaskReceiver(
 void CoreWorkerRayletTaskReceiver::HandleAssignTask(
     const rpc::AssignTaskRequest &request, rpc::AssignTaskReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  // Check that the message was intended for our WorkerID and drop it if not.
+  // This handles the case where a message is delayed so we get an AssignTask
+  // bound for a previous worker that is now dead because we bound to the same
+  // port. Note that returning the status here doesn't actually cause the raylet
+  // to fail the task, that happens due to the unintentional disconnect from the
+  // asio connection when the previous worker died.
   WorkerID intended_worker_id = WorkerID::FromBinary(request.worker_id());
   if (intended_worker_id != worker_id_) {
     RAY_LOG(WARNING) << "Received task for mismatched WorkerID " << intended_worker_id;
