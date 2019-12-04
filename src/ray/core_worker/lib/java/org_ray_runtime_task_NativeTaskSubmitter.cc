@@ -123,7 +123,7 @@ JNIEXPORT jobject JNICALL Java_org_ray_runtime_task_NativeTaskSubmitter_nativeSu
 
   std::vector<ObjectID> return_ids;
   auto status = GetCoreWorker(nativeCoreWorkerPointer)
-                    .SubmitTask(ray_function, task_args, task_options, &return_ids);
+                    .SubmitTask(ray_function, task_args, task_options, &return_ids, /*max_retries=*/1);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
 
