@@ -9,12 +9,25 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/rpc/worker/core_worker_client.h"
-
-#include <unistd.h>  // pid_t
+#include "ray/util/process.h"
 
 namespace ray {
 
 namespace raylet {
+
+/// A class representing a system process for a worker.
+/// Do _not_ attempt to extend this into a larger class. Treat it as opaque.
+/// Especially, do not attempt to place any backreferences to any workers.
+typedef ray::Process WorkerProcess;
+
+/// A managed equivalent of a pid_t (to manage the lifetime of each process).
+/// TODO(mehrdadn): This hasn't been a great design, but we play along to
+/// minimize the changes needed for Windows compatibility.
+/// (We used to represent a worker process by just its pid_t, which carries
+/// no ownership/lifetime information.)
+/// Once this code is running properly, refactor the data structures to create
+/// a better ownership structure between the worker processes and the workers.
+typedef std::shared_ptr<WorkerProcess> WorkerProcessHandle;
 
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
@@ -22,8 +35,8 @@ namespace raylet {
 class Worker {
  public:
   /// A constructor that initializes a worker object.
-  Worker(const WorkerID &worker_id, pid_t pid, const Language &language, int port,
-         std::shared_ptr<LocalClientConnection> connection,
+  Worker(const WorkerID &worker_id, WorkerProcessHandle proc, const Language &language,
+         int port, std::shared_ptr<LocalClientConnection> connection,
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
@@ -34,8 +47,8 @@ class Worker {
   bool IsBlocked() const;
   /// Return the worker's ID.
   WorkerID WorkerId() const;
-  /// Return the worker's PID.
-  pid_t Pid() const;
+  /// Return the worker process.
+  WorkerProcessHandle Process() const;
   Language GetLanguage() const;
   int Port() const;
   void AssignTaskId(const TaskID &task_id);
@@ -79,8 +92,8 @@ class Worker {
  private:
   /// The worker's ID.
   WorkerID worker_id_;
-  /// The worker's PID.
-  pid_t pid_;
+  /// The worker's process.
+  WorkerProcessHandle proc_;
   /// The language type of this worker.
   Language language_;
   /// Port that this worker listens on.

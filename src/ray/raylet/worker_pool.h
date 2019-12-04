@@ -87,6 +87,15 @@ class WorkerPool {
   /// \param The driver to disconnect. The driver must be registered.
   void DisconnectDriver(const std::shared_ptr<Worker> &driver);
 
+  /// Finds a starting worker process by its PID. Returns null if it's not found.
+  ///
+  /// DO NOT USE THIS FUNCTION. It should really not need to exist!
+  /// TODO(mehrdadn): We should redesign the classes to avoid it.
+  ///
+  /// \param The language of the worker.
+  /// \param The worker's process ID. Must be valid.
+  WorkerProcessHandle FindStartingWorkerByProcessId(const Language &language, pid_t pid);
+
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -157,14 +166,17 @@ class WorkerPool {
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \return The id of the process that we started if it's positive,
   /// otherwise it means we didn't start a process.
-  int StartWorkerProcess(const Language &language,
-                         const std::vector<std::string> &dynamic_options = {});
+  WorkerProcessHandle StartWorkerProcess(
+      const Language &language, const std::vector<std::string> &dynamic_options = {});
 
   /// The implementation of how to start a new worker process with command arguments.
+  /// The lifetime of the process is tied to that of the returned object,
+  /// unless the caller manually detaches the process after the call.
   ///
   /// \param worker_command_args The command arguments of new worker process.
-  /// \return The process ID of started worker process.
-  virtual pid_t StartProcess(const std::vector<std::string> &worker_command_args);
+  /// \return An object representing the started worker process.
+  virtual WorkerProcessHandle StartProcess(
+      const std::vector<std::string> &worker_command_args);
 
   /// Push an warning message to user if worker pool is getting to big.
   virtual void WarnAboutSize();
@@ -189,12 +201,12 @@ class WorkerPool {
     std::unordered_set<std::shared_ptr<Worker>> registered_drivers;
     /// A map from the pids of starting worker processes
     /// to the number of their unregistered workers.
-    std::unordered_map<pid_t, int> starting_worker_processes;
+    std::unordered_map<WorkerProcessHandle, int> starting_worker_processes;
     /// A map for looking up the task with dynamic options by the pid of
     /// worker. Note that this is used for the dedicated worker processes.
-    std::unordered_map<pid_t, TaskID> dedicated_workers_to_tasks;
+    std::unordered_map<WorkerProcessHandle, TaskID> dedicated_workers_to_tasks;
     /// A map for speeding up looking up the pending worker for the given task.
-    std::unordered_map<TaskID, pid_t> tasks_to_dedicated_workers;
+    std::unordered_map<TaskID, WorkerProcessHandle> tasks_to_dedicated_workers;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
