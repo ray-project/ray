@@ -189,8 +189,9 @@ html_theme = 'alabaster'
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
+# NOTE: Roboto is the default font family for Alabaster
 html_theme_options = {
-    'font_family': 'Roboto',
+    'font_family': 'Source Sans Pro, Roboto, Arial',
     'body_max_width': 'auto',
     'page_width': '80%',
     'code_font_size': '0.8em',
