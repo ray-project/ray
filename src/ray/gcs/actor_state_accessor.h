@@ -10,9 +10,9 @@ namespace ray {
 namespace gcs {
 
 /// \class ActorStateAccessor
-/// ActorStateAccessor class introduce the interface of
-/// reading or writing or subscribing of actor's specification (immutable fields which
-/// determined at submission time, and mutable fields which are determined at runtime).
+/// `ActorStateAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// actor information in the GCS.
 class ActorStateAccessor {
  public:
   virtual ~ActorStateAccessor() = default;

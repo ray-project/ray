@@ -22,8 +22,7 @@ Status RedisActorStateAccessor::AsyncGet(
     callback(Status::OK(), result);
   };
 
-  ActorTable &actor_table = client_impl_->actor_table();
-  return actor_table.Lookup(JobID::Nil(), actor_id, on_done);
+  return client_impl_->actor_table().Lookup(JobID::Nil(), actor_id, on_done);
 }
 
 Status RedisActorStateAccessor::AsyncRegister(
@@ -43,9 +42,9 @@ Status RedisActorStateAccessor::AsyncRegister(
   };
 
   ActorID actor_id = ActorID::FromBinary(data_ptr->actor_id());
-  ActorTable &actor_table = client_impl_->actor_table();
-  return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
-                              /*log_length*/ 0);
+  return client_impl_->actor_table().AppendAt(JobID::Nil(), actor_id, data_ptr,
+                                              on_success, on_failure,
+                                              /*log_length*/ 0);
 }
 
 Status RedisActorStateAccessor::AsyncUpdate(
@@ -85,9 +84,8 @@ Status RedisActorStateAccessor::AsyncUpdate(
     }
   };
 
-  ActorTable &actor_table = client_impl_->actor_table();
-  return actor_table.AppendAt(JobID::Nil(), actor_id, data_ptr, on_success, on_failure,
-                              log_length);
+  return client_impl_->actor_table().AppendAt(JobID::Nil(), actor_id, data_ptr,
+                                              on_success, on_failure, log_length);
 }
 
 Status RedisActorStateAccessor::AsyncSubscribeAll(
