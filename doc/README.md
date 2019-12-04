@@ -9,8 +9,17 @@ make html
 open _build/html/index.html
 ```
 
-To test if there are any build errors with the documentation, do the following.
+To test if there are any build errors with the documentation, do the following:
 
 ```
 sphinx-build -W -b html -d _build/doctrees source _build/html
 ```
+
+To find broken links, run either of the following commands (which aren't exactly identical!):
+
+```
+make linkcheck
+
+sphinx-build -b linkcheck -n -d _build/doctrees source _build/html -j auto
+```
+

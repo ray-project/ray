@@ -57,7 +57,7 @@ Dependencies
 To build Ray, first install the following dependencies. We recommend using
 `Anaconda`_.
 
-.. _`Anaconda`: https://www.continuum.io/downloads
+.. _`Anaconda`: https://www.anaconda.com/distribution/#download-section
 
 For Ubuntu, run the following commands:
 
