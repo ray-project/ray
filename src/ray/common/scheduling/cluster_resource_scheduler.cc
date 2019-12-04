@@ -6,6 +6,23 @@ ClusterResourceScheduler::ClusterResourceScheduler(
   AddOrUpdateNode(local_node_id_, local_node_resources);
 }
 
+ClusterResourceScheduler::ClusterResourceScheduler(
+    const std::string& local_node_id,
+    const std::unordered_map<std::string, double>& local_node_resources) {
+  local_node_id_ = string_to_int_map_.Insert(local_node_id);
+  AddOrUpdateNode(local_node_id, local_node_resources);
+}
+
+
+void ClusterResourceScheduler::AddOrUpdateNode(
+    const std::string& node_id,
+    const std::unordered_map<std::string, double>& node_resource_map) {
+
+  NodeResources node_resources;
+  ResourceMapToNodeResources(node_resource_map, &node_resources);
+  AddOrUpdateNode(string_to_int_map_.Insert(node_id), node_resources);
+}
+
 void ClusterResourceScheduler::SetPredefinedResources(const NodeResources &new_resources,
                                                       NodeResources *old_resources) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
@@ -37,6 +54,7 @@ void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
   }
 }
 
+
 bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
@@ -45,6 +63,7 @@ bool ClusterResourceScheduler::RemoveNode(int64_t node_id) {
   } else {
     it->second.custom_resources.clear();
     nodes_.erase(it);
+    string_to_int_map_.Remove(node_id);
     return true;
   }
 }
@@ -115,6 +134,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   if (it != nodes_.end()) {
     if (IsSchedulable(task_req, it->first, it->second) == 0) {
       return local_node_id_;
+    } else {
+      RAY_LOG(ERROR) << "local node not schedulable";
     }
   }
 
@@ -152,6 +173,24 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(const TaskRequest &task
   return best_node;
 }
 
+
+std::string ClusterResourceScheduler::GetBestSchedulableNode(
+    const std::unordered_map<std::string, double>& task_resources,
+    int64_t *total_violations) {
+
+  TaskRequest task_request;
+  ResourceMapToTaskRequest(task_resources, &task_request);
+  int64_t node_id = GetBestSchedulableNode(task_request, total_violations);
+
+  std::string id_string;
+  if (node_id == -1) {
+    id_string = std::to_string(-1);
+  }
+  id_string = string_to_int_map_.Get(node_id);
+  return id_string;
+}
+
+
 bool ClusterResourceScheduler::SubtractNodeAvailableResources(
     int64_t node_id, const TaskRequest &task_req) {
   auto it = nodes_.find(node_id);
@@ -182,6 +221,48 @@ bool ClusterResourceScheduler::SubtractNodeAvailableResources(
   return true;
 }
 
+bool ClusterResourceScheduler::SubtractNodeAvailableResources(
+    const std::string& node_id,
+    const std::unordered_map<std::string, double>& resource_map) {
+  TaskRequest task_request;
+  ResourceMapToTaskRequest(resource_map, &task_request);
+  return SubtractNodeAvailableResources(string_to_int_map_.Get(node_id), task_request);
+}
+
+
+bool ClusterResourceScheduler::AddNodeAvailableResources(int64_t node_id,
+                                                         const TaskRequest &task_req) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+  NodeResources &resources = it->second;
+
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    resources.capacities[i].available =
+        resources.capacities[i].available + task_req.predefined_resources[i].demand;
+  }
+
+  for (size_t i = 0; i < task_req.custom_resources.size(); i++) {
+    auto it = resources.custom_resources.find(task_req.custom_resources[i].id);
+    if (it != resources.custom_resources.end()) {
+      it->second.available =
+          it->second.available + task_req.custom_resources[i].req.demand;
+    }
+  }
+  return true;
+}
+
+bool ClusterResourceScheduler::AddNodeAvailableResources(
+    const std::string& node_id,
+    const std::unordered_map<std::string, double>& resource_map) {
+  TaskRequest task_request;
+  ResourceMapToTaskRequest(resource_map, &task_request);
+  return AddNodeAvailableResources(string_to_int_map_.Get(node_id), task_request);
+}
+
+
+
 bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
                                                 NodeResources *ret_resources) {
   auto it = nodes_.find(node_id);
@@ -194,3 +275,51 @@ bool ClusterResourceScheduler::GetNodeResources(int64_t node_id,
 }
 
 int64_t ClusterResourceScheduler::NumNodes() { return nodes_.size(); }
+
+void ClusterResourceScheduler::ResourceMapToNodeResources(
+    const std::unordered_map<std::string, double>& resource_map,
+    NodeResources *node_resources) {
+  node_resources->capacities.resize(PredefinedResources_MAX);
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    node_resources->capacities[i].total = node_resources->capacities[i].total = 0;
+  }
+
+  for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
+    ResourceCapacity resource_capacity;
+    resource_capacity.total = resource_capacity.available = (int64_t)it->second;
+    if (it->first == "CPU") {
+      node_resources->capacities[CPU] = resource_capacity;
+    } else if (it->first == "memory") {
+      node_resources->capacities[MEM] = resource_capacity;
+    } else {
+      // This is a custom resource.
+      node_resources->custom_resources.emplace(string_to_int_map_.Insert(it->first), resource_capacity);
+    }
+  }
+}
+
+void ClusterResourceScheduler::ResourceMapToTaskRequest(
+    const std::unordered_map<std::string, double>& resource_map,
+    TaskRequest *task_request) {
+
+  size_t i = 0;
+  task_request->predefined_resources.resize(PredefinedResources_MAX);
+  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
+    task_request->predefined_resources[0].demand = 0;
+    task_request->predefined_resources[0].soft = false;
+  }
+
+  for (auto it = resource_map.begin(); it != resource_map.end(); ++it) {
+    if (it->first == "CPU") {
+      task_request->predefined_resources[CPU].demand = it->second;
+    } else if (it->first == "memory") {
+      task_request->predefined_resources[MEM].demand = it->second;
+    } else {
+      // This is a custom resource.
+      task_request->custom_resources[i].id = string_to_int_map_.Insert(it->first);
+      task_request->custom_resources[i].req.demand = it->second;
+      task_request->custom_resources[i].req.soft = false;
+      i++;
+    }
+  }
+}
