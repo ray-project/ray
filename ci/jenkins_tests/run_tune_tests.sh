@@ -126,6 +126,10 @@ $SUPPRESS_OUTPUT --force-direct docker run --rm --shm-size=${SHM_SIZE} --memory=
     python /ray/python/ray/tune/examples/pbt_memnn_example.py \
     --smoke-test
 
+$SUPPRESS_OUTPUT --force-direct docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
+    python /ray/python/ray/tune/examples/pbt_convnet_example.py \
+    --smoke-test
+
 # uncomment once statsmodels is updated.
 # $SUPPRESS_OUTPUT --force-direct docker run --rm --shm-size=${SHM_SIZE} --memory=${MEMORY_SIZE} $DOCKER_SHA \
 #     python /ray/python/ray/tune/examples/bohb_example.py \
