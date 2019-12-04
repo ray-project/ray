@@ -2,7 +2,7 @@
 #define RAY_CHANNEL_H
 
 #include "config/streaming_config.h"
-#include "queue/queue_service.h"
+#include "queue/queue_handler.h"
 #include "ring_buffer.h"
 #include "status.h"
 #include "util/streaming_util.h"

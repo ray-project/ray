@@ -12,30 +12,30 @@
 namespace ray {
 namespace streaming {
 
-/// Base class of UpstreamService and DownstreamService.
+/// Base class of UpstreamQueueMessageHandler and DownstreamQueueMessageHandler.
 /// A queue service manages a group of queues, upstream queues or downstream queues of
-/// current actor. Each queue service holds a boost.asio io_service, to handle message
+/// the current actor. Each queue service holds a boost.asio io_service, to handle messages
 /// asynchronously. When a message received by Writer/Reader in ray call thread, the
-/// message was delivered to UpstreamService/DownstreamService, then the ray call thread
-/// returns immediately. The queue service parses meta infomations from message, including
+/// message was delivered to UpstreamQueueMessageHandler/DownstreamQueueMessageHandler, then the ray call thread
+/// returns immediately. The queue service parses meta infomation from the message, including
 /// queue_id actor_id, etc, and dispatchs message to queue according to queue_id.
-class QueueService {
+class QueueMessageHandler {
  public:
-  /// Construct a QueueService instance.
+  /// Construct a QueueMessageHandler instance.
   /// \param[in] core_worker CoreWorker C++ pointer of current actor, used to call Core
   /// Worker's api.
   ///            For Python worker, the pointer can be obtained from
   ///            ray.worker.global_worker.core_worker; For Java worker, obtained from
   ///            RayNativeRuntime object through java reflection.
   /// \param[in] actor_id actor id of current actor.
-  QueueService(CoreWorker *core_worker, const ActorID &actor_id)
+  QueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
       : core_worker_(core_worker),
         actor_id_(actor_id),
         queue_dummy_work_(queue_service_) {
     Start();
   }
 
-  virtual ~QueueService() { Stop(); }
+  virtual ~QueueMessageHandler() { Stop(); }
 
   /// Dispatch message buffer to asio service.
   /// \param[in] buffer serialized message received from peer actor.
@@ -105,12 +105,12 @@ class QueueService {
   boost::asio::io_service::work queue_dummy_work_;
 };
 
-/// UpstreamService holds and manages all upstream queues of current actor.
-class UpstreamService : public QueueService {
+/// UpstreamQueueMessageHandler holds and manages all upstream queues of current actor.
+class UpstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  /// Construct a UpstreamService instance.
-  UpstreamService(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueService(core_worker, actor_id) {}
+  /// Construct a UpstreamQueueMessageHandler instance.
+  UpstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
+      : QueueMessageHandler(core_worker, actor_id) {}
   /// Create a upstream queue.
   /// \param[in] queue_id queue id of the queue to be created.
   /// \param[in] peer_actor_id actor id of peer actor.
@@ -137,26 +137,26 @@ class UpstreamService : public QueueService {
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback) override;
 
-  static std::shared_ptr<UpstreamService> CreateService(CoreWorker *core_worker,
+  static std::shared_ptr<UpstreamQueueMessageHandler> CreateService(CoreWorker *core_worker,
                                                         const ActorID &actor_id);
-  static std::shared_ptr<UpstreamService> GetService();
+  static std::shared_ptr<UpstreamQueueMessageHandler> GetService();
 
-  static RayFunction PEER_SYNC_FUNCTION;
-  static RayFunction PEER_ASYNC_FUNCTION;
+  static RayFunction peer_sync_function_;
+  static RayFunction peer_async_function_;
 
  private:
   bool CheckQueueSync(const ObjectID &queue_ids);
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::WriterQueue>> upstream_queues_;
-  static std::shared_ptr<UpstreamService> upstream_service_;
+  static std::shared_ptr<UpstreamQueueMessageHandler> upstream_handler_;
 };
 
-/// UpstreamService holds and manages all downstream queues of current actor.
-class DownstreamService : public QueueService {
+/// UpstreamQueueMessageHandler holds and manages all downstream queues of current actor.
+class DownstreamQueueMessageHandler : public QueueMessageHandler {
  public:
-  DownstreamService(CoreWorker *core_worker, const ActorID &actor_id)
-      : QueueService(core_worker, actor_id) {}
+  DownstreamQueueMessageHandler(CoreWorker *core_worker, const ActorID &actor_id)
+      : QueueMessageHandler(core_worker, actor_id) {}
   std::shared_ptr<ReaderQueue> CreateDownstreamQueue(const ObjectID &queue_id,
                                                      const ActorID &peer_actor_id);
   bool DownstreamQueueExists(const ObjectID &queue_id);
@@ -175,16 +175,16 @@ class DownstreamService : public QueueService {
       std::shared_ptr<LocalMemoryBuffer> buffer,
       std::function<void(std::shared_ptr<LocalMemoryBuffer>)> callback);
 
-  static std::shared_ptr<DownstreamService> CreateService(CoreWorker *core_worker,
+  static std::shared_ptr<DownstreamQueueMessageHandler> CreateService(CoreWorker *core_worker,
                                                           const ActorID &actor_id);
-  static std::shared_ptr<DownstreamService> GetService();
-  static RayFunction PEER_SYNC_FUNCTION;
-  static RayFunction PEER_ASYNC_FUNCTION;
+  static std::shared_ptr<DownstreamQueueMessageHandler> GetService();
+  static RayFunction peer_sync_function_;
+  static RayFunction peer_async_function_;
 
  private:
   std::unordered_map<ObjectID, std::shared_ptr<streaming::ReaderQueue>>
       downstream_queues_;
-  static std::shared_ptr<DownstreamService> downstream_service_;
+  static std::shared_ptr<DownstreamQueueMessageHandler> downstream_handler_;
 };
 
 }  // namespace streaming

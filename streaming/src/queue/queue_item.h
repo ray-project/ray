@@ -18,7 +18,7 @@ using ray::ObjectID;
 const uint64_t QUEUE_INVALID_SEQ_ID = std::numeric_limits<uint64_t>::max();
 
 /// QueueItem is the element stored in `Queue`. Actually, when DataWriter pushes a message
-/// bundle into queue, the bundle is packed into one QueueItem, so a one-to-one
+/// bundle into a queue, the bundle is packed into one QueueItem, so a one-to-one
 /// relationship exists between message bundle and QueueItem. Meanwhile, the QueueItem is
 /// also the minimum unit to send through direct actor call. Each QueueItem holds a
 /// LocalMemoryBuffer shared_ptr, which will be sent out by Transport.

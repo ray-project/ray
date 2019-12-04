@@ -53,19 +53,19 @@ StreamingStatus StreamingQueueProducer::CreateTransferChannel() {
 
 StreamingStatus StreamingQueueProducer::CreateQueue() {
   STREAMING_LOG(INFO) << "CreateQueue qid: " << channel_info.channel_id << " data_size: " << channel_info.queue_size;
-  auto upstream_service = ray::streaming::UpstreamService::GetService();
-  if (upstream_service->UpstreamQueueExists(channel_info.channel_id)) {
+  auto upstream_handler = ray::streaming::UpstreamQueueMessageHandler::GetService();
+  if (upstream_handler->UpstreamQueueExists(channel_info.channel_id)) {
     RAY_LOG(INFO) << "StreamingQueueWriter::CreateQueue duplicate!!!";
     return StreamingStatus::OK;
   }
 
-  upstream_service->SetPeerActorID(channel_info.channel_id, channel_info.actor_id);
-  queue_ = upstream_service->CreateUpstreamQueue(channel_info.channel_id, channel_info.actor_id, channel_info.queue_size);
+  upstream_handler->SetPeerActorID(channel_info.channel_id, channel_info.actor_id);
+  queue_ = upstream_handler->CreateUpstreamQueue(channel_info.channel_id, channel_info.actor_id, channel_info.queue_size);
   STREAMING_CHECK(queue_ != nullptr);
 
   std::vector<ObjectID> queue_ids, failed_queues;
   queue_ids.push_back(channel_info.channel_id);
-  upstream_service->WaitQueues(queue_ids, 10*1000, failed_queues);
+  upstream_handler->WaitQueues(queue_ids, 10*1000, failed_queues);
 
   STREAMING_LOG(INFO) << "q id => " << channel_info.channel_id << ", queue size => "
                       << channel_info.queue_size;
@@ -143,17 +143,17 @@ StreamingStatus StreamingQueueConsumer::CreateTransferChannel() {
   // subscribe next seq id from checkpoint id
   // pull remote queue to local store if scheduler connection is set
 
-  auto downstream_service = ray::streaming::DownstreamService::GetService();
+  auto downstream_handler = ray::streaming::DownstreamQueueMessageHandler::GetService();
   STREAMING_LOG(INFO) << "GetQueue qid: " << channel_info.channel_id << " start_seq_id: " << channel_info.current_seq_id + 1;
-  if (downstream_service->DownstreamQueueExists(channel_info.channel_id)) {
+  if (downstream_handler->DownstreamQueueExists(channel_info.channel_id)) {
     RAY_LOG(INFO) << "StreamingQueueReader::GetQueue duplicate!!!";
     return StreamingStatus::OK;
   }
 
-  downstream_service->SetPeerActorID(channel_info.channel_id, channel_info.actor_id);
+  downstream_handler->SetPeerActorID(channel_info.channel_id, channel_info.actor_id);
   STREAMING_LOG(INFO) << "Create ReaderQueue " << channel_info.channel_id
                       << " pull from start_seq_id: " << channel_info.current_seq_id + 1;
-  queue_ = downstream_service->CreateDownstreamQueue(channel_info.channel_id, channel_info.actor_id);
+  queue_ = downstream_handler->CreateDownstreamQueue(channel_info.channel_id, channel_info.actor_id);
 
   return StreamingStatus::OK;
 }

@@ -19,12 +19,12 @@ using ray::ObjectID;
 
 enum QueueType { UPSTREAM = 0, DOWNSTREAM };
 
-/// A queue-like data structure, which does not delete it's item after poped.
+/// A queue-like data structure, which does not delete its items after poped.
 /// The lifecycle of each item is:
-/// - Pending, a item is pushed into queue, but has not been processed (sent out or
+/// - Pending, an item is pushed into a queue, but has not been processed (sent out or
 /// consumed),
-/// - Processed, has been handled by user, but should not be deleted
-/// - Evicted, useless to user, should be poped and destroyed.
+/// - Processed, has been handled by the user, but should not be deleted.
+/// - Evicted, useless to the user, should be poped and destroyed.
 /// At present, this data structure is implemented with one std::list,
 /// using a watershed iterator to divided.
 class Queue {
