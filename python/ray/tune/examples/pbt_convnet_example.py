@@ -6,6 +6,7 @@ from __future__ import print_function
 
 # yapf: disable
 # __tutorial_imports_begin__
+import argparse
 import os
 import numpy as np
 import torch
@@ -60,45 +61,51 @@ class PytorchTrainble(tune.Trainable):
 # __trainable_end__
 # yapf: enable
 
-ray.init()
-datasets.MNIST("~/data", train=True, download=True)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--smoke-test", action="store_true", help="Finish quickly for testing")
+    args, _ = parser.parse_known_args()
 
-validate_save_restore(PytorchTrainble)
-validate_save_restore(PytorchTrainble, use_object_store=True)
-print("Success!")
+    ray.init()
+    datasets.MNIST("~/data", train=True, download=True)
 
-# yapf: disable
-# __pbt_begin__
-scheduler = PopulationBasedTraining(
-    time_attr="training_iteration",
-    metric="mean_accuracy",
-    mode="max",
-    perturbation_interval=5,
-    hyperparam_mutations={
-        # distribution for resampling
-        "lr": lambda: np.random.uniform(0.0001, 1),
-        # allow perturbations within this set of categorical values
-        "momentum": [0.8, 0.9, 0.99],
-    })
-# __pbt_end__
-# yapf: enable
+    validate_save_restore(PytorchTrainble)
+    validate_save_restore(PytorchTrainble, use_object_store=True)
+    print("Success!")
 
-# yapf: disable
-# __tune_begin__
-analysis = tune.run(
-    PytorchTrainble,
-    name="pbt_test",
-    scheduler=scheduler,
-    reuse_actors=True,
-    verbose=1,
-    stop={
-        "training_iteration": 100,
-    },
-    num_samples=4,
-    # PBT starts by training many neural networks in parallel with random hyperparameters.
-    config={
-        "lr": tune.uniform(0.001, 1),
-        "momentum": tune.uniform(0.001, 1),
-    })
-# __tune_end__
-# yapf: enable
+    # yapf: disable
+    # __pbt_begin__
+    scheduler = PopulationBasedTraining(
+        time_attr="training_iteration",
+        metric="mean_accuracy",
+        mode="max",
+        perturbation_interval=5,
+        hyperparam_mutations={
+            # distribution for resampling
+            "lr": lambda: np.random.uniform(0.0001, 1),
+            # allow perturbations within this set of categorical values
+            "momentum": [0.8, 0.9, 0.99],
+        })
+    # __pbt_end__
+    # yapf: enable
+
+    # yapf: disable
+    # __tune_begin__
+    analysis = tune.run(
+        PytorchTrainble,
+        name="pbt_test",
+        scheduler=scheduler,
+        reuse_actors=True,
+        verbose=1,
+        stop={
+            "training_iteration": 5 if args.smoke_test else 100,
+        },
+        num_samples=4,
+        # PBT starts by training many neural networks in parallel with random hyperparameters.
+        config={
+            "lr": tune.uniform(0.001, 1),
+            "momentum": tune.uniform(0.001, 1),
+        })
+    # __tune_end__
+    # yapf: enable

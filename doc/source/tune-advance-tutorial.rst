@@ -24,7 +24,7 @@ A naive example for ``Trainable`` is a simple number guesser:
     from ray import tune
     from ray.tune import Trainable
 
-    class Example(Trainable):
+    class Guesser(Trainable):
         def _setup(self, config):
             self.config = config
             self.password = 1024
@@ -36,7 +36,7 @@ A naive example for ``Trainable`` is a simple number guesser:
 
     ray.init()
     analysis = tune.run(
-        Example,
+        Guesser,
         stop={
             "training_iteration": 1,
         },
@@ -48,10 +48,8 @@ A naive example for ``Trainable`` is a simple number guesser:
     print('best config: ', analysis.get_best_config(metric="diff", mode="min"))
 
 The program randomly picks 10 number from [1, 10000) and finds which is closer to the password.
-As a minimized example, we use BasicVariantGenerator as search algorithm and it cannot further
-mutate the (hyper)parameter in config across the experiments.
-For the subclass of ``ray.tune.Trainable``, Tune will convert this class into a Ray actor, which
-runs on a separate process on a worker.``_setup`` function is invoked once for custom
+As a subclass of ``ray.tune.Trainable``, Tune will convert ``Example`` into a Ray actor, which
+runs on a separate process on a worker. ``_setup`` function is invoked once for each Actor for custom
 initialization. ``_train`` execute one logical iteration of training in the tuning process,
 which may include several iterations of actual training (see the next example). As a rule of
 thumb, the execution time of one train call should be large enough to avoid overheads
@@ -61,7 +59,7 @@ thumb, the execution time of one train call should be large enough to avoid over
 We only implemented ``_setup`` and ``_train``methods for simplification, usually it's also required
 to implement ``_save``, and ``_restore`` for checkpoint and fault tolerance.
 
-Next we use a more complete example, training a Pytorch model with Trainable and PBT.
+Next we trains a Pytorch convolution model with Trainable and PBT.
 
 Trainable with Population Based Training (PBT)
 ----------------------------------------------
@@ -88,8 +86,8 @@ First we define a Trainable that wraps a ConvNet model.
    :start-after: __trainable_begin__
    :end-before: __trainable_end__
 
-The example reuse some of the functions in mnist_pytorch, and is a good demo for how to decouple
-the tuning function and original training code.
+The example reuses some of the functions in ray/tune/examples/mnist_pytorch.py, and is also a good
+demo for how to decouple the tuning logic and original training code.
 
 Here we also overrides ``reset_config``. This method is optional, but can be implemented to speed
 up algorithms such as PBT, and to allow performance optimizations such as running experiments
@@ -97,7 +95,7 @@ with reuse_actors=True.
 
 Then we define a PBT scheduler
 
-.. literalinclude:: ../../python/ray/tune/examples/pbt_pytorch_trainable.py
+.. literalinclude:: ../../python/ray/tune/examples/pbt_convnet_trainable.py
    :language: python
    :start-after: __pbt_begin__
    :end-before: __pbt_end__
@@ -145,6 +143,10 @@ In {LOG_DIR}/{MY_EXPERIMENT_NAME}/, all mutations are logged in pbt_global.txt
 and individual policy perturbations are recorded in pbt_policy_{i}.txt. Tune logs:
 [target trial tag, clone trial tag, target trial iteration, clone trial iteration,
 old config, new config] on each perturbation step.
+
+
+
+
 
 .. code-block:: python
 
