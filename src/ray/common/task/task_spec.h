@@ -8,7 +8,6 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/scheduling/cluster_resource_scheduler.h"
 #include "ray/common/task/scheduling_resources.h"
 #include "ray/common/task/task_common.h"
 
