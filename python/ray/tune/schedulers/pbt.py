@@ -240,6 +240,8 @@ class PopulationBasedTraining(FIFOScheduler):
         lower_quantile, upper_quantile = self._quantiles()
 
         if trial in upper_quantile:
+            # The trial last result is only updated after the scheduler
+            # callback. So, we override with the current result.
             state.last_checkpoint = trial_runner.trial_executor.save(
                 trial, Checkpoint.MEMORY, result=result)
             self._num_checkpoints += 1
