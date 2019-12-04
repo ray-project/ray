@@ -25,7 +25,7 @@ py_test(
 py_test(
     name = "test_actor_resources_direct",
     size = "large",
-    srcs = ["test_actor_resources.py"],
+    srcs = ["test_actor_resources_direct.py", "test_actor_resources.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
