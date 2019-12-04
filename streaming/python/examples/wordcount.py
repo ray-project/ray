@@ -83,7 +83,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     titles_file = str(args.titles_file)
 
-    ray.init(local_mode=True)
+    ray.init()
 
     # A Ray streaming environment with the default configuration
     env = Environment()

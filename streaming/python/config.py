@@ -1,7 +1,3 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from enum import Enum
 
 
@@ -26,17 +22,3 @@ class Config:
 
     # operator type
     OPERATOR_TYPE = "operator_type"
-
-
-class OperatorType(Enum):
-    """
-    Operator type
-
-    SOURCE: Sources are where your program reads its input from
-    TRANSFORM: Operators transform one or more DataStreams into a new DataStream.
-    Programs can combine multiple transformations into sophisticated dataflow topologies.
-    SINK: Sinks consume DataStreams and forward them to files, sockets, external systems, or print them.
-    """
-    SOURCE = 1
-    TRANSFORM = 2
-    SINK = 3
