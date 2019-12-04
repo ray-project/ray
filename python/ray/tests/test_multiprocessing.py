@@ -115,7 +115,3 @@ def test_apply_async(pool):
     assert not result.successful()
     with pytest.raises(ZeroDivisionError):
         result.get()
-
-
-def test_close():
-    pass
