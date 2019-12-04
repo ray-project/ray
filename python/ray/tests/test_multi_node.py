@@ -321,7 +321,7 @@ print("success")
         process_handle.kill()
 
 
-def test_calling_start_ray_head():
+def test_calling_start_ray_head(call_ray_stop_only):
     # Test that we can call ray start with various command line
     # parameters. TODO(rkn): This test only tests the --head code path. We
     # should also test the non-head node code path.
