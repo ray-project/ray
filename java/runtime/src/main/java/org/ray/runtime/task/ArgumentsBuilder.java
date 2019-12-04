@@ -23,6 +23,9 @@ public class ArgumentsBuilder {
    */
   private static final int LARGEST_SIZE_PASS_BY_VALUE = 100 * 1024;
 
+  /**
+   * This dummy type is also defined in signature.py. Please keep it synced.
+   */
   private static final NativeRayObject PYTHON_DUMMY_TYPE = ObjectSerializer
       .serialize("__RAY_DUMMY__".getBytes());
 

@@ -37,6 +37,8 @@ Attributes:
         by 'functools.partial'.
 """
 
+# This dummy type is also defined in ArgumentsBuilder.java. Please keep it
+# synced.
 DUMMY_TYPE = b"__RAY_DUMMY__"
 
 

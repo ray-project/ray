@@ -94,6 +94,8 @@ public class ActorTest extends BaseTest {
     return res.get();
   }
 
+  // TODO (kfstorm): re-enable this test once
+  // https://github.com/ray-project/ray/issues/6329 is fixed.
   @Test(enabled = false)
   public void testPassActorAsParameter() {
     RayActor<Counter> actor = Ray.createActor(Counter::new, 0);
