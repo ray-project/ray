@@ -97,8 +97,11 @@ class PoolActor(object):
         if initializer:
             initializer(*initargs)
 
-    def run(self, func, *args, **kwargs):
-        return func(*args, **kwargs)
+    def run_batch(self, func, batch):
+        results = []
+        for args, kwargs in batch:
+            results.append(func(*args, **kwargs))
+        return results
 
 
 # https://docs.python.org/3/library/multiprocessing.html#module-multiprocessing.pool
@@ -142,23 +145,16 @@ class Pool(object):
         return (PoolActor._remote(
             self._initializer, *self._initargs, is_direct_call=True), 0)
 
-    def _run(self, actor_index, func, args=None, kwargs=None):
-        if not args:
-            args = ()
-        if not kwargs:
-            kwargs = {}
+    # Batch should be a list of tuples: (args, kwargs).
+    def _run_batch(self, actor_index, func, batch):
         actor, count = self._actor_pool[actor_index]
-        object_id = actor.run.remote(func, *args, **kwargs)
+        object_id = actor.run.remote(func, batch)
         count += 1
         if count == self._maxtasksperchild:
             self._stop_actor(actor)
             actor, count = self._new_actor_entry()
         self._actor_pool[actor_index] = (actor, count)
         return object_id
-
-    def _run_random(self, func, args=None, kwargs=None):
-        return self._run(
-            random.randrange(len(self._actor_pool)), func, args, kwargs)
 
     def apply(self, func, args=None, kwargs=None):
         return self.apply_async(func, args, kwargs).get()
@@ -170,7 +166,8 @@ class Pool(object):
                     callback=None,
                     error_callback=None):
         self._check_running()
-        object_id = self._run_random(func, args, kwargs)
+        random_actor_index = random.randrange(len(self._actor_pool))
+        object_id = self._run_batch(random_actor_index, func, [(args, kwargs)])
         return AsyncResult(object_id, callback, error_callback)
 
     def map(self, func, iterable, chunksize=None):
@@ -205,7 +202,7 @@ class Pool(object):
             callback=callback,
             error_callback=error_callback)
 
-    # TODO: chunksize, callbacks
+    # TODO: chunksize
     def _map_async(self,
                    func,
                    iterable,
@@ -213,13 +210,20 @@ class Pool(object):
                    chunksize=None,
                    callback=None,
                    error_callback=None):
+        if not hasattr(iterable, "__len__"):
+            iterable = [iterable]
+
+        if chunksize is None:
+            chunksize, extra = divmod(len(iterable), len(self._actor_pool) * 4)
+            if extra:
+                chunksize += 1
+
         object_ids = []
-        # TODO: check that it's an iterable
         for i, args in enumerate(iterable):
             if not unpack_args:
                 args = (args, )
             object_ids.append(
-                self._run(i % len(self._actor_pool), func, args=args))
+                self._run_batch(i % len(self._actor_pool), func, [(args, {})]))
         return AsyncResult(object_ids, callback, error_callback)
 
     # TODO: shouldn't actually submit everything at once for memory
@@ -230,6 +234,8 @@ class Pool(object):
         object_ids = [remote_func.remote(arg) for arg in iterable]
         return OrderedIMapIterator(object_ids)
 
+    # TODO: shouldn't actually submit everything at once for memory
+    # considerations.
     def imap_unordered(self, func, iterable, chunksize=None):
         self._check_running()
         remote_func = self._decorator(func)
