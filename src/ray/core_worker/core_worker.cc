@@ -166,7 +166,11 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
+      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
+      [this](const ObjectID &obj_id) {
+        return task_manager_->IsObjectPending(obj_id) ||
+               future_resolver_->IsObjectPending(obj_id);
+      }));
 
   task_manager_.reset(
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
@@ -968,7 +972,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
     RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task "
-      << owner_id.Hex();
+                  << owner_id.Hex();
   }
   // We own the task. Reply back to the borrower once the object has been
   // created.

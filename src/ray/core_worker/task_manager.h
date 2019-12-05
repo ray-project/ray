@@ -62,6 +62,15 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] error_type The type of the specific error.
   void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override;
 
+  /// Returns whether computation of an object is in progress.
+  ///
+  /// \param[in] object_id ID of the object to query.
+  /// \return Whether the object is pending.
+  bool IsObjectPending(const ObjectID &object_id) {
+    absl::ReaderMutexLock lock(&mu_);
+    return pending_.find(object_id) != pending_.end();
+  }
+
  private:
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
@@ -87,6 +96,9 @@ class TaskManager : public TaskFinisherInterface {
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
   absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
       GUARDED_BY(mu_);
+
+  /// Set of object ids we are currently resolving.
+  absl::flat_hash_set<ObjectID> pending_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray

@@ -30,6 +30,15 @@ class FutureResolver {
   void ResolveFutureAsync(const ObjectID &object_id, const TaskID &owner_id,
                           const rpc::Address &owner_address);
 
+  /// Returns whether resolution of an object is in progress.
+  ///
+  /// \param[in] object_id ID of the object to query.
+  /// \return Whether the object is pending.
+  bool IsObjectPending(const ObjectID &object_id) {
+    absl::ReaderMutexLock lock(&mu_);
+    return pending_.find(object_id) != pending_.end();
+  }
+
  private:
   /// Used to store values of resolved futures.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
@@ -43,6 +52,9 @@ class FutureResolver {
   /// Cache of gRPC clients to the objects' owners.
   absl::flat_hash_map<TaskID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
       owner_clients_ GUARDED_BY(mu_);
+
+  /// Set of object ids we are currently resolving.
+  absl::flat_hash_set<ObjectID> pending_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray

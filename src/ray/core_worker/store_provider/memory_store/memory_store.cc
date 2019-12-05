@@ -109,10 +109,12 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
-    std::shared_ptr<RayletClient> raylet_client)
+    std::shared_ptr<RayletClient> raylet_client,
+    std::function<bool(const ObjectID &)> is_pending)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
-      raylet_client_(raylet_client) {}
+      raylet_client_(raylet_client),
+      is_pending_(is_pending) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -263,6 +265,18 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
                                                remove_after_get);
     for (const auto &object_id : get_request->ObjectIds()) {
       object_get_requests_[object_id].push_back(get_request);
+    }
+  }
+
+  // Check invariants: remaining objects must be either tracked in the
+  // TaskManager or FutureResolver.
+  for (const auto &obj_id : get_request->ObjectIds()) {
+    if (!is_pending_(obj_id)) {
+      // Double check the store again in case it has shown up in the meantime.
+      absl::MutexLock lock(&mu_);
+      RAY_CHECK(objects_.find(obj_id) != objects_.end())
+          << "Object " << obj_id.Hex()
+          << " is neither pending resolution nor in the object store.";
     }
   }
 

@@ -7,6 +7,9 @@ void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries)
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
+  for (size_t i = 0; i < spec.NumReturns(); i++) {
+    pending_.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
+  }
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -17,6 +20,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     auto it = pending_tasks_.find(task_id);
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
+    auto &spec = it->second.first;
+    for (size_t i = 0; i < spec.NumReturns(); i++) {
+      pending_.erase(spec.ReturnId(i, TaskTransportType::DIRECT));
+    }
     pending_tasks_.erase(it);
   }
 
@@ -69,6 +76,9 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
     RAY_CHECK(it != pending_tasks_.end())
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.first;
+    for (size_t i = 0; i < spec.NumReturns(); i++) {
+      pending_.erase(spec.ReturnId(i, TaskTransportType::DIRECT));
+    }
     num_retries_left = it->second.second;
     if (num_retries_left == 0) {
       pending_tasks_.erase(it);

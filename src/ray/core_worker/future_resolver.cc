@@ -12,6 +12,7 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
         client_factory_({owner_address.ip_address(), owner_address.port()}));
     it = owner_clients_.emplace(owner_id, std::move(client)).first;
   }
+  pending_.insert(object_id);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -20,15 +21,18 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
       request,
       [this, object_id](const Status &status, const rpc::GetObjectStatusReply &reply) {
         if (!status.ok()) {
-          RAY_LOG(ERROR)
-              << "Error retrieving the value of object ID " << object_id
-              << " that was deserialized: " << status.ToString();
+          RAY_LOG(ERROR) << "Error retrieving the value of object ID " << object_id
+                         << " that was deserialized: " << status.ToString();
         }
         // Either the owner is gone or the owner replied that the object has
         // been created. In both cases, we can now try to fetch the object via
         // plasma.
         RAY_CHECK_OK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                            object_id));
+        // Important: erase from pending *after* putting in the memory store,
+        // to avoid a race where the object is neither pending nor stored.
+        absl::MutexLock lock(&mu_);
+        pending_.erase(object_id);
       }));
 }
 
