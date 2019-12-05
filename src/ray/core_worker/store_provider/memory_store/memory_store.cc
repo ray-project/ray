@@ -126,6 +126,10 @@ void CoreWorkerMemoryStore::GetAsync(
       ptr = iter->second;
     } else {
       object_async_get_requests_[object_id].push_back(callback);
+      RAY_CHECK(recently_deleted_.count(obj_id) == 0)
+          << "Tried to get object " << obj_id.Hex()
+          << ", which was recently deleted from "
+          << "the object store. Either it was deleted or this is a ref counting bug.";
     }
   }
   // It's important for performance to run the callback outside the lock.
