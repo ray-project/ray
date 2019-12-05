@@ -586,7 +586,7 @@ class CoreWorker {
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
-  /// of that resource allocated for this worker.
+  /// of that resource allocated for this worker. This is set on task assignment.
   std::shared_ptr<ResourceMappingType> resource_ids_;
 
   // Interface that receives tasks from the raylet.

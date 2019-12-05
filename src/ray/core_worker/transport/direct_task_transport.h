@@ -54,6 +54,11 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
   /// processing the worker, we don't attempt to re-use the worker.
+  ///
+  /// \param[in] addr The address of the worker.
+  /// \param[in] task_queue_key The scheduling class of the worker.
+  /// \param[in] was_error Whether the task failed to be submitted.
+  /// \param[in] assigned_resources Resource ids previously assigned to the worker.
   void OnWorkerIdle(
       const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key, bool was_error,
       const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)

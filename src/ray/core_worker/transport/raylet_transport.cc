@@ -22,7 +22,7 @@ void CoreWorkerRayletTaskReceiver::HandleAssignTask(
 
   // Set the resource IDs for this task.
   // TODO: convert the resource map to protobuf and change this.
-  auto resource_ids = std::shared_ptr<ResourceMappingType>(new ResourceMappingType());
+  auto resource_ids = std::make_shared<ResourceMappingType>();
   auto resource_infos =
       flatbuffers::GetRoot<protocol::ResourceIdSetInfos>(request.resource_ids().data())
           ->resource_infos();

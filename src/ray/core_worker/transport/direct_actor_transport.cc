@@ -222,7 +222,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
-  auto resource_ids = std::shared_ptr<ResourceMappingType>(nullptr);
+  std::shared_ptr<ResourceMappingType> resource_ids;
   if (!task_spec.IsActorTask()) {
     resource_ids.reset(new ResourceMappingType());
     for (const auto &mapping : request.resource_mapping()) {
