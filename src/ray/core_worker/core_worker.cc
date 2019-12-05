@@ -975,7 +975,7 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // The task is pending. Send the reply once the task finishes.
     memory_store_->GetAsync(
-        object_id, [send_reply_callback, object_id](std::shared_ptr<RayObject> obj) {
+        object_id, [send_reply_callback](std::shared_ptr<RayObject> obj) {
           send_reply_callback(Status::OK(), nullptr, nullptr);
         });
     // TODO(ekl) this is a race condition.

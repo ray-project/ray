@@ -192,7 +192,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Received task: " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
@@ -247,6 +247,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
+    RAY_LOG(DEBUG) << "Executing task: " << task_spec.DebugString();
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
