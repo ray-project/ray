@@ -691,6 +691,7 @@ cc_library(
     ),
     hdrs = glob([
         "src/ray/gcs/*.h",
+        "src/ray/gcs/test/*.h",
     ]),
     copts = COPTS,
     deps = [
@@ -709,7 +710,7 @@ cc_library(
 cc_binary(
     name = "redis_gcs_client_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/redis_gcs_client_test.cc"],
+    srcs = ["src/ray/gcs/test/redis_gcs_client_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
@@ -753,7 +754,7 @@ cc_binary(
 cc_binary(
     name = "asio_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/asio_test.cc"],
+    srcs = ["src/ray/gcs/test/asio_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
