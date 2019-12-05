@@ -108,7 +108,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
                                   std::placeholders::_2, std::placeholders::_3);
     raylet_task_receiver_ =
         std::unique_ptr<CoreWorkerRayletTaskReceiver>(new CoreWorkerRayletTaskReceiver(
-            local_raylet_client_, execute_task, exit_handler));
+            worker_context_.GetWorkerID(), local_raylet_client_, execute_task,
+            exit_handler));
     direct_task_receiver_ =
         std::unique_ptr<CoreWorkerDirectTaskReceiver>(new CoreWorkerDirectTaskReceiver(
             worker_context_, task_execution_service_, execute_task, exit_handler));

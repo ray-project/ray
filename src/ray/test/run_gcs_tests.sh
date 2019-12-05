@@ -6,7 +6,7 @@
 set -e
 set -x
 
-bazel build "//:redis_gcs_client_test" "//:actor_state_accessor_test"  "//:subscription_executor_test" "//:asio_test" "//:libray_redis_module.so"
+bazel build "//:redis_gcs_client_test" "//:redis_actor_info_accessor_test"  "//:subscription_executor_test" "//:asio_test" "//:libray_redis_module.so"
 
 # Start Redis.
 ./bazel-bin/redis-server \
@@ -16,7 +16,7 @@ bazel build "//:redis_gcs_client_test" "//:actor_state_accessor_test"  "//:subsc
 sleep 1s
 
 ./bazel-bin/redis_gcs_client_test
-./bazel-bin/actor_state_accessor_test
+./bazel-bin/redis_actor_info_accessor_test
 ./bazel-bin/subscription_executor_test
 ./bazel-bin/asio_test
 

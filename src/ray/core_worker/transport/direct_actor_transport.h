@@ -79,7 +79,8 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Void.
   void PushActorTask(rpc::CoreWorkerClientInterface &client,
                      std::unique_ptr<rpc::PushTaskRequest> request,
-                     const ActorID &actor_id, const TaskID &task_id, int num_returns);
+                     const ActorID &actor_id, const TaskID &task_id, int num_returns)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
   /// Note that this function doesn't take lock, the caller is expected to hold
@@ -87,7 +88,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   ///
   /// \param[in] actor_id Actor ID.
   /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id);
+  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Whether the specified actor is alive.
   ///
@@ -99,27 +100,32 @@ class CoreWorkerDirectActorTaskSubmitter {
   rpc::ClientFactoryFn client_factory_;
 
   /// Mutex to proect the various maps below.
-  mutable std::mutex mutex_;
+  mutable absl::Mutex mu_;
 
   /// Map from actor id to actor state. This only includes actors that we send tasks to.
-  std::unordered_map<ActorID, ActorStateData> actor_states_;
+  absl::flat_hash_map<ActorID, ActorStateData> actor_states_ GUARDED_BY(mu_);
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
   /// We use shared_ptr to enable shared_from_this for pending client callbacks.
   ///
   /// TODO(zhijunfu): this will be moved into `actor_states_` later when we can
   /// subscribe updates for a specific actor.
-  std::unordered_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
-      rpc_clients_;
+  absl::flat_hash_map<ActorID, std::shared_ptr<rpc::CoreWorkerClientInterface>>
+      rpc_clients_ GUARDED_BY(mu_);
 
   /// Map from actor id to the actor's pending requests. Each actor's requests
   /// are ordered by the task number in the request.
   absl::flat_hash_map<ActorID, std::map<int64_t, std::unique_ptr<rpc::PushTaskRequest>>>
-      pending_requests_;
+      pending_requests_ GUARDED_BY(mu_);
 
-  /// Map from actor id to the sequence number of the next task to send to that
-  /// actor.
-  std::unordered_map<ActorID, int64_t> next_sequence_number_;
+  /// Map from actor id to the send position of the next task to queue for send
+  /// for that actor. This is always greater than or equal to next_send_position_.
+  absl::flat_hash_map<ActorID, int64_t> next_send_position_to_assign_ GUARDED_BY(mu_);
+
+  /// Map from actor id to the send position of the next task to send to that actor.
+  /// Note that this differs from the PushTaskRequest's sequence number in that it
+  /// increases monotonically in this process independently of CallerId changes.
+  absl::flat_hash_map<ActorID, int64_t> next_send_position_ GUARDED_BY(mu_);
 
   /// Resolve direct call object dependencies;
   LocalDependencyResolver resolver_;
@@ -307,6 +313,7 @@ class SchedulingQueue {
                      << client_processed_up_to;
       next_seq_no_ = client_processed_up_to + 1;
     }
+    RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
     pending_tasks_[seq_no] =
         InboundRequest(accept_request, reject_request, dependencies.size() > 0);
     if (dependencies.size() > 0) {
