@@ -113,7 +113,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             rpc::WorkerAddress addr(reply.worker_address().ip_address(),
                                     reply.worker_address().port());
             AddWorkerLeaseClient(addr, std::move(lease_client));
-            auto resources_copy = reply.assigned_resources();
+            auto resources_copy = reply.resource_mapping();
             OnWorkerIdle(addr, scheduling_key, /*error=*/false, resources_copy);
           } else {
             // The raylet redirected us to a different raylet to retry at.
@@ -151,7 +151,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   // fails, then the task data will be gone when the TaskManager attempts to
   // access the task.
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  request->mutable_assigned_resources()->CopyFrom(assigned_resources);
+  request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   RAY_CHECK_OK(client.PushNormalTask(
       std::move(request), [this, task_id, scheduling_key, addr, assigned_resources](
                               Status status, const rpc::PushTaskReply &reply) {
