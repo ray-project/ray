@@ -131,6 +131,7 @@ void Worker::SetActiveObjectIds(const std::unordered_set<ObjectID> &&object_ids)
 Status Worker::AssignTask(const Task &task, const ResourceIdSet &resource_id_set) {
   RAY_CHECK(port_ > 0);
   rpc::AssignTaskRequest request;
+  request.set_worker_id(worker_id_.Binary());
   request.mutable_task()->mutable_task_spec()->CopyFrom(
       task.GetTaskSpecification().GetMessage());
   request.mutable_task()->mutable_task_execution_spec()->CopyFrom(

@@ -20,6 +20,8 @@ from ray import ray_constants
 
 RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
+RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+
 
 def test_actor_deletion_with_gpus(shutdown_only):
     ray.init(

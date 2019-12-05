@@ -673,6 +673,8 @@ Status ClientTable::Disconnect(const DisconnectCallback &callback) {
   return Status::OK();
 }
 
+bool ClientTable::IsDisconnected() const { return disconnected_; }
+
 ray::Status ClientTable::MarkDisconnected(const ClientID &dead_node_id) {
   auto node_info = std::make_shared<GcsNodeInfo>();
   node_info->set_node_id(dead_node_id.Binary());

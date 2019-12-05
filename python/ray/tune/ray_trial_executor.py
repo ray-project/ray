@@ -118,7 +118,7 @@ class RayTrialExecutor(TrialExecutor):
         # Clear the Trial's location (to be updated later on result)
         # since we don't know where the remote runner is placed.
         trial.set_location(Location())
-        logger.info("Trial %s: Setting up new remote runner.", trial)
+        logger.debug("Trial %s: Setting up new remote runner.", trial)
         # Logging for trials is handled centrally by TrialRunner, so
         # configure the remote runner to use a noop-logger.
         return cls.remote(config=trial.config, logger_creator=logger_creator)
