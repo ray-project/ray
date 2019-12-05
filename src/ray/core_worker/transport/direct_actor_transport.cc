@@ -203,9 +203,6 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     SetActorAsAsync();
   }
 
-  // TODO(ekl) resolving object dependencies is expensive and requires an IPC to
-  // the raylet, which is a central bottleneck. In the future, we should inline
-  // dependencies that are small and already known to be local to the client.
   std::vector<ObjectID> dependencies;
   for (size_t i = 0; i < task_spec.NumArgs(); ++i) {
     int count = task_spec.ArgIdCount(i);
@@ -223,21 +220,32 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     it = result.first;
   }
 
-  auto accept_callback = [this, reply, send_reply_callback, task_spec]() {
+  // Only assign resources for non-actor tasks. Actor tasks inherit the resources
+  // assigned at initial actor creation time.
+  std::shared_ptr<ResourceMappingType> resource_ids;
+  if (!task_spec.IsActorTask()) {
+    resource_ids.reset(new ResourceMappingType());
+    for (const auto &mapping : request.resource_mapping()) {
+      std::vector<std::pair<int64_t, double>> rids;
+      for (const auto &ids : mapping.resource_ids()) {
+        rids.push_back(std::make_pair(ids.index(), ids.quantity()));
+      }
+      (*resource_ids)[mapping.name()] = rids;
+    }
+  }
+
+  auto accept_callback = [this, reply, send_reply_callback, task_spec, resource_ids]() {
     // We have posted an exit task onto the main event loop,
     // so shouldn't bother executing any further work.
     if (exiting_) return;
 
     auto num_returns = task_spec.NumReturns();
-    RAY_CHECK(num_returns > 0);
     if (task_spec.IsActorCreationTask() || task_spec.IsActorTask()) {
       // Decrease to account for the dummy object id.
       num_returns--;
     }
+    RAY_CHECK(num_returns >= 0);
 
-    // TODO(edoakes): resource IDs are currently kept track of in the
-    // raylet, need to come up with a solution for this.
-    ResourceMappingType resource_ids;
     std::vector<std::shared_ptr<RayObject>> return_objects;
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;

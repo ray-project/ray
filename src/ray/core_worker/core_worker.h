@@ -340,7 +340,7 @@ class CoreWorker {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const { return resource_ids_; }
+  const ResourceMappingType GetResourceIDs() const { return *resource_ids_; }
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
@@ -443,12 +443,13 @@ class CoreWorker {
   /// Execute a task.
   ///
   /// \param spec[in] Task specification.
-  /// \param spec[in] Resource IDs of resources assigned to this worker.
+  /// \param spec[in] Resource IDs of resources assigned to this worker. If nullptr,
+  ///                 reuse the previously assigned resources.
   /// \param results[out] Result objects that should be returned by value (not via
   ///                     plasma).
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
-                     const ResourceMappingType &resource_ids,
+                     const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Build arguments for task executor. This would loop through all the arguments
@@ -585,8 +586,8 @@ class CoreWorker {
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
-  /// of that resource allocated for this worker.
-  ResourceMappingType resource_ids_;
+  /// of that resource allocated for this worker. This is set on task assignment.
+  std::shared_ptr<ResourceMappingType> resource_ids_;
 
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;

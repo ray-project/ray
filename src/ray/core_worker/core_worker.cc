@@ -82,6 +82,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       reference_counter_(std::make_shared<ReferenceCounter>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
+      resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
@@ -811,9 +812,11 @@ Status CoreWorker::AllocateReturnObjects(
 }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
-                               const ResourceMappingType &resource_ids,
+                               const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
-  resource_ids_ = resource_ids;
+  if (resource_ids != nullptr) {
+    resource_ids_ = resource_ids;
+  }
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 

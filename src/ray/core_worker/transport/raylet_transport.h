@@ -11,9 +11,10 @@ namespace ray {
 
 class CoreWorkerRayletTaskReceiver {
  public:
-  using TaskHandler = std::function<Status(
-      const TaskSpecification &task_spec, const ResourceMappingType &resource_ids,
-      std::vector<std::shared_ptr<RayObject>> *return_objects)>;
+  using TaskHandler =
+      std::function<Status(const TaskSpecification &task_spec,
+                           const std::shared_ptr<ResourceMappingType> &resource_ids,
+                           std::vector<std::shared_ptr<RayObject>> *return_objects)>;
 
   CoreWorkerRayletTaskReceiver(const WorkerID &worker_id,
                                std::shared_ptr<RayletClient> &raylet_client,
