@@ -126,8 +126,8 @@ void CoreWorkerMemoryStore::GetAsync(
       ptr = iter->second;
     } else {
       object_async_get_requests_[object_id].push_back(callback);
-      RAY_CHECK(recently_deleted_.count(obj_id) == 0)
-          << "Tried to get object " << obj_id.Hex()
+      RAY_CHECK(recently_deleted_.count(object_id) == 0)
+          << "Tried to get object " << object_id.Hex()
           << ", which was recently deleted from "
           << "the object store. Either it was deleted or this is a ref counting bug.";
     }
@@ -208,6 +208,7 @@ Status CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &objec
       // If there is no existing get request, then add the `RayObject` to map.
       objects_.emplace(object_id, object_entry);
     }
+    recently_deleted_.erase(object_id);
   }
 
   // It's important for performance to run the callbacks outside the lock.
