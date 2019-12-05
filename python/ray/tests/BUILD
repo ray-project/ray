@@ -80,16 +80,32 @@ py_test(
 
 py_test(
     name = "test_stress",
-    size = "large",
+    size = "medium",
     srcs = ["test_stress.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
 
 py_test(
+    name = "test_stress_direct",
+    size = "medium",
+    srcs = ["test_stress_direct.py", "test_stress.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
     name = "test_stress_sharded",
-    size = "large",
+    size = "medium",
     srcs = ["test_stress_sharded.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_stress_sharded_direct",
+    size = "medium",
+    srcs = ["test_stress_sharded_direct.py", "test_stress_sharded.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
