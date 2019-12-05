@@ -1,9 +1,9 @@
 #include "ray/gcs/redis_gcs_client.h"
 
+#include <unistd.h>
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
-
-#include <unistd.h>
+#include "ray/gcs/redis_job_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -143,7 +143,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
     resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
 
     actor_accessor_.reset(new ActorStateAccessor(*this));
-    job_accessor_.reset(new JobStateAccessor(*this));
+    job_accessor_.reset(new RedisJobInfoAccessor(this));
   }
 
   // TODO(micafan): Synchronously register node and look up existing nodes here

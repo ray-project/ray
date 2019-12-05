@@ -1,7 +1,7 @@
-#include "ray/gcs/job_state_accessor.h"
 #include <memory>
 #include "gtest/gtest.h"
 #include "ray/gcs/accessor_test_base.h"
+#include "ray/gcs/redis_job_info_accessor.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/util/test_util.h"
 
@@ -9,7 +9,7 @@ namespace ray {
 
 namespace gcs {
 
-class JobStateAccessorTest : public AccessorTestBase<JobID, JobTableData> {
+class RedisJobInfoAccessorTest : public AccessorTestBase<JobID, JobTableData> {
  protected:
   virtual void GenTestData() {
     for (size_t i = 0; i < total_job_number_; ++i) {
@@ -26,8 +26,8 @@ class JobStateAccessorTest : public AccessorTestBase<JobID, JobTableData> {
   size_t total_job_number_{100};
 };
 
-TEST_F(JobStateAccessorTest, AddAndSubscribe) {
-  JobStateAccessor &job_accessor = gcs_client_->Jobs();
+TEST_F(RedisJobInfoAccessorTest, AddAndSubscribe) {
+  JobInfoAccessor &job_accessor = gcs_client_->Jobs();
   // SubscribeAll
   auto on_subscribe = [this](const JobID &job_id, const JobTableData &data) {
     const auto it = id_to_data_.find(job_id);

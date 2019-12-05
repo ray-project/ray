@@ -7,7 +7,7 @@
 #include <vector>
 #include "ray/common/status.h"
 #include "ray/gcs/actor_state_accessor.h"
-#include "ray/gcs/job_state_accessor.h"
+#include "ray/gcs/job_info_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -88,9 +88,9 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
     return *actor_accessor_;
   }
 
-  /// Get JobStateAccessor for reading or writing or subscribing to
+  /// Get RedisJobInfoAccessor for reading or writing or subscribing to
   /// jobs. This function is thread safe.
-  JobStateAccessor &Jobs() {
+  JobInfoAccessor &Jobs() {
     RAY_CHECK(job_accessor_ != nullptr);
     return *job_accessor_;
   }
@@ -107,7 +107,7 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   bool is_connected_{false};
 
   std::unique_ptr<ActorStateAccessor> actor_accessor_;
-  std::unique_ptr<JobStateAccessor> job_accessor_;
+  std::unique_ptr<JobInfoAccessor> job_accessor_;
 };
 
 }  // namespace gcs
