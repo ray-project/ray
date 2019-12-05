@@ -3,16 +3,17 @@
 std::string NodeResources::DebugString() {
   std::stringstream buffer;
   buffer << "  node predefined resources {";
-  for (size_t i = 0; i < this->capacities.size(); i++ ) {
-    buffer << "(" << this->capacities[i].total << ":" <<
-      this->capacities[i].available << ") ";
+  for (size_t i = 0; i < this->capacities.size(); i++) {
+    buffer << "(" << this->capacities[i].total << ":" << this->capacities[i].available
+           << ") ";
   }
   buffer << "}" << std::endl;
 
   buffer << "  node custom resources {";
-  for (auto it = this->custom_resources.begin();
-    it != this->custom_resources.end(); ++it) {
-    buffer << it->first << ":(" << it->second.total << ":" << it->second.available << ") ";
+  for (auto it = this->custom_resources.begin(); it != this->custom_resources.end();
+       ++it) {
+    buffer << it->first << ":(" << it->second.total << ":" << it->second.available
+           << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
@@ -21,23 +22,23 @@ std::string NodeResources::DebugString() {
 std::string TaskRequest::DebugString() {
   std::stringstream buffer;
   buffer << std::endl << "  request predefined resources {";
-  for (size_t i = 0; i < this->predefined_resources.size(); i++ ) {
-    buffer << "(" << this->predefined_resources[i].demand << ":" <<
-      this->predefined_resources[i].soft << ") ";
+  for (size_t i = 0; i < this->predefined_resources.size(); i++) {
+    buffer << "(" << this->predefined_resources[i].demand << ":"
+           << this->predefined_resources[i].soft << ") ";
   }
   buffer << "}" << std::endl;
 
   buffer << "  request custom resources {";
-  for (size_t i = 0; i < this->custom_resources.size(); i++ ) {
-    buffer << this->custom_resources[i].id << ":" <<
-      "(" << this->custom_resources[i].req.demand << ":" <<
-      this->custom_resources[i].req.soft << ") ";
+  for (size_t i = 0; i < this->custom_resources.size(); i++) {
+    buffer << this->custom_resources[i].id << ":"
+           << "(" << this->custom_resources[i].req.demand << ":"
+           << this->custom_resources[i].req.soft << ") ";
   }
   buffer << "}" << std::endl;
   return buffer.str();
 }
 
-bool NodeResources::operator==(const NodeResources& other) {
+bool NodeResources::operator==(const NodeResources &other) {
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     if (this->capacities[i].total != other.capacities[i].total) {
       return false;
@@ -51,8 +52,8 @@ bool NodeResources::operator==(const NodeResources& other) {
     return true;
   }
 
-  for (auto it1 = this->custom_resources.begin();
-      it1 != this->custom_resources.end(); ++it1) {
+  for (auto it1 = this->custom_resources.begin(); it1 != this->custom_resources.end();
+       ++it1) {
     auto it2 = other.custom_resources.find(it1->first);
     if (it2 == other.custom_resources.end()) {
       return false;
@@ -66,7 +67,6 @@ bool NodeResources::operator==(const NodeResources& other) {
   }
   return true;
 }
-
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources)
@@ -397,10 +397,9 @@ void ClusterResourceScheduler::ResourceMapToTaskRequest(
   }
 }
 
-void ClusterResourceScheduler::UpdateResourceCapacity(
-    const std::string& client_id_string,
-    const std::string& resource_name,
-    int64_t resource_total) {
+void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &client_id_string,
+                                                      const std::string &resource_name,
+                                                      int64_t resource_total) {
   int64_t client_id = string_to_int_map_.Get(client_id_string);
   auto it = nodes_.find(client_id);
   if (it == nodes_.end()) {
@@ -447,9 +446,8 @@ void ClusterResourceScheduler::UpdateResourceCapacity(
   }
 }
 
-void ClusterResourceScheduler::DeleteResource(
-    const std::string& client_id_string,
-    const std::string& resource_name) {
+void ClusterResourceScheduler::DeleteResource(const std::string &client_id_string,
+                                              const std::string &resource_name) {
   int64_t client_id = string_to_int_map_.Get(client_id_string);
   auto it = nodes_.find(client_id);
   if (it == nodes_.end()) {
@@ -477,7 +475,6 @@ void ClusterResourceScheduler::DeleteResource(
     }
   }
 }
-
 
 std::string ClusterResourceScheduler::DebugString(void) {
   std::stringstream buffer;

@@ -44,7 +44,7 @@ struct NodeResources {
   /// custom resource ID.
   absl::flat_hash_map<int64_t, ResourceCapacity> custom_resources;
   /// Returns if this equals another node resources.
-  bool operator==(const NodeResources& other);
+  bool operator==(const NodeResources &other);
   /// Returns human-readable string for these resources.
   std::string DebugString();
 };
@@ -166,7 +166,8 @@ class ClusterResourceScheduler {
   int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations);
 
   /// Similar to
-  ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t *violations)
+  ///    int64_t GetBestSchedulableNode(const TaskRequest &task_request, int64_t
+  ///    *violations)
   /// but the return value is different:
   /// \return "", if no node can schedule the current request; otherwise,
   ///          return the ID in string format of a node that can schedule the
@@ -219,18 +220,16 @@ class ClusterResourceScheduler {
       NodeResources *node_resources);
 
   /// Update total capacity of resource resource_name at node client_id.
-  void UpdateResourceCapacity(const std::string& client_id,
-      const std::string& resource_name, int64_t resource_total);
+  void UpdateResourceCapacity(const std::string &client_id,
+                              const std::string &resource_name, int64_t resource_total);
 
   /// Delete resource resource_name from node cleint_id_string.
-  void DeleteResource(const std::string& client_id_string,
-      const std::string& resource_name);
+  void DeleteResource(const std::string &client_id_string,
+                      const std::string &resource_name);
 
   /// Check whether two node resources are identical.
-  bool EqualNodeResources(
-      const NodeResources &node_resources1, const NodeResources &node_resources2);
+  bool EqualNodeResources(const NodeResources &node_resources1,
+                          const NodeResources &node_resources2);
 };
-
-
 
 #endif  // RAY_COMMON_SCHEDULING_SCHEDULING_H
