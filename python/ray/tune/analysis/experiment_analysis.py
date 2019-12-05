@@ -266,6 +266,25 @@ class ExperimentAnalysis(Analysis):
         best_trial = self.get_best_trial(metric, mode, scope)
         return best_trial.logdir if best_trial else None
 
+    def get_best_remote_logdir(self, metric, mode="max", scope="all"):
+        """Retrieves the remote logdir corresponding to the best trial.
+
+        This contains logs written remotely.
+
+        Compares all trials' scores on `metric`.
+
+        Args:
+            metric (str): Key for trial info to order on.
+            mode (str): One of [min, max].
+            scope (str): One of [all, last]. If `scope=last`, only look at
+                each trial's final step for `metric`, and compare across
+                trials based on `mode=[min,max]`. If `scope=all`, find each
+                trial's min/max score for `metric` based on `mode`, and
+                compare trials based on `mode=[min,max]`.
+        """
+        best_trial = self.get_best_trial(metric, mode, scope)
+        return best_trial.remote_logdir if best_trial else None
+
     def stats(self):
         """Returns a dictionary of the statistics of the experiment."""
         return self._experiment_state.get("stats")

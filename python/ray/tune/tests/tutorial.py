@@ -15,9 +15,10 @@ from ray.tune.examples.mnist_pytorch import get_data_loaders, ConvNet, train, te
 # __tutorial_imports_end__
 # yapf: enable
 
-
 # yapf: disable
 # __train_func_begin__
+
+
 def train_mnist(config):
     model = ConvNet()
     train_loader, test_loader = get_data_loaders()
@@ -89,8 +90,8 @@ analysis = tune.run(train_mnist, num_samples=10, search_alg=hyperopt_search)
 import os
 
 df = analysis.dataframe()
-logdir = analysis.get_best_logdir("mean_accuracy", mode="max")
-model = torch.load(os.path.join(logdir, "model.pth"))
+remote_logdir = analysis.get_best_remote_logdir("mean_accuracy", mode="max")
+model = torch.load(os.path.join(remote_logdir, "model.pth"))
 # __run_analysis_end__
 
 from ray.tune.examples.mnist_pytorch_trainable import TrainMNIST
