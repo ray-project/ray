@@ -7,6 +7,13 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//bazel:ray.bzl", "if_linux_x86_64")
+
+config_setting(
+    name = "linux_x86_64",
+    values = {"cpu": "k8"},
+    visibility = ["//visibility:public"],
+)
 
 # TODO(mehrdadn): (How to) support dynamic linking?
 PROPAGATED_WINDOWS_DEFINES = ["RAY_STATIC"]
@@ -791,11 +798,23 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    copts = COPTS,
+    copts = COPTS + if_linux_x86_64(["-fno-gnu-unique"]),
+    # Hide protobuf symbols to avoid symbols conflicts, so we can expose
+    # _raylet.so symbols which then can be used by _streaming.so
+    cc_kwargs = {
+        "features": ["-supports_start_end_lib"],
+        "linkstatic": 1,
+        "linkopts": if_linux_x86_64(["-Wl,--exclude-libs,libprotobuf.a",
+                                     "-Wl,--exclude-libs,libprotobuf.pic.a",
+                                     "-Wl,--exclude-libs,libprotobuf_lite.a",
+                                     "-Wl,--exclude-libs,libprotobuf_lite.pic.a",
+                                     ]),
+    },
     deps = [
         "//:core_worker_lib",
         "//:raylet_lib",
         "//:serialization_cc_proto",
+        "@com_google_protobuf//:protobuf",
     ],
 )
 

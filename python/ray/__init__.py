@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from os.path import dirname
 import sys
 
 # MUST add pickle5 to the import path because it will be imported by some
@@ -20,8 +21,9 @@ pickle5_path = os.path.join(
 sys.path.insert(0, pickle5_path)
 
 # Expose ray related symbols which may be dependent by other shared
-# liraries such as _streaming.so. Only linux needs this.
-from os.path import dirname
+# libraries such as _streaming.so. Only linux needs this.
+# This method may cause symbols conflict, in this case we need to hide
+# symbols of conflicted libraries such as protobuf.
 so_path = os.path.join(dirname(__file__), "_raylet.so")
 if os.path.exists(so_path):
     import ctypes
