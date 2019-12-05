@@ -39,6 +39,15 @@ class TaskManager : public TaskFinisherInterface {
   /// \return Void.
   void AddPendingTask(const TaskSpecification &spec, int max_retries = 0);
 
+  /// Return whether the task is pending.
+  ///
+  /// \param[in] task_id ID of the task to query.
+  /// \return Whether the task is pending.
+  bool IsTaskPending(const TaskID &task_id) const {
+    absl::MutexLock lock(&mu_);
+    return pending_tasks_.count(task_id) > 0;
+  }
+
   /// Write return objects for a pending task to the memory store.
   ///
   /// \param[in] task_id ID of the pending task.
