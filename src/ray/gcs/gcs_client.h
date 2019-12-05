@@ -14,6 +14,11 @@ namespace ray {
 
 namespace gcs {
 
+/// Specifies whether commands issued to a table should be regular or chain-replicated
+/// (when available).
+// TODO(micafan) Rename to RedisCommandType and maybe move it to gcs/type.h
+enum class CommandType { kRegular, kChain, kUnknown };
+
 /// \class GcsClientOptions
 /// GCS client's options (configuration items), such as service address, and service
 /// password.

@@ -12,6 +12,7 @@
 #include "ray/util/logging.h"
 
 #include "ray/gcs/callback.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/protobuf/gcs.pb.h"
 
@@ -43,10 +44,6 @@ using rpc::TaskTableData;
 class RedisContext;
 
 class RedisGcsClient;
-
-/// Specifies whether commands issued to a table should be regular or chain-replicated
-/// (when available).
-enum class CommandType { kRegular, kChain, kUnknown };
 
 /// \class PubsubInterface
 ///

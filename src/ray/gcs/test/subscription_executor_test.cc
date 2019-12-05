@@ -1,3 +1,4 @@
+#include "ray/gcs/subscription_executor.h"
 #include "gtest/gtest.h"
 #include "ray/gcs/accessor_test_base.h"
 #include "ray/gcs/callback.h"

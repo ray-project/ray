@@ -731,7 +731,7 @@ cc_binary(
 cc_binary(
     name = "subscription_executor_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/subscription_executor_test.cc"],
+    srcs = ["src/ray/gcs/test/subscription_executor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",
