@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 #include "ray/common/status.h"
-#include "ray/gcs/actor_state_accessor.h"
+#include "ray/gcs/actor_info_accessor.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -62,14 +62,14 @@ class GcsClientOptions {
   bool is_test_client_{false};
 };
 
-/// \class GcsClientInterface
+/// \class GcsClient
 /// Abstract interface of the GCS client.
 ///
 /// To read and write from the GCS, `Connect()` must be called and return Status::OK.
 /// Before exit, `Disconnect()` must be called.
-class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterface> {
+class GcsClient : public std::enable_shared_from_this<GcsClient> {
  public:
-  virtual ~GcsClientInterface() {}
+  virtual ~GcsClient() {}
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
@@ -80,25 +80,25 @@ class GcsClientInterface : public std::enable_shared_from_this<GcsClientInterfac
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect() = 0;
 
-  /// Get ActorStateAccessor for reading or writing or subscribing to
+  /// Get ActorInfoAccessor for reading or writing or subscribing to
   /// actors. This function is thread safe.
-  ActorStateAccessor &Actors() {
+  ActorInfoAccessor &Actors() {
     RAY_CHECK(actor_accessor_ != nullptr);
     return *actor_accessor_;
   }
 
  protected:
-  /// Constructor of GcsClientInterface.
+  /// Constructor of GcsClient.
   ///
   /// \param options Options for client.
-  GcsClientInterface(const GcsClientOptions &options) : options_(options) {}
+  GcsClient(const GcsClientOptions &options) : options_(options) {}
 
   GcsClientOptions options_;
 
   /// Whether this client is connected to GCS.
   bool is_connected_{false};
 
-  std::unique_ptr<ActorStateAccessor> actor_accessor_;
+  std::unique_ptr<ActorInfoAccessor> actor_accessor_;
 };
 
 }  // namespace gcs

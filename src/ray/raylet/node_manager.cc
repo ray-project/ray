@@ -183,7 +183,7 @@ ray::Status NodeManager::RegisterGcs() {
   };
 
   RAY_RETURN_NOT_OK(
-      gcs_client_->Actors().AsyncSubscribe(actor_notification_callback, nullptr));
+      gcs_client_->Actors().AsyncSubscribeAll(actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,
