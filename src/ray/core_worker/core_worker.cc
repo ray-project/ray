@@ -976,7 +976,6 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
     // The task is pending. Send the reply once the task finishes.
     memory_store_->GetAsync(
         object_id, [send_reply_callback, object_id](std::shared_ptr<RayObject> obj) {
-          RAY_LOG(DEBUG) << "TaskPendingDone " << object_id.Hex();
           send_reply_callback(Status::OK(), nullptr, nullptr);
         });
     RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()));

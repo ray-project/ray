@@ -5,7 +5,7 @@
 
 namespace ray {
 
-const int kMaxRecentlyDeletedSize = 10000;
+const int kMaxRecentlyDeletedSize = 1000;
 
 /// A class that represents a `Get` request.
 class GetRequest {

@@ -12,7 +12,6 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
         client_factory_({owner_address.ip_address(), owner_address.port()}));
     it = owner_clients_.emplace(owner_id, std::move(client)).first;
   }
-  pending_.insert(object_id);
 
   rpc::GetObjectStatusRequest request;
   request.set_object_id(object_id.Binary());
@@ -30,10 +29,6 @@ void FutureResolver::ResolveFutureAsync(const ObjectID &object_id, const TaskID 
         // plasma.
         RAY_CHECK_OK(in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                            object_id));
-        // Important: erase from pending *after* putting in the memory store,
-        // to avoid a race where the object is neither pending nor stored.
-        absl::MutexLock lock(&mu_);
-        pending_.erase(object_id);
       }));
 }
 
