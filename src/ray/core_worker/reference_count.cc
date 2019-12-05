@@ -6,8 +6,7 @@ void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const TaskID &owner_id,
                                          const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
-  RAY_CHECK(
-      object_id_refs_.emplace(object_id, Reference(owner_id, owner_address)).second);
+  object_id_refs_.emplace(object_id, Reference(owner_id, owner_address));
 }
 
 void ReferenceCounter::AddOwnedObject(

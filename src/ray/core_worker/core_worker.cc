@@ -967,26 +967,23 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
-    // We may have owned this object in the past, but we are now executing some
-    // other task or actor.
-    reply->set_status(rpc::GetObjectStatusReply::WRONG_OWNER);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task "
+      << owner_id.Hex();
+  }
+  // We own the task. Reply back to the borrower once the object has been
+  // created.
+  // TODO: We could probably just send the object value if it is small
+  // enough and we have it local.
+  reply->set_status(rpc::GetObjectStatusReply::CREATED);
+  if (task_manager_->IsTaskPending(object_id.TaskId())) {
+    // The task is pending. Send the reply once the task finishes.
+    memory_store_->GetAsync(object_id,
+                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
+                              send_reply_callback(Status::OK(), nullptr, nullptr);
+                            });
   } else {
-    // We own the task. Reply back to the borrower once the object has been
-    // created.
-    // TODO: We could probably just send the object value if it is small
-    // enough and we have it local.
-    reply->set_status(rpc::GetObjectStatusReply::CREATED);
-    if (task_manager_->IsTaskPending(object_id.TaskId())) {
-      // The task is pending. Send the reply once the task finishes.
-      memory_store_->GetAsync(object_id,
-                              [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                                send_reply_callback(Status::OK(), nullptr, nullptr);
-                              });
-    } else {
-      // The task is done. Send the reply immediately.
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
+    // The task is done. Send the reply immediately.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 
