@@ -32,19 +32,21 @@ spec:
         metadata:
           type: object
         spec:
-          description: RayClusterSpec defines the desired state of RayCluster
+          description: Specification of the desired behavior of the RayCluster.
           properties:
             clusterName:
               description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                Important: Run "make" to regenerate code after modifying this file'
+                Important: Run "make" to regenerate code after modifying this file
+                ClusterName is unique identifier for RayCluster in one namespace.'
               type: string
             extensions:
+              description: Specification of the desired behavior of pod group
               items:
                 properties:
                   affinity:
-                    description: the affinity for pod.Optional it allows you to constrain
-                      which nodes your pod is eligible to be scheduled on, based on
-                      labels on the node.
+                    description: Affinity is a group of affinity scheduling rules.
+                      Optional. It allows you to constrain which nodes your pod is
+                      eligible to be scheduled on, based on labels on the node.
                     properties:
                       nodeAffinity:
                         description: Describes node affinity scheduling rules for
@@ -663,15 +665,20 @@ spec:
                   annotations:
                     additionalProperties:
                       type: string
-                    description: Annotations for pod.Optional usage refers to https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
+                    description: Annotations is an unstructured key value map stored
+                      with a resource that may be set by external tools to store and
+                      retrieve arbitrary metadata. They are not queryable and should
+                      be preserved when modifying objects. Optional. Usage refers
+                      to https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/
                     type: object
                   command:
-                    description: command to start ray
+                    description: Command to start ray
                     type: string
                   containerEnv:
-                    description: List of environment variables to set in the container.Optional
-                      define environment variables for a container. This can be helpful
-                      in defining variables before setting up the container.
+                    description: EnvVar represents an environment variable present
+                      in a Container. Optional. Define environment variables for a
+                      container. This can be helpful in defining variables before
+                      setting up the container.
                     items:
                       description: EnvVar represents an environment variable present
                         in a Container.
@@ -775,22 +782,22 @@ spec:
                       type: object
                     type: array
                   groupName:
-                    description: logical groupName for worker in same group, it's
-                      used for heterogeneous feature to distinguish different groups
-                      groupName is the unique identifier for the pods with the same
+                    description: Logical groupName for worker in same group, it's
+                      used for heterogeneous feature to distinguish different groups.
+                      GroupName is the unique identifier for the pods with the same
                       configuration in one Ray Cluster
                     type: string
                   headServiceSuffix:
                     description: 'Head service suffix. So head can be accessed by
-                      domain name: {namespace}.svc , follows Kubernetes standard'
+                      domain name: {namespace}.svc , follows Kubernetes standard.'
                     type: string
                   image:
-                    description: pod image
+                    description: Pod docker image
                     type: string
                   labels:
                     additionalProperties:
                       type: string
-                    description: labels for pod, raycluster.component and rayclusters.ray.io/component-name
+                    description: Labels for pod, raycluster.component and rayclusters.ray.io/component-name
                       are default labels, do not overwrite them. Labels are intended
                       to be used to specify identifying attributes of objects that
                       are meaningful and relevant to users, but do not directly imply
@@ -802,14 +809,17 @@ spec:
                       type: string
                     description: NodeSelector specifies a map of key-value pairs.
                       For the pod to be eligible to run on a node, the node must have
-                      each of the indicated key-value pairs as labels.Optional
+                      each of the indicated key-value pairs as labels. Optional.
                     type: object
                   replicas:
-                    description: the replicas of this pod group
+                    description: Number of desired pods in this pod group. This is
+                      a pointer to distinguish between explicit zero and not specified.
+                      Defaults to 1.
                     format: int32
                     type: integer
                   resources:
-                    description: the resource requirements for this group pod.
+                    description: ResourceRequirements describes the compute resource
+                      requirements.
                     properties:
                       limits:
                         additionalProperties:
@@ -827,9 +837,11 @@ spec:
                         type: object
                     type: object
                   tolerations:
-                    description: Tolerations specifies the pod's tolerations.Optional
-                      Tolerations are applied to pods, and allow (but do not require)
-                      the pods to schedule onto nodes with matching taints.
+                    description: The pod this Toleration is attached to tolerates
+                      any taint that matches the triple <key,value,effect> using the
+                      matching operator <operator>. Optional. Tolerations are applied
+                      to pods, and allow (but do not require) the pods to schedule
+                      onto nodes with matching taints.
                     items:
                       description: The pod this Toleration is attached to tolerates
                         any taint that matches the triple <key,value,effect> using
@@ -870,11 +882,11 @@ spec:
                       type: object
                     type: array
                   type:
-                    description: worker/head
+                    description: The pod type in this group worker/head.
                     type: string
                   volumeMounts:
-                    description: VolumeMount for the pod group.Optional mount the
-                      volume to a path via name
+                    description: VolumeMount describes a mounting of a Volume within
+                      a container. Optional.
                     items:
                       description: VolumeMount describes a mounting of a Volume within
                         a container.
@@ -914,9 +926,10 @@ spec:
                       type: object
                     type: array
                   volumes:
-                    description: Volume for the pod group.Optional At its core, a
-                      volume is just a directory, possibly with some data in it, which
-                      is accessible to the Containers in a Pod.
+                    description: Volume represents a named volume in a pod that may
+                      be accessed by any container in the pod. Optional. At its core,
+                      a volume is just a directory, possibly with some data in it,
+                      which is accessible to the Containers in a Pod.
                     items:
                       description: Volume represents a named volume in a pod that
                         may be accessed by any container in the pod.
@@ -2159,10 +2172,15 @@ spec:
                 type: object
               type: array
             imagePullPolicy:
+              description: Image pull policy. One of Always, Never, IfNotPresent.
+                Defaults to Always if :latest tag is specified, or IfNotPresent otherwise.
+                Cannot be updated.
               type: string
             images:
+              description: Docker image name.
               properties:
                 defaultImage:
+                  description: Default docker image
                   type: string
               type: object
           required:
