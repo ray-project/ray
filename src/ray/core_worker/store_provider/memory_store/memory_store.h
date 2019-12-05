@@ -26,14 +26,10 @@ class CoreWorkerMemoryStore {
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
-  /// \param[in] is_pending Callback to check if the object is pending resolution.
   CoreWorkerMemoryStore(
       std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
-      std::shared_ptr<RayletClient> raylet_client = nullptr,
-      std::function<bool(const ObjectID &)> is_pending = [](const ObjectID &obj_id) {
-        return true;
-      });
+      std::shared_ptr<RayletClient> raylet_client = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -130,9 +126,6 @@ class CoreWorkerMemoryStore {
   // If set, this will be used to notify worker blocked / unblocked on get calls.
   std::shared_ptr<RayletClient> raylet_client_ = nullptr;
 
-  /// Optional callback for checking if objects are pending.
-  std::function<bool(const ObjectID &)> is_pending_;
-
   /// Protects the data structures below.
   absl::Mutex mu_;
 
@@ -150,6 +143,10 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
       object_async_get_requests_ GUARDED_BY(mu_);
+
+  /// A buffer of recently deleted objects for debugging. This is periodically cleared
+  /// to avoid using too much space.
+  absl::flat_hash_set<ObjectID> recently_deleted_;
 };
 
 }  // namespace ray

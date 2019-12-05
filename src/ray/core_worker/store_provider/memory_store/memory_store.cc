@@ -5,6 +5,8 @@
 
 namespace ray {
 
+const int kMaxRecentlyDeletedSize = 10000;
+
 /// A class that represents a `Get` request.
 class GetRequest {
  public:
@@ -109,12 +111,10 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     std::function<void(const RayObject &, const ObjectID &)> store_in_plasma,
     std::shared_ptr<ReferenceCounter> counter,
-    std::shared_ptr<RayletClient> raylet_client,
-    std::function<bool(const ObjectID &)> is_pending)
+    std::shared_ptr<RayletClient> raylet_client)
     : store_in_plasma_(store_in_plasma),
       ref_counter_(counter),
-      raylet_client_(raylet_client),
-      is_pending_(is_pending) {}
+      raylet_client_(raylet_client) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -266,17 +266,14 @@ Status CoreWorkerMemoryStore::Get(const std::vector<ObjectID> &object_ids,
     for (const auto &object_id : get_request->ObjectIds()) {
       object_get_requests_[object_id].push_back(get_request);
     }
-  }
 
-  // Check invariants: remaining objects must be either tracked in the
-  // TaskManager or FutureResolver.
-  for (const auto &obj_id : get_request->ObjectIds()) {
-    if (!is_pending_(obj_id)) {
-      // Double check the store again in case it has shown up in the meantime.
-      absl::MutexLock lock(&mu_);
-      RAY_CHECK(objects_.find(obj_id) != objects_.end())
-          << "Object " << obj_id.Hex()
-          << " is neither pending resolution nor in the object store.";
+    // Check invariants: remaining objects must be either tracked in the
+    // TaskManager or FutureResolver.
+    for (const auto &obj_id : get_request->ObjectIds()) {
+      RAY_CHECK(recently_deleted_.count(obj_id) == 0)
+          << "Tried to get object " << obj_id.Hex()
+          << ", which was recently deleted from "
+          << "the object store. Either it was deleted or this is a ref counting bug.";
     }
   }
 
@@ -378,6 +375,8 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
                                    absl::flat_hash_set<ObjectID> *plasma_ids_to_delete) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
+    recently_deleted_.insert(object_id);
+    RAY_LOG(DEBUG) << "Delete " << object_id.Hex();
     auto it = objects_.find(object_id);
     if (it != objects_.end()) {
       if (it->second->IsInPlasmaError()) {
@@ -388,12 +387,20 @@ void CoreWorkerMemoryStore::Delete(const absl::flat_hash_set<ObjectID> &object_i
       }
     }
   }
+  if (recently_deleted_.size() > kMaxRecentlyDeletedSize) {
+    recently_deleted_.clear();
+  }
 }
 
 void CoreWorkerMemoryStore::Delete(const std::vector<ObjectID> &object_ids) {
   absl::MutexLock lock(&mu_);
   for (const auto &object_id : object_ids) {
+    recently_deleted_.insert(object_id);
+    RAY_LOG(DEBUG) << "Delete " << object_id.Hex();
     objects_.erase(object_id);
+  }
+  if (recently_deleted_.size() > kMaxRecentlyDeletedSize) {
+    recently_deleted_.clear();
   }
 }
 

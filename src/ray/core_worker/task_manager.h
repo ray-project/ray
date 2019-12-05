@@ -39,14 +39,6 @@ class TaskManager : public TaskFinisherInterface {
   /// \return Void.
   void AddPendingTask(const TaskSpecification &spec, int max_retries = 0);
 
-  /// Return whether the task is pending.
-  ///
-  /// \param[in] task_id ID of the task to query.
-  /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const {
-    return pending_tasks_.count(task_id) > 0;
-  }
-
   /// Write return objects for a pending task to the memory store.
   ///
   /// \param[in] task_id ID of the pending task.
@@ -62,15 +54,6 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] error_type The type of the specific error.
   void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override;
 
-  /// Returns whether computation of an object is in progress.
-  ///
-  /// \param[in] object_id ID of the object to query.
-  /// \return Whether the object is pending.
-  bool IsObjectPending(const ObjectID &object_id) {
-    absl::ReaderMutexLock lock(&mu_);
-    return pending_.find(object_id) != pending_.end();
-  }
-
  private:
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
@@ -84,7 +67,7 @@ class TaskManager : public TaskFinisherInterface {
   const RetryTaskCallback retry_task_callback_;
 
   /// Protects below fields.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Map from task ID to a pair of:
   ///   {task spec, number of allowed retries left}
@@ -96,9 +79,6 @@ class TaskManager : public TaskFinisherInterface {
   /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
   absl::flat_hash_map<TaskID, std::pair<TaskSpecification, int>> pending_tasks_
       GUARDED_BY(mu_);
-
-  /// Set of object ids we are currently resolving.
-  absl::flat_hash_set<ObjectID> pending_ GUARDED_BY(mu_);
 };
 
 }  // namespace ray

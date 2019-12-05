@@ -166,11 +166,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       [this](const RayObject &obj, const ObjectID &obj_id) {
         RAY_CHECK_OK(plasma_store_provider_->Put(obj, obj_id));
       },
-      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_,
-      [this](const ObjectID &obj_id) {
-        return task_manager_->IsObjectPending(obj_id) ||
-               future_resolver_->IsObjectPending(obj_id);
-      }));
+      ref_counting_enabled ? reference_counter_ : nullptr, local_raylet_client_));
 
   task_manager_.reset(
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
@@ -296,6 +292,7 @@ void CoreWorker::ReportActiveObjectIDs() {
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     TaskID *owner_id,
                                                     rpc::Address *owner_address) {
+  RAY_LOG(DEBUG) << "Promote to plasma and get info for " << object_id.Hex();
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
@@ -304,18 +301,13 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
-  RAY_CHECK(has_owner)
-      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
-         "which task will create them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+  RAY_CHECK(has_owner) << "Failed to get owner information for " << object_id.Hex();
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id, const TaskID &owner_id,
     const rpc::Address &owner_address) {
-  RAY_LOG(ERROR) << "Register owner info for " << object_id.Hex();
+  RAY_LOG(DEBUG) << "Register owner info for " << object_id.Hex();
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
@@ -982,10 +974,12 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   reply->set_status(rpc::GetObjectStatusReply::CREATED);
   if (task_manager_->IsTaskPending(object_id.TaskId())) {
     // The task is pending. Send the reply once the task finishes.
-    memory_store_->GetAsync(object_id,
-                            [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                              send_reply_callback(Status::OK(), nullptr, nullptr);
-                            });
+    memory_store_->GetAsync(
+        object_id, [send_reply_callback, object_id](std::shared_ptr<RayObject> obj) {
+          RAY_LOG(DEBUG) << "TaskPendingDone " << object_id.Hex();
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        });
+    RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()));
   } else {
     // The task is done. Send the reply immediately.
     send_reply_callback(Status::OK(), nullptr, nullptr);

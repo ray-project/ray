@@ -7,10 +7,6 @@ void TaskManager::AddPendingTask(const TaskSpecification &spec, int max_retries)
   absl::MutexLock lock(&mu_);
   std::pair<TaskSpecification, int> entry = {spec, max_retries};
   RAY_CHECK(pending_tasks_.emplace(spec.TaskId(), std::move(entry)).second);
-  for (size_t i = 0; i < spec.NumReturns(); i++) {
-    RAY_LOG(ERROR) << "Insert " << spec.ReturnId(i, TaskTransportType::DIRECT);
-    pending_.insert(spec.ReturnId(i, TaskTransportType::DIRECT));
-  }
 }
 
 void TaskManager::CompletePendingTask(const TaskID &task_id,
@@ -50,11 +46,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       RAY_CHECK_OK(
           in_memory_store_->Put(RayObject(data_buffer, metadata_buffer), object_id));
     }
-    // Important: do the erase after putting in the object store, to avoid
-    // race conditions where the task is in neither.
-    absl::MutexLock lock(&mu_);
-    RAY_LOG(ERROR) << "Erase " << object_id.Hex();
-    pending_.erase(object_id);
   }
 }
 
@@ -107,11 +98,6 @@ void TaskManager::MarkPendingTaskFailed(const TaskID &task_id, int64_t num_retur
         task_id, /*index=*/i + 1,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
     RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
-    // Important: do the erase after putting in the object store, to avoid
-    // race conditions where the task is in neither.
-    absl::MutexLock lock(&mu_);
-    RAY_LOG(ERROR) << "Erase " << object_id.Hex();
-    pending_.erase(object_id);
   }
 }
 
