@@ -21,40 +21,37 @@
 using MessageType = ray::protocol::MessageType;
 
 // TODO(rkn): The io methods below should be removed.
-int connect_ipc_sock(const std::string &socket_pathname) {
+bool connect_ipc_sock(Socket &sock, const std::string &socket_pathname) {
   struct sockaddr_un socket_address;
-  int socket_fd;
 
-  socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  if (socket_fd < 0) {
+  sock.reset(socket(AF_UNIX, SOCK_STREAM, 0));
+  if (sock.get() < 0) {
     RAY_LOG(ERROR) << "socket() failed for pathname " << socket_pathname;
-    return -1;
+    return false;
   }
 
   memset(&socket_address, 0, sizeof(socket_address));
   socket_address.sun_family = AF_UNIX;
   if (socket_pathname.length() + 1 > sizeof(socket_address.sun_path)) {
     RAY_LOG(ERROR) << "Socket pathname is too long.";
-    close(socket_fd);
-    return -1;
+    return false;
   }
   strncpy(socket_address.sun_path, socket_pathname.c_str(), socket_pathname.length() + 1);
 
-  if (connect(socket_fd, (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
+  if (connect(sock.get(), (struct sockaddr *)&socket_address, sizeof(socket_address)) !=
       0) {
-    close(socket_fd);
-    return -1;
+    return false;
   }
-  return socket_fd;
+  return true;
 }
 
-int read_bytes(int socket_fd, uint8_t *cursor, size_t length) {
+int read_bytes(Socket &conn, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
   // Termination condition: EOF or read 'length' bytes total.
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
-    nbytes = read(socket_fd, cursor + offset, bytesleft);
+    nbytes = read(conn.get(), cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -71,14 +68,14 @@ int read_bytes(int socket_fd, uint8_t *cursor, size_t length) {
   return 0;
 }
 
-int write_bytes(int socket_fd, uint8_t *cursor, size_t length) {
+int write_bytes(Socket &conn, uint8_t *cursor, size_t length) {
   ssize_t nbytes = 0;
   size_t bytesleft = length;
   size_t offset = 0;
   while (bytesleft > 0) {
     // While we haven't written the whole message, write to the file
     // descriptor, advance the cursor, and decrease the amount left to write.
-    nbytes = write(socket_fd, cursor + offset, bytesleft);
+    nbytes = write(conn.get(), cursor + offset, bytesleft);
     if (nbytes < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
         continue;
@@ -105,10 +102,12 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
     timeout = RayConfig::instance().connect_timeout_milliseconds();
   }
   RAY_CHECK(!raylet_socket.empty());
-  conn_ = -1;
+  bool connected = false;
   for (int num_attempts = 0; num_attempts < num_retries; ++num_attempts) {
-    conn_ = connect_ipc_sock(raylet_socket);
-    if (conn_ >= 0) break;
+    connected = connect_ipc_sock(conn_, raylet_socket);
+    if (connected) {
+      break;
+    }
     if (num_attempts > 0) {
       RAY_LOG(ERROR) << "Retrying to connect to socket for pathname " << raylet_socket
                      << " (num_attempts = " << num_attempts
@@ -118,7 +117,7 @@ RayletConnection::RayletConnection(const std::string &raylet_socket, int num_ret
     usleep(timeout * 1000);
   }
   // If we could not connect to the socket, exit.
-  if (conn_ == -1) {
+  if (!connected) {
     RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
   }
 }
@@ -229,9 +228,19 @@ RayletClient::RayletClient(std::shared_ptr<ray::rpc::NodeManagerWorkerClient> gr
 }
 
 ray::Status RayletClient::SubmitTask(const ray::TaskSpecification &task_spec) {
-  ray::rpc::SubmitTaskRequest request;
-  request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
-  return grpc_client_->SubmitTask(request, /*callback=*/nullptr);
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      for (size_t j = 0; j < task_spec.ArgIdCount(i); j++) {
+        RAY_CHECK(!task_spec.ArgId(i, j).IsDirectCallType())
+            << "Passing direct call objects to non-direct tasks is not allowed.";
+      }
+    }
+  }
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = ray::protocol::CreateSubmitTaskRequest(
+      fbb, fbb.CreateString(task_spec.Serialize()));
+  fbb.Finish(message);
+  return conn_->WriteMessage(MessageType::SubmitTask, &fbb);
 }
 
 ray::Status RayletClient::TaskDone() {
@@ -239,12 +248,13 @@ ray::Status RayletClient::TaskDone() {
 }
 
 ray::Status RayletClient::FetchOrReconstruct(const std::vector<ObjectID> &object_ids,
-                                             bool fetch_only,
+                                             bool fetch_only, bool mark_worker_blocked,
                                              const TaskID &current_task_id) {
   flatbuffers::FlatBufferBuilder fbb;
   auto object_ids_message = to_flatbuf(fbb, object_ids);
   auto message = ray::protocol::CreateFetchOrReconstruct(
-      fbb, object_ids_message, fetch_only, to_flatbuf(fbb, current_task_id));
+      fbb, object_ids_message, fetch_only, mark_worker_blocked,
+      to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   auto status = conn_->WriteMessage(MessageType::FetchOrReconstruct, &fbb);
   return status;
@@ -274,12 +284,13 @@ ray::Status RayletClient::NotifyDirectCallTaskUnblocked() {
 
 ray::Status RayletClient::Wait(const std::vector<ObjectID> &object_ids, int num_returns,
                                int64_t timeout_milliseconds, bool wait_local,
-                               const TaskID &current_task_id, WaitResultPair *result) {
+                               bool mark_worker_blocked, const TaskID &current_task_id,
+                               WaitResultPair *result) {
   // Write request.
   flatbuffers::FlatBufferBuilder fbb;
   auto message = ray::protocol::CreateWaitRequest(
       fbb, to_flatbuf(fbb, object_ids), num_returns, timeout_milliseconds, wait_local,
-      to_flatbuf(fbb, current_task_id));
+      mark_worker_blocked, to_flatbuf(fbb, current_task_id));
   fbb.Finish(message);
   std::unique_ptr<uint8_t[]> reply;
   auto status = conn_->AtomicRequestReply(MessageType::WaitRequest,

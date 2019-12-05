@@ -85,19 +85,25 @@ class Cluster(object):
         ray_params.update_if_absent(**default_kwargs)
         if self.head_node is None:
             node = ray.node.Node(
-                ray_params, head=True, shutdown_at_exit=self._shutdown_at_exit)
+                ray_params,
+                head=True,
+                shutdown_at_exit=self._shutdown_at_exit,
+                spawn_reaper=self._shutdown_at_exit)
             self.head_node = node
             self.redis_address = self.head_node.redis_address
             self.redis_password = node_args.get("redis_password")
             self.webui_url = self.head_node.webui_url
         else:
             ray_params.update_if_absent(redis_address=self.redis_address)
+            # We only need one log monitor per physical node.
+            ray_params.update_if_absent(include_log_monitor=False)
             # Let grpc pick a port.
             ray_params.update(node_manager_port=0)
             node = ray.node.Node(
                 ray_params,
                 head=False,
-                shutdown_at_exit=self._shutdown_at_exit)
+                shutdown_at_exit=self._shutdown_at_exit,
+                spawn_reaper=self._shutdown_at_exit)
             self.worker_nodes.add(node)
 
         # Wait for the node to appear in the client table. We do this so that

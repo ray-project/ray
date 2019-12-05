@@ -1843,10 +1843,10 @@ def test_ray_setproctitle(ray_start_2_cpus):
     @ray.remote
     class UniqueName(object):
         def __init__(self):
-            assert setproctitle.getproctitle() == "ray_UniqueName:__init__()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.__init__()"
 
         def f(self):
-            assert setproctitle.getproctitle() == "ray_UniqueName:f()"
+            assert setproctitle.getproctitle() == "ray::UniqueName.f()"
 
     @ray.remote
     def unique_1():

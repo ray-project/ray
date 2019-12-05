@@ -1,7 +1,15 @@
 py_test(
     name = "test_actor",
-    size = "large",
+    size = "medium",
     srcs = ["test_actor.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_actor_direct",
+    size = "medium",
+    srcs = ["test_actor_direct.py", "test_actor.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -24,8 +32,16 @@ py_test(
 
 py_test(
     name = "test_basic",
-    size = "large",
+    size = "medium",
     srcs = ["test_basic.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_basic_direct",
+    size = "medium",
+    srcs = ["test_basic_direct.py", "test_basic.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
 )
@@ -51,6 +67,14 @@ py_test(
     size = "large",
     srcs = ["test_multinode_failures.py"],
     tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_multinode_failures_direct",
+    size = "medium",
+    srcs = ["test_multinode_failures_direct.py", "test_multinode_failures.py"],
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
@@ -130,6 +154,15 @@ py_test(
     srcs = ["test_failure.py"],
     tags = ["exclusive"],
     deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_failure_direct",
+    size = "medium",
+    srcs = ["test_failure_direct.py", "test_failure.py"],
+    tags = ["exclusive"],
+    deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
@@ -247,6 +280,7 @@ py_test(
     size = "small",
     srcs = ["test_queue.py"],
     deps = ["//:ray_lib"],
+    flaky = 1,
 )
 
 py_test(
