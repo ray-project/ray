@@ -429,7 +429,11 @@ class CoreWorkerDirectTaskReceiver {
   CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
                                boost::asio::io_service &main_io_service,
                                const TaskHandler &task_handler,
-                               const std::function<void()> &exit_handler);
+                               const std::function<void()> &exit_handler)
+    : worker_context_(worker_context),
+      task_handler_(task_handler),
+      exit_handler_(exit_handler),
+      task_main_io_service_(main_io_service) {}
 
   ~CoreWorkerDirectTaskReceiver() {
     fiber_shutdown_event_.Notify();
@@ -437,7 +441,9 @@ class CoreWorkerDirectTaskReceiver {
   }
 
   /// Initialize this receiver. This must be called prior to use.
-  void Init(RayletClient &client);
+  void Init(RayletClient &client,
+                               rpc::ClientFactoryFn client_factory,
+                               rpc::Address rpc_address);
 
   /// Handle a `PushTask` request.
   ///
@@ -471,6 +477,10 @@ class CoreWorkerDirectTaskReceiver {
   std::function<void()> exit_handler_;
   /// The IO event loop for running tasks on.
   boost::asio::io_service &task_main_io_service_;
+  /// Factory for producing new core worker clients.
+  rpc::ClientFactoryFn client_factory_;
+  /// Address of our RPC server.
+  rpc::Address rpc_address_;
   /// Shared waiter for dependencies required by incoming tasks.
   std::unique_ptr<DependencyWaiterImpl> waiter_;
   /// Queue of pending requests per actor handle.

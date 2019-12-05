@@ -5,6 +5,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/future_resolver.h"
@@ -30,7 +31,8 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)               \
+  RAY_CORE_WORKER_RPC_HANDLER(NotifyActorCreated, 100)
 
 namespace ray {
 
@@ -388,6 +390,9 @@ class CoreWorker {
                              rpc::GetObjectStatusReply *reply,
                              rpc::SendReplyCallback send_reply_callback);
 
+  void HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
+                                       rpc::NotifyActorCreatedReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback);
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -551,6 +556,8 @@ class CoreWorker {
 
   // Tracks the currently pending tasks.
   std::shared_ptr<TaskManager> task_manager_;
+
+  std::unique_ptr<ActorManager> actor_manager_;
 
   // Interface to submit tasks directly to other actors.
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;

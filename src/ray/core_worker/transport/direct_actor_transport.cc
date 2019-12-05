@@ -132,16 +132,12 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != rpc_clients_.end());
 }
 
-CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
-    WorkerContext &worker_context, boost::asio::io_service &main_io_service,
-    const TaskHandler &task_handler, const std::function<void()> &exit_handler)
-    : worker_context_(worker_context),
-      task_handler_(task_handler),
-      exit_handler_(exit_handler),
-      task_main_io_service_(main_io_service) {}
-
-void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client) {
+void CoreWorkerDirectTaskReceiver::Init(RayletClient &raylet_client,
+                               rpc::ClientFactoryFn client_factory,
+                               rpc::Address rpc_address) {
   waiter_.reset(new DependencyWaiterImpl(raylet_client));
+  rpc_address_ = rpc_address;
+  client_factory_ = client_factory;
 }
 
 void CoreWorkerDirectTaskReceiver::SetMaxActorConcurrency(int max_concurrency) {
@@ -266,7 +262,18 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
       task_main_io_service_.post([this]() { exit_handler_(); });
     } else {
       RAY_CHECK(objects_valid) << return_objects.size() << "  " << num_returns;
-      send_reply_callback(status, nullptr, nullptr);
+      if (task_spec.IsActorCreationTask()) {
+        rpc::WorkerAddress addr = {task_spec.GetMessage().caller_address().ip_address(),
+          task_spec.GetMessage().caller_address().port()};
+        auto client = std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+
+        rpc::NotifyActorCreatedRequest request;
+        request.set_actor_creation_task_id(task_spec.TaskId().Binary());
+        request.mutable_address()->CopyFrom(rpc_address_);
+        RAY_CHECK_OK(client->NotifyActorCreated(request));
+      } else {
+        send_reply_callback(status, nullptr, nullptr);
+      }
     }
   };
 

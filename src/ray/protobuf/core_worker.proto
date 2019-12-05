@@ -106,6 +106,14 @@ message GetObjectStatusReply {
   ObjectStatus status = 1;
 }
 
+message NotifyActorCreatedRequest {
+  bytes actor_creation_task_id = 1;
+  Address address = 2;
+}
+
+message NotifyActorCreatedReply {
+}
+
 service CoreWorkerService {
   // Push a task to a worker from the raylet.
   rpc AssignTask(AssignTaskRequest) returns (AssignTaskReply);
@@ -116,4 +124,6 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Notify an actor's owner that the actor's constructor task has finished.
+  rpc NotifyActorCreated(NotifyActorCreatedRequest) returns (NotifyActorCreatedReply);
 }

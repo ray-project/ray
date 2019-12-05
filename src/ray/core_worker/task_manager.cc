@@ -85,20 +85,32 @@ void TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_
                    << ", attempting to resubmit.";
     retry_task_callback_(spec);
   } else {
-    MarkPendingTaskFailed(task_id, spec.NumReturns(), error_type);
+    MarkPendingTaskFailed(task_id, spec, error_type);
   }
 }
 
-void TaskManager::MarkPendingTaskFailed(const TaskID &task_id, int64_t num_returns,
+void TaskManager::MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                                         rpc::ErrorType error_type) {
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
+  int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::ForTaskReturn(
         task_id, /*index=*/i + 1,
         /*transport_type=*/static_cast<int>(TaskTransportType::DIRECT));
     RAY_CHECK_OK(in_memory_store_->Put(RayObject(error_type), object_id));
   }
+
+  if (spec.IsActorCreationTask()) {
+    actor_died_callback_(spec);
+  }
+}
+
+TaskSpecification TaskManager::GetTaskSpec(const TaskID &task_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = pending_tasks_.find(task_id);
+  RAY_CHECK(it != pending_tasks_.end());
+  return it->second.first;
 }
 
 }  // namespace ray

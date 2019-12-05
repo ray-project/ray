@@ -97,6 +97,8 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   gcs_client_ = std::make_shared<gcs::RedisGcsClient>(gcs_options);
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
 
+  actor_manager_ = std::unique_ptr<ActorManager>(new ActorManager(gcs_client_->direct_actor_table()));
+
   // Initialize profiler.
   profiler_ = std::make_shared<worker::Profiler>(worker_context_, node_ip_address,
                                                  io_service_, gcs_client_);
@@ -132,10 +134,6 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       WorkerID::FromBinary(worker_context_.GetWorkerID().Binary()),
       (worker_type_ == ray::WorkerType::WORKER), worker_context_.GetCurrentJobID(),
       language_, &local_raylet_id, core_worker_server_.GetPort()));
-  // Unfortunately the raylet client has to be constructed after the receivers.
-  if (direct_task_receiver_ != nullptr) {
-    direct_task_receiver_->Init(*local_raylet_client_);
-  }
 
   // Set our own address.
   RAY_CHECK(!local_raylet_id.IsNil());
@@ -170,6 +168,9 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
   task_manager_.reset(
       new TaskManager(memory_store_, [this](const TaskSpecification &spec) {
         RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+      },
+      [this](const TaskSpecification &actor_creation_task_spec) {
+        actor_manager_->PublishTerminatedActor(actor_creation_task_spec);
       }));
   resolver_.reset(new LocalDependencyResolver(memory_store_));
 
@@ -215,6 +216,10 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
           memory_store_, task_manager_, local_raylet_id,
           RayConfig::instance().worker_lease_timeout_milliseconds()));
   future_resolver_.reset(new FutureResolver(memory_store_, client_factory));
+  // Unfortunately the raylet client has to be constructed after the receivers.
+  if (direct_task_receiver_ != nullptr) {
+    direct_task_receiver_->Init(*local_raylet_client_, client_factory, rpc_address_);
+  }
 }
 
 CoreWorker::~CoreWorker() {
@@ -635,6 +640,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, actor_creation_options.resources,
                       actor_creation_options.placement_resources,
+                      actor_creation_options.is_direct_call ? TaskTransportType::DIRECT :
                       TaskTransportType::RAYLET, &return_ids);
   builder.SetActorCreationTaskSpec(
       actor_id, actor_creation_options.max_reconstructions,
@@ -650,13 +656,14 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
-  PinObjectReferences(task_spec, TaskTransportType::RAYLET);
-  // TODO(ekl) if we moved actor creation to use direct call tasks, then we won't
-  // need to manually resolve direct call args here.
-  resolver_->ResolveDependencies(task_spec, [this, task_spec]() {
-    RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
-  });
-  return Status::OK();
+  if (actor_creation_options.is_direct_call) {
+    task_manager_->AddPendingTask(task_spec, actor_creation_options.max_reconstructions);
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+    return direct_task_submitter_->SubmitTask(task_spec);
+  } else {
+    PinObjectReferences(task_spec, TaskTransportType::RAYLET);
+    return local_raylet_client_->SubmitTask(task_spec);
+  }
 }
 
 Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &function,
@@ -995,6 +1002,17 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
       send_reply_callback(Status::OK(), nullptr, nullptr);
     }
   }
+}
+
+void CoreWorker::HandleNotifyActorCreated(const rpc::NotifyActorCreatedRequest &request,
+                                       rpc::NotifyActorCreatedReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "Publishing actor creation";
+  TaskID actor_creation_task_id = TaskID::FromBinary(request.actor_creation_task_id());
+  RAY_CHECK(task_manager_->IsTaskPending(actor_creation_task_id));
+  auto spec = task_manager_->GetTaskSpec(actor_creation_task_id);
+  actor_manager_->PublishCreatedActor(spec, request.address());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {

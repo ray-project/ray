@@ -24,12 +24,15 @@ class TaskFinisherInterface {
 };
 
 using RetryTaskCallback = std::function<void(const TaskSpecification &spec)>;
+using ActorDiedCallback = std::function<void(const TaskSpecification &spec)>;
 
 class TaskManager : public TaskFinisherInterface {
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-              RetryTaskCallback retry_task_callback)
-      : in_memory_store_(in_memory_store), retry_task_callback_(retry_task_callback) {}
+              RetryTaskCallback retry_task_callback,
+              ActorDiedCallback actor_died_callback)
+      : in_memory_store_(in_memory_store), retry_task_callback_(retry_task_callback),
+  actor_died_callback_(actor_died_callback) {}
 
   /// Add a task that is pending execution.
   ///
@@ -62,10 +65,12 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] error_type The type of the specific error.
   void PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type) override;
 
+  TaskSpecification GetTaskSpec(const TaskID &task_id) const;
+
  private:
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(const TaskID &task_id, int64_t num_returns,
+  void MarkPendingTaskFailed(const TaskID &task_id, const TaskSpecification &spec,
                              rpc::ErrorType error_type) LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
@@ -74,8 +79,11 @@ class TaskManager : public TaskFinisherInterface {
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;
 
+  /// Called when an actor that we created has died and cannot be restarted.
+  const ActorDiedCallback actor_died_callback_;
+
   /// Protects below fields.
-  absl::Mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// Map from task ID to a pair of:
   ///   {task spec, number of allowed retries left}
