@@ -1,8 +1,8 @@
 #include "ray/gcs/redis_async_context.h"
 
 extern "C" {
-#include "ray/thirdparty/hiredis/async.h"
-#include "ray/thirdparty/hiredis/hiredis.h"
+#include "hiredis/async.h"
+#include "hiredis/hiredis.h"
 }
 
 namespace ray {

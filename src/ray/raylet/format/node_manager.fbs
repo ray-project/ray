@@ -164,7 +164,10 @@ table FetchOrReconstruct {
   object_ids: [string];
   // Do we only want to fetch the objects or also reconstruct them?
   fetch_only: bool;
-  // The current task ID. If fetch_only is false, then this task is blocked.
+  // False for direct call tasks. Blocking for those tasks is handled via the
+  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
+  mark_worker_blocked: bool;
+  // The current task ID.
   task_id: string;
 }
 
@@ -188,8 +191,10 @@ table WaitRequest {
   timeout: long;
   // Whether to wait until objects appear locally.
   wait_local: bool;
-  // The current task ID. If there are less than num_ready_objects local, then
-  // this task is blocked.
+  // False for direct call tasks. Blocking for those tasks is handled via the
+  // NotifyDirectCallTaskBlocked/Unblocked IPCs.
+  mark_worker_blocked: bool;
+  // The current task ID.
   task_id: string;
 }
 

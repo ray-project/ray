@@ -157,7 +157,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   virtual ray::Status GetObjectStatus(
       const GetObjectStatusRequest &request,
-      const ClientCallback<GetObjectStatusReply> &callback) {
+      const ClientCallback<GetObjectStatusReply> &callback) override {
     auto call = client_call_manager_.CreateCall<CoreWorkerService, GetObjectStatusRequest,
                                                 GetObjectStatusReply>(
         *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);

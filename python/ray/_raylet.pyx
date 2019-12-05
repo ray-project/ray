@@ -397,7 +397,7 @@ cdef class RayletClient:
                              TaskID current_task_id=TaskID.nil()):
         cdef c_vector[CObjectID] fetch_ids = ObjectIDsToVector(object_ids)
         check_status(self.client.FetchOrReconstruct(
-            fetch_ids, fetch_only, current_task_id.native()))
+            fetch_ids, fetch_only, True, current_task_id.native()))
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -911,7 +911,8 @@ cdef class CoreWorker:
                     args,
                     int num_return_vals,
                     c_bool is_direct_call,
-                    resources):
+                    resources,
+                    int max_retries):
         cdef:
             unordered_map[c_string, double] c_resources
             CTaskOptions task_options
@@ -929,7 +930,8 @@ cdef class CoreWorker:
 
             with nogil:
                 check_status(self.core_worker.get().SubmitTask(
-                    ray_function, args_vector, task_options, &return_ids))
+                    ray_function, args_vector, task_options, &return_ids,
+                    max_retries))
 
             return VectorToObjectIDs(return_ids)
 
