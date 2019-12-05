@@ -181,6 +181,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_;
 
+  /// Below static fields could be mutated in `ComputeResources` concurrently due to
+  /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
   static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_

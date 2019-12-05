@@ -557,6 +557,8 @@ class CoreWorker {
   // Interface to submit non-actor tasks directly to leased workers.
   std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
 
+  /// The `actor_handles_` field could be mutated concurrently due to multi-threading, we
+  /// need a mutex to protect it.
   mutable absl::Mutex actor_handles_mutex_;
 
   /// Map from actor ID to a handle to that actor.
