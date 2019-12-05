@@ -60,11 +60,16 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
 
-  /// Handle an update about an actor.
+  /// Create connection to actor and send all pending tasks. j
   ///
-  /// \param[in] actor_id The ID of the actor whose status has changed.
-  /// \param[in] actor_data The actor's new status information.
-  void HandleActorUpdate(const ActorID &actor_id, const gcs::ActorTableData &actor_data);
+  /// \param[in] actor_id Actor ID.
+  /// \param[in] address The new address of the actor.
+  void ConnectActor(const ActorID &actor_id, const rpc::Address &address);
+
+  /// Disconnect from a failed actor.
+  ///
+  /// \param[in] actor_id Actor ID.
+  void DisconnectActor(const ActorID &actor_id);
 
  private:
   /// Push a task to a remote actor via the given client.
@@ -100,9 +105,6 @@ class CoreWorkerDirectActorTaskSubmitter {
 
   /// Mutex to proect the various maps below.
   mutable std::mutex mutex_;
-
-  /// Map from actor id to actor state. This only includes actors that we send tasks to.
-  std::unordered_map<ActorID, ActorStateData> actor_states_;
 
   /// Map from actor id to rpc client. This only includes actors that we send tasks to.
   /// We use shared_ptr to enable shared_from_this for pending client callbacks.

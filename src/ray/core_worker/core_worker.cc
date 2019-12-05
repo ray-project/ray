@@ -693,8 +693,12 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
     task_manager_->AddPendingTask(task_spec);
-    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
-    status = direct_actor_submitter_->SubmitTask(task_spec);
+    if (actor_handle->IsDead()) {
+      task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
+    } else {
+      PinObjectReferences(task_spec, TaskTransportType::DIRECT);
+      status = direct_actor_submitter_->SubmitTask(task_spec);
+    }
   } else {
     PinObjectReferences(task_spec, TaskTransportType::RAYLET);
     RAY_CHECK_OK(local_raylet_client_->SubmitTask(task_spec));
@@ -737,13 +741,19 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
           // last actor checkpoint.
           it->second->Reset();
         }
+        direct_actor_submitter_->DisconnectActor(actor_id);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
+        direct_actor_submitter_->DisconnectActor(actor_id);
+
+        ActorHandle *actor_handle = nullptr;
+        RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));
+        actor_handle->MarkDead();
         // We cannot erase the actor handle here because clients can still
         // submit tasks to dead actors. This also means we defer unsubscription,
         // otherwise we crash when bulk unsubscribing all actor handles.
+      } else {
+        direct_actor_submitter_->ConnectActor(actor_id, actor_data.address());
       }
-
-      direct_actor_submitter_->HandleActorUpdate(actor_id, actor_data);
 
       RAY_LOG(INFO) << "received notification on actor, state="
                     << static_cast<int>(actor_data.state()) << ", actor_id: " << actor_id

@@ -17,7 +17,6 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec]() mutable {
     const auto &actor_id = task_spec.ActorId();
-    const auto task_id = task_spec.TaskId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
     // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
@@ -27,9 +26,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
     std::unique_lock<std::mutex> guard(mutex_);
 
-    auto iter = actor_states_.find(actor_id);
-    if (iter == actor_states_.end() ||
-        iter->second.state_ == ActorTableData::RECONSTRUCTING) {
+    auto it = rpc_clients_.find(actor_id);
+    if (it == rpc_clients_.end()) {
       // Actor is not yet created, or is being reconstructed, cache the request
       // and submit after actor is alive.
       // TODO(zhijunfu): it might be possible for a user to specify an invalid
@@ -40,15 +38,11 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
                                                           std::move(request));
       RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
-    } else if (iter->second.state_ == ActorTableData::ALIVE) {
+    } else {
       auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
                                                           std::move(request));
       RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
-    } else {
-      // Actor is dead, treat the task as failure.
-      RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
-      task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
     }
   });
 
@@ -57,48 +51,44 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
-    const ActorID &actor_id, const ActorTableData &actor_data) {
+void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, const rpc::Address &address) {
   std::unique_lock<std::mutex> guard(mutex_);
-  actor_states_.erase(actor_id);
-  actor_states_.emplace(
-      actor_id, ActorStateData(actor_data.state(), actor_data.address().ip_address(),
-                               actor_data.address().port()));
-
-  if (actor_data.state() == ActorTableData::ALIVE) {
-    // Create a new connection to the actor.
-    if (rpc_clients_.count(actor_id) == 0) {
-      rpc::WorkerAddress addr = {actor_data.address().ip_address(),
-                                 actor_data.address().port()};
-      rpc_clients_[actor_id] =
-          std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
-    }
-    if (pending_requests_.count(actor_id) > 0) {
-      SendPendingTasks(actor_id);
-    }
-  } else {
-    // Remove rpc client if it's dead or being reconstructed.
-    rpc_clients_.erase(actor_id);
-
-    // If there are pending requests, treat the pending tasks as failed.
-    auto pending_it = pending_requests_.find(actor_id);
-    if (pending_it != pending_requests_.end()) {
-      auto head = pending_it->second.begin();
-      while (head != pending_it->second.end()) {
-        auto request = std::move(head->second);
-        head = pending_it->second.erase(head);
-        auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
-      }
-      pending_requests_.erase(pending_it);
-    }
-
-    next_sequence_number_.erase(actor_id);
-
-    // No need to clean up tasks that have been sent and are waiting for
-    // replies. They will be treated as failed once the connection dies.
+  // Create a new connection to the actor.
+  if (rpc_clients_.count(actor_id) == 0) {
+    rpc::WorkerAddress addr = {address.ip_address(),
+                               address.port()};
+    rpc_clients_[actor_id] =
+        std::shared_ptr<rpc::CoreWorkerClientInterface>(client_factory_(addr));
+  }
+  if (pending_requests_.count(actor_id) > 0) {
+    SendPendingTasks(actor_id);
   }
 }
+
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id) {
+  std::unique_lock<std::mutex> guard(mutex_);
+  // Remove rpc client if it's dead or being reconstructed.
+  rpc_clients_.erase(actor_id);
+
+  // If there are pending requests, treat the pending tasks as failed.
+  auto pending_it = pending_requests_.find(actor_id);
+  if (pending_it != pending_requests_.end()) {
+    auto head = pending_it->second.begin();
+    while (head != pending_it->second.end()) {
+      auto request = std::move(head->second);
+      head = pending_it->second.erase(head);
+      auto task_id = TaskID::FromBinary(request->task_spec().task_id());
+      task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
+    }
+    pending_requests_.erase(pending_it);
+  }
+
+  next_sequence_number_.erase(actor_id);
+
+  // No need to clean up tasks that have been sent and are waiting for
+  // replies. They will be treated as failed once the connection dies.
+}
+
 
 void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto &client = rpc_clients_[actor_id];
@@ -140,8 +130,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   std::unique_lock<std::mutex> guard(mutex_);
 
-  auto iter = actor_states_.find(actor_id);
-  return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);
+  auto iter = rpc_clients_.find(actor_id);
+  return (iter != rpc_clients_.end());
 }
 
 CoreWorkerDirectTaskReceiver::CoreWorkerDirectTaskReceiver(
