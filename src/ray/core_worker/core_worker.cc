@@ -315,6 +315,7 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id, const TaskID &owner_id,
     const rpc::Address &owner_address) {
+  RAY_LOG(ERROR) << "Register owner info for " << object_id.Hex();
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
   reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
