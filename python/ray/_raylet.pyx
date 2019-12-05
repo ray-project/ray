@@ -138,7 +138,7 @@ else:
     import cPickle as pickle
 
 if PY3:
-    from ray.async_compat import sync_to_async
+    from ray.async_compat import sync_to_async, AsyncGetResponse
 
 
 def set_internal_config(dict options):
@@ -1183,22 +1183,29 @@ cdef class CoreWorker:
 
 cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
                                     CObjectID object_id,
-                                    void *future):
-
+                                    void *future) with gil:
     cdef:
         c_vector[shared_ptr[CRayObject]] objects_to_deserialize
 
-    # TODO(simon): suport multiple
-    objects_to_deserialize.push_back(obj)
-    data_metadata_pairs = RayObjectsToDataMetadataPairs(
-        objects_to_deserialize)
+    py_future = <object>(future)
+    if obj.get().IsInPlasmaError():
+        plasma_id = object_id.WithPlasmaTransportType()
+        py_plasma_id = ObjectID(plasma_id.Binary())
+        py_future.set_result(
+            AsyncGetResponse(success=False, plasma_id=py_plasma_id, result=None))
+    else:
+        # TODO(simon): suport multiple
+        objects_to_deserialize.push_back(obj)
+        data_metadata_pairs = RayObjectsToDataMetadataPairs(
+            objects_to_deserialize)
 
-    ids_to_deserialize = [ObjectID(object_id.Binary())]
+        ids_to_deserialize = [ObjectID(object_id.Binary())]
 
-    objects = ray.worker.global_worker.deserialize_objects(
-        data_metadata_pairs, ids_to_deserialize)
+        objects = ray.worker.global_worker.deserialize_objects(
+            data_metadata_pairs, ids_to_deserialize)
 
-    # void* and cast to object is the Cython recommended way of passing python
-    # object into callback.
-    # https://github.com/cython/cython/blob/master/Demos/callback/cheese.pyx
-    (<object>future).set_result(objects[0])
+        # void* and cast to object is the Cython recommended way of passing python
+        # object into callback.
+        # https://github.com/cython/cython/blob/master/Demos/callback/cheese.pyx
+        py_future.set_result(
+            AsyncGetResponse(success=True, plasma_id=None, result=objects[0]))
