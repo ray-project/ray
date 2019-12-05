@@ -7,22 +7,29 @@ using ray::rpc::ActorTableData;
 
 namespace ray {
 
-int64_t GetRequestNumber(const std::unique_ptr<rpc::PushTaskRequest> &request) {
-  return request->task_spec().actor_task_spec().actor_counter();
-}
-
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submitting task " << task_spec.TaskId();
   RAY_CHECK(task_spec.IsActorTask());
 
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() mutable {
+  // We must fix the send order prior to resolving dependencies, which may complete
+  // out of order. This ensures we preserve the client-side send order.
+  int64_t send_pos = -1;
+  {
+    absl::MutexLock lock(&mu_);
+    send_pos = next_send_position_to_assign_[task_spec.ActorId()]++;
+  }
+
+  resolver_.ResolveDependencies(task_spec, [this, send_pos, task_spec]() mutable {
     const auto &actor_id = task_spec.ActorId();
     const auto task_id = task_spec.TaskId();
 
     auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
-    request->mutable_task_spec()->Swap(&task_spec.GetMutableMessage());
+    // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
+    // fails, then the task data will be gone when the TaskManager attempts to
+    // access the task.
+    request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
-    std::unique_lock<std::mutex> guard(mutex_);
+    absl::MutexLock lock(&mu_);
 
     auto iter = actor_states_.find(actor_id);
     if (iter == actor_states_.end() ||
@@ -33,19 +40,17 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // actor handle (e.g. from unpickling), in that case it might be desirable
       // to have a timeout to mark it as invalid if it doesn't show up in the
       // specified time.
-      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
-                                                          std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
       RAY_CHECK(inserted.second);
       RAY_LOG(DEBUG) << "Actor " << actor_id << " is not yet created.";
     } else if (iter->second.state_ == ActorTableData::ALIVE) {
-      auto inserted = pending_requests_[actor_id].emplace(GetRequestNumber(request),
-                                                          std::move(request));
+      auto inserted = pending_requests_[actor_id].emplace(send_pos, std::move(request));
       RAY_CHECK(inserted.second);
       SendPendingTasks(actor_id);
     } else {
       // Actor is dead, treat the task as failure.
       RAY_CHECK(iter->second.state_ == ActorTableData::DEAD);
-      task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+      task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
     }
   });
 
@@ -56,7 +61,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
 
 void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
     const ActorID &actor_id, const ActorTableData &actor_data) {
-  std::unique_lock<std::mutex> guard(mutex_);
+  absl::MutexLock lock(&mu_);
   actor_states_.erase(actor_id);
   actor_states_.emplace(
       actor_id, ActorStateData(actor_data.state(), actor_data.address().ip_address(),
@@ -85,12 +90,13 @@ void CoreWorkerDirectActorTaskSubmitter::HandleActorUpdate(
         auto request = std::move(head->second);
         head = pending_it->second.erase(head);
         auto task_id = TaskID::FromBinary(request->task_spec().task_id());
-        task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+        task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
       }
       pending_requests_.erase(pending_it);
     }
 
-    next_sequence_number_.erase(actor_id);
+    next_send_position_.erase(actor_id);
+    next_send_position_to_assign_.erase(actor_id);
 
     // No need to clean up tasks that have been sent and are waiting for
     // replies. They will be treated as failed once the connection dies.
@@ -103,7 +109,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   // Submit all pending requests.
   auto &requests = pending_requests_[actor_id];
   auto head = requests.begin();
-  while (head != requests.end() && head->first == next_sequence_number_[actor_id]) {
+  while (head != requests.end() && head->first == next_send_position_[actor_id]) {
     auto request = std::move(head->second);
     head = requests.erase(head);
 
@@ -117,31 +123,21 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(
     rpc::CoreWorkerClientInterface &client, std::unique_ptr<rpc::PushTaskRequest> request,
     const ActorID &actor_id, const TaskID &task_id, int num_returns) {
   RAY_LOG(DEBUG) << "Pushing task " << task_id << " to actor " << actor_id;
+  next_send_position_[actor_id]++;
 
-  auto task_number = GetRequestNumber(request);
-  RAY_CHECK(next_sequence_number_[actor_id] == task_number)
-      << "Counter was " << task_number << " expected " << next_sequence_number_[actor_id];
-  next_sequence_number_[actor_id]++;
-
-  auto status = client.PushActorTask(
+  RAY_CHECK_OK(client.PushActorTask(
       std::move(request),
       [this, task_id](Status status, const rpc::PushTaskReply &reply) {
         if (!status.ok()) {
-          // Note that this might be the __ray_terminate__ task, so we don't log
-          // loudly with ERROR here.
-          RAY_LOG(INFO) << "Task failed with error: " << status;
-          task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
+          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
-      });
-  if (!status.ok()) {
-    task_finisher_->FailPendingTask(task_id, rpc::ErrorType::ACTOR_DIED);
-  }
+      }));
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
-  std::unique_lock<std::mutex> guard(mutex_);
+  absl::MutexLock lock(&mu_);
 
   auto iter = actor_states_.find(actor_id);
   return (iter != actor_states_.end() && iter->second.state_ == ActorTableData::ALIVE);

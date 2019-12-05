@@ -6,6 +6,7 @@ import os
 import logging
 from functools import wraps
 
+from ray import cloudpickle as pickle
 from ray.function_manager import FunctionDescriptor
 import ray.signature
 
@@ -13,6 +14,9 @@ import ray.signature
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
 DEFAULT_REMOTE_FUNCTION_NUM_RETURN_VALS = 1
 DEFAULT_REMOTE_FUNCTION_MAX_CALLS = 0
+# Normal tasks may be retried on failure this many times.
+# TODO(swang): Allow this to be set globally for an application.
+DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES = 3
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +28,10 @@ class RemoteFunction(object):
 
     Attributes:
         _function: The original function.
-        _function_descriptor: The function descriptor.
+        _function_descriptor: The function descriptor. This is not defined
+            until the remote function is first invoked because that is when the
+            function is pickled, and the pickled function is used to compute
+            the function descriptor.
         _function_name: The module and function name.
         _num_cpus: The default number of CPUs to use for invocations of this
             remote function.
@@ -55,11 +62,9 @@ class RemoteFunction(object):
     """
 
     def __init__(self, function, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, num_return_vals, max_calls):
+                 object_store_memory, resources, num_return_vals, max_calls,
+                 max_retries):
         self._function = function
-        self._function_descriptor = FunctionDescriptor.from_function(function)
-        self._function_descriptor_list = (
-            self._function_descriptor.get_function_descriptor_list())
         self._function_name = (
             self._function.__module__ + "." + self._function.__name__)
         self._num_cpus = (DEFAULT_REMOTE_FUNCTION_CPUS
@@ -75,6 +80,8 @@ class RemoteFunction(object):
                                  num_return_vals is None else num_return_vals)
         self._max_calls = (DEFAULT_REMOTE_FUNCTION_MAX_CALLS
                            if max_calls is None else max_calls)
+        self._max_retries = (DEFAULT_REMOTE_FUNCTION_NUM_TASK_RETRIES
+                             if max_retries is None else max_retries)
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
 
@@ -141,15 +148,31 @@ class RemoteFunction(object):
                 num_gpus=None,
                 memory=None,
                 object_store_memory=None,
-                resources=None):
+                resources=None,
+                max_retries=None):
         """Submit the remote function for execution."""
         worker = ray.worker.get_global_worker()
         worker.check_connected()
 
+        # If this function was not exported in this session and job, we need to
+        # export this function again, because the current GCS doesn't have it.
         if self._last_export_session_and_job != worker.current_session_and_job:
-            # If this function was not exported in this session and job,
-            # we need to export this function again, because current GCS
-            # doesn't have it.
+            # There is an interesting question here. If the remote function is
+            # used by a subsequent driver (in the same script), should the
+            # second driver pickle the function again? If yes, then the remote
+            # function definition can differ in the second driver (e.g., if
+            # variables in its closure have changed). We probably want the
+            # behavior of the remote function in the second driver to be
+            # independent of whether or not the function was invoked by the
+            # first driver. This is an argument for repickling the function,
+            # which we do here.
+            self._pickled_function = pickle.dumps(self._function)
+
+            self._function_descriptor = FunctionDescriptor.from_function(
+                self._function, self._pickled_function)
+            self._function_descriptor_list = (
+                self._function_descriptor.get_function_descriptor_list())
+
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)
 
@@ -160,6 +183,8 @@ class RemoteFunction(object):
             num_return_vals = self._num_return_vals
         if is_direct_call is None:
             is_direct_call = self.direct_call_enabled
+        if max_retries is None:
+            max_retries = self._max_retries
 
         resources = ray.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -180,7 +205,7 @@ class RemoteFunction(object):
             else:
                 object_ids = worker.core_worker.submit_task(
                     self._function_descriptor_list, list_args, num_return_vals,
-                    is_direct_call, resources)
+                    is_direct_call, resources, max_retries)
 
             if len(object_ids) == 1:
                 return object_ids[0]

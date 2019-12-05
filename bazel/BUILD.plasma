@@ -1,10 +1,21 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 
+# TODO(mehrdadn): (How to) support dynamic linking?
+PROPAGATED_WINDOWS_DEFINES = ["ARROW_STATIC"]
+
 COPTS = [] + select({
     "@bazel_tools//src/conditions:windows": [
-    ],
+    ] + ["-D" + define for define in PROPAGATED_WINDOWS_DEFINES],
     "//conditions:default": [
         "-DARROW_USE_GLOG",
+    ],
+})
+
+LINKOPTS = [] + select({
+    "@bazel_tools//src/conditions:windows": [
+        "-DefaultLib:" + "ws2_32.lib",
+    ],
+    "//conditions:default": [
     ],
 })
 
@@ -60,6 +71,7 @@ cc_library(
         "cpp/src/arrow/vendored/xxhash/xxhash.h",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
     strip_include_prefix = "cpp/src",
     deps = [
         "@boost//:filesystem",
@@ -92,6 +104,11 @@ cc_library(
         "cpp/src/plasma/protocol.h",
     ],
     copts = COPTS,
+    defines = select({
+        "@bazel_tools//src/conditions:windows": PROPAGATED_WINDOWS_DEFINES,
+        "//conditions:default": [],
+    }),
+    linkopts = LINKOPTS,
     strip_include_prefix = "cpp/src",
     visibility = ["//visibility:public"],
     deps = [
@@ -173,6 +190,7 @@ cc_library(
         "cpp/src/plasma/thirdparty/dlmalloc.c",
     ],
     copts = COPTS,
+    linkopts = LINKOPTS,
     strip_include_prefix = "cpp/src",
     deps = [
         ":plasma_client",

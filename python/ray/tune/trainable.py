@@ -396,7 +396,8 @@ class Trainable(object):
 
         This method is optional, but can be implemented to speed up algorithms
         such as PBT, and to allow performance optimizations such as running
-        experiments with reuse_actors=True.
+        experiments with reuse_actors=True. Note that self.config need to
+        be updated to reflect the latest parameter information in Ray logs.
 
         Args:
             new_config (dir): Updated hyperparameter configuration

@@ -964,26 +964,6 @@ def test_variable_number_of_args(shutdown_only):
 def test_defining_remote_functions(shutdown_only):
     ray.init(num_cpus=3)
 
-    # Test that we can define a remote function in the shell.
-    @ray.remote
-    def f(x):
-        return x + 1
-
-    assert ray.get(f.remote(0)) == 1
-
-    # Test that we can redefine the remote function.
-    @ray.remote
-    def f(x):
-        return x + 10
-
-    while True:
-        val = ray.get(f.remote(0))
-        assert val in [1, 10]
-        if val == 10:
-            break
-        else:
-            logger.info("Still using old definition of f, trying again.")
-
     # Test that we can close over plain old data.
     data = [
         np.zeros([3, 5]), (1, 2, "a"), [0.0, 1.0, 1 << 62], 1 << 60, {
@@ -1027,6 +1007,62 @@ def test_defining_remote_functions(shutdown_only):
     assert ray.get(k.remote(1)) == 2
     assert ray.get(k2.remote(1)) == 2
     assert ray.get(m.remote(1)) == 2
+
+
+def test_redefining_remote_functions(shutdown_only):
+    ray.init(num_cpus=1)
+
+    # Test that we can define a remote function in the shell.
+    @ray.remote
+    def f(x):
+        return x + 1
+
+    assert ray.get(f.remote(0)) == 1
+
+    # Test that we can redefine the remote function.
+    @ray.remote
+    def f(x):
+        return x + 10
+
+    while True:
+        val = ray.get(f.remote(0))
+        assert val in [1, 10]
+        if val == 10:
+            break
+        else:
+            logger.info("Still using old definition of f, trying again.")
+
+    # Check that we can redefine functions even when the remote function source
+    # doesn't change (see https://github.com/ray-project/ray/issues/6130).
+    @ray.remote
+    def g():
+        return nonexistent()
+
+    with pytest.raises(ray.exceptions.RayTaskError, match="nonexistent"):
+        ray.get(g.remote())
+
+    def nonexistent():
+        return 1
+
+    # Redefine the function and make sure it succeeds.
+    @ray.remote
+    def g():
+        return nonexistent()
+
+    assert ray.get(g.remote()) == 1
+
+    # Check the same thing but when the redefined function is inside of another
+    # task.
+    @ray.remote
+    def h(i):
+        @ray.remote
+        def j():
+            return i
+
+        return j.remote()
+
+    for i in range(20):
+        assert ray.get(ray.get(h.remote(i))) == i
 
 
 @pytest.mark.skipif(RAY_FORCE_DIRECT, reason="reconstruction not implemented")
@@ -1215,6 +1251,36 @@ def test_direct_call_simple(ray_start_cluster):
     for _ in range(10):
         assert ray.get([f_direct.remote(i) for i in range(100)]) == list(
             range(1, 101))
+
+
+# https://github.com/ray-project/ray/issues/6329
+def test_call_actors_indirect_through_tasks(ray_start_regular):
+    @ray.remote
+    class Counter(object):
+        def __init__(self, value):
+            self.value = int(value)
+
+        def increase(self, delta):
+            self.value += int(delta)
+            return self.value
+
+    @ray.remote
+    def foo(object):
+        return ray.get(object.increase.remote(1))
+
+    @ray.remote
+    def bar(object):
+        return ray.get(object.increase.remote(1))
+
+    @ray.remote
+    def zoo(object):
+        return ray.get(object[0].increase.remote(1))
+
+    c = Counter.remote(0)
+    for _ in range(0, 100):
+        ray.get(foo.remote(c))
+        ray.get(bar.remote(c))
+        ray.get(zoo.remote([c]))
 
 
 def test_direct_call_refcount(ray_start_regular):

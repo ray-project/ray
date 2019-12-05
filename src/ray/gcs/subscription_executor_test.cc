@@ -56,7 +56,7 @@ class SubscriptionExecutorTest : public AccessorTestBase<ActorID, ActorTableData
   }
 
   size_t AsyncRegisterActorToGcs() {
-    ActorStateAccessor &actor_accessor = gcs_client_->Actors();
+    ActorInfoAccessor &actor_accessor = gcs_client_->Actors();
     for (const auto &elem : id_to_data_) {
       const auto &actor = elem.second;
       auto done = [this](Status status) {

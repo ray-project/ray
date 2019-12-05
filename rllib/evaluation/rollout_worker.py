@@ -290,13 +290,15 @@ class RolloutWorker(EvaluatorInterface):
                     dim=model_config.get("dim"),
                     framestack=model_config.get("framestack"))
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
         else:
 
             def wrap(env):
                 if monitor_path:
-                    env = gym.wrappers.Monitor(env, monitor_path, resume=True)
+                    from gym import wrappers
+                    env = wrappers.Monitor(env, monitor_path, resume=True)
                 return env
 
         self.env = wrap(self.env)

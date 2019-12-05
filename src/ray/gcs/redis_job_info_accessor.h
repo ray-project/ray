@@ -22,13 +22,13 @@ class RedisJobInfoAccessor : public JobInfoAccessor {
 
   virtual ~RedisJobInfoAccessor() {}
 
-  Status AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
+  Status AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
                   const StatusCallback &callback) override;
 
   Status AsyncMarkFinished(const JobID &job_id, const StatusCallback &callback) override;
 
   Status AsyncSubscribeToFinishedJobs(
-      const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+      const SubscribeCallback<JobID, JobTableData> &subscribe,
       const StatusCallback &done) override;
 
  private:
