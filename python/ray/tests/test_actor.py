@@ -16,9 +16,10 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
+from ray import ray_constants
 from ray.test_utils import run_string_as_driver
 
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_actor_init_error_propagated(ray_start_regular):

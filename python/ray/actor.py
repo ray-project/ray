@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import copy
 import inspect
 import logging
@@ -396,7 +395,7 @@ class ActorClass(object):
         if kwargs is None:
             kwargs = {}
         if is_direct_call is None:
-            is_direct_call = bool(os.environ.get("RAY_FORCE_DIRECT"))
+            is_direct_call = ray.ray_constants.direct_call_enabled()
         if max_concurrency is None:
             if is_asyncio:
                 max_concurrency = 100

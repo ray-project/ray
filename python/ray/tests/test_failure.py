@@ -23,7 +23,7 @@ from ray.test_utils import (
     RayTestTimeoutException,
 )
 
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 def test_failed_task(ray_start_regular):

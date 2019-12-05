@@ -16,7 +16,7 @@ import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray.test_utils import RayTestTimeoutException
 
-RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
