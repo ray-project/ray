@@ -1577,7 +1577,7 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   task.OnDispatchInstead(
       [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
                                                   const std::string &address, int port,
-                                                  const ResourceIdSet& resource_ids) {
+                                                  const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
