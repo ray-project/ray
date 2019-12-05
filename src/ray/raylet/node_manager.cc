@@ -2814,6 +2814,12 @@ void NodeManager::ForwardTask(
 
   client->ForwardTask(request, [this, on_error, task, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
+    if (local_queues_.HasTask(task_id)) {
+      // It must have been forwarded back to us if it's in the queue again
+      // so just return here.
+      return;
+    }
+
     if (status.ok()) {
       const auto &spec = task.GetTaskSpecification();
       // Mark as forwarded so that the task and its lineage are not
