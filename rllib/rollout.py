@@ -232,19 +232,13 @@ def create_parser(parser_creator=None):
 
 def run(args, parser):
     config = {}
-    # Load configuration from file
-    config_dir = os.path.dirname(args.checkpoint)
-    config_path = os.path.join(config_dir, EXPR_PARAM_PICKLE_FILE)
-    if not os.path.exists(config_path):
-        config_path = os.path.join(config_dir, "..", EXPR_PARAM_PICKLE_FILE)
-    if not os.path.exists(config_path):
-        trial_dir = TrialDirSchema.root_from(os.path.dirname(config_path))
-        config_path = os.path.join(trial_dir, EXPR_PARAM_PICKLE_FILE)
+    # Load configuration from file.
+    trial_dir = TrialDirSchema.root_from(args.checkpoint)
+    config_path = os.path.join(trial_dir, EXPR_PARAM_PICKLE_FILE)
     if not os.path.exists(config_path):
         if not args.config:
-            raise ValueError(
-                "Could not find {} in either the checkpoint dir, its parent "
-                "dir, or the trial dir.".format(EXPR_PARAM_PICKLE_FILE))
+            raise ValueError("Could not find {} in {}.".format(
+                EXPR_PARAM_PICKLE_FILE, trial_dir))
     else:
         with open(config_path, "rb") as f:
             config = pickle.load(f)

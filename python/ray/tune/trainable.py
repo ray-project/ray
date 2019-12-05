@@ -136,7 +136,7 @@ class Trainable(object):
         return ""
 
     def current_ip(self):
-        logger.warning("Getting current IP.")
+        logger.debug("Getting current IP.")
         self._local_ip = ray.services.get_node_ip_address()
         return self._local_ip
 
@@ -258,8 +258,6 @@ class Trainable(object):
         Returns:
             Checkpoint path or prefix that may be passed to restore().
         """
-        assert checkpoint_dir or self._checkpoint_dir, \
-            "Checkpoint directory must be initialized, or passed in to save()."
         checkpoint_dir = os.path.join(checkpoint_dir or self.checkpoint_dir,
                                       "checkpoint_{}".format(self._iteration))
 

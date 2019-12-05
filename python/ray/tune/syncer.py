@@ -98,10 +98,13 @@ class Syncer(object):
         """
         result = False
         relative_subdir = relative_subdir or ""
+        # Add a trailing slash in case client requires it (eg: rsync).
+        relative_subdir = os.path.join(relative_subdir, "")
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
                 local_path = os.path.join(self._local_dir, relative_subdir)
                 remote_path = os.path.join(self._remote_path, relative_subdir)
+                logger.debug("Syncing: %s to %s", local_path, remote_path)
                 result = self.sync_client.sync_up(local_path, remote_path)
                 self.last_sync_up_time = time.time()
             except Exception:
@@ -115,11 +118,12 @@ class Syncer(object):
              Whether the sync (if feasible) was successfully started.
         """
         result = False
-        relative_subdir = relative_subdir or ""
+        relative_subdir = os.path.join(relative_subdir, "") or ""
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
                 local_path = os.path.join(self._local_dir, relative_subdir)
                 remote_path = os.path.join(self._remote_path, relative_subdir)
+                logger.debug("Syncing: %s to %s", remote_path, local_path)
                 result = self.sync_client.sync_down(remote_path, local_path)
                 self.last_sync_down_time = time.time()
             except Exception:
@@ -128,7 +132,7 @@ class Syncer(object):
 
     def validate_hosts(self, source, target):
         if not (source and target):
-            logger.debug("Source or target is empty, skipping log sync for "
+            logger.debug("Source or target is empty, skipping sync for "
                          "{}".format(self._local_dir))
             return False
         return True
@@ -156,18 +160,17 @@ class NodeSyncer(Syncer):
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
     def set_worker_ip(self, worker_ip):
-        """Set the worker ip to sync logs from."""
+        """Sets the worker IP to sync logs from."""
         self.worker_ip = worker_ip
-        self.reset()
 
     def has_remote_target(self):
         """Returns whether the Syncer has a remote target."""
         if not self.worker_ip:
-            logger.debug("Worker IP unknown, skipping log sync for %s",
+            logger.debug("Worker IP unknown, skipping sync for %s",
                          self._local_dir)
             return False
         if self.worker_ip == self.local_ip:
-            logger.debug("Worker IP is local IP, skipping log sync for %s",
+            logger.debug("Worker IP is local IP, skipping sync for %s",
                          self._local_dir)
             return False
         return True
@@ -175,16 +178,18 @@ class NodeSyncer(Syncer):
     def sync_up_if_needed(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_up(relative_subdir)
+        return super(NodeSyncer, self).sync_up_if_needed(relative_subdir)
 
     def sync_down_if_needed(self, relative_subdir=None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_down(relative_subdir)
+        return super(NodeSyncer, self).sync_down_if_needed(relative_subdir)
 
     def sync_up_to_new_location(self, worker_ip, relative_subdir=None):
         if worker_ip != self.worker_ip:
+            logger.debug("Setting new worker IP to %s", worker_ip)
             self.set_worker_ip(worker_ip)
+            self.reset()
             if not self.sync_up(relative_subdir):
                 logger.warning(
                     "Sync up to new location skipped. This should not occur.")
@@ -209,7 +214,7 @@ class NodeSyncer(Syncer):
             return None
         if ssh_user is None:
             if not _log_sync_warned:
-                logger.error("Log sync requires cluster to be setup with "
+                logger.error("Syncer requires cluster to be setup with "
                              "`ray up`.")
                 _log_sync_warned = True
             return None
@@ -297,7 +302,7 @@ def get_syncer(local_dir, remote_dir=None, sync_function=None):
             sync_client.set_logdir(local_dir)
         else:
             sync_client = NOOP
-
+    # TODO(ujvl): Refactor initialization: remove dir parameters.
     _syncers[key] = NodeSyncer(local_dir, remote_dir, sync_client)
     return _syncers[key]
 

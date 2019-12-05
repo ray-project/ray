@@ -7,6 +7,7 @@ import copy
 from datetime import datetime
 import logging
 import uuid
+import re
 import time
 import tempfile
 import os
@@ -101,14 +102,19 @@ class TrialDirSchema(object):
 
     @staticmethod
     def root_from(source_path):
-        """Gets the root dir from the source.
+        """Gets the root trial directory from a source path within the root.
 
-        For trial directories not created by TrialDirSchema, this is the
-        same path.
+        For trial directories not created by TrialDirSchema, this will be the
+        same directory.
         """
-        if os.path.basename(source_path) in (TrialDirSchema.REMOTE_LOGDIR,
-                                             TrialDirSchema.CHECKPOINT_DIR):
+        if os.path.isfile(source_path):
+            source_path = os.path.dirname(source_path)
+        basename = os.path.basename(source_path)
+        if basename in (TrialDirSchema.REMOTE_LOGDIR,
+                        TrialDirSchema.CHECKPOINT_DIR):
             return os.path.dirname(source_path)
+        if re.match(r"checkpoint_[0-9]+", basename):
+            return os.path.dirname(os.path.dirname(source_path))
         return source_path
 
 
@@ -248,6 +254,7 @@ class Trial(object):
 
         self._nonjson_fields = [
             "checkpoint",
+            "checkpoint_manager",
             "loggers",
             "sync_to_driver_fn",
             "results",
@@ -306,7 +313,6 @@ class Trial(object):
 
         Also pushes checkpoints to worker_ip, allowing for cross-node recovery.
         """
-        self.syncer.set_worker_ip(worker_ip)
         self.syncer.sync_up_to_new_location(worker_ip)
         self.syncer.wait()
         self.set_location(Location(worker_ip))
@@ -314,8 +320,7 @@ class Trial(object):
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
-        if self.syncer:
-            self.syncer.set_worker_ip(self.location.hostname)
+        self.syncer.set_worker_ip(self.location.hostname)
 
     def close_logger(self):
         """Closes logger."""
@@ -384,9 +389,12 @@ class Trial(object):
             if self.syncer.sync_down(TrialDirSchema.CHECKPOINT_DIR):
                 self.syncer.wait()
             else:
-                logger.error(
-                    "Trial %s: Checkpoint sync skipped. "
-                    "This should not happen.", self)
+                raise TuneError("Trial {}: Checkpoint sync skipped. "
+                                "This should not happen.".format(self))
+            # Verify checkpoint synced.
+            if not os.path.exists(checkpoint.value):
+                raise TuneError("Trial {}: Checkpoint not found: {}".format(
+                    self, checkpoint.value))
         self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def should_recover(self):
@@ -468,6 +476,7 @@ class Trial(object):
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
+        state.pop("syncer")
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
@@ -476,7 +485,8 @@ class Trial(object):
         state["result_logger"] = None
         if self.result_logger:
             self.result_logger.flush()
-            self.syncer.sync_down()
+            if not self.syncer.sync_down(TrialDirSchema.REMOTE_LOGDIR):
+                logger.warning("Trial %s: Post-flush sync skipped.", self)
             state["__logger_started__"] = True
         else:
             state["__logger_started__"] = False
@@ -491,6 +501,8 @@ class Trial(object):
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
+        self.syncer = get_syncer(self.trial_dir, self.trial_dir,
+                                 self.sync_to_driver_fn)
         validate_trainable(self.trainable_name)
         if logger_started:
             self.init_logger()

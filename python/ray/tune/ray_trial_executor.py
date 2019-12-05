@@ -124,8 +124,8 @@ class RayTrialExecutor(TrialExecutor):
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
-
-        assert trial.status == Trial.RUNNING, trial.status
+        assert trial.status == Trial.RUNNING, \
+            "Trial {}: Trial status is {}".format(trial, trial.status)
         remote = trial.runner.train.remote()
 
         # Local Mode
@@ -209,6 +209,7 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Checkpoint): A Python object or path storing the state
                 of trial.
         """
+        logger.debug("Trial %s: Committing %s", trial, trial.resources)
         self._commit_resources(trial.resources)
         remote_runner = None
         attempts = 0
