@@ -31,8 +31,15 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
   /// TODO(micafan) To read and write from the GCS tables requires a further
   /// call to Connect() to the client table. Will fix this in next pr.
   ///
-  /// \param GcsClientOptions Options of client, e.g. server address, is test client ...
+  /// \param options Options of this client, e.g. server address, password and so on.
   RedisGcsClient(const GcsClientOptions &options);
+
+  /// This constructor is only used for testing.
+  /// Connect() must be called(and return ok) before you call any other methods.
+  ///
+  /// \param options Options of this client, e.g. server address, password and so on.
+  /// \param command_type The commands issued type.
+  RedisGcsClient(const GcsClientOptions &options, CommandType command_type);
 
   /// Connect to GCS Service. Non-thread safe.
   /// Call this function before calling other functions.
@@ -79,12 +86,16 @@ class RAY_EXPORT RedisGcsClient : public GcsClient {
  private:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
-  Status Attach(boost::asio::io_service &io_service);
+  void Attach(boost::asio::io_service &io_service);
 
-  /// Use method Actors() instead.
+  /// This method will be deprecated, use method Actors() instead.
   ActorTable &actor_table();
-  /// Use method Jobs() instead.
+  /// This method will be deprecated, use method Jobs() instead.
   JobTable &job_table();
+
+  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
+  // might be used, if available.
+  CommandType command_type_{CommandType::kUnknown};
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

@@ -73,7 +73,16 @@ namespace ray {
 
 namespace gcs {
 
-RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {}
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options) : GcsClient(options) {
+#if RAY_USE_NEW_GCS
+  command_type_ = CommandType::kChain;
+#else
+  command_type_ = CommandType::kRegular;
+#endif
+}
+
+RedisGcsClient::RedisGcsClient(const GcsClientOptions &options, CommandType command_type)
+    : GcsClient(options), command_type_(command_type) {}
 
 Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
   RAY_CHECK(!is_connected_);
@@ -114,42 +123,38 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
                                              /*password=*/options_.password_));
   }
 
-  Status status = Attach(io_service);
-  is_connected_ = status.ok();
+  Attach(io_service);
 
-  if (is_connected_) {
-    actor_table_.reset(new ActorTable({primary_context_}, this));
+  actor_table_.reset(new ActorTable({primary_context_}, this));
 
-    // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
-    // We will use NodeID instead of ClientID.
-    // For worker/driver, it might not have this field(NodeID).
-    // For raylet, NodeID should be initialized in raylet layer(not here).
-    client_table_.reset(
-        new ClientTable({primary_context_}, this, ClientID::FromRandom()));
+  // TODO(micafan) Modify ClientTable' Constructor(remove ClientID) in future.
+  // We will use NodeID instead of ClientID.
+  // For worker/driver, it might not have this field(NodeID).
+  // For raylet, NodeID should be initialized in raylet layer(not here).
+  client_table_.reset(new ClientTable({primary_context_}, this, ClientID::FromRandom()));
 
-    error_table_.reset(new ErrorTable({primary_context_}, this));
-    job_table_.reset(new JobTable({primary_context_}, this));
-    heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
-    // Tables below would be sharded.
-    object_table_.reset(new ObjectTable(shard_contexts_, this));
-    raylet_task_table_.reset(
-        new raylet::TaskTable(shard_contexts_, this, options_.command_type_));
-    task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
-    task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
-    heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
-    profile_table_.reset(new ProfileTable(shard_contexts_, this));
-    actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
-    actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
-    resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
+  error_table_.reset(new ErrorTable({primary_context_}, this));
+  job_table_.reset(new JobTable({primary_context_}, this));
+  heartbeat_batch_table_.reset(new HeartbeatBatchTable({primary_context_}, this));
+  // Tables below would be sharded.
+  object_table_.reset(new ObjectTable(shard_contexts_, this));
+  raylet_task_table_.reset(new raylet::TaskTable(shard_contexts_, this, command_type_));
+  task_reconstruction_log_.reset(new TaskReconstructionLog(shard_contexts_, this));
+  task_lease_table_.reset(new TaskLeaseTable(shard_contexts_, this));
+  heartbeat_table_.reset(new HeartbeatTable(shard_contexts_, this));
+  profile_table_.reset(new ProfileTable(shard_contexts_, this));
+  actor_checkpoint_table_.reset(new ActorCheckpointTable(shard_contexts_, this));
+  actor_checkpoint_id_table_.reset(new ActorCheckpointIdTable(shard_contexts_, this));
+  resource_table_.reset(new DynamicResourceTable({primary_context_}, this));
 
-    actor_accessor_.reset(new RedisActorInfoAccessor(this));
-    job_accessor_.reset(new RedisJobInfoAccessor(this));
-  }
+  actor_accessor_.reset(new RedisActorInfoAccessor(this));
+  job_accessor_.reset(new RedisJobInfoAccessor(this));
 
-  // TODO(micafan): Synchronously register node and look up existing nodes here
-  // for this client is Raylet.
-  RAY_LOG(INFO) << "RedisGcsClient::Connect finished with status " << status;
-  return status;
+  is_connected_ = true;
+
+  RAY_LOG(INFO) << "RedisGcsClient Connected.";
+
+  return Status::OK();
 }
 
 void RedisGcsClient::Disconnect() {
@@ -159,7 +164,7 @@ void RedisGcsClient::Disconnect() {
   // TODO(micafan): Synchronously unregister node if this client is Raylet.
 }
 
-Status RedisGcsClient::Attach(boost::asio::io_service &io_service) {
+void RedisGcsClient::Attach(boost::asio::io_service &io_service) {
   // Take care of sharding contexts.
   RAY_CHECK(shard_asio_async_clients_.empty()) << "Attach shall be called only once";
   for (std::shared_ptr<RedisContext> context : shard_contexts_) {
@@ -172,7 +177,6 @@ Status RedisGcsClient::Attach(boost::asio::io_service &io_service) {
       new RedisAsioClient(io_service, primary_context_->async_context()));
   asio_subscribe_auxiliary_client_.reset(
       new RedisAsioClient(io_service, primary_context_->subscribe_context()));
-  return Status::OK();
 }
 
 std::string RedisGcsClient::DebugString() const {

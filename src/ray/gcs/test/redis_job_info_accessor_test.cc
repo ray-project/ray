@@ -1,6 +1,7 @@
 #include "ray/gcs/redis_job_info_accessor.h"
 #include <memory>
 #include "gtest/gtest.h"
+#include "ray/gcs/pb_util.h"
 #include "ray/gcs/redis_gcs_client.h"
 #include "ray/gcs/test/accessor_test_base.h"
 #include "ray/util/test_util.h"
@@ -14,11 +15,9 @@ class RedisJobInfoAccessorTest : public AccessorTestBase<JobID, JobTableData> {
   virtual void GenTestData() {
     for (size_t i = 0; i < total_job_number_; ++i) {
       JobID job_id = JobID::FromInt(i);
-      std::shared_ptr<JobTableData> job_data_ptr = std::make_shared<JobTableData>();
-      job_data_ptr->set_job_id(job_id.Binary());
-      job_data_ptr->set_is_dead(false);
-      job_data_ptr->set_timestamp(1);
-      job_data_ptr->set_driver_pid(i);
+      std::shared_ptr<JobTableData> job_data_ptr =
+          CreateJobTableData(job_id, /*is_dead*/ false, /*timestamp*/ 1,
+                             /*node_manager_address*/ "", /*driver_pid*/ i);
       id_to_data_[job_id] = job_data_ptr;
     }
   }

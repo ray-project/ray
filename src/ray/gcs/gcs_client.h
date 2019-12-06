@@ -14,11 +14,6 @@ namespace ray {
 
 namespace gcs {
 
-/// Specifies whether commands issued to a table should be regular or chain-replicated
-/// (when available).
-// TODO(micafan) Rename to RedisCommandType and maybe move it to gcs/type.h
-enum class CommandType { kRegular, kChain, kUnknown };
-
 /// \class GcsClientOptions
 /// GCS client's options (configuration items), such as service address, and service
 /// password.
@@ -35,24 +30,7 @@ class GcsClientOptions {
       : server_ip_(ip),
         server_port_(port),
         password_(password),
-        is_test_client_(is_test_client) {
-#if RAY_USE_NEW_GCS
-    command_type_ = CommandType::kChain;
-#else
-    command_type_ = CommandType::kRegular;
-#endif
-  }
-
-  /// This constructor is only used for testing (RedisGcsClient's test).
-  ///
-  /// \param ip GCS service ip
-  /// \param port GCS service port
-  /// \param command_type Command type of RedisGcsClient
-  GcsClientOptions(const std::string &ip, int port, CommandType command_type)
-      : server_ip_(ip),
-        server_port_(port),
-        command_type_(command_type),
-        is_test_client_(true) {}
+        is_test_client_(is_test_client) {}
 
   // GCS server address
   std::string server_ip_;
@@ -60,9 +38,6 @@ class GcsClientOptions {
 
   // Password of GCS server.
   std::string password_;
-  // GCS command type. If CommandType::kChain, chain-replicated versions of the tables
-  // might be used, if available.
-  CommandType command_type_ = CommandType::kUnknown;
 
   // Whether this client is used for tests.
   bool is_test_client_{false};
@@ -93,7 +68,7 @@ class GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *actor_accessor_;
   }
 
-  /// Get RedisJobInfoAccessor for reading or writing or subscribing to
+  /// Get JobInfoAccessor for reading or writing or subscribing to
   /// jobs. This function is thread safe.
   JobInfoAccessor &Jobs() {
     RAY_CHECK(job_accessor_ != nullptr);
