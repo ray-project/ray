@@ -66,7 +66,7 @@ class LocalMemoryBuffer : public Buffer {
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
   LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
-    data_ = (uint8_t *)malloc(size);
+    data_ = (uint8_t *)malloc(size * sizeof(uint8_t));
     size_ = size;
   }
 
