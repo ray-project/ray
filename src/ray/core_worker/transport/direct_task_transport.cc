@@ -99,7 +99,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
   TaskSpecification &resource_spec = it->second.front();
   TaskID task_id = resource_spec.TaskId();
-  RAY_CHECK_OK(lease_client->RequestWorkerLease(
+  auto status = lease_client->RequestWorkerLease(
       resource_spec,
       [this, lease_client, task_id, scheduling_key](
           const Status &status, const rpc::WorkerLeaseReply &reply) mutable {
@@ -120,24 +120,31 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
           }
         } else {
-          RAY_LOG(DEBUG) << "Retrying lease request " << task_id;
-          if (lease_client != local_lease_client_) {
-            // A lease request to a remote raylet failed. Retry locally if the lease is
-            // still needed.
-            // TODO(swang): Fail after some number of retries?
-            RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                           << status.ToString();
-            RequestNewWorkerIfNeeded(scheduling_key);
-          } else {
-            // A local request failed. This shouldn't happen if the raylet is still alive
-            // and we don't currently handle raylet failures, so treat it as a fatal
-            // error.
-            RAY_LOG(FATAL) << "Lost connection with local raylet. Error: "
-                           << status.ToString();
-          }
+          RetryLeaseRequest(status, lease_client, scheduling_key);
         }
-      }));
+      });
+  if (!status.ok()) {
+    RetryLeaseRequest(status, lease_client, scheduling_key);
+  }
   pending_lease_requests_.insert(scheduling_key);
+}
+
+void CoreWorkerDirectTaskSubmitter::RetryLeaseRequest(
+    Status status, std::shared_ptr<WorkerLeaseInterface> lease_client,
+    const SchedulingKey &scheduling_key) {
+  if (lease_client != local_lease_client_) {
+    // A lease request to a remote raylet failed. Retry locally if the lease is
+    // still needed.
+    // TODO(swang): Fail after some number of retries?
+    RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
+                   << status.ToString();
+    RequestNewWorkerIfNeeded(scheduling_key);
+  } else {
+    // A local request failed. This shouldn't happen if the raylet is still alive
+    // and we don't currently handle raylet failures, so treat it as a fatal
+    // error.
+    RAY_LOG(FATAL) << "Lost connection with local raylet. Error: " << status.ToString();
+  }
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
