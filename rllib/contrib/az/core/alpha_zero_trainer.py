@@ -101,7 +101,6 @@ DEFAULT_CONFIG = with_common_config({
     # === Callbacks ===
     "callbacks": {
         "on_episode_start": on_episode_start,
-        # todo: add a synchr on workers rewards buffer for r2 ?
     }
 })
 
