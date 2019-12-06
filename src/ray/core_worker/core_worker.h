@@ -30,7 +30,7 @@
   RAY_CORE_WORKER_RPC_HANDLER(AssignTask, 5)                       \
   RAY_CORE_WORKER_RPC_HANDLER(PushTask, 9999)                      \
   RAY_CORE_WORKER_RPC_HANDLER(DirectActorCallArgWaitComplete, 100) \
-  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 100)
+  RAY_CORE_WORKER_RPC_HANDLER(GetObjectStatus, 9999)
 
 namespace ray {
 
@@ -89,7 +89,7 @@ class CoreWorker {
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  RayletClient &GetRayletClient() { return *raylet_client_; }
+  RayletClient &GetRayletClient() { return *local_raylet_client_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
@@ -280,7 +280,8 @@ class CoreWorker {
   /// \param[out] return_ids Ids of the return objects.
   /// \return Status error if task submission fails, likely due to raylet failure.
   Status SubmitTask(const RayFunction &function, const std::vector<TaskArg> &args,
-                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids);
+                    const TaskOptions &task_options, std::vector<ObjectID> *return_ids,
+                    int max_retries);
 
   /// Create an actor.
   ///
@@ -339,7 +340,7 @@ class CoreWorker {
   const ActorID &GetActorId() const { return actor_id_; }
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const { return resource_ids_; }
+  const ResourceMappingType GetResourceIDs() const { return *resource_ids_; }
 
   /// Create a profile event with a reference to the core worker's profiler.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_type);
@@ -442,12 +443,13 @@ class CoreWorker {
   /// Execute a task.
   ///
   /// \param spec[in] Task specification.
-  /// \param spec[in] Resource IDs of resources assigned to this worker.
+  /// \param spec[in] Resource IDs of resources assigned to this worker. If nullptr,
+  ///                 reuse the previously assigned resources.
   /// \param results[out] Result objects that should be returned by value (not via
   ///                     plasma).
   /// \return Status.
   Status ExecuteTask(const TaskSpecification &task_spec,
-                     const ResourceMappingType &resource_ids,
+                     const std::shared_ptr<ResourceMappingType> &resource_ids,
                      std::vector<std::shared_ptr<RayObject>> *return_objects);
 
   /// Build arguments for task executor. This would loop through all the arguments
@@ -524,7 +526,7 @@ class CoreWorker {
   // shared_ptr for direct calls because we can lease multiple workers through
   // one client, and we need to keep the connection alive until we return all
   // of the workers.
-  std::shared_ptr<RayletClient> raylet_client_;
+  std::shared_ptr<RayletClient> local_raylet_client_;
 
   // Thread that runs a boost::asio service to process IO events.
   std::thread io_thread_;
@@ -584,8 +586,8 @@ class CoreWorker {
 
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
-  /// of that resource allocated for this worker.
-  ResourceMappingType resource_ids_;
+  /// of that resource allocated for this worker. This is set on task assignment.
+  std::shared_ptr<ResourceMappingType> resource_ids_;
 
   // Interface that receives tasks from the raylet.
   std::unique_ptr<CoreWorkerRayletTaskReceiver> raylet_task_receiver_;
