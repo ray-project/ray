@@ -47,7 +47,6 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   ObjectTable &object_table();
   raylet::TaskTable &raylet_task_table();
   TaskReconstructionLog &task_reconstruction_log();
-  TaskLeaseTable &task_lease_table();
   ClientTable &client_table();
   HeartbeatTable &heartbeat_table();
   HeartbeatBatchTable &heartbeat_batch_table();
@@ -82,6 +81,8 @@ class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
   ActorTable &actor_table();
   /// Use method Jobs() instead.
   JobTable &job_table();
+  /// This method will be deprecated, use method Tasks() instead.
+  TaskLeaseTable &task_lease_table();
 
   std::unique_ptr<ObjectTable> object_table_;
   std::unique_ptr<raylet::TaskTable> raylet_task_table_;

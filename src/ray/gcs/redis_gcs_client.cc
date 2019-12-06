@@ -2,6 +2,7 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/gcs/redis_task_info_accessor.h"
 
 static void GetRedisShards(redisContext *context, std::vector<std::string> &addresses,
                            std::vector<int> &ports) {
@@ -142,7 +143,7 @@ Status RedisGcsClient::Connect(boost::asio::io_service &io_service) {
 
     actor_accessor_.reset(new ActorStateAccessor(*this));
     job_accessor_.reset(new JobStateAccessor(*this));
-    task_accessor_.reset(new TaskStateAccessor(*this));
+    task_accessor_.reset(new RedisTaskInfoAccessor(this));
   }
 
   // TODO(micafan): Synchronously register node and look up existing nodes here

@@ -1,5 +1,5 @@
-#ifndef RAY_GCS_TASK_STATE_ACCESSOR_H
-#define RAY_GCS_TASK_STATE_ACCESSOR_H
+#ifndef RAY_GCS_TASK_INFO_ACCESSOR_H
+#define RAY_GCS_TASK_INFO_ACCESSOR_H
 
 #include "ray/common/id.h"
 #include "ray/gcs/callback.h"
@@ -12,32 +12,30 @@ namespace gcs {
 
 class RedisGcsClient;
 
-/// \class TaskStateAccessor
-/// TaskStateAccessor class encapsulates the implementation details of
-/// read or write or subscribe of task's information (immutable fields which
-/// determined at submission time, and mutable fields which determined at runtime).
-class TaskStateAccessor {
+/// \class TaskInfoAccessor
+/// `TaskInfoAccessor` is a sub-interface of `GcsClient`.
+/// This class includes all the methods that are related to accessing
+/// actor information in the GCS.
+class TaskInfoAccessor {
  public:
-  explicit TaskStateAccessor(RedisGcsClient &client_impl);
+  virtual ~TaskInfoAccessor() {}
 
-  ~TaskStateAccessor() {}
-
-  /// Register a task to GCS asynchronously.
+  /// Add a task to GCS asynchronously.
   ///
-  /// \param data_ptr The task that will be registered to GCS.
-  /// \param callback Callback that will be called after task has been registered
+  /// \param data_ptr The task that will be added to GCS.
+  /// \param callback Callback that will be called after task has been added
   /// to GCS.
   /// \return Status
-  Status AsyncRegister(const std::shared_ptr<TaskTableData> &data_ptr,
-                       const StatusCallback &callback);
+  virtual Status AsyncAdd(const std::shared_ptr<TaskTableData> &data_ptr,
+                          const StatusCallback &callback) = 0;
 
   /// Get task information from GCS asynchronously.
   ///
   /// \param task_id The ID of the task to look up in GCS.
   /// \param callback Callback that is called after lookup finishes.
   /// \return Status
-  Status AsyncGet(const TaskID &task_id,
-                  const OptionalItemCallback<TaskTableData> &callback);
+  virtual Status AsyncGet(const TaskID &task_id,
+                          const OptionalItemCallback<TaskTableData> &callback) = 0;
 
   /// Delete tasks from GCS asynchronously.
   ///
@@ -46,7 +44,8 @@ class TaskStateAccessor {
   /// \return Status
   // TODO(micafan) Will support callback of batch deletion in the future.
   // Currently this callback will never be called.
-  Status AsyncDelete(const std::vector<TaskID> &task_ids, const StatusCallback &callback);
+  virtual Status AsyncDelete(const std::vector<TaskID> &task_ids,
+                             const StatusCallback &callback) = 0;
 
   /// Subscribe to any update operations of a task from GCS asynchronously.
   /// This method is for node only (core worker shouldn't use this method).
@@ -55,9 +54,10 @@ class TaskStateAccessor {
   /// \param subscribe Callback that will be called each time when the task is updated.
   /// \param done Callback that will be called when subscription is complete.
   /// \return Status
-  Status AsyncSubscribe(const TaskID &task_id,
-                        const SubscribePairCallback<TaskID, TaskTableData> &subscribe,
-                        const StatusCallback &done);
+  virtual Status AsyncSubscribe(
+      const TaskID &task_id,
+      const SubscribePairCallback<TaskID, TaskTableData> &subscribe,
+      const StatusCallback &done) = 0;
 
   /// Cancel subscribe to a task asynchronously.
   /// This method is for node only (core worker shouldn't use this method).
@@ -65,18 +65,14 @@ class TaskStateAccessor {
   /// \param task_id The ID of the task to be unsubscribed to.
   /// \param done Callback that will be called when unsubscribe is complete.
   /// \return Status
-  Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done);
+  virtual Status AsyncUnsubscribe(const TaskID &task_id, const StatusCallback &done) = 0;
 
- private:
-  RedisGcsClient &client_impl_;
-
-  typedef SubscriptionExecutor<TaskID, TaskTableData, raylet::TaskTable>
-      TaskSubscriptionExecutor;
-  TaskSubscriptionExecutor task_sub_executor_;
+ protected:
+  TaskInfoAccessor() = default;
 };
 
 }  // namespace gcs
 
 }  // namespace ray
 
-#endif  // RAY_GCS_TASK_STATE_ACCESSOR_H
+#endif  // RAY_GCS_TASK_INFO_ACCESSOR_H

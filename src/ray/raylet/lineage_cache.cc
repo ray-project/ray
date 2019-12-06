@@ -276,7 +276,7 @@ void LineageCache::FlushTask(const TaskID &task_id) {
       task->TaskData().GetTaskSpecification().GetMessage());
   task_data->mutable_task()->mutable_task_execution_spec()->CopyFrom(
       task->TaskData().GetTaskExecutionSpec().GetMessage());
-  RAY_CHECK_OK(task_state_accessor_.AsyncRegister(task_data, task_callback));
+  RAY_CHECK_OK(task_state_accessor_.AsyncAdd(task_data, task_callback));
 
   // We successfully wrote the task, so mark it as committing.
   // TODO(swang): Use a batched interface and write with all object entries.
