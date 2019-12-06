@@ -55,7 +55,7 @@ class LocalMemoryBuffer : public Buffer {
       : has_data_copy_(copy_data) {
     if (copy_data) {
       RAY_CHECK(data != nullptr);
-      data_ = (uint8_t *)malloc(size);
+      data_ = (uint8_t *)malloc(size * sizeof(uint8_t));
       memcpy(data_, data, size);
       size_ = size;
     } else {
@@ -79,11 +79,11 @@ class LocalMemoryBuffer : public Buffer {
   bool IsPlasmaBuffer() const override { return false; }
 
   ~LocalMemoryBuffer() {
-    if (has_data_copy_) {
-      delete data_;
+    if (has_data_copy_ && data_) {
+      free(data_);
       data_ = nullptr;
-      size_ = 0;
     }
+    size_ = 0;
   }
 
  private:
