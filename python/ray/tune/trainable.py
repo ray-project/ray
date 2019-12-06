@@ -48,7 +48,8 @@ class Trainable(object):
 
     When using Tune, Tune will convert this class into a Ray actor, which
     runs on a separate process. Tune will also change the current working
-    directory of this process to `self.logdir`.
+    directory of this process to `self.logdir`. In this case, it will be a
+    subdirectory of the trial directory, `remote_logs/`.
 
     """
 
@@ -56,7 +57,8 @@ class Trainable(object):
         """Initialize an Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
-        training outputs should be placed.
+        training outputs should be placed. Points ``self.checkpoint_dir`` to
+        a directory in which checkpoints will be placed.
 
         Subclasses should prefer defining ``_setup()`` instead of overriding
         ``__init__()`` directly.
@@ -81,6 +83,7 @@ class Trainable(object):
             if not os.path.exists(self._checkpoint_dir):
                 os.makedirs(self._checkpoint_dir)
         else:
+            # Use the class name by default (overridden by self._id).
             name = getattr(self, "_id", self.__class__.__name__)
             dir_schema = TrialDirSchema(name, DEFAULT_RESULTS_DIR)
             dir_schema.makedirs()

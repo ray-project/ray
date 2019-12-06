@@ -131,10 +131,10 @@ def run(run_or_experiment,
             includes `{source}` and `{target}` for the syncer to run. If not
             provided, the sync command defaults to standard S3 or gsutil sync
             comamnds.
-        sync_to_driver (func|str): Function for syncing trial logdir from
-            remote node to local. If string, then it must be a string template
-            that includes `{source}` and `{target}` for the syncer to run.
-            If not provided, defaults to using rsync.
+        sync_to_driver (func|str): Function for syncing each trial's `logdir`
+            and `checkpoint_dir` from remote node to local. If string, then it
+            must be a string template that includes `{source}` and `{target}`
+            for the syncer to run. If not provided, defaults to using rsync.
         checkpoint_freq (int): How many training iterations between
             checkpoints. A value of 0 (default) disables checkpointing.
         checkpoint_at_end (bool): Whether to checkpoint at the end of the

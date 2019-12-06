@@ -25,11 +25,11 @@ from ray.tune.util import merge_dicts
 
 EXAMPLE_USAGE = """
 Example Usage via RLlib CLI:
-    rllib rollout /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
+    rllib rollout /tmp/ray/checkpoint_dir/checkpoint_0/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 
 Example Usage via executable:
-    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint-0 --run DQN
+    ./rollout.py /tmp/ray/checkpoint_dir/checkpoint_0/checkpoint-0 --run DQN
     --env CartPole-v0 --steps 1000000 --out rollouts.pkl
 """
 
@@ -231,19 +231,27 @@ def create_parser(parser_creator=None):
 
 
 def run(args, parser):
-    config = {}
-    # Load configuration from file.
+    # Find configuration file.
     trial_dir = TrialDirSchema.root_from(args.checkpoint)
-    config_path = os.path.join(trial_dir, EXPR_PARAM_PICKLE_FILE)
-    if not os.path.exists(config_path):
+    checkpoint_n_dir = os.path.dirname(args.checkpoint)
+    checkpoint_dir = os.path.dirname(checkpoint_n_dir)
+    candidate_dirs = [trial_dir, checkpoint_dir, checkpoint_n_dir]
+    config_path = None
+    for dir_path in candidate_dirs:
+        config_path = os.path.join(dir_path, EXPR_PARAM_PICKLE_FILE)
+        if os.path.exists(config_path):
+            break
+    # Load configuration from file.
+    config = {}
+    if not config_path:
         if not args.config:
             raise ValueError("Could not find {} in {}.".format(
-                EXPR_PARAM_PICKLE_FILE, trial_dir))
+                EXPR_PARAM_PICKLE_FILE, candidate_dirs))
     else:
         with open(config_path, "rb") as f:
             config = pickle.load(f)
-    if "num_workers" in config:
-        config["num_workers"] = min(2, config["num_workers"])
+        if "num_workers" in config:
+            config["num_workers"] = min(2, config["num_workers"])
     config = merge_dicts(config, args.config)
     if not args.env:
         if not config.get("env"):
