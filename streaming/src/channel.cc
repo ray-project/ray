@@ -141,9 +141,6 @@ StreamingQueueConsumer::~StreamingQueueConsumer() {
 }
 
 StreamingStatus StreamingQueueConsumer::CreateTransferChannel() {
-  // subscribe next seq id from checkpoint id
-  // pull remote queue to local store if scheduler connection is set
-
   auto downstream_handler = ray::streaming::DownstreamQueueMessageHandler::GetService();
   STREAMING_LOG(INFO) << "GetQueue qid: " << channel_info.channel_id
                       << " start_seq_id: " << channel_info.current_seq_id + 1;

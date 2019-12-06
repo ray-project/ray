@@ -72,7 +72,7 @@ std::shared_ptr<DataMessage> DataMessage::FromBytes(uint8_t *bytes) {
   bool raw = message.raw();
   bytes += *fbs_length;
 
-  /// COPY
+  /// Copy data and create a new buffer for streaming queue.
   std::shared_ptr<LocalMemoryBuffer> buffer =
       std::make_shared<LocalMemoryBuffer>(bytes, (size_t)length, true);
   std::shared_ptr<DataMessage> data_msg = std::make_shared<DataMessage>(
