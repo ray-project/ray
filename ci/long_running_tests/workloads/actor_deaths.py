@@ -9,7 +9,7 @@ import sys
 import time
 
 import ray
-from ray.tests.cluster_utils import Cluster
+from ray.cluster_utils import Cluster
 
 num_redis_shards = 1
 redis_max_memory = 10**8
