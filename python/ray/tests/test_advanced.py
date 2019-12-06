@@ -231,6 +231,7 @@ def test_wait_cluster(ray_start_cluster):
     assert len(unready) == 0
 
 
+@pytest.mark.skipif(ray_constants.direct_call_enabled(), reason="TODO(ekl)")
 def test_object_transfer_dump(ray_start_cluster):
     cluster = ray_start_cluster
 
@@ -490,6 +491,8 @@ def test_multithreading(ray_start_2_cpus):
     ray.get(actor.join.remote()) == "ok"
 
 
+@pytest.mark.skipif(
+    ray_constants.direct_call_enabled(), reason="uses task and object table")
 def test_free_objects_multi_node(ray_start_cluster):
     # This test will do following:
     # 1. Create 3 raylets that each hold an actor.
