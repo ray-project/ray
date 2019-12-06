@@ -117,7 +117,7 @@ def temporary_helper_function():
 
     wait_for_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR, 2)
     errors = relevant_errors(ray_constants.REGISTER_REMOTE_FUNCTION_PUSH_ERROR)
-    assert len(errors) == 2, errors
+    assert len(errors) >= 2, errors
     assert "No module named" in errors[0]["message"]
     assert "No module named" in errors[1]["message"]
 
