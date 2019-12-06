@@ -153,6 +153,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
   auto task_id = task_spec.TaskId();
   auto request = std::unique_ptr<rpc::PushTaskRequest>(new rpc::PushTaskRequest);
+  bool is_actor = task_spec.IsActorTask();
   RAY_LOG(DEBUG) << "Pushing normal task " << task_spec.TaskId();
   // NOTE(swang): CopyFrom is needed because if we use Swap here and the task
   // fails, then the task data will be gone when the TaskManager attempts to
@@ -160,8 +161,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   RAY_CHECK_OK(client.PushNormalTask(
-      std::move(request), [this, task_id, scheduling_key, addr, assigned_resources](
-                              Status status, const rpc::PushTaskReply &reply) {
+      std::move(request),
+      [this, task_id, is_actor, scheduling_key, addr, assigned_resources](
+          Status status, const rpc::PushTaskReply &reply) {
         {
           absl::MutexLock lock(&mu_);
           OnWorkerIdle(addr, scheduling_key, /*error=*/!status.ok(), assigned_resources);
@@ -171,7 +173,9 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          task_finisher_->PendingTaskFailed(task_id, rpc::ErrorType::WORKER_DIED);
+          task_finisher_->PendingTaskFailed(task_id, is_actor
+                                                         ? rpc::ErrorType::ACTOR_DIED
+                                                         : rpc::ErrorType::WORKER_DIED);
         } else {
           task_finisher_->CompletePendingTask(task_id, reply);
         }
