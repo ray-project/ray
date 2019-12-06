@@ -836,6 +836,8 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
         // We set the client log's key equal to nil so that all instances of
         // ClientTable have the same key.
         client_log_key_(),
+        append_alive_entry_initiated_(false),
+        subscription_initiated_(false),
         disconnected_(false),
         node_id_(node_id),
         local_node_info_() {
@@ -934,6 +936,10 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   void HandleNotification(RedisGcsClient *client, const GcsNodeInfo &node_info);
   /// Handle this client's successful connection to the GCS.
   void HandleConnected(RedisGcsClient *client, const GcsNodeInfo &node_info);
+  /// Whether this client have initiated appending self (of alive state) to client table.
+  bool append_alive_entry_initiated_;
+  /// Whether this client has initiated the subscription of client table.
+  bool subscription_initiated_;
   /// Whether this client has called Disconnect().
   bool disconnected_;
   /// This node's ID.

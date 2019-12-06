@@ -651,23 +651,34 @@ Status ClientTable::Connect(const GcsNodeInfo &local_node_info) {
     // Subscribe to the client table.
     RAY_CHECK_OK(
         Subscribe(JobID::Nil(), node_id_, notification_callback, subscription_callback));
+    subscription_initiated_ = true;
   };
-  return Append(JobID::Nil(), client_log_key_, data, add_callback);
+  Status status = Append(JobID::Nil(), client_log_key_, data, add_callback);
+  append_alive_entry_initiated_ = true;
+  return status;
 }
 
 Status ClientTable::Disconnect(const DisconnectCallback &callback) {
-  auto node_info = std::make_shared<GcsNodeInfo>(local_node_info_);
-  node_info->set_state(GcsNodeInfo::DEAD);
-  auto add_callback = [this, callback](RedisGcsClient *client, const ClientID &id,
-                                       const GcsNodeInfo &data) {
-    HandleConnected(client, data);
-    RAY_CHECK_OK(
-        CancelNotifications(JobID::Nil(), client_log_key_, id, /*done*/ nullptr));
-    if (callback != nullptr) {
-      callback();
-    }
-  };
-  RAY_RETURN_NOT_OK(Append(JobID::Nil(), client_log_key_, node_info, add_callback));
+  // This if check can prevent appending an entry of dead state without the existence of
+  // the entry of alive state.
+  if (append_alive_entry_initiated_) {
+    auto node_info = std::make_shared<GcsNodeInfo>(local_node_info_);
+    node_info->set_state(GcsNodeInfo::DEAD);
+    auto add_callback = [this, callback](RedisGcsClient *client, const ClientID &id,
+                                         const GcsNodeInfo &data) {
+      HandleConnected(client, data);
+      // This if check can prevent the RAY_CHECK failure about `Subscribe` is not called
+      // before `CancelNotifications`.
+      if (subscription_initiated_) {
+        RAY_CHECK_OK(
+            CancelNotifications(JobID::Nil(), client_log_key_, id, /*done*/ nullptr));
+      }
+      if (callback != nullptr) {
+        callback();
+      }
+    };
+    RAY_RETURN_NOT_OK(Append(JobID::Nil(), client_log_key_, node_info, add_callback));
+  }
   // We successfully added the deletion entry. Mark ourselves as disconnected.
   disconnected_ = true;
   return Status::OK();
