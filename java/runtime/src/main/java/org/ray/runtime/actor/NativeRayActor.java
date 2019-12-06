@@ -6,10 +6,15 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
+import org.ray.api.Ray;
 import org.ray.api.RayActor;
 import org.ray.api.RayPyActor;
 import org.ray.api.id.ActorId;
 import org.ray.api.id.UniqueId;
+import org.ray.api.runtime.RayRuntime;
+import org.ray.runtime.AbstractRayRuntime;
+import org.ray.runtime.RayNativeRuntime;
+import org.ray.runtime.RayMultiWorkerNativeRuntime;
 import org.ray.runtime.generated.Common.Language;
 
 /**
@@ -18,13 +23,19 @@ import org.ray.runtime.generated.Common.Language;
 public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
 
   /**
-   * Address of native actor handle.
+   * Address of core worker.
    */
-  private long nativeActorHandle;
+  private long nativeCoreWorkerPointer;  
+  /**
+   * ID of the actor.
+   */
+  private byte[] actorId;
 
-  public NativeRayActor(long nativeActorHandle) {
-    Preconditions.checkState(nativeActorHandle != 0);
-    this.nativeActorHandle = nativeActorHandle;
+  public NativeRayActor(long nativeCoreWorkerPointer, byte[] actorId) {
+    Preconditions.checkState(nativeCoreWorkerPointer != 0);
+    Preconditions.checkState(!ActorId.fromBytes(actorId).isNil());
+    this.nativeCoreWorkerPointer = nativeCoreWorkerPointer;
+    this.actorId = actorId;
   }
 
   /**
@@ -33,75 +44,64 @@ public class NativeRayActor implements RayActor, RayPyActor, Externalizable {
   public NativeRayActor() {
   }
 
-  public long getNativeActorHandle() {
-    return nativeActorHandle;
-  }
-
   @Override
   public ActorId getId() {
-    return ActorId.fromBytes(nativeGetActorId(nativeActorHandle));
-  }
-
-  @Override
-  public UniqueId getHandleId() {
-    return new UniqueId(nativeGetActorHandleId(nativeActorHandle));
+    return ActorId.fromBytes(actorId);
   }
 
   public Language getLanguage() {
-    return Language.forNumber(nativeGetLanguage(nativeActorHandle));
+    return Language.forNumber(nativeGetLanguage(nativeCoreWorkerPointer, actorId));
   }
 
   public boolean isDirectCallActor() {
-    return nativeIsDirectCallActor(nativeActorHandle);
+    return nativeIsDirectCallActor(nativeCoreWorkerPointer, actorId);
   }
 
   @Override
   public String getModuleName() {
     Preconditions.checkState(getLanguage() == Language.PYTHON);
-    return nativeGetActorCreationTaskFunctionDescriptor(nativeActorHandle).get(0);
+    return nativeGetActorCreationTaskFunctionDescriptor(
+      nativeCoreWorkerPointer, actorId).get(0);
   }
 
   @Override
   public String getClassName() {
     Preconditions.checkState(getLanguage() == Language.PYTHON);
-    return nativeGetActorCreationTaskFunctionDescriptor(nativeActorHandle).get(1);
-  }
-
-  public NativeRayActor fork() {
-    return new NativeRayActor(nativeFork(nativeActorHandle));
+    return nativeGetActorCreationTaskFunctionDescriptor(
+      nativeCoreWorkerPointer, actorId).get(1);
   }
 
   @Override
   public void writeExternal(ObjectOutput out) throws IOException {
-    out.writeObject(nativeSerialize(nativeActorHandle));
+    out.writeObject(nativeSerialize(nativeCoreWorkerPointer, actorId));
   }
 
   @Override
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-    nativeActorHandle = nativeDeserialize((byte[]) in.readObject());
+    RayRuntime runtime = Ray.internal();
+    if (runtime instanceof RayMultiWorkerNativeRuntime) {
+      runtime = ((RayMultiWorkerNativeRuntime) runtime).getCurrentRuntime();
+    }
+    
+    Preconditions.checkState(runtime instanceof RayNativeRuntime);
+    nativeCoreWorkerPointer = ((RayNativeRuntime)runtime).getNativeCoreWorkerPointer();
+
+    actorId = nativeDeserialize(nativeCoreWorkerPointer, (byte[]) in.readObject());
   }
 
   @Override
   protected void finalize() {
-    nativeFree(nativeActorHandle);
+    // TODO(zhijunfu): do we need to free the ActorHandle in core worker?
   }
 
-  private static native long nativeFork(long nativeActorHandle);
+  private static native int nativeGetLanguage(long nativeCoreWorkerPointer, byte[] actorId);
 
-  private static native byte[] nativeGetActorId(long nativeActorHandle);
-
-  private static native byte[] nativeGetActorHandleId(long nativeActorHandle);
-
-  private static native int nativeGetLanguage(long nativeActorHandle);
-
-  private static native boolean nativeIsDirectCallActor(long nativeActorHandle);
+  private static native boolean nativeIsDirectCallActor(long nativeCoreWorkerPointer, byte[] actorId);
 
   private static native List<String> nativeGetActorCreationTaskFunctionDescriptor(
-      long nativeActorHandle);
+    long nativeCoreWorkerPointer, byte[] actorId);
 
-  private static native byte[] nativeSerialize(long nativeActorHandle);
+  private static native byte[] nativeSerialize(long nativeCoreWorkerPointer, byte[] actorId);
 
-  private static native long nativeDeserialize(byte[] data);
-
-  private static native void nativeFree(long nativeActorHandle);
+  private static native byte[] nativeDeserialize(long nativeCoreWorkerPointer, byte[] data);
 }

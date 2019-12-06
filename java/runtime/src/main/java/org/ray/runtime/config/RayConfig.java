@@ -52,6 +52,7 @@ public class RayConfig {
   public final Long objectStoreSize;
 
   public final String rayletSocketName;
+  private int nodeManagerPort;
   public final List<String> rayletConfigParameters;
 
   public final String jobResourcePath;
@@ -154,11 +155,18 @@ public class RayConfig {
 
     // Raylet socket name.
     rayletSocketName = config.getString("ray.raylet.socket-name");
+    // Raylet node manager port.
+    nodeManagerPort = config.getInt("ray.raylet.node-manager-port");
+    if (nodeManagerPort == 0) {
+      Preconditions.checkState(this.redisAddress == null,
+          "Java worker started by raylet should accept the node manager port from raylet.");
+      nodeManagerPort = NetworkUtil.getUnusedPort();
+    }
 
     // Raylet parameters.
     rayletConfigParameters = new ArrayList<>();
     Config rayletConfig = config.getConfig("ray.raylet.config");
-    for (Map.Entry<String,ConfigValue> entry : rayletConfig.entrySet()) {
+    for (Map.Entry<String, ConfigValue> entry : rayletConfig.entrySet()) {
       String parameter = entry.getKey() + "," + entry.getValue().unwrapped();
       rayletConfigParameters.add(parameter);
     }
@@ -211,6 +219,10 @@ public class RayConfig {
     return this.jobId;
   }
 
+  public int getNodeManagerPort() {
+    return nodeManagerPort;
+  }
+
   @Override
   public String toString() {
     return "RayConfig{"
@@ -243,7 +255,7 @@ public class RayConfig {
    * 1. System properties.
    * 2. `ray.conf` file.
    * 3. `ray.default.conf` file.
-  */
+   */
   public static RayConfig create() {
     ConfigFactory.invalidateCaches();
     Config config = ConfigFactory.systemProperties();

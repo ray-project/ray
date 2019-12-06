@@ -260,6 +260,7 @@ void CoreWorker::SetCurrentTaskId(const TaskID &task_id) {
   main_thread_task_id_ = task_id;
   // Clear all actor handles at the end of each non-actor task.
   if (actor_id_.IsNil() && task_id.IsNil()) {
+    absl::MutexLock lock(&actor_handles_mutex_);
     for (const auto &handle : actor_handles_) {
       RAY_CHECK_OK(gcs_client_->Actors().AsyncUnsubscribe(handle.first, nullptr));
     }
@@ -722,13 +723,16 @@ Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
 }
 
 bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
+  absl::MutexLock lock(&actor_handles_mutex_);
   const auto &actor_id = actor_handle->GetActorID();
+
   auto inserted = actor_handles_.emplace(actor_id, std::move(actor_handle)).second;
   if (inserted) {
     // Register a callback to handle actor notifications.
     auto actor_notification_callback = [this](const ActorID &actor_id,
                                               const gcs::ActorTableData &actor_data) {
       if (actor_data.state() == gcs::ActorTableData::RECONSTRUCTING) {
+        absl::MutexLock lock(&actor_handles_mutex_);
         auto it = actor_handles_.find(actor_id);
         RAY_CHECK(it != actor_handles_.end());
         if (it->second->IsDirectCallActor()) {
@@ -761,6 +765,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
 
 Status CoreWorker::GetActorHandle(const ActorID &actor_id,
                                   ActorHandle **actor_handle) const {
+  absl::MutexLock lock(&actor_handles_mutex_);
   auto it = actor_handles_.find(actor_id);
   if (it == actor_handles_.end()) {
     return Status::Invalid("Handle for actor does not exist");
