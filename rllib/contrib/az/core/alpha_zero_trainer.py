@@ -19,7 +19,8 @@ from ray.tune.registry import ENV_CREATOR, _global_registry
 from rllib.contrib.az.core.alpha_zero_policy import AlphaZeroPolicy
 from rllib.contrib.az.core.mcts import MCTS
 from rllib.contrib.az.core.ranked_rewards import get_r2_env_wrapper
-from rllib.contrib.az.optimizer.sync_batches_replay_optimizer import SyncBatchesReplayOptimizer
+from rllib.contrib.az.optimizer.sync_batches_replay_optimizer import \
+    SyncBatchesReplayOptimizer
 
 tf = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -53,7 +54,7 @@ DEFAULT_CONFIG = with_common_config({
     "lr": 5e-5,
     # Learning rate schedule
     "lr_schedule": None,
-    # Share layers for value function. If you set this to True, it's important
+    # Share layers for value function. If you set this to True, it"s important
     # to tune vf_loss_coeff.
     "vf_share_layers": False,
     # Whether to rollout "complete_episodes" or "truncate_episodes"
@@ -76,12 +77,14 @@ DEFAULT_CONFIG = with_common_config({
     },
 
     # === Ranked Rewards ===
-    # implement the ranked reward (r2) algorithm from: https://arxiv.org/pdf/1807.01672.pdf
+    # implement the ranked reward (r2) algorithm
+    # from: https://arxiv.org/pdf/1807.01672.pdf
     "ranked_rewards": {
         "enable": True,
         "percentile": 75,
         "buffer_max_length": 1000,
-        # add rewards obtained from random policy to "warm start" the buffer
+        # add rewards obtained from random policy to
+        # "warm start" the buffer
         "initialize_buffer": True,
         "num_init_rewards": 100,
     },
@@ -112,21 +115,20 @@ def choose_policy_optimizer(workers, config):
         return SyncSamplesOptimizer(
             workers,
             num_sgd_iter=config["num_sgd_iter"],
-            train_batch_size=config["train_batch_size"]
-        )
+            train_batch_size=config["train_batch_size"])
     else:
         return SyncBatchesReplayOptimizer(
             workers,
-            num_gradient_descents=config['num_sgd_iter'],
-            learning_starts=config['learning_starts'],
-            train_batch_size=config['train_batch_size'],
-            buffer_size=config['buffer_size']
-        )
+            num_gradient_descents=config["num_sgd_iter"],
+            learning_starts=config["learning_starts"],
+            train_batch_size=config["train_batch_size"],
+            buffer_size=config["buffer_size"])
 
 
 def alpha_zero_loss(policy, model, dist_class, train_batch):
     # get inputs unflattened inputs
-    input_dict = restore_original_dimensions(train_batch["obs"], policy.observation_space, "torch")
+    input_dict = restore_original_dimensions(train_batch["obs"],
+                                             policy.observation_space, "torch")
     # forward pass in model
     model_out = model.forward(input_dict, None, [1])
     logits, _ = model_out
@@ -134,7 +136,8 @@ def alpha_zero_loss(policy, model, dist_class, train_batch):
     logits, values = torch.squeeze(logits), torch.squeeze(values)
     priors = nn.Softmax(dim=-1)(logits)
     # compute actor and critic losses
-    policy_loss = torch.mean(-torch.sum(train_batch["mcts_policies"] * torch.log(priors), dim=-1))
+    policy_loss = torch.mean(
+        -torch.sum(train_batch["mcts_policies"] * torch.log(priors), dim=-1))
     value_loss = torch.mean(torch.pow(values - train_batch["value_label"], 2))
     # compute total loss
     total_loss = (policy_loss + value_loss) / 2
@@ -143,24 +146,34 @@ def alpha_zero_loss(policy, model, dist_class, train_batch):
 
 class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
     def __init__(self, obs_space, action_space, config):
-        model = ModelCatalog.get_model_v2(obs_space, action_space, action_space.n, config["model"], "torch")
-        env_creator = _global_registry.get(ENV_CREATOR, config['env'])
-        if config['ranked_rewards']['enable']:
-            # if r2 is enabled, tne env is wrapped to include a rewards buffer used to normalize rewards
-            env_cls = get_r2_env_wrapper(env_creator, config['ranked_rewards'])
-            # the wrapped env is used only in the mcts, not in the rollout workers
-            _env_creator = lambda: env_cls(config["env_config"])
+        model = ModelCatalog.get_model_v2(
+            obs_space, action_space, action_space.n, config["model"], "torch")
+        env_creator = _global_registry.get(ENV_CREATOR, config["env"])
+        if config["ranked_rewards"]["enable"]:
+            # if r2 is enabled, tne env is wrapped to include a rewards buffer
+            # used to normalize rewards
+            env_cls = get_r2_env_wrapper(env_creator, config["ranked_rewards"])
+
+            # the wrapped env is used only in the mcts, not in the
+            # rollout workers
+            def _env_creator():
+                return env_cls(config["env_config"])
         else:
-            _env_creator = lambda: env_creator(config["env_config"])
-        mcts_creator = lambda: MCTS(model, config['mcts_config'])
-        super().__init__(obs_space, action_space, model, alpha_zero_loss, TorchCategorical, mcts_creator, _env_creator)
+
+            def _env_creator():
+                env_creator(config["env_config"])
+
+        def mcts_creator():
+            MCTS(model, config["mcts_config"])
+
+        super().__init__(obs_space, action_space, model, alpha_zero_loss,
+                         TorchCategorical, mcts_creator, _env_creator)
 
 
 AlphaZeroTrainer = build_trainer(
     name="AlphaZero",
     default_config=DEFAULT_CONFIG,
     default_policy=AlphaZeroPolicyWrapperClass,
-    make_policy_optimizer=choose_policy_optimizer
-)
+    make_policy_optimizer=choose_policy_optimizer)
 
 register_trainable("AlphaZero", AlphaZeroTrainer)

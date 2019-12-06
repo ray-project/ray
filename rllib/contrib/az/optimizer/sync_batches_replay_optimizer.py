@@ -1,7 +1,8 @@
 import random
 
 from ray.rllib.evaluation.metrics import get_learner_stats
-from ray.rllib.optimizers.sync_batch_replay_optimizer import SyncBatchReplayOptimizer
+from ray.rllib.optimizers.sync_batch_replay_optimizer import \
+    SyncBatchReplayOptimizer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 
@@ -13,7 +14,8 @@ class SyncBatchesReplayOptimizer(SyncBatchReplayOptimizer):
                  buffer_size=10000,
                  train_batch_size=32,
                  num_gradient_descents=10):
-        super(SyncBatchesReplayOptimizer, self).__init__(workers, learning_starts, buffer_size, train_batch_size)
+        super(SyncBatchesReplayOptimizer, self).__init__(
+            workers, learning_starts, buffer_size, train_batch_size)
         self.num_sgds = num_gradient_descents
 
     @override(SyncBatchReplayOptimizer)

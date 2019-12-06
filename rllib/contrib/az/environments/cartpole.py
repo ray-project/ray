@@ -13,9 +13,10 @@ class CartPole:
     def __init__(self, config=None):
         self.env = gym.make("CartPole-v0")
         self.action_space = Discrete(2)
-        self.observation_space = Dict(
-            {"obs": self.env.observation_space,
-             "action_mask": Box(low=0, high=1, shape=(self.action_space.n,))})
+        self.observation_space = Dict({
+            "obs": self.env.observation_space,
+            "action_mask": Box(low=0, high=1, shape=(self.action_space.n, ))
+        })
         self.running_reward = 0
 
     def reset(self):

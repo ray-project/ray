@@ -14,7 +14,7 @@ from rllib.models.catalog import ModelCatalog
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--num_workers', default=6, type=int)
+    parser.add_argument("--num_workers", default=6, type=int)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model("dense_model", DenseModel)
@@ -31,7 +31,6 @@ if __name__ == "__main__":
             "sgd_minibatch_size": 64,
             "lr": 1e-4,
             "num_sgd_iter": 1,
-
             "mcts_config": {
                 "puct_coefficient": 1.5,
                 "num_simulations": 100,
@@ -41,11 +40,9 @@ if __name__ == "__main__":
                 "argmax_tree_policy": False,
                 "add_dirichlet_noise": True,
             },
-
             "ranked_rewards": {
                 "enable": True,
             },
-
             "model": {
                 "custom_model": "dense_model",
             },

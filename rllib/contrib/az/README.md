@@ -21,3 +21,4 @@ Note that both mean and max rewards are obtained with the MCTS in exploration mo
 
 - AlphaZero: https://arxiv.org/abs/1712.01815
 - Ranked rewards: https://arxiv.org/abs/1807.01672
+    
