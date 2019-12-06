@@ -74,7 +74,8 @@ py_test(
     name = "test_stress_failure",
     size = "large",
     srcs = ["test_stress_failure.py"],
-    tags = ["exclusive"],
+    # TODO(ekl) enable again once we support direct call reconstruction
+    tags = ["exclusive", "manual"],
     deps = ["//:ray_lib"],
 )
 
