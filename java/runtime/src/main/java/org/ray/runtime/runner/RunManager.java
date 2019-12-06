@@ -258,7 +258,7 @@ public class RunManager {
           String.format("--raylet_socket_name=%s", rayConfig.rayletSocketName),
           String.format("--store_socket_name=%s", rayConfig.objectStoreSocketName),
           String.format("--object_manager_port=%d", 0), // The object manager port.
-          String.format("--node_manager_port=%d", 0),  // The node manager port.
+          String.format("--node_manager_port=%d", rayConfig.getNodeManagerPort()),  // The node manager port.
           String.format("--node_ip_address=%s", rayConfig.nodeIp),
           String.format("--redis_address=%s", rayConfig.getRedisIp()),
           String.format("--redis_port=%d", rayConfig.getRedisPort()),
@@ -312,6 +312,8 @@ public class RunManager {
     cmd.add("-Dray.raylet.socket-name=" + rayConfig.rayletSocketName);
     cmd.add("-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName);
 
+    cmd.add("-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort());
+
     // Config overwrite
     cmd.add("-Dray.redis.address=" + rayConfig.getRedisAddress());
 
@@ -337,7 +339,7 @@ public class RunManager {
 
   private void startObjectStore() {
     try (FileUtil.TempFile plasmaStoreFile = FileUtil
-        .getTempFileFromResource("plasma_store_server")) {
+        .getTempFileFromResource("external/plasma/plasma_store_server")) {
       plasmaStoreFile.getFile().setExecutable(true);
       List<String> command = ImmutableList.of(
           // The plasma store executable file.
