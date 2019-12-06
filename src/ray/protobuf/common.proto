@@ -143,3 +143,19 @@ message Task {
   TaskSpec task_spec = 1;
   TaskExecutionSpec task_execution_spec = 2;
 }
+
+// Represents a resource id.
+message ResourceId {
+  // The index of the resource (i.e., CPU #3).
+  int64 index = 1;
+  // The quantity of the resource assigned (i.e., 0.5 CPU).
+  double quantity = 2;
+}
+
+// Represents a set of resource ids.
+message ResourceMapEntry {
+  // The name of the resource (i.e., "CPU").
+  string name = 1;
+  // The set of resource ids assigned.
+  repeated ResourceId resource_ids = 2;
+}

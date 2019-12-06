@@ -2,17 +2,23 @@
 
 namespace ray {
 
-void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
+void ReferenceCounter::AddOwnershipInfo(const ObjectID &object_id,
                                          const TaskID &owner_id,
                                          const rpc::Address &owner_address) {
+  RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   absl::MutexLock lock(&mutex_);
-  RAY_CHECK(
-      object_id_refs_.emplace(object_id, Reference(owner_id, owner_address)).second);
+  auto it = object_id_refs_.find(object_id);
+  RAY_CHECK(it != object_id_refs_.end());
+
+  if (!it->second.owner.has_value()) {
+    it->second.owner = {owner_id, owner_address};
+  }
 }
 
 void ReferenceCounter::AddOwnedObject(
     const ObjectID &object_id, const TaskID &owner_id, const rpc::Address &owner_address,
     std::shared_ptr<std::vector<ObjectID>> dependencies) {
+  RAY_LOG(DEBUG) << "Adding owned object " << object_id;
   absl::MutexLock lock(&mutex_);
 
   for (const ObjectID &dependency_id : *dependencies) {
@@ -44,6 +50,7 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id) {
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
+  RAY_LOG(DEBUG) << "Removing reference internal " << object_id;
   absl::MutexLock lock(&mutex_);
   RemoveReferenceRecursive(object_id, deleted);
 }

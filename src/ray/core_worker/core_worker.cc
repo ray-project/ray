@@ -82,6 +82,7 @@ CoreWorker::CoreWorker(const WorkerType worker_type, const Language language,
       reference_counter_(std::make_shared<ReferenceCounter>()),
       task_execution_service_work_(task_execution_service_),
       task_execution_callback_(task_execution_callback),
+      resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this) {
   // Initialize logging if log_dir is passed. Otherwise, it must be initialized
   // and cleaned up by the caller.
@@ -297,6 +298,7 @@ void CoreWorker::ReportActiveObjectIDs() {
 void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
                                                     TaskID *owner_id,
                                                     rpc::Address *owner_address) {
+  RAY_LOG(DEBUG) << "Promote to plasma and get info for " << object_id.Hex();
   RAY_CHECK(object_id.IsDirectCallType());
   auto value = memory_store_->GetOrPromoteToPlasma(object_id);
   if (value != nullptr) {
@@ -305,20 +307,16 @@ void CoreWorker::PromoteToPlasmaAndGetOwnershipInfo(const ObjectID &object_id,
   }
 
   auto has_owner = reference_counter_->GetOwner(object_id, owner_id, owner_address);
-  RAY_CHECK(has_owner)
-      << "Object IDs generated randomly (ObjectID.from_random()) or out-of-band "
-         "(ObjectID.from_binary(...)) cannot be serialized because Ray does not know "
-         "which task will create them. "
-         "If this was not how your object ID was generated, please file an issue "
-         "at https://github.com/ray-project/ray/issues/";
+  RAY_CHECK(has_owner) << "Failed to get owner information for " << object_id.Hex();
 }
 
 void CoreWorker::RegisterOwnershipInfoAndResolveFuture(
     const ObjectID &object_id, const TaskID &owner_id,
     const rpc::Address &owner_address) {
+  RAY_LOG(DEBUG) << "Register owner info for " << object_id.Hex();
   // Add the object's owner to the local metadata in case it gets serialized
   // again.
-  reference_counter_->AddBorrowedObject(object_id, owner_id, owner_address);
+  reference_counter_->AddOwnershipInfo(object_id, owner_id, owner_address);
 
   RAY_CHECK(!owner_id.IsNil());
   // We will ask the owner about the object until the object is
@@ -841,9 +839,11 @@ Status CoreWorker::AllocateReturnObjects(
 }
 
 Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
-                               const ResourceMappingType &resource_ids,
+                               const std::shared_ptr<ResourceMappingType> &resource_ids,
                                std::vector<std::shared_ptr<RayObject>> *return_objects) {
-  resource_ids_ = resource_ids;
+  if (resource_ids != nullptr) {
+    resource_ids_ = resource_ids;
+  }
   worker_context_.SetCurrentTask(task_spec);
   SetCurrentTaskId(task_spec.TaskId());
 
@@ -994,26 +994,25 @@ void CoreWorker::HandleGetObjectStatus(const rpc::GetObjectStatusRequest &reques
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   TaskID owner_id = TaskID::FromBinary(request.owner_id());
   if (owner_id != GetCallerId()) {
-    // We may have owned this object in the past, but we are now executing some
-    // other task or actor.
-    reply->set_status(rpc::GetObjectStatusReply::WRONG_OWNER);
-    send_reply_callback(Status::OK(), nullptr, nullptr);
+    RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by previous task "
+                  << owner_id.Hex();
+  }
+  // We own the task. Reply back to the borrower once the object has been
+  // created.
+  // TODO: We could probably just send the object value if it is small
+  // enough and we have it local.
+  reply->set_status(rpc::GetObjectStatusReply::CREATED);
+  if (task_manager_->IsTaskPending(object_id.TaskId())) {
+    // The task is pending. Send the reply once the task finishes.
+    memory_store_->GetAsync(
+        object_id, [send_reply_callback](std::shared_ptr<RayObject> obj) {
+          send_reply_callback(Status::OK(), nullptr, nullptr);
+        });
+    // TODO(ekl) this is a race condition.
+    RAY_CHECK(task_manager_->IsTaskPending(object_id.TaskId()));
   } else {
-    // We own the task. Reply back to the borrower once the object has been
-    // created.
-    // TODO: We could probably just send the object value if it is small
-    // enough and we have it local.
-    reply->set_status(rpc::GetObjectStatusReply::CREATED);
-    if (task_manager_->IsTaskPending(object_id.TaskId())) {
-      // The task is pending. Send the reply once the task finishes.
-      memory_store_->GetAsync(object_id,
-                              [send_reply_callback](std::shared_ptr<RayObject> obj) {
-                                send_reply_callback(Status::OK(), nullptr, nullptr);
-                              });
-    } else {
-      // The task is done. Send the reply immediately.
-      send_reply_callback(Status::OK(), nullptr, nullptr);
-    }
+    // The task is done. Send the reply immediately.
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 

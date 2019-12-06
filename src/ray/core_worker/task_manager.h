@@ -47,6 +47,7 @@ class TaskManager : public TaskFinisherInterface {
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
   bool IsTaskPending(const TaskID &task_id) const {
+    absl::MutexLock lock(&mu_);
     return pending_tasks_.count(task_id) > 0;
   }
 

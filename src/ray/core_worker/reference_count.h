@@ -54,13 +54,14 @@ class ReferenceCounter {
                       std::shared_ptr<std::vector<ObjectID>> dependencies)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Add an object that we are borrowing.
+  /// Add ownership information about an object that we are borrowing. This is
+  /// a no-op if it already exists.
   ///
   /// \param[in] object_id The ID of the object that we are borrowing.
   /// \param[in] owner_id The ID of the owner of the object. This is either the
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
-  void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
+  void AddOwnershipInfo(const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   bool GetOwner(const ObjectID &object_id, TaskID *owner_id,
@@ -107,7 +108,7 @@ class ReferenceCounter {
     /// The object's owner, if we know it. This has no value if the object is
     /// if we do not know the object's owner (because distributed ref counting
     /// is not yet implemented).
-    const absl::optional<std::pair<TaskID, rpc::Address>> owner;
+    absl::optional<std::pair<TaskID, rpc::Address>> owner;
   };
 
   /// Helper function with the same semantics as AddReference to allow adding a reference

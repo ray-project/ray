@@ -1,6 +1,8 @@
 #ifndef RAY_CORE_WORKER_DIRECT_TASK_H
 #define RAY_CORE_WORKER_DIRECT_TASK_H
 
+#include <google/protobuf/repeated_field.h>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 
@@ -52,8 +54,15 @@ class CoreWorkerDirectTaskSubmitter {
   /// Schedule more work onto an idle worker or return it back to the raylet if
   /// no more tasks are queued for submission. If an error was encountered
   /// processing the worker, we don't attempt to re-use the worker.
-  void OnWorkerIdle(const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key,
-                    bool was_error) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  ///
+  /// \param[in] addr The address of the worker.
+  /// \param[in] task_queue_key The scheduling class of the worker.
+  /// \param[in] was_error Whether the task failed to be submitted.
+  /// \param[in] assigned_resources Resource ids previously assigned to the worker.
+  void OnWorkerIdle(
+      const rpc::WorkerAddress &addr, const SchedulingKey &task_queue_key, bool was_error,
+      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Get an existing lease client or connect a new one. If a raylet_address is
   /// provided, this connects to a remote raylet. Else, this connects to the
@@ -78,7 +87,9 @@ class CoreWorkerDirectTaskSubmitter {
   void PushNormalTask(const rpc::WorkerAddress &addr,
                       rpc::CoreWorkerClientInterface &client,
                       const SchedulingKey &task_queue_key,
-                      const TaskSpecification &task_spec);
+                      const TaskSpecification &task_spec,
+                      const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry>
+                          &assigned_resources);
 
   // Client that can be used to lease and return workers from the local raylet.
   std::shared_ptr<WorkerLeaseInterface> local_lease_client_;

@@ -2,7 +2,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import logging
 from functools import wraps
 
@@ -95,7 +94,7 @@ class RemoteFunction(object):
             return self._remote(args=args, kwargs=kwargs)
 
         self.remote = _remote_proxy
-        self.direct_call_enabled = bool(os.environ.get("RAY_FORCE_DIRECT"))
+        self.direct_call_enabled = ray.ray_constants.direct_call_enabled()
 
     def __call__(self, *args, **kwargs):
         raise Exception("Remote functions cannot be called directly. Instead "

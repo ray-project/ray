@@ -718,9 +718,9 @@ cc_binary(
 )
 
 cc_binary(
-    name = "actor_state_accessor_test",
+    name = "redis_actor_info_accessor_test",
     testonly = 1,
-    srcs = ["src/ray/gcs/actor_state_accessor_test.cc"],
+    srcs = ["src/ray/gcs/redis_actor_info_accessor_test.cc"],
     copts = COPTS,
     deps = [
         ":gcs",

@@ -16,6 +16,11 @@ import time
 import ray
 import ray.test_utils
 import ray.cluster_utils
+from ray import ray_constants
+
+RAY_FORCE_DIRECT = ray_constants.direct_call_enabled()
+
+RAY_FORCE_DIRECT = bool(os.environ.get("RAY_FORCE_DIRECT"))
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -84,6 +89,7 @@ def test_actor_class_methods(ray_start_regular):
     assert ray.get(a.g.remote(2)) == 4
 
 
+@pytest.mark.skipif(RAY_FORCE_DIRECT, reason="no actor method resources")
 def test_resource_assignment(shutdown_only):
     """Test to make sure that we assign resource to actors at instantiation."""
     # This test will create 16 actors. Declaring this many CPUs initially will

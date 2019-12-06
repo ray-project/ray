@@ -183,7 +183,7 @@ ray::Status NodeManager::RegisterGcs() {
   };
 
   RAY_RETURN_NOT_OK(
-      gcs_client_->Actors().AsyncSubscribe(actor_notification_callback, nullptr));
+      gcs_client_->Actors().AsyncSubscribeAll(actor_notification_callback, nullptr));
 
   // Register a callback on the client table for new clients.
   auto node_manager_client_added = [this](gcs::RedisGcsClient *client, const UniqueID &id,
@@ -518,9 +518,17 @@ void NodeManager::ClientRemoved(const GcsNodeInfo &node_info) {
   const ClientID client_id = ClientID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG) << "[ClientRemoved] Received callback from client id " << client_id;
 
-  RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
-      << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor.";
+  if (!gcs_client_->client_table().IsDisconnected()) {
+    // We could receive a notification for our own death when we disconnect from client
+    // table after receiving a 'SIGTERM' signal, in that case we disconnect from gcs
+    // client table and then do some cleanup in the disconnect callback, and it's possible
+    // that we receive the notification in between, for more details refer to the SIGTERM
+    // handler in main.cc. In this case check for intentional disconnection and rule it
+    // out.
+    RAY_CHECK(client_id != gcs_client_->client_table().GetLocalClientId())
+        << "Exiting because this node manager has mistakenly been marked dead by the "
+        << "monitor.";
+  }
 
   // Below, when we remove client_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
@@ -1576,12 +1584,27 @@ void NodeManager::HandleWorkerLeaseRequest(const rpc::WorkerLeaseRequest &reques
   TaskID task_id = task.GetTaskSpecification().TaskId();
   task.OnDispatchInstead(
       [this, task_id, reply, send_reply_callback](const std::shared_ptr<void> granted,
-                                                  const std::string &address, int port) {
+                                                  const std::string &address, int port,
+                                                  const ResourceIdSet &resource_ids) {
         RAY_LOG(DEBUG) << "Worker lease request DISPATCH " << task_id;
         reply->mutable_worker_address()->set_ip_address(address);
         reply->mutable_worker_address()->set_port(port);
         reply->mutable_worker_address()->set_raylet_id(
             gcs_client_->client_table().GetLocalClientId().Binary());
+        for (const auto &mapping : resource_ids.AvailableResources()) {
+          auto resource = reply->add_resource_mapping();
+          resource->set_name(mapping.first);
+          for (const auto &id : mapping.second.WholeIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id);
+            rid->set_quantity(1.0);
+          }
+          for (const auto &id : mapping.second.FractionalIds()) {
+            auto rid = resource->add_resource_ids();
+            rid->set_index(id.first);
+            rid->set_quantity(id.second.ToDouble());
+          }
+        }
         send_reply_callback(Status::OK(), nullptr, nullptr);
 
         // TODO(swang): Kill worker if other end hangs up.
@@ -2250,7 +2273,8 @@ void NodeManager::AssignTask(const std::shared_ptr<Worker> &worker, const Task &
 
   auto task_id = spec.TaskId();
   if (task.OnDispatch() != nullptr) {
-    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port());
+    task.OnDispatch()(worker, initial_config_.node_manager_address, worker->Port(),
+                      worker->GetTaskResourceIds());
     post_assign_callbacks->push_back([this, worker, task_id]() {
       FinishAssignTask(worker, task_id, /*success=*/true);
     });
@@ -2807,6 +2831,12 @@ void NodeManager::ForwardTask(
 
   client->ForwardTask(request, [this, on_error, task, task_id, node_id](
                                    Status status, const rpc::ForwardTaskReply &reply) {
+    if (local_queues_.HasTask(task_id)) {
+      // It must have been forwarded back to us if it's in the queue again
+      // so just return here.
+      return;
+    }
+
     if (status.ok()) {
       const auto &spec = task.GetTaskSpecification();
       // Mark as forwarded so that the task and its lineage are not
