@@ -94,6 +94,11 @@ void GetRequest::Set(const ObjectID &object_id, std::shared_ptr<RayObject> objec
     is_ready_ = true;
     cv_.notify_all();
   }
+  for (auto &id : object_ids_) {
+    if (objects_.count(id) == 0) {
+      RAY_LOG(DEBUG) << "Object still missing " << id;
+    }
+  }
 }
 
 std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {

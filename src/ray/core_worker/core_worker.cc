@@ -366,6 +366,9 @@ Status CoreWorker::Seal(const ObjectID &object_id) {
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_ms,
                        std::vector<std::shared_ptr<RayObject>> *results) {
+  for (const auto &id : ids) {
+    RAY_LOG(DEBUG) << "CoreWorker GET " << id;
+  }
   results->resize(ids.size(), nullptr);
 
   absl::flat_hash_set<ObjectID> plasma_object_ids;
@@ -448,6 +451,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids, const int64_t timeout_m
     RAY_CHECK(!missing_result);
   }
 
+  RAY_LOG(DEBUG) << "CoreWorker GET DONE";
+
   return Status::OK();
 }
 
@@ -470,6 +475,9 @@ Status CoreWorker::Contains(const ObjectID &object_id, bool *has_object) {
 
 Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
                         int64_t timeout_ms, std::vector<bool> *results) {
+  for (const auto &id : ids) {
+    RAY_LOG(DEBUG) << "CoreWorker WAIT " << id;
+  }
   results->resize(ids.size(), false);
 
   if (num_objects <= 0 || num_objects > static_cast<int>(ids.size())) {
@@ -540,6 +548,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids, int num_objects,
       results->at(i) = true;
     }
   }
+  RAY_LOG(DEBUG) << "CoreWorker WAIT DONE";
 
   return Status::OK();
 }
@@ -752,7 +761,7 @@ bool CoreWorker::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle) {
         }
         direct_actor_submitter_->DisconnectActor(actor_id);
       } else if (actor_data.state() == gcs::ActorTableData::DEAD) {
-        direct_actor_submitter_->DisconnectActor(actor_id);
+        direct_actor_submitter_->DisconnectActor(actor_id, true);
 
         ActorHandle *actor_handle = nullptr;
         RAY_CHECK_OK(GetActorHandle(actor_id, &actor_handle));

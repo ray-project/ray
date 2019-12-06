@@ -66,12 +66,12 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id, c
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id) {
+void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id, bool dead) {
   absl::MutexLock lock(&mu_);
   // Remove rpc client if it's dead or being reconstructed.
   auto erased = rpc_clients_.erase(actor_id);
 
-  if (erased > 0) {
+  if (erased > 0 || dead) {
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {

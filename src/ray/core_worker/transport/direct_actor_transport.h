@@ -69,7 +69,7 @@ class CoreWorkerDirectActorTaskSubmitter {
   /// Disconnect from a failed actor.
   ///
   /// \param[in] actor_id Actor ID.
-  void DisconnectActor(const ActorID &actor_id);
+  void DisconnectActor(const ActorID &actor_id, bool dead = false);
 
  private:
   /// Push a task to a remote actor via the given client.
