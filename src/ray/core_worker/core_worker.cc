@@ -709,10 +709,10 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id, const RayFunction &f
   TaskSpecification task_spec = builder.Build();
   if (is_direct_call) {
     task_manager_->AddPendingTask(task_spec);
+    PinObjectReferences(task_spec, TaskTransportType::DIRECT);
     if (actor_handle->IsDead()) {
       task_manager_->PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_DIED);
     } else {
-      PinObjectReferences(task_spec, TaskTransportType::DIRECT);
       status = direct_actor_submitter_->SubmitTask(task_spec);
     }
   } else {
