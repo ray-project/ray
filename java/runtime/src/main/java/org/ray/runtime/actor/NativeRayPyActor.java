@@ -12,8 +12,7 @@ import org.ray.runtime.generated.Common.Language;
 public class NativeRayPyActor extends NativeRayActor implements RayPyActor {
 
   NativeRayPyActor(long nativeCoreWorkerPointer, byte[] actorId) {
-    super(nativeCoreWorkerPointer, actorId);
-    Preconditions.checkState(getLanguage() == Language.PYTHON);
+    super(nativeCoreWorkerPointer, actorId, Language.PYTHON);
   }
 
   /**
