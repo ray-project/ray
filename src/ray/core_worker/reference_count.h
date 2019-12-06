@@ -54,13 +54,14 @@ class ReferenceCounter {
                       std::shared_ptr<std::vector<ObjectID>> dependencies)
       LOCKS_EXCLUDED(mutex_);
 
-  /// Add an object that we are borrowing. This is a no-op if it already exists.
+  /// Add ownership information about an object that we are borrowing. This is
+  /// a no-op if it already exists.
   ///
   /// \param[in] object_id The ID of the object that we are borrowing.
   /// \param[in] owner_id The ID of the owner of the object. This is either the
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
-  void AddBorrowedObject(const ObjectID &object_id, const TaskID &owner_id,
+  void AddOwnershipInfo(const ObjectID &object_id, const TaskID &owner_id,
                          const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
 
   bool GetOwner(const ObjectID &object_id, TaskID *owner_id,

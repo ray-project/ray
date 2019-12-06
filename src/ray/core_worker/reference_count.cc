@@ -2,7 +2,7 @@
 
 namespace ray {
 
-void ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
+void ReferenceCounter::AddOwnershipInfo(const ObjectID &object_id,
                                          const TaskID &owner_id,
                                          const rpc::Address &owner_address) {
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
