@@ -25,7 +25,9 @@ cc_proto_library(
     deps = ["streaming_queue_proto"],
 )
 
-# ray shared lib
+# Use `linkshared` to ensure ray related symbols are not packed into streaming libs
+# to avoid duplicate symbols. In runtime we expose ray related symbols, which can
+# be linked into streaming libs by dynamic linker. See bazel rule `//:_raylet`
 cc_binary(
     name = "ray_util.so",
     linkshared = 1,
