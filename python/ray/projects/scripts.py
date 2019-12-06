@@ -26,11 +26,11 @@ logger = logging.getLogger(__file__)
 
 # File layout for generated project files
 # user-dir/
-#   .rayproject/
+#   ray-project/
 #     project.yaml
 #     cluster.yaml
 #     requirements.txt
-PROJECT_DIR = ".rayproject"
+PROJECT_DIR = "ray-project"
 PROJECT_YAML = os.path.join(PROJECT_DIR, "project.yaml")
 CLUSTER_YAML = os.path.join(PROJECT_DIR, "cluster.yaml")
 REQUIREMENTS_TXT = os.path.join(PROJECT_DIR, "requirements.txt")

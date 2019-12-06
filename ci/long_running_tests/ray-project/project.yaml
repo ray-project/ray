@@ -1,7 +1,7 @@
 name: long-running-tests
 description: "Ray's long running stress tests"
 
-cluster: .rayproject/cluster.yaml
+cluster: ray-project/cluster.yaml
 
 commands:
   - name: run
