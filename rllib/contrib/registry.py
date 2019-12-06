@@ -16,7 +16,8 @@ def _import_maddpg():
 
 
 def _import_alphazero():
-    from rllib.contrib.az.core.alpha_zero_trainer import AlphaZeroTrainer
+    from rllib.contrib.alpha_zero.core.alpha_zero_trainer import\
+        AlphaZeroTrainer
     return AlphaZeroTrainer
 
 

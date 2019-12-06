@@ -4,7 +4,7 @@ from ray.rllib.policy.policy import Policy, LEARNER_STATS_KEY
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 
-from rllib.contrib.az.core.mcts import Node, RootParentNode
+from rllib.contrib.alpha_zero.core.mcts import Node, RootParentNode
 
 
 class AlphaZeroPolicy(TorchPolicy):

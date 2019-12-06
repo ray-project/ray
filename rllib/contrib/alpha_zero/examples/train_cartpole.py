@@ -8,8 +8,8 @@ import argparse
 
 from ray import tune
 
-from rllib.contrib.az.models.custom_torch_models import DenseModel
-from rllib.contrib.az.environments.cartpole import CartPole
+from rllib.contrib.alpha_zero.models.custom_torch_models import DenseModel
+from rllib.contrib.alpha_zero.environments.cartpole import CartPole
 from rllib.models.catalog import ModelCatalog
 
 if __name__ == "__main__":

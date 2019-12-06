@@ -13,13 +13,12 @@ from ray.rllib.models.model import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.optimizers import SyncSamplesOptimizer
 from ray.rllib.utils import try_import_tf
-from ray.tune import register_trainable
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
-from rllib.contrib.az.core.alpha_zero_policy import AlphaZeroPolicy
-from rllib.contrib.az.core.mcts import MCTS
-from rllib.contrib.az.core.ranked_rewards import get_r2_env_wrapper
-from rllib.contrib.az.optimizer.sync_batches_replay_optimizer import \
+from rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
+from rllib.contrib.alpha_zero.core.mcts import MCTS
+from rllib.contrib.alpha_zero.core.ranked_rewards import get_r2_env_wrapper
+from rllib.contrib.alpha_zero.optimizer.sync_batches_replay_optimizer import \
     SyncBatchesReplayOptimizer
 
 tf = try_import_tf()
@@ -175,4 +174,3 @@ AlphaZeroTrainer = build_trainer(
     default_policy=AlphaZeroPolicyWrapperClass,
     make_policy_optimizer=choose_policy_optimizer)
 
-register_trainable("AlphaZero", AlphaZeroTrainer)
