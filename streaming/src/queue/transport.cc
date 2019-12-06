@@ -7,7 +7,9 @@ namespace streaming {
 static constexpr int TASK_OPTION_RETURN_NUM_0 = 0;
 static constexpr int TASK_OPTION_RETURN_NUM_1 = 1;
 
-void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int return_num, std::vector<ObjectID> &return_ids) {
+void Transport::SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer,
+                             RayFunction &function, int return_num,
+                             std::vector<ObjectID> &return_ids) {
   std::unordered_map<std::string, double> resources;
   TaskOptions options{return_num, true, resources};
 
