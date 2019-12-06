@@ -75,8 +75,7 @@ class JobWorker(object):
                 env, self.output_channels,
                 self.operator.partitioning_strategies)
             self.output_gate.init()
-        logger.info("init operator instance %s succeed",
-                    self.processor_name)
+        logger.info("init operator instance %s succeed", self.processor_name)
         return True
 
     # Starts the actor

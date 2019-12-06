@@ -5,6 +5,7 @@ from typing import List
 
 import ray
 import ray.streaming._streaming as _streaming
+import ray.streaming.generated.streaming_pb2 as streaming_pb
 from ray.actor import ActorHandle, ActorID
 from ray.streaming.config import Config
 
@@ -258,26 +259,25 @@ class DataReader:
 
 
 def _to_native_conf(conf):
-    # config = streaming_pb.StreamingConfig()
-    # if Config.STREAMING_JOB_NAME in conf:
-    #     config.job_name = conf[Config.STREAMING_JOB_NAME]
-    # if Config.TASK_JOB_ID in conf:
-    #     job_id = conf[Config.TASK_JOB_ID]
-    #     config.task_job_id = job_id.hex()
-    # if Config.STREAMING_WORKER_NAME in conf:
-    #     config.worker_name = conf[Config.STREAMING_WORKER_NAME]
-    # if Config.STREAMING_OP_NAME in conf:
-    #     config.op_name = conf[Config.STREAMING_OP_NAME]
-    # # TODO set operator type
-    # if Config.STREAMING_RING_BUFFER_CAPACITY in conf:
-    #     config.ring_buffer_capacity =\
-    #     conf[Config.STREAMING_RING_BUFFER_CAPACITY]
-    # if Config.STREAMING_EMPTY_MESSAGE_INTERVAL in conf:
-    #     config.empty_message_interval =\
-    #     conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
-    # logger.info("conf: %s", str(config))
-    # return config.SerializeToString()
-    return b""
+    config = streaming_pb.StreamingConfig()
+    if Config.STREAMING_JOB_NAME in conf:
+        config.job_name = conf[Config.STREAMING_JOB_NAME]
+    if Config.TASK_JOB_ID in conf:
+        job_id = conf[Config.TASK_JOB_ID]
+        config.task_job_id = job_id.hex()
+    if Config.STREAMING_WORKER_NAME in conf:
+        config.worker_name = conf[Config.STREAMING_WORKER_NAME]
+    if Config.STREAMING_OP_NAME in conf:
+        config.op_name = conf[Config.STREAMING_OP_NAME]
+    # TODO set operator type
+    if Config.STREAMING_RING_BUFFER_CAPACITY in conf:
+        config.ring_buffer_capacity = \
+            conf[Config.STREAMING_RING_BUFFER_CAPACITY]
+    if Config.STREAMING_EMPTY_MESSAGE_INTERVAL in conf:
+        config.empty_message_interval = \
+            conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
+    logger.info("conf: %s", str(config))
+    return config.SerializeToString()
 
 
 class ChannelInitException(Exception):
