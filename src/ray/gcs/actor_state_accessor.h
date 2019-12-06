@@ -2,15 +2,23 @@
 #define RAY_GCS_ACTOR_STATE_ACCESSOR_H
 
 #include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
 #include "ray/gcs/subscription_executor.h"
 #include "ray/gcs/tables.h"
+#include "ray/protobuf/common.pb.h"
 
 namespace ray {
 
 namespace gcs {
 
 class RedisGcsClient;
+
+std::shared_ptr<gcs::ActorTableData> CreateActorTableData(
+    const TaskSpecification &task_spec,
+    const rpc::Address &address,
+    gcs::ActorTableData::ActorState state,
+    uint64_t remaining_reconstructions);
 
 /// \class ActorStateAccessor
 /// ActorStateAccessor class encapsulates the implementation details of

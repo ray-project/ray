@@ -88,6 +88,10 @@ class CoreWorkerClientInterface {
     return Status::NotImplemented("");
   }
 
+  virtual ray::Status NotifyActorCreated(const NotifyActorCreatedRequest &request) {
+    return Status::NotImplemented("");
+  }
+
   virtual ~CoreWorkerClientInterface(){};
 };
 
@@ -163,6 +167,16 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         *stub_, &CoreWorkerService::Stub::PrepareAsyncGetObjectStatus, request, callback);
     return call->GetStatus();
   }
+
+  ray::Status NotifyActorCreated(const NotifyActorCreatedRequest &request) override{
+    auto call = client_call_manager_.CreateCall<CoreWorkerService,
+                                                NotifyActorCreatedRequest,
+                                                NotifyActorCreatedReply>(
+        *stub_, &CoreWorkerService::Stub::PrepareAsyncNotifyActorCreated,
+        request, nullptr);
+    return call->GetStatus();
+  }
+
   /// Send as many pending tasks as possible. This method is thread-safe.
   ///
   /// The client will guarantee no more than kMaxBytesInFlight bytes of RPCs are being
