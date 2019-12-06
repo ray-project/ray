@@ -386,13 +386,11 @@ def test_actor_creation_node_failure(ray_start_cluster):
             # Submit some tasks on the actors. About half of the actors will
             # fail.
             children_out = [child.ping.remote() for child in children]
-            print("do wait")
             # Wait a while for all the tasks to complete. This should trigger
             # reconstruction for any actor creation tasks that were forwarded
             # to nodes that then failed.
             ready, _ = ray.wait(
                 children_out, num_returns=len(children_out), timeout=5 * 60.0)
-            print("do wait ok")
             assert len(ready) == len(children_out)
 
             # Replace any actors that died.
