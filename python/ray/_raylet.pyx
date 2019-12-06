@@ -1202,7 +1202,7 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
         py_plasma_id = ObjectID(plasma_id.Binary())
         py_future.set_result(
             AsyncGetResponse(
-                success=False, plasma_id=py_plasma_id, result=None))
+                plasma_fallback_id=py_plasma_id, result=None))
     else:
         # Object is retrieved from in memory store.
         # Here we go through the code path used to deserialize objects.
@@ -1215,4 +1215,4 @@ cdef void async_set_result_callback(shared_ptr[CRayObject] obj,
 
         py_future.set_result(
             AsyncGetResponse(
-                success=True, plasma_id=None, result=objects[0]))
+                plasma_fallback_id=None, result=objects[0]))

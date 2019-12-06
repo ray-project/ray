@@ -402,8 +402,15 @@ class CoreWorker {
   /// Block current fiber until event is triggered.
   void YieldCurrentFiber(FiberEvent &event);
 
+  /// The callback expected to be implemented by the client.
   using SetResultCallback =
       std::function<void(std::shared_ptr<RayObject>, ObjectID object_id, void *)>;
+
+  /// Perform async get from in-memory store.
+  /// \param[in] object_id The object id to call get on. Assumes
+  /// object_id.IsDirectCallType() \param[in] callback The callback to use the result
+  /// object. \param[in] python_future the void* object to be passed to SetResultCallback
+  /// \return void
   void GetAsync(const ObjectID &object_id, SetResultCallback callback,
                 void *python_future);
 

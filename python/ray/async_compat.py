@@ -16,11 +16,11 @@ def sync_to_async(func):
     return wrapper
 
 
-# Class encapsualte the get result from direct actor.
-# Case 1: success=True, plasma_id=None, result=<Object>
-# Case 2: success=False, plasma_id=ObjectID, result=None
+# Class encapsulate the get result from direct actor.
+# Case 1: plasma_fallback_id=None, result=<Object>
+# Case 2: plasma_fallback_id=ObjectID, result=None
 AsyncGetResponse = namedtuple("AsyncGetResponse",
-                              ["success", "plasma_id", "result"])
+                              ["plasma_fallback_id", "result"])
 
 
 def get_async(object_id):
@@ -42,21 +42,31 @@ def get_async(object_id):
     # - If not direct call, directly use plasma API to get it.
     user_future = loop.create_future()
 
-    # inner_future -> done_callback (decides to fulfill user_future or not)
-    #              -> retry_plasma_future -> done_callback
+    # We have three future objects here.
+    # user_future is directly returned to the user from this function.
+    #     and it will be eventually fulfilled by the final result.
+    # inner_future is the first attempt to retrieve the object. It can be
+    #     fulfilled by either core_worker.get_async or plasma_api.as_future.
+    #     When inner_future completes, done_callback will be invoked. This
+    #     callback set the final object in user_future if the object hasn't
+    #     been promoted by plasma, otherwise it will retry from plasma.
+    # retry_lasma_future is only created when we are getting objects that's
+    #     promoted to plasma. It will also invoke the done_callback when it's
+    #     fulfilled.
 
     def done_callback(future):
         result = future.result()
         # Result from async plasma, transparently pass it to user future
         if isinstance(future, PlasmaObjectFuture):
             user_future.set_result(result)
-        else:  # Result from direct call.
-            assert isinstance(result, AsyncGetResponse)
-            if result.success:
+        else:
+            # Result from direct call.
+            assert isinstance(result, AsyncGetResponse), result
+            if result.result is not None:
                 user_future.set_result(result.result)
             else:
                 # Schedule plasma to async get, use the the same callback.
-                retry_plasma_future = as_future(result.plasma_id)
+                retry_plasma_future = as_future(result.plasma_fallback_id)
                 retry_plasma_future.add_done_callback(done_callback)
                 # A hack to keep reference to the future so it doesn't get GC.
                 user_future.retry_plasma_future = retry_plasma_future

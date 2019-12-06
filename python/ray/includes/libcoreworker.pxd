@@ -36,7 +36,7 @@ from ray.includes.libraylet cimport CRayletClient
 ctypedef unordered_map[c_string, c_vector[pair[int64_t, double]]] \
     ResourceMappingType
 
-ctypedef void (*ray_callack_function) \
+ctypedef void (*ray_callback_function) \
     (shared_ptr[CRayObject] result_object,
      CObjectID object_id, void* user_data)
 
@@ -150,4 +150,4 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CWorkerContext &GetWorkerContext()
         void YieldCurrentFiber(CFiberEvent &coroutine_done)
         void GetAsync(const CObjectID &object_id,
-                      ray_callack_function callback, void* python_future)
+                      ray_callback_function callback, void* python_future)
