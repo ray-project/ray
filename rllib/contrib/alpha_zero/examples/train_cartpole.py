@@ -14,13 +14,15 @@ from rllib.models.catalog import ModelCatalog
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_workers", default=6, type=int)
+    parser.add_argument("--num-workers", default=6, type=int)
+    parser.add_argument("--training-iteration", default=10000, type=int)
     args = parser.parse_args()
 
     ModelCatalog.register_custom_model("dense_model", DenseModel)
 
     tune.run(
         "contrib/AlphaZero",
+        stop={"training_iteration": args.training_iteration},
         max_failures=0,
         config={
             "env": CartPole,
