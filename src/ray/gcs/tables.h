@@ -860,6 +860,10 @@ class ClientTable : public Log<ClientID, GcsNodeInfo> {
   /// \return Status
   ray::Status Disconnect(const DisconnectCallback &callback = nullptr);
 
+  /// Whether the client is disconnected from the GCS.
+  /// \return Whether the client is disconnected.
+  bool IsDisconnected() const;
+
   /// Mark a different client as disconnected. The client ID should never be
   /// reused for a new client.
   ///

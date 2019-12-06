@@ -163,6 +163,12 @@ def call_ray_start(request):
     subprocess.check_output(["ray", "stop"])
 
 
+@pytest.fixture
+def call_ray_stop_only():
+    yield
+    subprocess.check_output(["ray", "stop"])
+
+
 @pytest.fixture()
 def two_node_cluster():
     internal_config = json.dumps({

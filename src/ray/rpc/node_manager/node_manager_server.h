@@ -24,9 +24,6 @@ class NodeManagerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
 
-  virtual void HandleSubmitTask(const SubmitTaskRequest &request, SubmitTaskReply *reply,
-                                SendReplyCallback send_reply_callback) = 0;
-
   virtual void HandleWorkerLeaseRequest(const WorkerLeaseRequest &request,
                                         WorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
@@ -63,13 +60,6 @@ class NodeManagerGrpcService : public GrpcService {
       std::vector<std::pair<std::unique_ptr<ServerCallFactory>, int>>
           *server_call_factories_and_concurrencies) override {
     // Initialize the factory for requests.
-    std::unique_ptr<ServerCallFactory> submit_task_call_factory(
-        new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
-                                  SubmitTaskRequest, SubmitTaskReply>(
-            service_, &NodeManagerService::AsyncService::RequestSubmitTask,
-            service_handler_, &NodeManagerServiceHandler::HandleSubmitTask, cq,
-            main_service_));
-
     std::unique_ptr<ServerCallFactory> request_worker_lease_call_factory(
         new ServerCallFactoryImpl<NodeManagerService, NodeManagerServiceHandler,
                                   WorkerLeaseRequest, WorkerLeaseReply>(
@@ -99,8 +89,6 @@ class NodeManagerGrpcService : public GrpcService {
             main_service_));
 
     // Set accept concurrency.
-    server_call_factories_and_concurrencies->emplace_back(
-        std::move(submit_task_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
         std::move(request_worker_lease_call_factory), 100);
     server_call_factories_and_concurrencies->emplace_back(
