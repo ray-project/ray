@@ -798,8 +798,9 @@ pyx_library(
         "python/ray/includes/*.pxd",
         "python/ray/includes/*.pxi",
     ]),
-    # Hide protobuf symbols to avoid symbols conflicts, so we can expose
-    # _raylet.so symbols which then can be used by _streaming.so
+    # Since we expose _raylet.so symbols, which can then be used by _streaming.so,
+    # it may cause symbols conflicts in linux. So we need to hide conflicted
+    # libraries symbols such as protobuf to avoid conflicts in linux.
     cc_kwargs = {
         "features": ["-supports_start_end_lib"],
         "linkstatic": 1,
