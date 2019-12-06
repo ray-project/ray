@@ -5,7 +5,7 @@ name: commands-test
 # description: A short description of the project.
 repo: https://github.com/ray-project/not-exist
 
-cluster: .rayproject/cluster.yaml
+cluster: ray-project/cluster.yaml
 
 environment:
   shell:

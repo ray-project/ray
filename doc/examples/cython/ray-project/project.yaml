@@ -6,10 +6,10 @@ description: "Example of how to use Cython with ray"
 tags: ["ray-example", "cython"]
 documentation: https://ray.readthedocs.io/en/latest/advanced.html#cython-code-in-ray
 
-cluster: .rayproject/cluster.yaml
+cluster: ray-project/cluster.yaml
 
 environment:
-  requirements: .rayproject/requirements.txt
+  requirements: ray-project/requirements.txt
 
   shell: # Shell commands to be ran for environment setup.
     - pip install -e .
