@@ -16,6 +16,8 @@ message WorkerLeaseReply {
   Address worker_address = 1;
   // Address of the raylet to spill back to, if any.
   Address retry_at_raylet_address = 2;
+  // Resource mapping ids acquired by the leased worker.
+  repeated ResourceMapEntry resource_mapping = 3;
 }
 
 // Release a worker back to its raylet.

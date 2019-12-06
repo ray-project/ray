@@ -7,7 +7,7 @@
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/asio.h"
-#include "ray/gcs/gcs_client_interface.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/gcs/tables.h"
 #include "ray/util/logging.h"
 
@@ -17,8 +17,10 @@ namespace gcs {
 
 class RedisContext;
 
-class RAY_EXPORT RedisGcsClient : public GcsClientInterface {
-  friend class ActorStateAccessor;
+class RAY_EXPORT RedisGcsClient : public GcsClient {
+  // TODO(micafan) Will remove those friend class after we replace RedisGcsClient
+  // with interface class GcsClient in raylet.
+  friend class RedisActorInfoAccessor;
   friend class SubscriptionExecutorTest;
 
  public:

@@ -13,12 +13,12 @@ Quick start (CLI)
     # Creates a project in the current directory. It will create a
     # project.yaml defining the code and environment and a cluster.yaml
     # describing the cluster configuration. Both will be created in the
-    # .rayproject subdirectory of the current directory.
+    # ray-project subdirectory of the current directory.
     $ ray project create <project-name>
 
     # Create a new session from the given project.  Launch a cluster and run
     # the command, which must be specified in the project.yaml file. If no
-    # command is specified, the "default" command in .rayproject/project.yaml
+    # command is specified, the "default" command in ray-project/project.yaml
     # will be used. Alternatively, use --shell to run a raw shell command.
     $ ray session start <command-name> [arguments] [--shell]
 
@@ -33,9 +33,9 @@ Examples
 See `the readme <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/README.md>`__
 for instructions on how to run these examples:
 
-- `Open Tacotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/.rayproject/project.yaml>`__:
+- `Open Tacotron <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/open-tacotron/ray-project/project.yaml>`__:
   A TensorFlow implementation of Google's Tacotron speech synthesis with pre-trained model (unofficial)
-- `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/.rayproject/project.yaml>`__:
+- `PyTorch Transformers <https://github.com/ray-project/ray/blob/master/python/ray/projects/examples/pytorch-transformers/ray-project/project.yaml>`__:
   A library of state-of-the-art pretrained models for Natural Language Processing (NLP)
 
 Project file format (project.yaml)
@@ -54,7 +54,7 @@ Here is an example for a minimal project format:
     repo: https://github.com/ray-project/ray
 
     # Cluster to be instantiated by default when starting the project.
-    cluster: .rayproject/cluster.yaml
+    cluster: ray-project/cluster.yaml
 
     # Commands/information to build the environment, once the cluster is
     # instantiated. This can include the versions of python libraries etc.
