@@ -160,11 +160,11 @@ cc_binary(
     deps = test_common_deps,
 )
 
-# use src/test/run_streamingqueue_test.sh to run this test
+# use src/test/run_streaming_queue_test.sh to run this test
 cc_binary(
-    name = "streamingqueue_tests",
+    name = "streaming_queue_tests",
     srcs = glob(["src/test/*.h"]) + [
-        "src/test/streamingqueue_tests.cc",
+        "src/test/streaming_queue_tests.cc",
     ],
     deps = test_common_deps,
 )

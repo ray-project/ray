@@ -34,7 +34,7 @@ class Message {
   ObjectID QueueId() { return queue_id_; }
   std::shared_ptr<LocalMemoryBuffer> Buffer() { return buffer_; }
 
-  /// Serialize all meta data and data to a LocalMemoryBuffer, which can be send through
+  /// Serialize all meta data and data to a LocalMemoryBuffer, which can be sent through
   /// direct actor call. \return serialized buffer .
   std::unique_ptr<LocalMemoryBuffer> ToBytes();
 

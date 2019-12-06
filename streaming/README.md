@@ -14,7 +14,7 @@
 ```bash
 # c++ test
 cd streaming/ && bazel test ...
-sh src/test/run_streamingqueue_test.sh
+sh src/test/run_streaming_queue_test.sh
 cd ..
 
 # python test

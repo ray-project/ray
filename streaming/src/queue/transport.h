@@ -23,7 +23,7 @@ class Transport {
   /// Send buffer asynchronously, peer's `function` will be called.
   /// \param[in] buffer buffer to be sent.
   /// \param[in] function the function descriptor of peer's function.
-  virtual void Send(std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function);
+  virtual void Send(std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function);
   /// Send buffer synchronously, peer's `function` will be called, and return the peer
   /// function's return value.
   /// \param[in] buffer buffer to be sent.
@@ -41,8 +41,14 @@ class Transport {
   /// \param[in] timeout_ms max time to wait for result.
   /// \return peer function's result.
   std::shared_ptr<LocalMemoryBuffer> SendForResultWithRetry(
-      std::unique_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt,
+      std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int retry_cnt,
       int64_t timeout_ms);
+
+ private:
+  /// Send buffer asynchronously, peer's `function` will be called.
+  /// \param[in] buffer buffer to be sent.
+  /// \param[in] function the function descriptor of peer's function.
+  virtual void SendInternal(std::shared_ptr<LocalMemoryBuffer> buffer, RayFunction &function, int return_num, std::vector<ObjectID> &return_ids);
 
  private:
   CoreWorker *core_worker_;
