@@ -72,6 +72,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(const ActorID &actor_id
   auto erased = rpc_clients_.erase(actor_id);
 
   if (erased > 0 || dead) {
+    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id;
     // If there are pending requests, treat the pending tasks as failed.
     auto pending_it = pending_requests_.find(actor_id);
     if (pending_it != pending_requests_.end()) {
@@ -179,7 +180,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   const TaskSpecification task_spec(request.task_spec());
-  RAY_LOG(DEBUG) << "Received task " << task_spec.TaskId();
+  RAY_LOG(DEBUG) << "Received task " << task_spec.DebugString();
   if (task_spec.IsActorTask() && !worker_context_.CurrentTaskIsDirectCall()) {
     send_reply_callback(Status::Invalid("This actor doesn't accept direct calls."),
                         nullptr, nullptr);
@@ -234,6 +235,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
     RAY_CHECK(num_returns >= 0);
 
     std::vector<std::shared_ptr<RayObject>> return_objects;
+    RAY_LOG(DEBUG) << "Executing  task " << task_spec.DebugString();
     auto status = task_handler_(task_spec, resource_ids, &return_objects);
     bool objects_valid = return_objects.size() == num_returns;
     if (objects_valid) {
@@ -281,6 +283,7 @@ void CoreWorkerDirectTaskReceiver::HandlePushTask(
         request.set_actor_creation_task_id(task_spec.TaskId().Binary());
         request.mutable_address()->CopyFrom(rpc_address_);
         RAY_CHECK_OK(client->NotifyActorCreated(request));
+        RAY_LOG(DEBUG) << "Notified owner that actor is created " << task_spec.DebugString();
       } else {
         send_reply_callback(status, nullptr, nullptr);
       }
