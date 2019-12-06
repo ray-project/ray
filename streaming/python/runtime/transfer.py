@@ -45,7 +45,7 @@ class ChannelID:
         """
         res = ""
         for i in range(CHANNEL_ID_LEN * 2):
-            res += str(chr(random.randint(0, 5) + ord('A')))
+            res += str(chr(random.randint(0, 5) + ord("A")))
         return res
 
     @staticmethod
@@ -128,7 +128,8 @@ class DataMessage:
 
     def is_empty_message(self):
         """Whether this message is an empty message.
-        Upstream DataWriter will send an empty message when this is no data in specified interval.
+        Upstream DataWriter will send an empty message when this is no data
+         in specified interval.
         """
         return self.__is_empty_message
 
@@ -141,8 +142,8 @@ logger = logging.getLogger(__name__)
 
 
 class DataWriter:
-    """Data Writer is a wrapper of streaming c++ DataWriter, which sends data to downstream
-     workers
+    """Data Writer is a wrapper of streaming c++ DataWriter, which sends data
+     to downstream workers
     """
 
     def __init__(self, output_channels, to_actors: List[ActorHandle],
@@ -230,7 +231,8 @@ class DataReader:
     def read(self, timeout_millis):
         """Read data from channel
         Args:
-            timeout_millis: timeout millis when there is no data in channel for this duration
+            timeout_millis: timeout millis when there is no data in channel
+             for this duration
         Returns:
             channel item
         """
@@ -268,12 +270,14 @@ def _to_native_conf(conf):
     #     config.op_name = conf[Config.STREAMING_OP_NAME]
     # # TODO set operator type
     # if Config.STREAMING_RING_BUFFER_CAPACITY in conf:
-    #     config.ring_buffer_capacity = conf[Config.STREAMING_RING_BUFFER_CAPACITY]
+    #     config.ring_buffer_capacity =\
+    #     conf[Config.STREAMING_RING_BUFFER_CAPACITY]
     # if Config.STREAMING_EMPTY_MESSAGE_INTERVAL in conf:
-    #     config.empty_message_interval = conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
+    #     config.empty_message_interval =\
+    #     conf[Config.STREAMING_EMPTY_MESSAGE_INTERVAL]
     # logger.info("conf: %s", str(config))
     # return config.SerializeToString()
-    return b''
+    return b""
 
 
 class ChannelInitException(Exception):

@@ -54,7 +54,6 @@ class Map:
     # Applies the mapper each record of the input stream(s)
     # and pushes resulting records to the output stream(s)
     def run(self, input_gate, output_gate):
-        start = time.time()
         elements = 0
         while True:
             record = input_gate.pull()
@@ -148,9 +147,11 @@ class Reduce:
             self.attribute_selector = _identity
         elif isinstance(self.attribute_selector, int):
             self.key_index = self.attribute_selector
-            self.attribute_selector = lambda record: record[self.attribute_selector]
+            self.attribute_selector =\
+                lambda record: record[self.attribute_selector]
         elif isinstance(self.attribute_selector, str):
-            self.attribute_selector = lambda record: vars(record)[self.attribute_selector]
+            self.attribute_selector =\
+                lambda record: vars(record)[self.attribute_selector]
         elif not isinstance(self.attribute_selector, types.FunctionType):
             sys.exit("Unrecognized or unsupported key selector.")
         self.state = {}  # key -> value

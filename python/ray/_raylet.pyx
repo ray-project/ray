@@ -1108,7 +1108,8 @@ cdef class CoreWorker:
                 meta = dynamic_pointer_cast[
                     CBuffer, LocalMemoryBuffer](
                     make_shared[LocalMemoryBuffer](
-                        <uint8_t*>(metadata_str.data()), metadata_str.size(), True))
+                        <uint8_t*>(metadata_str.data()), metadata_str.size(),
+                        True))
                 metadatas.push_back(meta)
             else:
                 context = worker.get_serialization_context()

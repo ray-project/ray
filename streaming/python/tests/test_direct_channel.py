@@ -88,7 +88,7 @@ class Worker:
     def on_reader_message_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
         if self.reader_client is None:
-            return b' ' * 4  # special flag to indicate this actor not ready
+            return b" " * 4  # special flag to indicate this actor not ready
         result = self.reader_client.on_reader_message_sync(buffer)
         return result
 
@@ -99,7 +99,7 @@ class Worker:
     def on_writer_message_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
         if self.writer_client is None:
-            return b' ' * 4  # special flag to indicate this actor not ready
+            return b" " * 4  # special flag to indicate this actor not ready
         result = self.writer_client.on_writer_message_sync(buffer)
         return result
 

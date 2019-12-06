@@ -72,9 +72,9 @@ class ExecutionGraph:
 
         Attributes:
             instance_index: The index of the instance the actor will execute.
-            operator (Operator): The metadata of the logical operator.
-            input_channels (input channels): The input channels of the instance.
-            output_channels (output channels): The output channels of the instance.
+            operator: The metadata of the logical operator.
+            input_channels: The input channels of the instance.
+            output_channels The output channels of the instance.
         """
         worker_id = (operator.id, instance_index)
         # Record the physical dataflow graph (for debugging purposes)
@@ -208,7 +208,7 @@ class ExecutionGraph:
             ray.register_custom_serializer(ExecutionGraph, use_pickle=True)
             ray.register_custom_serializer(OpType, use_pickle=True)
             ray.register_custom_serializer(PStrategy, use_pickle=True)
-        except Exception as e:
+        except Exception:
             # local mode can't use pickle
             pass
 

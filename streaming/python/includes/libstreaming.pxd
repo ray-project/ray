@@ -2,6 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 # cython: language_level = 3
+# flake8: noqa
 
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool

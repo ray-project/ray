@@ -6,7 +6,7 @@ from ray.streaming.streaming import Environment, Conf
 def test_word_count():
     ray.init()
     env = Environment(config=Conf(channel_type=Config.NATIVE_CHANNEL))
-    stream = env.read_text_file(__file__) \
+    env.read_text_file(__file__) \
         .set_parallelism(1) \
         .filter(lambda x: "word" in x) \
         .inspect(lambda x: print("result", x))

@@ -58,7 +58,7 @@ class DataChannel(object):
             self.dst_operator_id, self.dst_instance_index, self.str_qid)
 
 
-_CLOSE_FLAG = b' '
+_CLOSE_FLAG = b" "
 
 
 # Pulls and merges data from multiple input channels
@@ -225,8 +225,8 @@ class DataOutput(object):
     def close(self):
         """Close the channel (True) by propagating _CLOSE_FLAG
 
-        _CLOSE_FLAG is used as special type of record that is propagated from sources
-        to sink to notify that the end of data in a stream.
+        _CLOSE_FLAG is used as special type of record that is propagated from
+         sources to sink to notify that the end of data in a stream.
         """
         for c in self.channels:
             self.writer.write(c.qid, _CLOSE_FLAG)

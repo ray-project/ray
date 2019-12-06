@@ -23,8 +23,8 @@ class JobWorker(object):
         worker_id: The id of the instance.
         input_channels: The input gate that manages input channels of
         the instance (see: DataInput in communication.py).
-        output_channels (DataOutput): The output gate that manages output channels of
-        the instance (see: DataOutput in communication.py).
+        output_channels (DataOutput): The output gate that manages output
+         channels of the instance (see: DataOutput in communication.py).
         the operator instance.
     """
 
@@ -109,7 +109,7 @@ class JobWorker(object):
     def on_reader_message_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
         if self.reader_client is None:
-            return b' ' * 4  # special flag to indicate this actor not ready
+            return b" " * 4  # special flag to indicate this actor not ready
         result = self.reader_client.on_reader_message_sync(buffer)
         return result
 
@@ -120,6 +120,6 @@ class JobWorker(object):
     def on_writer_message_sync(self, buffer: ray._raylet.Buffer):
         """used in direct call mode"""
         if self.writer_client is None:
-            return b' ' * 4  # special flag to indicate this actor not ready
+            return b" " * 4  # special flag to indicate this actor not ready
         result = self.writer_client.on_writer_message_sync(buffer)
         return result

@@ -1,3 +1,5 @@
+# flake8: noqa
+
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, make_shared, dynamic_pointer_cast
